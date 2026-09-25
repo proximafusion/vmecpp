@@ -446,6 +446,16 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
 
+    geometry_tolerance: float = 0.0
+    """Distance in metres below which the geometry counts as settled, measured over the
+    last ``nstep`` iterations as the Euclidean norm of the change in the R and Z
+    spectral coefficients.
+
+    When positive, a multigrid step converges only once the force residuals meet
+    ``ftol_array`` and the geometry has moved less than this. Zero leaves convergence on
+    the residuals alone.
+    """
+
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 

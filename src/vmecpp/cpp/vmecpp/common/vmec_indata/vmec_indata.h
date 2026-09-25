@@ -215,6 +215,13 @@ class VmecINDATA {
   // constraint force scaling factor for ns --> 0
   double tcon0;
 
+  // Distance in metres below which the geometry counts as settled, measured
+  // over the last nstep iterations as the Euclidean norm of the change in the
+  // R and Z spectral coefficients. When positive, a multigrid step converges
+  // only once the force residuals meet ftol AND the geometry has moved less
+  // than this. Zero leaves convergence on the residuals alone.
+  double geometry_tolerance;
+
   // hack: directly compute innermost flux surface geometry from radial force
   // balance
   bool lforbal;

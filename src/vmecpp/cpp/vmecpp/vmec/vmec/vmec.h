@@ -146,6 +146,11 @@ class Vmec {
                               double time_step, int thread_id,
                               bool& m_liter_flag);
   void Printout(double delt0r, int thread_id, int iter2);
+
+  // Fold the squared change of this thread's R and Z coefficients since the
+  // previous printout into fc_.geometry_change, then keep the current geometry
+  // for the next one. Every thread of the team must call this.
+  void AccumulateGeometryChange(int thread_id);
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
@@ -219,6 +224,11 @@ class Vmec {
   std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
   std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
+
+  // Geometry as it stood at the previous printout, per thread, against which
+  // fc_.geometry_change is measured. Empty until the first printout of a
+  // multigrid step, since the radial resolution changes between steps.
+  std::vector<std::unique_ptr<FourierGeometry>> geometry_at_last_printout_;
 
   std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;

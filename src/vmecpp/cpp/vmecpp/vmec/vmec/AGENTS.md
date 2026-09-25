@@ -43,6 +43,12 @@ Reached when all three force residuals fall below the current stage tolerance:
 the iteration count exceeds `niterv`. Residuals live in `FlowControl` (`flow_control.h`);
 `fsq*1` are the preconditioned variants used for the damping average.
 
+The residual is small in directions the state is still moving along, so `indata.geometry_tolerance`
+adds a second condition when it is positive: `fc_.geometry_change`, the distance in metres the R
+and Z coefficients moved over the last `nstep` iterations, must also be below it. It is folded
+across the team in `Vmec::AccumulateGeometryChange()` at each printout and reset at every
+multigrid stage, since the radial grid changes between stages.
+
 ## Restart logic
 
 `Vmec::RestartIteration()` (enum `RestartReason` in `flow_control.h`). When the iteration

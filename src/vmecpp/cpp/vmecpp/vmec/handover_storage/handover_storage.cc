@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 
+#include <cmath>
 #include <iostream>
 
 namespace vmecpp {
@@ -39,6 +40,7 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   // as a division-by-zero would occur.
   spectral_width_numerator_ = 0.0;
   spectral_width_denominator_ = 0.0;
+  geometry_change_ = 0.0;
 
   rAxis.setZero(s_.nZeta);
   zAxis.setZero(s_.nZeta);
@@ -189,6 +191,10 @@ void HandoverStorage::RegisterSpectralWidthContribution(
 double HandoverStorage::VolumeAveragedSpectralWidth() const {
   return spectral_width_numerator_ / spectral_width_denominator_;
 }  // VolumeAveragedSpectralWidth
+
+double HandoverStorage::GeometryChange() const {
+  return std::sqrt(geometry_change_);
+}  // GeometryChange
 
 void HandoverStorage::SetRadialExtent(const RadialExtent& radial_extent) {
   radial_extent_ = radial_extent;
