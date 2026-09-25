@@ -808,7 +808,6 @@ def _lambda_on_full_grid(
     lambda_half: np.ndarray,
     xm: np.ndarray,
     phipf: np.ndarray,
-    extrapolate_axis: bool = True,
 ) -> np.ndarray:
     """Invert the radial interpolation that writes lambda onto the half grid.
 
@@ -837,7 +836,7 @@ def _lambda_on_full_grid(
         ) / w_out[:, j - 1]
 
     # the axis value of the m = 0 modes is not represented on the half grid
-    if extrapolate_axis and ns > 2 and phipf[0] != 0.0:
+    if ns > 2 and phipf[0] != 0.0:
         m_zero = xm == 0
         lambda_full[m_zero, 0] = (
             2.0 * lambda_full[m_zero, 1] * phipf[1] - lambda_full[m_zero, 2] * phipf[2]
@@ -1810,15 +1809,15 @@ class VmecWOut(BaseModelWithNumpy):
                     attrs[var_name] = fnc[var_name][()]
 
         # Fortran VMEC stores lambda on the half grid only.
-        halves = [("lmns", "lmns_full", True)]
+        halves = [("lmns", "lmns_full")]
         if attrs["lasym__logical__"]:
-            halves.append(("lmnc", "lmnc_full", False))
-        for half, full, extrapolate_axis in halves:
+            halves.append(("lmnc", "lmnc_full"))
+        for half, full in halves:
             if full in attrs:
                 continue
             if {half, "xm", "phipf"} <= attrs.keys():
                 attrs[full] = _lambda_on_full_grid(
-                    attrs[half], attrs["xm"], attrs["phipf"], extrapolate_axis
+                    attrs[half], attrs["xm"], attrs["phipf"]
                 )
             else:
                 attrs[full] = np.zeros([attrs["mnmax"], attrs["ns"]])
