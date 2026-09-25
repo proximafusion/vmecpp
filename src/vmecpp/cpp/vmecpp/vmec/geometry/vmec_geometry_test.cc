@@ -85,12 +85,14 @@ TEST(VmecGeometryTest, DerivesToroidalFluxFromTheHalfGridDerivative) {
   }
 }
 
-TEST(VmecGeometryTest, SolverAndPhysicalStatesAgree) {
+class VmecGeometrySignOfJacobianTest : public ::testing::TestWithParam<int> {};
+
+TEST_P(VmecGeometrySignOfJacobianTest, SolverAndPhysicalStatesAgree) {
   VmecINDATA indata;
   indata.mpol = 2;
   indata.ntor = 1;
   VmecInternalResults solver;
-  solver.sign_of_jacobian = 1;
+  solver.sign_of_jacobian = GetParam();
   solver.lamscale = 1.0;
   solver.num_full = 2;
   solver.phiF = Eigen::Vector2d(0.0, 1.0);
@@ -106,13 +108,15 @@ TEST(VmecGeometryTest, SolverAndPhysicalStatesAgree) {
   solver.rmnss << 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5;
   solver.zmncs << 0.0, -0.1, 0.0, 0.6, 0.0, -0.2, 0.0, 0.7;
 
+  // same map as FourierCoeffs::m1Constraint with scaling factor 1
+  const double sigma = -solver.sign_of_jacobian;
   VmecInternalResults physical = solver;
   for (int j = 0; j < solver.num_full; ++j) {
     for (int n = 0; n <= indata.ntor; ++n) {
       const double old_r = solver.rmnss(j, n * indata.mpol + 1);
       const double old_z = solver.zmncs(j, n * indata.mpol + 1);
-      physical.rmnss(j, n * indata.mpol + 1) = old_r + old_z;
-      physical.zmncs(j, n * indata.mpol + 1) = old_r - old_z;
+      physical.rmnss(j, n * indata.mpol + 1) = old_r + sigma * old_z;
+      physical.zmncs(j, n * indata.mpol + 1) = sigma * old_r - old_z;
     }
   }
 
@@ -128,6 +132,9 @@ TEST(VmecGeometryTest, SolverAndPhysicalStatesAgree) {
                      from_physical.coefficients.z_cs[i]);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(BothSigns, VmecGeometrySignOfJacobianTest,
+                         ::testing::Values(-1, 1));
 
 }  // namespace
 }  // namespace vmecpp
