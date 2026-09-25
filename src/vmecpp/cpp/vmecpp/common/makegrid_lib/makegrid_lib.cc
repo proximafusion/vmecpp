@@ -23,6 +23,7 @@ namespace makegrid {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -76,6 +77,19 @@ absl::Status IsValidMakegridParameters(
                         makegrid_parameters.number_of_z_grid_points));
   }
 
+  // the planes filled by stellarator symmetry are mirrored through Z = 0
+  if (makegrid_parameters.assume_stellarator_symmetry &&
+      makegrid_parameters.z_grid_minimum !=
+          -makegrid_parameters.z_grid_maximum) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "assume_stellarator_symmetry needs z_grid_minimum = -z_grid_maximum, "
+        "but the Z grid runs from z_grid_minimum = % .3e to z_grid_maximum = "
+        "% .3e, which sum to % .3e",
+        makegrid_parameters.z_grid_minimum, makegrid_parameters.z_grid_maximum,
+        makegrid_parameters.z_grid_minimum +
+            makegrid_parameters.z_grid_maximum));
+  }
+
   // at least a single point in phi direction (one plane)
   if (makegrid_parameters.number_of_phi_grid_points < 1) {
     return absl::InvalidArgumentError(
@@ -88,7 +102,11 @@ absl::Status IsValidMakegridParameters(
 
 absl::StatusOr<MakegridParameters> ImportMakegridParametersFromJson(
     const std::string& makegrid_parameters_json) {
-  json j = json::parse(makegrid_parameters_json);
+  absl::StatusOr<json> maybe_json = JsonParse(makegrid_parameters_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   MakegridParameters makegrid_parameters;
 

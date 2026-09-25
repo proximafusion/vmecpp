@@ -65,6 +65,17 @@ std::vector<std::vector<double>> EigenToStl(
   return stl_matrix;
 }
 
+// Malformed JSON is reported through the status of the import.
+TEST(TestMakegridLib, MalformedJsonIsRejected) {
+  const absl::StatusOr<MakegridParameters> makegrid_parameters =
+      ImportMakegridParametersFromJson("{not json");
+  ASSERT_FALSE(makegrid_parameters.ok());
+  EXPECT_EQ(makegrid_parameters.status().code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(makegrid_parameters.status().message()),
+              ::testing::HasSubstr("not valid JSON"));
+}  // MalformedJsonIsRejected
+
 TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
   // Knudge each of these parameters outside their allowed ranges, one at a
   // time, and test if MakeCylindricalGrid is able to detect the error.
@@ -100,6 +111,16 @@ TEST(TestMakegridLib, CheckMakeCylindricalGridSanityChecks) {
   makegrid_parameters_zmin.z_grid_maximum = -1.0;
   auto cylindrical_grid_zmin = MakeCylindricalGrid(makegrid_parameters_zmin);
   ASSERT_FALSE(cylindrical_grid_zmin.ok());
+
+  // a Z grid off Z = 0 is fine, but not with stellarator symmetry
+  MakegridParameters makegrid_parameters_zshift = makegrid_parameters;
+  makegrid_parameters_zshift.z_grid_minimum = -0.5;
+  makegrid_parameters_zshift.z_grid_maximum = 0.7;
+  ASSERT_TRUE(MakeCylindricalGrid(makegrid_parameters_zshift).ok());
+  makegrid_parameters_zshift.assume_stellarator_symmetry = true;
+  auto cylindrical_grid_zshift =
+      MakeCylindricalGrid(makegrid_parameters_zshift);
+  ASSERT_FALSE(cylindrical_grid_zshift.ok());
 
   MakegridParameters makegrid_parameters_numz = makegrid_parameters;
   makegrid_parameters_numz.number_of_z_grid_points = 1;

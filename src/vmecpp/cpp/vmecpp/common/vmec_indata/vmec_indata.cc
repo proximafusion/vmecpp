@@ -96,6 +96,7 @@ namespace vmecpp {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -553,7 +554,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
 
 absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     const std::string& indata_json) {
-  json j = json::parse(indata_json);
+  absl::StatusOr<json> maybe_json = JsonParse(indata_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   if (!j.is_object()) {
     return absl::InvalidArgumentError("root JSON element is not an object");
@@ -1017,6 +1022,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
 
   if (vmec_indata.lasym) {
+    // an absent raxis_s or zaxis_c is a zero one, as for raxis_c and zaxis_s
+    vmec_indata.raxis_s.emplace().setZero(expected_axis_size);
+    vmec_indata.zaxis_c.emplace().setZero(expected_axis_size);
+
     auto maybe_raxis_s = JsonReadVectorDouble(j, "raxis_s");
     if (!maybe_raxis_s.ok()) {
       return maybe_raxis_s.status();
@@ -1477,10 +1486,10 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.pres_scale));
   }
 
-  // adiabatic_index
+  // gamma
   if (vmec_indata.gamma == 1.0) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("input variable 'adiabatic_index' must not be 1.0\n"));
+        absl::StrFormat("input variable 'gamma' must not be 1.0\n"));
   }
 
   // spres_ped
@@ -1618,6 +1627,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.raxis_s.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'raxis_s' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zaxis_c.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zaxis_c' has to be set when 'lasym' is true.");
+    }
     // raxis_s
     if (vmec_indata.raxis_s->size() != expected_axis_size) {
       return absl::InvalidArgumentError(
@@ -1676,6 +1694,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.rbs.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'rbs' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zbc.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zbc' has to be set when 'lasym' is true.");
+    }
     // rbs
     if (vmec_indata.rbs->rows() != vmec_indata.mpol) {
       return absl::InvalidArgumentError(
