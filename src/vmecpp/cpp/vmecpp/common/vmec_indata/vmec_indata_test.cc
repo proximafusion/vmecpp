@@ -76,6 +76,19 @@ TEST(TestVmecINDATA, CheckParseJsonBoundary) {
   }
 }  // CheckParseJsonBoundary
 
+// A misspelled key is an error that names the entry, not an entry to skip.
+TEST(TestVmecINDATA, CheckParseJsonBoundaryRejectsIncompleteEntries) {
+  const json misspelled =
+      R"({"rbc":[{"m":0,"n":0,"value":3.999},{"m":1,"n":0,"valeu":1.026}]})"_json;
+  const auto read_misspelled = BoundaryCoefficient::FromJson(misspelled, "rbc");
+  ASSERT_FALSE(read_misspelled.ok());
+  EXPECT_THAT(std::string(read_misspelled.status().message()),
+              testing::HasSubstr("'rbc'[1] has no 'value'"));
+
+  const json negative_m = R"({"rbc":[{"m":-1,"n":0,"value":0.5}]})"_json;
+  EXPECT_FALSE(BoundaryCoefficient::FromJson(negative_m, "rbc").ok());
+}  // CheckParseJsonBoundaryRejectsIncompleteEntries
+
 // check that all options stay present
 TEST(TestVmecINDATA, CheckFreeBoundaryMethodCases) {
   FreeBoundaryMethod free_boundary_method = FreeBoundaryMethod::NESTOR;
