@@ -321,7 +321,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // IF PREVIOUS SEQUENCE DID NOT CONVERGE WELL
         fc_.nsval = 3;
         fc_.ftolv = 1.0e-4;
-        // niterv taken from niter_array[0] in INDATA, I guess?
+        // fc_.niterv keeps the niter_array entry of the stage that failed
 
         // Fully restart the vacuum. The assignment to kInitialized above
         // applies to a hot restart, where the vacuum solution carried in with
