@@ -148,6 +148,23 @@ TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   EXPECT_FALSE(maybe_vmec.ok());
 }  // CheckFromIndataReturnsErrorForInvalidMgridPath
 
+// A thread count below 1 is an error status, not a failed check in FlowControl.
+TEST(TestVmec, CheckRunRejectsAThreadCountBelowOne) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  for (const int max_threads : {0, -2}) {
+    const auto output = vmecpp::run(*indata, std::nullopt, max_threads);
+    ASSERT_FALSE(output.ok()) << max_threads;
+    EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(output.status().message()),
+                ::testing::HasSubstr("number of threads must be >= 1"));
+  }
+}  // CheckRunRejectsAThreadCountBelowOne
+
 TEST(TestVmec, CheckInMemoryMgrid) {
   // test the constructor that takes an in-memory mgrid
 
