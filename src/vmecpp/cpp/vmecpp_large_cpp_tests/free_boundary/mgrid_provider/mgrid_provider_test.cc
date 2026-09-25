@@ -414,6 +414,56 @@ TEST(MGridProviderValidation, LoadFileRejectsWrongNumberOfCurrents) {
   EXPECT_TRUE(mgrid.LoadFile(indata->mgrid_file, indata->extcur).ok());
 }
 
+// LoadFile sizes the field tables from the grid and the coil count the file
+// declares, and rejects values that describe no usable grid.
+TEST(MGridProviderValidation, LoadFileRejectsAnUnusableHeader) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  MGridProvider reference;
+  ASSERT_TRUE(reference.LoadFile(indata->mgrid_file, indata->extcur).ok());
+
+  struct HeaderEdit {
+    std::string variable;
+    double value;
+    std::string message;
+  };
+  const std::vector<HeaderEdit> edits = {
+      {"nfp", 0.0, "nfp must be > 0, but is 0"},
+      {"nextcur", -1.0, "nextcur must be > 0, but is -1"},
+      {"ir", 1.0, "ir must be > 1, but is 1"},
+      {"jz", 1.0, "jz must be > 1, but is 1"},
+      {"kp", 0.0, "kp must be > 0, but is 0"},
+      {"rmax", reference.minR, "R grid extent must be positive"},
+      {"zmax", reference.minZ, "Z grid extent must be positive"}};
+  for (const HeaderEdit& edit : edits) {
+    const std::string path =
+        ::testing::TempDir() + "/mgrid_header_" + edit.variable + ".nc";
+    std::filesystem::copy_file(
+        indata->mgrid_file, path,
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::permissions(path, std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::add);
+    // NetCDF converts the value to the type the file declares
+    int ncid = 0;
+    int varid = 0;
+    ASSERT_EQ(nc_open(path.c_str(), NC_WRITE, &ncid), NC_NOERR);
+    ASSERT_EQ(nc_inq_varid(ncid, edit.variable.c_str(), &varid), NC_NOERR);
+    ASSERT_EQ(nc_put_var_double(ncid, varid, &edit.value), NC_NOERR);
+    ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+    MGridProvider mgrid;
+    const absl::Status status = mgrid.LoadFile(path, indata->extcur);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument)
+        << edit.variable;
+    EXPECT_THAT(std::string(status.message()),
+                ::testing::HasSubstr(edit.message));
+  }
+}
+
 TEST(MGridProviderValidation, LoadFieldsRejectsWrongNumberOfCurrents) {
   // A response table with two circuits on a small grid; only the shapes matter
   // here, not the field values.
