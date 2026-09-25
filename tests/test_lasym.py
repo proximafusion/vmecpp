@@ -389,32 +389,21 @@ def _output_rotated_back(output, zeta0, zeta_steps):
     return fields
 
 
-def _assert_fields_match(expected, actual, rtol, skip=()):
-    """Compare field by field, each against rtol times the magnitude of the field, or of
-    its Fourier pair where the output has one."""
-    scale = {
-        name: np.max(np.abs(value), initial=0.0) for name, value in expected.items()
-    }
-    for cos_name, sin_name, _ in OUTPUT_FOURIER_PAIRS:
-        if cos_name in scale and sin_name in scale:
-            scale[cos_name] = scale[sin_name] = max(scale[cos_name], scale[sin_name])
-    for name, value in expected.items():
-        if name in skip or value.size == 0:
-            continue
+def _assert_fields_match(expected, actual, rtol, atol, names):
+    for name in names:
         np.testing.assert_allclose(
-            actual[name], value, rtol=0, atol=rtol * scale[name], err_msg=name
+            actual[name], expected[name], rtol=rtol, atol=atol, err_msg=name
         )
 
 
 # Not invariant under a toroidal rotation: quantities evaluated in the zeta = 0 and
-# zeta = pi / nfp planes, the jxbout zeta coordinate, and the final force residuals.
+# zeta = pi / nfp planes, and the final force residuals.
 ROTATION_VARIANT_FIELDS = {
     "wout.b0",
     "wout.fsqr",
     "wout.fsqz",
     "wout.fsql",
     "wout.fsqt",
-    "jxbout.izeta",
     *(
         f"threed1_geometric_magnetic.{name}"
         for name in (
@@ -443,6 +432,28 @@ RESIDUAL_FIELDS = {
     "jxbout.avforce",
     "jxbout.jcrossb",
     "jxbout.jxb_gradp",
+}
+
+# Current densities, which reach 1e7 and take their round-off from radial derivatives.
+CURRENT_DENSITY_FIELDS = {
+    *(
+        f"wout.{name}"
+        for name in ("currumnc", "currumns", "currvmnc", "currvmns", "jcuru", "jdotb")
+    ),
+    *(
+        f"jxbout.{name}"
+        for name in (
+            "itheta",
+            "izeta",
+            "bdotk",
+            "jdotb",
+            "jdotb_sqrtg",
+            "jsupu3",
+            "jsupv3",
+        )
+    ),
+    "threed1_first_table.avg_jsupu",
+    "threed1_first_table.j_dot_b",
 }
 
 
@@ -483,14 +494,18 @@ def test_toroidal_rotation_equivariance(case):
     np.testing.assert_allclose(rotated.wout.fsqt, reference.wout.fsqt, rtol=1e-4)
     expected = _numeric_fields(reference)
     actual = _output_rotated_back(rotated, zeta0, zeta_steps)
+    fields = expected.keys() - ROTATION_VARIANT_FIELDS
     _assert_fields_match(
-        expected, actual, rtol=1e-9, skip=ROTATION_VARIANT_FIELDS | RESIDUAL_FIELDS
+        expected,
+        actual,
+        rtol=1e-9,
+        atol=1e-8,
+        names=fields - RESIDUAL_FIELDS - CURRENT_DENSITY_FIELDS,
     )
     _assert_fields_match(
-        {name: expected[name] for name in RESIDUAL_FIELDS},
-        {name: actual[name] for name in RESIDUAL_FIELDS},
-        rtol=1e-5,
+        expected, actual, rtol=1e-9, atol=1e-3, names=CURRENT_DENSITY_FIELDS
     )
+    _assert_fields_match(expected, actual, rtol=1e-5, atol=1e-4, names=RESIDUAL_FIELDS)
 
 
 def test_toroidal_rotation_off_grid_preserves_flux_functions():
@@ -603,8 +618,10 @@ VACUUM_CURRENT_FIELDS = {
     ),
     "mercier.toroidal_current",
     "mercier.d_toroidal_current_d_s",
-    "jxbout.jdotb",
+    *CURRENT_DENSITY_FIELDS,
 }
+
+FORCE_RESIDUALS = {"wout.fsqr", "wout.fsqz", "wout.fsql", "wout.fsqt"}
 
 
 @pytest.fixture(scope="module")
@@ -618,6 +635,24 @@ def _poloidal_case(name, basic_non_stellsym_input):
     if name == "basic_non_stellsym":
         return basic_non_stellsym_input, VACUUM_CURRENT_FIELDS
     return _lasym_input(name), set()
+
+
+def _assert_same_outputs(expected, actual, noise_fields):
+    fields = expected.keys() - FORCE_RESIDUALS - RESIDUAL_FIELDS - noise_fields
+    _assert_fields_match(
+        expected,
+        actual,
+        rtol=1e-7,
+        atol=1e-7,
+        names=fields - CURRENT_DENSITY_FIELDS,
+    )
+    _assert_fields_match(
+        expected,
+        actual,
+        rtol=1e-7,
+        atol=1e-3,
+        names=fields & CURRENT_DENSITY_FIELDS,
+    )
 
 
 def _assert_jacobian_matches_signgs(wout):
@@ -636,13 +671,8 @@ def test_poloidal_shift_is_gauged_away(case, basic_non_stellsym_input):
         _poloidally_shifted_input(base, 0.3), max_threads=1, verbose=False
     )
     _assert_jacobian_matches_signgs(shifted.wout)
-    _assert_fields_match(
-        _numeric_fields(reference),
-        _numeric_fields(shifted),
-        rtol=1e-7,
-        skip={"wout.fsqr", "wout.fsqz", "wout.fsql", "wout.fsqt"}
-        | RESIDUAL_FIELDS
-        | noise_fields,
+    _assert_same_outputs(
+        _numeric_fields(reference), _numeric_fields(shifted), noise_fields
     )
 
 
@@ -662,15 +692,9 @@ def test_poloidal_reversal_preserves_physics(case, basic_non_stellsym_input):
         len(reference.xm): (-1.0) ** np.asarray(reference.xm),
         len(reference.xm_nyq): (-1.0) ** np.asarray(reference.xm_nyq),
     }
-    expected = _numeric_fields(reference)
-    actual = _numeric_fields(reversed_)
+    expected = _numeric_fields(reference, prefix="wout.")
+    actual = _numeric_fields(reversed_, prefix="wout.")
     for name, value in actual.items():
         if value.ndim == 2:
             actual[name] = parity[value.shape[0]][:, np.newaxis] * value
-    _assert_fields_match(
-        expected,
-        actual,
-        rtol=1e-7,
-        skip={"fsqr", "fsqz", "fsql", "fsqt", "equif"}
-        | {name.removeprefix("wout.") for name in noise_fields},
-    )
+    _assert_same_outputs(expected, actual, noise_fields | {"wout.equif"})
