@@ -21,6 +21,30 @@ supports the stellarator-symmetric fixed-boundary case. The geometry API
 itself already supports asymmetric snapshots; profile and free-boundary
 parameter VJPs remain explicit unsupported cases until their residual
 dependence is exposed by the exact C++ derivative path.
+
+State layout
+------------
+
+``VmecModel.get_state()`` and ``get_forces()`` return one flat vector that
+concatenates a fixed sequence of coefficient spans (see :func:`state_layout`):
+``r_cc``, and depending on ``lthreed``/``lasym``, ``r_ss``, ``r_sc``, ``r_cs``,
+then the analogous ``z_*`` spans, then the analogous ``lambda_*`` spans. Which
+spans are present follows the same combination of ``lthreed``/``lasym`` used
+throughout the C++ layer: the sine-cosine mode is always present, the
+three-dimensional mode is added under ``lthreed``, the asymmetric mode under
+``lasym``, and the mixed one only when both hold.
+
+Each span holds ``ns * mpol * (ntor + 1)`` entries in surface-major order:
+surface index varies slowest, then poloidal mode ``m`` from ``0`` to
+``mpol - 1``, then toroidal mode ``n`` from ``0`` to ``ntor``. This matches
+the ``(ns, mpol, ntor + 1)`` block shape used by :class:`vmecpp.Geometry` and
+by ``VmecModel.get_geometry()``. The last surface's ``r``/``z`` entries are
+the fixed plasma boundary; the corresponding ``lambda`` entries at that
+surface are still solved for. The mode amplitudes stored in the state are
+scaled relative to the external, "combined" Fourier basis (``rmnc``, ``zmns``,
+...): entries with ``m != 0`` and ``n != 0`` carry an extra factor of
+``sqrt(2)`` for each nonzero index, matching ``Boundaries::ensureM1Constrained``
+and the parser inverted by :func:`_boundary_from_state_vjp`.
 """
 
 from __future__ import annotations
@@ -165,8 +189,100 @@ def _solve_model_cached(template, boundary: np.ndarray, cache: _ModelCache):
     return model
 
 
+_RZ_SPAN_NAMES = ("r_cc", "r_ss", "r_sc", "r_cs", "z_sc", "z_cs", "z_cc", "z_ss")
+
+# The m=1 gauge entries zeroed by FourierForces::zeroZForceForM1: the force
+# row is identically zero, but the Hessian column is not, because the state
+# entry still feeds the m=1 constraint coupling to r_ss/z_cs (M1Constraint).
+_GAUGE_SPAN_NAMES = {"z_cs": "lthreed", "z_cc": "lasym"}
+
+
+@dataclass(frozen=True)
+class StateLayout:
+    """The flat solver state's span structure and derived index sets.
+
+    ``VmecModel.get_state()``/``get_forces()`` concatenate coefficient spans
+    in a fixed order (see the module docstring); this layout names that order
+    and partitions the flat indices by role. ``interior`` and ``boundary``
+    partition the whole state; ``solved`` is ``interior`` with the structural
+    zeros and the m=1 gauge entries removed, i.e. the DOFs the adjoint system
+    is actually solved for.
+    """
+
+    spans: dict[str, slice]
+    surface: dict[str, np.ndarray]
+    mode: dict[str, np.ndarray]
+    boundary: np.ndarray
+    interior: np.ndarray
+    structural_zero: np.ndarray
+    gauge: np.ndarray
+    solved: np.ndarray
+
+
+def state_layout(
+    model, n_probe: int = 6, tol: float = 1.0e-9, seed: int = 0
+) -> StateLayout:
+    """Return the flat state's span structure and index sets for ``model``.
+
+    ``n_probe``, ``tol``, and ``seed`` control the Hessian-vector probing used
+    to separate ``structural_zero`` and ``gauge`` entries from ``solved``
+    entries; see :func:`_structural_nullfree_interior`.
+    """
+    spans = _span_slices(model)
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    surface: dict[str, np.ndarray] = {}
+    mode: dict[str, np.ndarray] = {}
+    for name, span in spans.items():
+        local = np.arange(span.stop - span.start)
+        surface[name] = local // modes_per_surface
+        mode[name] = local % modes_per_surface
+    interior, boundary = _interior_and_boundary(model)
+    nullfree = _structural_nullfree_interior(
+        model, interior, n_probe=n_probe, tol=tol, seed=seed
+    )
+    # zeroZForceForM1 makes the gauge force row identically zero, so the
+    # column-and-row probe in _structural_nullfree_interior already puts the
+    # gauge entries in interior - nullfree, alongside the genuine structural
+    # zeros. Split them out by name/mode instead of by probing: z_cs/z_cc are
+    # r/z spans, so their boundary-surface row is already part of `boundary`;
+    # restrict to the interior surfaces.
+    gauge = np.intersect1d(_gauge_indices(model, spans), interior)
+    structural_zero = np.setdiff1d(np.setdiff1d(interior, nullfree), gauge)
+    solved = nullfree
+    return StateLayout(
+        spans=spans,
+        surface=surface,
+        mode=mode,
+        boundary=boundary,
+        interior=interior,
+        structural_zero=structural_zero,
+        gauge=gauge,
+        solved=solved,
+    )
+
+
+def _gauge_indices(model, spans: dict[str, slice]) -> np.ndarray:
+    """The m=1 constraint-gauge entries zeroed by ``zeroZForceForM1``."""
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    indices: list[int] = []
+    for name, flag_name in _GAUGE_SPAN_NAMES.items():
+        if name not in spans or not getattr(model, flag_name):
+            continue
+        span = spans[name]
+        for j in range(model.ns):
+            surface_start = span.start + j * modes_per_surface
+            m = 1
+            row_start = surface_start + m * (model.ntor + 1)
+            indices.extend(range(row_start, row_start + model.ntor + 1))
+    return np.asarray(sorted(indices), dtype=np.int64)
+
+
 def _span_slices(model) -> dict[str, slice]:
-    """Return slices in VmecModel's canonical active-state ordering."""
+    """Return slices in VmecModel's canonical active-state ordering.
+
+    Thin wrapper kept for the existing private call sites; use
+    :func:`state_layout` for new code.
+    """
     names: list[str] = ["r_cc"]
     if model.lthreed:
         names.append("r_ss")
@@ -196,21 +312,16 @@ def _span_slices(model) -> dict[str, slice]:
 
 
 def _interior_and_boundary(model) -> tuple[np.ndarray, np.ndarray]:
+    """Thin wrapper kept for the existing private call sites.
+
+    Use ``state_layout(model).interior`` / ``.boundary`` for new code.
+    """
     slices = _span_slices(model)
     state_size = int(np.asarray(model.get_state()).size)
     boundary: list[int] = []
     modes_per_surface = model.mpol * (model.ntor + 1)
     edge_start = (model.ns - 1) * modes_per_surface
-    for name in (
-        "r_cc",
-        "r_ss",
-        "r_sc",
-        "r_cs",
-        "z_sc",
-        "z_cs",
-        "z_cc",
-        "z_ss",
-    ):
+    for name in _RZ_SPAN_NAMES:
         if name in slices:
             span = slices[name]
             boundary.extend(range(span.start + edge_start, span.stop))
@@ -601,4 +712,4 @@ def make_solver(
     return DifferentiableVmec(vmec_input, cache_size=cache_size, on_failure=on_failure)
 
 
-__all__ = ["DifferentiableVmec", "make_solver"]
+__all__ = ["DifferentiableVmec", "StateLayout", "make_solver", "state_layout"]
