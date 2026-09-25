@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790373445959,
+  "lastUpdate": 1790374967427,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19671,6 +19671,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4854609690000302,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "559943502f6cf6261cab7d2cf2c817b86db31608",
+          "message": "Size the parallel regions with num_threads clauses instead of the process thread count (#835)\n\n* Size the parallel regions with num_threads clauses instead of the process thread count\n\n* Assert the process thread count directly instead of comparing consecutive runs\n\n* Rerun the checks after a transient dependency download failure\n\n* Keep OpenMP_ROOT out of the macOS wheel-test environment\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-25T22:16:35Z",
+          "tree_id": "44476e24daa0b4695b562a2f3fc50fbe8e561041",
+          "url": "https://github.com/proximafusion/vmecpp/commit/559943502f6cf6261cab7d2cf2c817b86db31608"
+        },
+        "date": 1790374959887,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.2862994366000066,
+            "range": "stddev: 0.006253726719005959",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.0270979163332945,
+            "range": "stddev: 0.04114827568897678",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8896896889999842,
+            "range": "stddev: 0.0033029153334816607",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.3073281250000075,
+            "range": "stddev: 0.010356347349392508",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.278200816666697,
+            "range": "stddev: 0.0013476770797376473",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.627063840666646,
+            "range": "stddev: 0.019201992477739474",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.756396983999991,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3077302020000161,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
