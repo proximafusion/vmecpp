@@ -34,6 +34,43 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
     return VectorXd::Constant(1, val);
   }
 }  // NonEmptyVectorOr
+
+// Fill the axis and the boundary entry of a full-grid radial profile by linear
+// extrapolation from the two interior surfaces next to each end, reading only
+// interior values. At ns == 3 there is one interior surface and both ends take
+// its value.
+void ExtrapolateFullGridEnds(int ns, VectorXd& m_profile) {
+  if (ns < 4) {
+    const double interior = m_profile[1];
+    m_profile[0] = interior;
+    m_profile[ns - 1] = interior;
+    return;
+  }
+
+  const double axis = 2.0 * m_profile[1] - m_profile[2];
+  const double boundary = 2.0 * m_profile[ns - 2] - m_profile[ns - 3];
+  m_profile[0] = axis;
+  m_profile[ns - 1] = boundary;
+}  // ExtrapolateFullGridEnds
+
+// ExtrapolateFullGridEnds for a full-grid field of ns surfaces of n_znt
+// tangential points.
+void ExtrapolateFullGridEnds(int ns, int n_znt, vmecpp::RowMatrixXd& m_field) {
+  for (int kl = 0; kl < n_znt; ++kl) {
+    if (ns < 4) {
+      const double interior = m_field(1 * n_znt + kl);
+      m_field(0 * n_znt + kl) = interior;
+      m_field((ns - 1) * n_znt + kl) = interior;
+      continue;
+    }
+
+    const double axis = 2.0 * m_field(1 * n_znt + kl) - m_field(2 * n_znt + kl);
+    const double boundary =
+        2.0 * m_field((ns - 2) * n_znt + kl) - m_field((ns - 3) * n_znt + kl);
+    m_field(0 * n_znt + kl) = axis;
+    m_field((ns - 1) * n_znt + kl) = boundary;
+  }  // kl
+}  // ExtrapolateFullGridEnds
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -2697,22 +2734,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
 void vmecpp::ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                               BSubSFull& m_bsubs_full) {
-  for (int kl = 0; kl < s.nZnT; ++kl) {
-    // extrapolate towards axis from first two interior full-grid points
-    const int index_0 = 0 * s.nZnT + kl;
-    const int index_1 = 1 * s.nZnT + kl;
-    const int index_2 = 2 * s.nZnT + kl;
-    m_bsubs_full.bsubs_full(index_0) = 2.0 * m_bsubs_full.bsubs_full(index_1) -
-                                       m_bsubs_full.bsubs_full(index_2);
-
-    // extrapolate towards boundary from last two interior full-grid points
-    const int index_ns_1 = (fc.ns - 1) * s.nZnT + kl;
-    const int index_ns_2 = (fc.ns - 2) * s.nZnT + kl;
-    const int index_ns_3 = (fc.ns - 3) * s.nZnT + kl;
-    m_bsubs_full.bsubs_full(index_ns_1) =
-        2.0 * m_bsubs_full.bsubs_full(index_ns_2) -
-        m_bsubs_full.bsubs_full(index_ns_3);
-  }  // kl
+  ExtrapolateFullGridEnds(fc.ns, s.nZnT, m_bsubs_full.bsubs_full);
 }  // ExtrapolateBSubS
 
 vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
@@ -3023,41 +3045,15 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   }
 
   // extrapolate stuff to axis and boundary
-  for (int kl = 0; kl < s.nZnT; ++kl) {
-    // used to extrapolate towards axis from first two interior full-grid points
-    const int index_0 = 0 * s.nZnT + kl;
-    const int index_1 = 1 * s.nZnT + kl;
-    const int index_2 = 2 * s.nZnT + kl;
-
-    // used to extrapolate towards boundary from last two interior full-grid
-    // points
-    const int index_ns_1 = (fc.ns - 1) * s.nZnT + kl;
-    const int index_ns_2 = (fc.ns - 2) * s.nZnT + kl;
-    const int index_ns_3 = (fc.ns - 3) * s.nZnT + kl;
-
-    jxbout.izeta(index_0) = 2.0 * jxbout.izeta(index_1) - jxbout.izeta(index_2);
-    jxbout.izeta(index_ns_1) =
-        2.0 * jxbout.izeta(index_ns_2) - jxbout.izeta(index_ns_3);
-  }  // kl
-
-  jxbout.jdotb[0] = 2.0 * jxbout.jdotb[1] - jxbout.jdotb[2];
-  jxbout.jdotb[fc.ns - 1] =
-      2.0 * jxbout.jdotb[fc.ns - 2] - jxbout.jdotb[fc.ns - 3];
-
-  jxbout.bdotb[0] = 2.0 * jxbout.bdotb[1] - jxbout.bdotb[2];
-  jxbout.bdotb[fc.ns - 1] =
-      2.0 * jxbout.bdotb[fc.ns - 2] - jxbout.bdotb[fc.ns - 3];
-
-  jxbout.bdotgradv[0] = 2.0 * jxbout.bdotgradv[1] - jxbout.bdotgradv[2];
-  jxbout.bdotgradv[fc.ns - 1] =
-      2.0 * jxbout.bdotgradv[fc.ns - 2] - jxbout.bdotgradv[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, s.nZnT, jxbout.izeta);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.jdotb);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.bdotb);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.bdotgradv);
 
   // Note that jpar2, jperp2 have been initialized to all-0 in the beginning,
   // so there is not need to set the axis and boundary entries to zero here.
 
-  jxbout.pprim[0] = 2.0 * jxbout.pprim[1] - jxbout.pprim[2];
-  jxbout.pprim[fc.ns - 1] =
-      2.0 * jxbout.pprim[fc.ns - 2] - jxbout.pprim[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, jxbout.pprim);
 
   return jxbout;
 }  // ComputeJxBOutputFileContents
@@ -3632,40 +3628,11 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       0.5 * threed1_first_table_intermediate.bvcoH[fc.ns - 3];
 
   // extrapolate full-grid quantites to axis and LCFS
-  threed1_first_table_intermediate.equif[0] =
-      2.0 * threed1_first_table_intermediate.equif[1] -
-      threed1_first_table_intermediate.equif[2];
-  threed1_first_table_intermediate.equif[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.equif[fc.ns - 2] -
-      threed1_first_table_intermediate.equif[fc.ns - 3];
-
-  threed1_first_table_intermediate.jcurv[0] =
-      2.0 * threed1_first_table_intermediate.jcurv[1] -
-      threed1_first_table_intermediate.jcurv[2];
-  threed1_first_table_intermediate.jcurv[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.jcurv[fc.ns - 2] -
-      threed1_first_table_intermediate.jcurv[fc.ns - 3];
-
-  threed1_first_table_intermediate.jcuru[0] =
-      2.0 * threed1_first_table_intermediate.jcuru[1] -
-      threed1_first_table_intermediate.jcuru[2];
-  threed1_first_table_intermediate.jcuru[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.jcuru[fc.ns - 2] -
-      threed1_first_table_intermediate.jcuru[fc.ns - 3];
-
-  threed1_first_table_intermediate.presgrad[0] =
-      2.0 * threed1_first_table_intermediate.presgrad[1] -
-      threed1_first_table_intermediate.presgrad[2];
-  threed1_first_table_intermediate.presgrad[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.presgrad[fc.ns - 2] -
-      threed1_first_table_intermediate.presgrad[fc.ns - 3];
-
-  threed1_first_table_intermediate.vpphi[0] =
-      2.0 * threed1_first_table_intermediate.vpphi[1] -
-      threed1_first_table_intermediate.vpphi[2];
-  threed1_first_table_intermediate.vpphi[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.vpphi[fc.ns - 2] -
-      threed1_first_table_intermediate.vpphi[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.equif);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.jcurv);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.jcuru);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.presgrad);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.vpphi);
 
   return threed1_first_table_intermediate;
 }  // ComputeIntermediateThreed1FirstTableQuantities

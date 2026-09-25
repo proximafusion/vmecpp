@@ -1063,4 +1063,44 @@ TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
             << worst_norm_field << ")" << std::endl;
 }
 
+// At ns == 3 the axis entry is also the third-from-last entry, so both ends
+// come from the single interior surface.
+TEST(ExtrapolateBSubS, EndsAreIndependentAtTheSmallestRadialResolution) {
+  const Sizes sizes(/*lasym=*/false, /*nfp=*/1, /*mpol=*/2, /*ntor=*/0,
+                    /*ntheta=*/10, /*nzeta=*/1);
+  FlowControl flow_control(/*lfreeb=*/false, /*delt=*/1.0, /*num_grids=*/1,
+                           /*max_threads=*/1);
+
+  // ns == 3 leaves a single interior full-grid surface, so both ends take its
+  // value.
+  flow_control.ns = 3;
+  BSubSFull three;
+  three.bsubs_full = RowMatrixXd::Zero(flow_control.ns, sizes.nZnT);
+  for (int kl = 0; kl < sizes.nZnT; ++kl) {
+    three.bsubs_full(1 * sizes.nZnT + kl) = 1.0 + kl;
+  }
+  ExtrapolateBSubS(sizes, flow_control, /*m_bsubs_full=*/three);
+  for (int kl = 0; kl < sizes.nZnT; ++kl) {
+    const double interior = 1.0 + kl;
+    EXPECT_EQ(three.bsubs_full(0 * sizes.nZnT + kl), interior);
+    EXPECT_EQ(three.bsubs_full(2 * sizes.nZnT + kl), interior);
+  }
+
+  // From ns == 4 on, each end is the two-point extrapolation of the two
+  // interior surfaces next to it.
+  flow_control.ns = 5;
+  BSubSFull five;
+  five.bsubs_full = RowMatrixXd::Zero(flow_control.ns, sizes.nZnT);
+  for (int jF = 1; jF < flow_control.ns - 1; ++jF) {
+    for (int kl = 0; kl < sizes.nZnT; ++kl) {
+      five.bsubs_full(jF * sizes.nZnT + kl) = jF + 0.5 * kl;
+    }
+  }
+  ExtrapolateBSubS(sizes, flow_control, /*m_bsubs_full=*/five);
+  for (int kl = 0; kl < sizes.nZnT; ++kl) {
+    EXPECT_EQ(five.bsubs_full(0 * sizes.nZnT + kl), 0.0 + 0.5 * kl);
+    EXPECT_EQ(five.bsubs_full(4 * sizes.nZnT + kl), 4.0 + 0.5 * kl);
+  }
+}
+
 }  // namespace vmecpp
