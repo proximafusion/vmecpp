@@ -1199,10 +1199,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
 #undef WRITEMEMBER
 #undef READMEMBER
 
-absl::Status vmecpp::OutputQuantities::Save(
-    const std::filesystem::path& path) const {
-  H5::H5File file(path, H5F_ACC_TRUNC);
-
+absl::Status vmecpp::OutputQuantities::WriteTo(H5::H5File& file) const {
   absl::Status status;
 
   status = vmec_internal_results.WriteTo(file);
@@ -1308,10 +1305,8 @@ absl::Status vmecpp::OutputQuantities::Save(
   return absl::OkStatus();
 }
 
-absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
-    const std::filesystem::path& path) {
-  H5::H5File file(path, H5F_ACC_RDONLY);
-
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::ReadFrom(
+    H5::H5File& file) {
   OutputQuantities oq;
   absl::Status status;
 
@@ -1426,6 +1421,30 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
   }
 
   return oq;
+}
+
+absl::Status vmecpp::OutputQuantities::Save(
+    const std::filesystem::path& path) const {
+  try {
+    H5::H5File file(path, H5F_ACC_TRUNC);
+    return WriteTo(file);
+  } catch (const H5::Exception& exception) {
+    return absl::InternalError(
+        absl::StrFormat("could not write '%s': %s: %s", path.string(),
+                        exception.getFuncName(), exception.getDetailMsg()));
+  }
+}
+
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
+    const std::filesystem::path& path) {
+  try {
+    H5::H5File file(path, H5F_ACC_RDONLY);
+    return ReadFrom(file);
+  } catch (const H5::Exception& exception) {
+    return absl::InternalError(
+        absl::StrFormat("could not read '%s': %s: %s", path.string(),
+                        exception.getFuncName(), exception.getDetailMsg()));
+  }
 }
 
 vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
