@@ -155,6 +155,7 @@ def wout_quantities(
     vmec_input: Any,
     *,
     iota_half=None,
+    current_half=None,
     mass_half=None,
 ) -> dict[str, jax.Array | None]:
     """Map a converged geometry to the physics quantities of its ``wout`` file.
@@ -165,6 +166,9 @@ def wout_quantities(
             supplies the grid sizes, mode tables and the flux and mass profiles.
         iota_half: Rotational transform on the half grid. Defaults to the ratio
             of the poloidal and toroidal flux increments of ``geometry``.
+        current_half: Enclosed toroidal current ``<B_u>`` on the half grid, for
+            ``ncurr = 1``: chi' is then solved from it as in the C++
+            computeBContra, and iota follows. Excludes ``iota_half``.
         mass_half: The half-grid mass profile ``mu_0 p dV/ds^gamma``. Defaults to
             :func:`mass_profile` of the input, which is not differentiated.
 
@@ -174,13 +178,20 @@ def wout_quantities(
     """
     sizes = _sizes(vmec_input)
     profiles = _profiles(vmec_input, sizes, mass_half)
+    if iota_half is not None and current_half is not None:
+        error_message = "pass iota_half or current_half, not both"
+        raise ValueError(error_message)
     if iota_half is not None:
-        iota_half = jnp.asarray(iota_half)
-    return _wout_quantities(sizes, profiles, _kernels(sizes), geometry, iota_half)
+        iota_half = jnp.asarray(iota_half, dtype=jnp.float64)
+    if current_half is not None:
+        current_half = jnp.asarray(current_half, dtype=jnp.float64)
+    return _wout_quantities(
+        sizes, profiles, _kernels(sizes), geometry, iota_half, current_half
+    )
 
 
 @functools.partial(jax.jit, static_argnums=0)
-def _wout_quantities(sizes, profiles, kernels, geometry, iota_half):
+def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half):
     setup = _make_setup(sizes, profiles, kernels)
     ns = setup.ns
     delta_s = 1.0 / (ns - 1)
@@ -195,8 +206,6 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half):
         iota_h = iota_half.astype(toroidal_flux.dtype)
     phip_f = jnp.asarray(setup.phip_full)
     phip_h = jnp.asarray(setup.phip_half)
-    chip_h = iota_h * phip_h
-    chip_f = _half_to_full(chip_h)
 
     # Inverse DFT to the full-grid real-space geometry, split by m parity.
     r = _real_space(setup, _r_terms(geometry, setup))
@@ -285,7 +294,19 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half):
     lv_e = -lam.dzeta_e
     lv_o = -lam.dzeta_o
     bsupv = half(lu_e, lu_o) / gsqrt
-    bsupu = half(lv_e, lv_o) / gsqrt + chip_h[:, None, None] / gsqrt
+    bsupu_lambda = half(lv_e, lv_o) / gsqrt
+    if current_half is not None:
+        # chi' consistent with the prescribed toroidal current (computeBContra)
+        plasma_current = jnp.sum(
+            (guu * bsupu_lambda + guv * bsupv) * w_int, axis=(1, 2)
+        )
+        avg_guu_gsqrt = jnp.sum(guu / gsqrt * w_int, axis=(1, 2))
+        chip_h = (current_half - plasma_current) / avg_guu_gsqrt
+        iota_h = chip_h / phip_h
+    else:
+        chip_h = iota_h * phip_h
+    chip_f = _half_to_full(chip_h)
+    bsupu = bsupu_lambda + chip_h[:, None, None] / gsqrt
     bsubu = guu * bsupu + guv * bsupv
     bsubv = guv * bsupu + gvv * bsupv
     magnetic_pressure = 0.5 * (bsupu * bsubu + bsupv * bsubv)
@@ -366,7 +387,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half):
     # ComputeMercierStability).
     phip_real_h = 2.0 * math.pi * phip_h * signgs
     vp_real = signgs * dnorm1 * dvds_h / phip_real_h
-    torcur = signgs * 2.0 * math.pi * jnp.sum(bsubu_out * w_int, axis=(1, 2))
+    torcur = signgs * 2.0 * math.pi * buco_solver
     phip_real_f = interior_full(phip_real_h)
     denom = phip_real_f * delta_s
     shear = jnp.diff(iota_h) / denom
@@ -414,8 +435,13 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half):
     s2 = jnp.sum(total_pressure * tau_w, axis=(1, 2)) / dvds_h - pres_h
     beta_vol = pres_h / s2
     over_r = jnp.sum(tau_w / r12, axis=(1, 2)) / dvds_h
-    buco_h = jnp.sum(bsubu_out * w_int, axis=(1, 2))
-    bvco_h = jnp.sum(bsubv_out * w_int, axis=(1, 2))
+    # Surface averages of the filtered B_u, B_v. The filter keeps the (0, 0)
+    # mode and FixupPoloidalCurrent restores the average of B_v, so these are
+    # the solver's buco, bvco; summing them directly avoids the roundoff the
+    # C++ picks up from the filtered fields, which 1 / (mu_0 ds) amplifies in
+    # jcurv and jcuru.
+    buco_h = buco_solver
+    bvco_h = bvco_solver
     chi = (
         2.0
         * math.pi
@@ -831,7 +857,7 @@ def _sizes(vmec_input: Any) -> _Sizes:
     )
 
 
-def _profiles(vmec_input: Any, sizes: _Sizes, mass_half) -> dict[str, np.ndarray]:
+def _profiles(vmec_input: Any, sizes: _Sizes, mass_half) -> dict[str, Any]:
     """The input-dependent radial profiles, passed to the compiled stage as data."""
     s_full = np.arange(sizes.ns) / (sizes.ns - 1.0)
     s_half = (np.arange(sizes.ns - 1) + 0.5) / (sizes.ns - 1.0)
@@ -840,7 +866,7 @@ def _profiles(vmec_input: Any, sizes: _Sizes, mass_half) -> dict[str, np.ndarray
     return {
         "phip_full": toroidal_flux_derivative(vmec_input, s_full),
         "phip_half": toroidal_flux_derivative(vmec_input, s_half),
-        "mass_half": np.asarray(mass_half, dtype=np.float64),
+        "mass_half": jnp.asarray(mass_half, dtype=jnp.float64),
     }
 
 
@@ -1172,10 +1198,12 @@ def _currents(setup: _Setup, bsubs_mn, bsubu_mn, bsubv_mn, *, sign: float):
     currv = -sign * m * t1 + t2
 
     def extrapolate(values):
-        axis = jnp.where((setup.xm_nyq <= 1), 2.0 * values[:, 0] - values[:, 1], 0.0)
-        with_axis = jnp.concatenate([axis[:, None], values], axis=1)
-        edge = 2.0 * with_axis[:, -1] - with_axis[:, -2]
-        return jnp.concatenate([with_axis, edge[:, None]], axis=1) / MU_0
+        # axis for m <= 1 first, then the edge, as _extrapolate_both
+        full = jnp.pad(values, ((0, 0), (1, 1)))
+        axis = jnp.where(setup.xm_nyq <= 1, 2.0 * full[:, 1] - full[:, 2], 0.0)
+        full = full.at[:, 0].set(axis)
+        full = full.at[:, -1].set(2.0 * full[:, -2] - full[:, -3])
+        return full / MU_0
 
     return extrapolate(curru), extrapolate(currv)
 
@@ -1431,10 +1459,15 @@ def _pad_both(values_interior: jax.Array) -> jax.Array:
 
 
 def _extrapolate_both(values_interior: jax.Array) -> jax.Array:
-    """Interior full-grid profile extrapolated linearly to axis and edge."""
-    axis = 2.0 * values_interior[0] - values_interior[1]
-    edge = 2.0 * values_interior[-1] - values_interior[-2]
-    return jnp.concatenate([axis[None], values_interior, edge[None]])
+    """Interior full-grid profile extrapolated linearly to axis and edge.
+
+    As in the C++ output stage, the axis is extrapolated first, from full-grid
+    entries 1 and 2, and the edge then from entries ns - 2 and ns - 3; for
+    ns = 3, entry 2 is the still-zero edge and entry 0 the new axis value.
+    """
+    full = jnp.pad(values_interior, (1, 1))
+    full = full.at[0].set(2.0 * full[1] - full[2])
+    return full.at[-1].set(2.0 * full[-2] - full[-3])
 
 
 def _extrapolate_axis_column(coefficients: jax.Array) -> jax.Array:

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import vmecpp
-from vmecpp import autodiff_wout, geometry
+from vmecpp import autodiff, autodiff_wout, geometry
 from vmecpp._pydantic_numpy import own_model_fields
 from vmecpp.cpp import _vmecpp  # type: ignore
 
@@ -82,6 +82,7 @@ _DEFAULT_TOLERANCE = 1.0e-10
 # so the parity of specw needs a tight force tolerance.
 _CASES = {
     "solovev": 1.0e-14,
+    "solovev_ns3": 1.0e-14,
     "cma": 1.0e-14,
     "cth_like_fixed_bdy": 1.0e-14,
     "up_down_asym": 1.0e-14,
@@ -91,7 +92,18 @@ _CASES = {
 
 
 def _load_input(name: str, ftol: float) -> vmecpp.VmecInput:
-    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json")
+    if name == "solovev_ns3":
+        # the smallest radial grid: one interior full-grid surface
+        indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+        indata = indata.model_copy(
+            update={
+                "ns_array": np.asarray([3]),
+                "ftol_array": np.asarray([ftol]),
+                "niter_array": np.asarray([50000]),
+            }
+        )
+    else:
+        indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json")
     ftol_array = np.array(indata.ftol_array, dtype=np.float64)
     ftol_array[-1] = min(ftol_array[-1], ftol)
     niter_array = np.array(indata.niter_array)
@@ -252,6 +264,15 @@ def test_wout_diagnostics_do_not_key_the_jit_cache(solovev_wout) -> None:
     assert scaled_aspect._cache_size() == 1  # pyright: ignore[reportAttributeAccessIssue]
 
 
+def test_wout_input_echoes_key_the_jit_cache(solovev_wout) -> None:
+    signgs = jax.jit(lambda wout: wout.signgs)
+    assert signgs(solovev_wout) == -1
+    assert signgs(solovev_wout.model_copy(update={"signgs": 1})) == 1
+    assert (
+        jax.jit(lambda wout: wout)(solovev_wout.model_copy(update={"nfp": 3})).nfp == 3
+    )
+
+
 def test_wout_returned_from_jit(solovev_wout) -> None:
     rebuilt = jax.jit(lambda wout: wout)(solovev_wout)
     assert isinstance(rebuilt, vmecpp.VmecWOut)
@@ -333,7 +354,12 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
 
 @pytest.mark.parametrize(
     ("update", "match"),
-    [({"lasym": True}, "lasym"), ({"lfreeb": True}, "free-boundary")],
+    [
+        ({"lasym": True}, "lasym"),
+        ({"lfreeb": True}, "free-boundary"),
+        ({"signgs": 1}, "signgs"),
+        ({"gamma": 5.0 / 3.0}, "gamma"),
+    ],
 )
 def test_run_with_a_traced_boundary_rejects_unsupported_inputs(update, match) -> None:
     indata = _cth_like_input().model_copy(update=update)
@@ -357,12 +383,50 @@ def test_input_pytree_keys_the_jit_cache_on_non_boundary_fields() -> None:
     assert scaled_boundary._cache_size() == 2  # pyright: ignore[reportAttributeAccessIssue]
 
 
+def test_vjp_linearizes_at_the_forward_solve() -> None:
+    """The VJP's model is hot-restarted from the forward run, not solved again."""
+    indata = _cth_like_input()
+    solver = autodiff._RunSolver(indata, max_threads=1)
+    boundary = np.asarray(_boundary(indata))
+    solver._forward_callback(boundary)
+    hot_restarted = solver._solved_model(boundary)
+    solved = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
+    hot_restarted.evaluate(2, 2, True)
+    solved.evaluate(2, 2, True)
+    np.testing.assert_allclose(
+        np.asarray(hot_restarted.get_state()),
+        np.asarray(solved.get_state()),
+        rtol=0.0,
+        atol=1.0e-14,
+    )
+
+
+def test_forward_solves_keep_no_cpp_objects() -> None:
+    """JAX keeps callback closures alive, so the forward cache is bounded, holds NumPy
+    data only, and the VJP consumes its entry."""
+    indata = _cth_like_input()
+    solver = autodiff._RunSolver(indata, max_threads=1)
+    boundary = np.asarray(_boundary(indata))
+    for scale in (1.0, 1.0 + 1.0e-6, 1.0 + 2.0e-6):
+        solver._forward_callback(boundary * scale)
+    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE
+    for solve in autodiff._FORWARD_SOLVES.values():
+        assert isinstance(solve["state"], np.ndarray)
+        assert not any(
+            type(value).__module__.startswith("vmecpp.cpp")
+            for value in solve["wout_fields"].values()
+        )
+    solver._solved_model(boundary * (1.0 + 2.0e-6))
+    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE - 1
+
+
 def test_output_pytree_round_trip() -> None:
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
     output = vmecpp.run(indata, max_threads=1, verbose=False)
     leaves, treedef = jax.tree_util.tree_flatten(output)
     rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
-    assert rebuilt.jxbout is output.jxbout
+    np.testing.assert_array_equal(rebuilt.jxbout.jdotb, output.jxbout.jdotb)
+    assert rebuilt.threed1_betas.betaxis == output.threed1_betas.betaxis
     np.testing.assert_array_equal(rebuilt.input.rbc, indata.rbc)
     np.testing.assert_array_equal(rebuilt.wout.bmnc, output.wout.bmnc)
 

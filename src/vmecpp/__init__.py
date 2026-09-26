@@ -1862,58 +1862,79 @@ class VmecWOut(BaseModelWithNumpy):
         return VmecWOut.model_validate(attrs, by_alias=True)
 
 
-class _UnkeyedAuxData:
-    """Pytree aux data that compares equal regardless of content.
+def _frozen(value):
+    """A hashable stand-in for a model field value."""
+    if isinstance(value, np.ndarray):
+        return ("ndarray", value.shape, value.dtype.str, value.tobytes())
+    if isinstance(value, float):
+        return ("float", value.hex())  # NaN compares equal to NaN
+    if isinstance(value, list | tuple):
+        return tuple(_frozen(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((key, _frozen(item)) for key, item in value.items()))
+    return value
 
-    Carries the non-leaf fields of a flattened :class:`VmecWOut` or
-    :class:`VmecOutput`, so ``jax.jit`` does not recompile when only solver
-    diagnostics such as ``niter`` differ. A model returned from a compiled
-    function carries these fields as seen at trace time.
+
+class _ModelAuxData:
+    """Pytree aux data of a pydantic model: its non-leaf fields.
+
+    Equality and hash cover every field but ``unkeyed``, the solver diagnostics
+    of a wout. Those do not key the jit cache, so ``jax.jit`` does not recompile
+    when only ``niter`` differs; a model returned from a compiled function
+    carries them as seen at trace time.
     """
 
-    __slots__ = ("extra", "fields", "fields_set")
+    __slots__ = ("extra", "fields", "fields_set", "key")
 
-    def __init__(self, fields, extra, fields_set):
+    def __init__(self, fields, extra, fields_set, unkeyed):
         self.fields = fields
         self.extra = extra
         self.fields_set = fields_set
+        self.key = _frozen(
+            {
+                name: value
+                for name, value in {**fields, **extra}.items()
+                if name not in unkeyed
+            }
+        )
 
     def __eq__(self, other):
-        return isinstance(other, _UnkeyedAuxData)
+        return isinstance(other, _ModelAuxData) and self.key == other.key
 
     def __hash__(self):
-        return hash(_UnkeyedAuxData)
+        return hash(self.key)
 
 
-def _flatten_model(model: pydantic.BaseModel, leaf_names, aux_type):
-    values = model.__dict__
-    leaves = tuple(values[name] for name in leaf_names)
-    fields = {name: value for name, value in values.items() if name not in leaf_names}
-    extra = dict(model.__pydantic_extra__ or {})
-    return leaves, aux_type(fields, extra, frozenset(model.model_fields_set))
-
-
-def _unflatten_model(model_type, leaf_names, aux, leaves):
-    return model_type.model_construct(
-        _fields_set=set(aux.fields_set),
-        **aux.fields,
-        **dict(zip(leaf_names, leaves, strict=True)),
-        **aux.extra,
-    )
-
-
-def _register_model_pytree(model_type, leaf_names, aux_type) -> None:
+def _register_model_pytree(model_type, leaf_names, unkeyed=frozenset()) -> None:
     leaf_names = tuple(leaf_names)
-    jax.tree_util.register_pytree_node(
-        model_type,
-        lambda model: _flatten_model(model, leaf_names, aux_type),
-        lambda aux, leaves: _unflatten_model(model_type, leaf_names, aux, leaves),
-    )
+
+    def flatten(model):
+        values = model.__dict__
+        fields = {
+            name: value for name, value in values.items() if name not in leaf_names
+        }
+        extra = dict(model.__pydantic_extra__ or {})
+        aux = _ModelAuxData(fields, extra, frozenset(model.model_fields_set), unkeyed)
+        return tuple(values[name] for name in leaf_names), aux
+
+    def unflatten(aux, leaves):
+        return model_type.model_construct(
+            _fields_set=set(aux.fields_set),
+            **aux.fields,
+            **dict(zip(leaf_names, leaves, strict=True)),
+            **aux.extra,
+        )
+
+    jax.tree_util.register_pytree_node(model_type, flatten, unflatten)
 
 
-# The physics fields are the leaves; input echoes, sizes and solver diagnostics
-# travel as aux data that does not key the jit cache.
-_register_model_pytree(VmecWOut, autodiff_wout.WOUT_QUANTITIES, _UnkeyedAuxData)
+# The physics fields and the vacuum potential are the leaves; input echoes and
+# sizes key the jit cache, the solver diagnostics travel along without keying it.
+_register_model_pytree(
+    VmecWOut,
+    (*autodiff_wout.WOUT_QUANTITIES, "potvac"),
+    unkeyed=frozenset(autodiff_wout.UNKNOWN_DIAGNOSTICS),
+)
 
 
 class Threed1Volumetrics(BaseModelWithNumpy):
@@ -2523,42 +2544,21 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
-def _frozen(value):
-    """A hashable stand-in for a VmecInput field value."""
-    if isinstance(value, np.ndarray):
-        return ("ndarray", value.shape, value.dtype.str, value.tobytes())
-    if isinstance(value, list | tuple):
-        return tuple(_frozen(item) for item in value)
-    if isinstance(value, dict):
-        return tuple(sorted((key, _frozen(item)) for key, item in value.items()))
-    return value
-
-
-class _InputAuxData(_UnkeyedAuxData):
-    """Pytree aux data of a :class:`VmecInput`, keyed by the non-boundary fields.
-
-    Every field but the boundary enters a compiled solve as a constant, so differing
-    values must not share a jit cache entry.
-    """
-
-    __slots__ = ("key",)
-
-    def __init__(self, fields, extra, fields_set):
-        super().__init__(fields, extra, fields_set)
-        self.key = _frozen({**fields, **extra})
-
-    def __eq__(self, other):
-        return isinstance(other, _InputAuxData) and self.key == other.key
-
-    def __hash__(self):
-        return hash(self.key)
-
-
 # The boundary is the differentiable input; the other fields key the jit cache.
-_register_model_pytree(VmecInput, ("rbc", "zbs"), _InputAuxData)
-# The input and wout are the leaves; jxbout, mercier and the threed1 tables come
-# from the C++ output stage and travel as aux data.
-_register_model_pytree(VmecOutput, ("input", "wout"), _UnkeyedAuxData)
+_register_model_pytree(VmecInput, ("rbc", "zbs"))
+# Every field of the output and of its C++ tables is a leaf.
+for _model_type in (
+    JxBOut,
+    Mercier,
+    Threed1Volumetrics,
+    Threed1FirstTable,
+    Threed1GeometricAndMagneticQuantities,
+    Threed1AxisGeometry,
+    Threed1Betas,
+    Threed1ShafranovIntegrals,
+    VmecOutput,
+):
+    _register_model_pytree(_model_type, own_model_fields(_model_type))
 
 
 _use_jax_output_stage = contextvars.ContextVar("_use_jax_output_stage", default=True)
@@ -2620,17 +2620,32 @@ def _as_numpy(value):
     return float(array) if array.ndim == 0 else array
 
 
+def _iota_or_current(vmec_input: VmecInput, iotas, buco) -> dict[str, typing.Any]:
+    """The prescribed profile of a C++ run, from its wout, for wout_quantities.
+
+    The flux increments of the geometry reproduce iota only to roundoff that the
+    cumulative sums amplify; with ncurr = 1, solving chi' from the enclosed current as
+    the solver does keeps <B_u> at the prescribed current to roundoff.
+    """
+    if vmec_input.ncurr == 1:
+        return {"current_half": buco[1:]}
+    return {"iota_half": iotas[1:]}
+
+
 def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
     """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
 
     Input echoes, solver diagnostics and the free-boundary vacuum potential come from
-    the C++ run; the mass profile too, so that every profile type is covered.
+    the C++ run; the mass profile too, so that every profile type is covered, and the
+    prescribed iota or toroidal current profile.
     """
     wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
-    mass_half = np.asarray(wout.mass)[1:] * autodiff_wout.MU_0
     with _float64_on_cpu():
         quantities = autodiff_wout.wout_quantities(
-            _geometry.make(cpp_output_quantities), vmec_input, mass_half=mass_half
+            _geometry.make(cpp_output_quantities),
+            vmec_input,
+            mass_half=np.asarray(wout.mass)[1:] * autodiff_wout.MU_0,
+            **_iota_or_current(vmec_input, wout.iotas, wout.buco),
         )
         update = {name: _as_numpy(value) for name, value in quantities.items()}
     return wout.model_copy(update=update)
@@ -2668,10 +2683,10 @@ def _run_traced(
 ) -> VmecOutput:
     """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
 
-    The solve runs through :func:`vmecpp.autodiff.make_solver`, whose VJP needs
-    an Enzyme-enabled build. When the forward solve is observable (eager calls,
-    ``jax.grad``), jxbout, mercier, the threed1 tables and the wout diagnostics
-    come from its C++ output stage; under ``jax.jit`` they are ``None`` and
+    The forward solve is a full C++ run; its VJP needs an Enzyme-enabled build.
+    When the forward solve is observable (eager calls, ``jax.grad``), jxbout,
+    mercier, the threed1 tables and the wout diagnostics come from its C++
+    output stage; under ``jax.jit`` they are ``None`` and
     :data:`vmecpp.autodiff_wout.UNKNOWN_DIAGNOSTICS`.
     """
     from vmecpp import autodiff  # noqa: PLC0415
@@ -2679,6 +2694,10 @@ def _run_traced(
     unsupported = {
         "a free-boundary input": vmec_input.lfreeb,
         "lasym=True": vmec_input.lasym,
+        # VmecModel's geometry, at which the VJP linearizes, is left-handed
+        "signgs=+1": vmec_input.signgs != -1,
+        # the adjoint omits the dependence of the mass profile on R_00
+        "gamma != 0": vmec_input.gamma != 0.0,
         "Fourier continuation": not isinstance(vmec_input.mpol, int)
         or not isinstance(vmec_input.ntor, int),
         "magnetic_field": magnetic_field is not None,
@@ -2711,18 +2730,21 @@ def _run_traced(
                 jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
             ]
         )
-        geometry = solver(boundary)
+        geometry, extra = solver._solve(boundary)
+        mass_half, iotas, buco = jax.numpy.split(jax.lax.stop_gradient(extra), 3)
+        # With ncurr = 1, iota follows from the geometry through the current
+        # constraint, and so does its derivative; otherwise it is prescribed.
+        profile = _iota_or_current(
+            vmec_input, jax.numpy.pad(iotas, (1, 0)), jax.numpy.pad(buco, (1, 0))
+        )
+        # The forward callback has run unless this is a jax.jit trace.
         jax.effects_barrier()
-        cpp_output = solver.last_output()
-        if cpp_output is None:
-            if vmec_input.gamma != 0.0:
-                msg = "run() under jax.jit does not support gamma != 0"
-                raise NotImplementedError(msg)
+        forward = solver.forward_outputs()
+        if forward is None:
             fields = {
                 **autodiff_wout.static_fields(template),
                 **autodiff_wout.UNKNOWN_DIAGNOSTICS,
             }
-            mass_half = None
             others = dict.fromkeys(
                 (
                     "jxbout",
@@ -2736,11 +2758,10 @@ def _run_traced(
                 )
             )
         else:
-            fields = dict(VmecWOut._from_cpp_wout(cpp_output.wout).__dict__)
-            mass_half = np.asarray(fields["mass"])[1:] * autodiff_wout.MU_0
-            others = _output_tables_from_cpp(cpp_output)
+            fields = forward["wout_fields"]
+            others = forward["tables"]
         quantities = autodiff_wout.wout_quantities(
-            geometry, template, mass_half=mass_half
+            geometry, template, mass_half=mass_half, **profile
         )
     wout = VmecWOut.model_construct(**{**fields, **quantities})
     return VmecOutput.model_construct(input=vmec_input, wout=wout, **others)

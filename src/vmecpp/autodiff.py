@@ -18,6 +18,8 @@ dependence is exposed by the exact C++ derivative path.
 
 from __future__ import annotations
 
+import collections
+import itertools
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -71,6 +73,19 @@ def _make_indata(template, boundary: np.ndarray):
 # error, but the iteration budget was exhausted before ftol was met), means the step
 # did not converge.
 _VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
+
+# State vectors of recent forward solves, keyed by (solver token, boundary
+# bytes), so the VJP linearizes at the solved state instead of solving again.
+# The cache is module-level and holds NumPy data only: JAX keeps callback
+# closures alive in its caches, so anything a solver instance owned would live
+# as long as those, and C++ objects must not outlive the callback that made them.
+_FORWARD_SOLVES: collections.OrderedDict[tuple[int, bytes], dict[str, Any]] = (
+    collections.OrderedDict()
+)
+_FORWARD_SOLVES_SIZE = 2
+_SOLVER_TOKENS = itertools.count()
+
+_MU_0 = 4.0e-7 * np.pi
 
 
 def _solve_model(template, boundary: np.ndarray):
@@ -365,6 +380,12 @@ class DifferentiableVmec:
     """
 
     vmec_input: Any
+    _token: int = field(
+        default_factory=lambda: next(_SOLVER_TOKENS),
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.vmec_input.lfreeb:
@@ -391,24 +412,63 @@ class DifferentiableVmec:
         return (2, self.vmec_input.mpol, 2 * self.vmec_input.ntor + 1)
 
     @property
-    def output_shape(self) -> tuple[int]:
-        ns = int(np.asarray(self.vmec_input.ns_array)[-1])
+    def ns(self) -> int:
+        return int(np.asarray(self.vmec_input.ns_array)[-1])
+
+    @property
+    def geometry_size(self) -> int:
         modes = self.vmec_input.mpol * (self.vmec_input.ntor + 1)
-        return (2 * ns + len(_GEOMETRY_COEFFICIENTS) * ns * modes,)
+        return 2 * self.ns + len(_GEOMETRY_COEFFICIENTS) * self.ns * modes
+
+    @property
+    def extra_size(self) -> int:
+        """Size of the non-differentiated outputs that follow the geometry."""
+        return 0
+
+    @property
+    def output_shape(self) -> tuple[int]:
+        return (self.geometry_size + self.extra_size,)
+
+    def _remember(self, boundary: np.ndarray, solve: dict[str, Any]) -> None:
+        _FORWARD_SOLVES[self._token, np.asarray(boundary).tobytes()] = solve
+        while len(_FORWARD_SOLVES) > _FORWARD_SOLVES_SIZE:
+            _FORWARD_SOLVES.popitem(last=False)
 
     def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
         model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
+        self._remember(boundary, {"state": np.array(model.get_state())})
         return _cpp_geometry_flat(
             model.get_geometry(), model.ns, model.mpol, model.ntor
         )
 
+    def _solved_state(self, boundary: np.ndarray) -> np.ndarray:
+        """The state vector of a fresh forward solve, for a cache miss."""
+        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
+        return np.array(model.get_state())
+
+    def _solved_model(self, boundary: np.ndarray):
+        """A model at the forward solve's state, consumed by the VJP.
+
+        A model created cold and set to a solved state reproduces the solved model's
+        forces, Hessian products and preconditioner exactly.
+        """
+        solve = _FORWARD_SOLVES.pop((self._token, np.asarray(boundary).tobytes()), None)
+        state = self._solved_state(boundary) if solve is None else solve["state"]
+        indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary)
+        model = _vmecpp.VmecModel.create(indata, self.ns)
+        model.set_state(np.ascontiguousarray(state))
+        return model
+
     def _backward_callback(
         self, boundary: np.ndarray, geometry_bar: np.ndarray
     ) -> np.ndarray:
-        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
-        return _implicit_boundary_vjp(model, geometry_bar)
+        return _implicit_boundary_vjp(self._solved_model(boundary), geometry_bar)
 
     def __call__(self, boundary) -> geometry.Geometry:
+        return self._solve(boundary)[0]
+
+    def _solve(self, boundary) -> tuple[geometry.Geometry, jax.Array]:
+        """The geometry and the non-differentiated outputs of :attr:`extra_size`."""
         boundary = jnp.asarray(boundary, dtype=jnp.float64)
         if boundary.shape != self.parameter_shape:
             error_message = (
@@ -424,9 +484,10 @@ class DifferentiableVmec:
             )
 
         def backward_callback(value, cotangent):
-            return self._backward_callback(
-                np.asarray(value), np.asarray(cotangent)
-            ).astype(np.asarray(value).dtype, copy=False)
+            geometry_bar = np.asarray(cotangent)[: self.geometry_size]
+            return self._backward_callback(np.asarray(value), geometry_bar).astype(
+                np.asarray(value).dtype, copy=False
+            )
 
         @jax.custom_vjp
         def solve_flat(value):
@@ -452,7 +513,7 @@ class DifferentiableVmec:
 
         solve_flat.defvjp(solve_fwd, solve_bwd)
         flat = solve_flat(boundary)
-        ns = int(np.asarray(self.vmec_input.ns_array)[-1])
+        ns = self.ns
         mpol = self.vmec_input.mpol
         ntor = self.vmec_input.ntor
         modes = ns * mpol * (ntor + 1)
@@ -461,7 +522,7 @@ class DifferentiableVmec:
         for _ in _GEOMETRY_COEFFICIENTS:
             arrays.append(flat[offset : offset + modes].reshape(ns, mpol, ntor + 1))
             offset += modes
-        return geometry.Geometry(*arrays, nfp=self.vmec_input.nfp)
+        return geometry.Geometry(*arrays, nfp=self.vmec_input.nfp), flat[offset:]
 
 
 def make_solver(vmec_input) -> DifferentiableVmec:
@@ -495,33 +556,64 @@ def make_solver(vmec_input) -> DifferentiableVmec:
 class _RunSolver(DifferentiableVmec):
     """:class:`DifferentiableVmec` whose forward solve is a full ``vmecpp.run``.
 
-    The C++ output stage of the forward solve supplies what the JAX output stage
-    does not compute (jxbout, mercier, threed1, the solver diagnostics); the
-    VJP re-solves through ``VmecModel`` as in the base class.
+    The C++ output of the forward solve supplies what the JAX output stage does
+    not compute (jxbout, mercier, threed1, the solver diagnostics) and, as the
+    outputs after the geometry, the half-grid mass, iota and buco profiles. The VJP
+    linearizes at the state of a ``VmecModel`` hot-restarted from the forward
+    solve's wout, which reproduces it to roundoff.
     """
 
     max_threads: int | None = None
     verbose: int = 0
-    _outputs: list = field(default_factory=list, repr=False, compare=False)
 
-    def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
+    @property
+    def extra_size(self) -> int:
+        return 3 * (self.ns - 1)
+
+    def _run(self, boundary: np.ndarray):
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary)
         output = _vmecpp.run(
             indata,
             max_threads=self.max_threads,
             verbose=_vmecpp.OutputMode(self.verbose),
         )
-        self._outputs[:] = [output]
-        return _cpp_geometry_flat(
+        initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
+        model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)
+        return output, np.array(model.get_state())
+
+    def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
+        import vmecpp  # noqa: PLC0415
+
+        output, state = self._run(boundary)
+        wout = vmecpp.VmecWOut._from_cpp_wout(output.wout)
+        self._remember(
+            boundary,
+            {
+                "state": state,
+                "wout_fields": dict(wout.__dict__),
+                "tables": vmecpp._output_tables_from_cpp(output),
+            },
+        )
+        geometry_flat = _cpp_geometry_flat(
             _vmecpp.make_geometry(output),
-            int(np.asarray(self.vmec_input.ns_array)[-1]),
+            self.ns,
             self.vmec_input.mpol,
             self.vmec_input.ntor,
         )
+        mass_half = np.asarray(wout.mass, dtype=np.float64)[1:] * _MU_0
+        iota_half = np.asarray(wout.iotas, dtype=np.float64)[1:]
+        buco_half = np.asarray(wout.buco, dtype=np.float64)[1:]
+        return np.concatenate([geometry_flat, mass_half, iota_half, buco_half])
 
-    def last_output(self):
-        """The C++ output of the forward solve, ``None`` while it has not run."""
-        return self._outputs[-1] if self._outputs else None
+    def _solved_state(self, boundary: np.ndarray) -> np.ndarray:
+        return self._run(boundary)[1]
+
+    def forward_outputs(self) -> dict[str, Any] | None:
+        """The C++ outputs of this solver's latest forward solve, if it has run."""
+        for (token, _), solve in reversed(_FORWARD_SOLVES.items()):
+            if token == self._token:
+                return solve
+        return None
 
 
 __all__ = ["DifferentiableVmec", "make_solver"]
