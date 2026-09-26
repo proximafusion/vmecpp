@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
+import json
 import tempfile
 from pathlib import Path
 
@@ -42,6 +43,23 @@ def test_indata_to_json_output_override():
         assert json_input_file.exists()
         assert json_input_file == expected_json_input_file
         assert json_input_file.parent == Path.cwd()
+
+
+def test_indata_to_json_drops_unknown_variables(tmp_path, capfd):
+    indata = (TEST_DATA_DIR / "input.cma").read_text()
+    # PT_TYPE is a VMEC2000 input that is not in the VMEC 8.52 namelist
+    test_file = tmp_path / "input.cma_unknown"
+    test_file.write_text(indata.replace("&INDATA", "&INDATA\n  PT_TYPE = 'x'", 1))
+
+    json_input_file = _util.indata_to_json(
+        test_file, output_override=tmp_path / "a.json"
+    )
+    assert "ignoring unknown INDATA variable PT_TYPE" in capfd.readouterr().err
+
+    expected = _util.indata_to_json(
+        TEST_DATA_DIR / "input.cma", output_override=tmp_path / "b.json"
+    )
+    assert json.loads(json_input_file.read_text()) == json.loads(expected.read_text())
 
 
 def test_indata_to_json_not_found_file():
