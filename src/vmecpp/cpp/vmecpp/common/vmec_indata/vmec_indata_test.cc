@@ -76,6 +76,19 @@ TEST(TestVmecINDATA, CheckParseJsonBoundary) {
   }
 }  // CheckParseJsonBoundary
 
+// A misspelled key is an error that names the entry, not an entry to skip.
+TEST(TestVmecINDATA, CheckParseJsonBoundaryRejectsIncompleteEntries) {
+  const json misspelled =
+      R"({"rbc":[{"m":0,"n":0,"value":3.999},{"m":1,"n":0,"valeu":1.026}]})"_json;
+  const auto read_misspelled = BoundaryCoefficient::FromJson(misspelled, "rbc");
+  ASSERT_FALSE(read_misspelled.ok());
+  EXPECT_THAT(std::string(read_misspelled.status().message()),
+              testing::HasSubstr("'rbc'[1] has no 'value'"));
+
+  const json negative_m = R"({"rbc":[{"m":-1,"n":0,"value":0.5}]})"_json;
+  EXPECT_FALSE(BoundaryCoefficient::FromJson(negative_m, "rbc").ok());
+}  // CheckParseJsonBoundaryRejectsIncompleteEntries
+
 // check that all options stay present
 TEST(TestVmecINDATA, CheckFreeBoundaryMethodCases) {
   FreeBoundaryMethod free_boundary_method = FreeBoundaryMethod::NESTOR;
@@ -162,7 +175,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.nstep, 10);
   EXPECT_THAT(indata.aphi, ElementsAre(1.0));
   EXPECT_EQ(indata.delt, 1.0);
-  EXPECT_EQ(indata.tcon0, 1.0);
+  EXPECT_EQ(indata.tcon0, 0.5);
   EXPECT_EQ(indata.lforbal, false);
 
   // initial guess for magnetic axis
@@ -371,6 +384,33 @@ TEST(TestVmecINDATA, OverlongAxisArraysAreRejected) {
               testing::HasSubstr("exceeds ntor+1"));
 }  // OverlongAxisArraysAreRejected
 
+// An absent raxis_s or zaxis_c is a zero one, as an absent raxis_c or zaxis_s
+// is.
+TEST(TestVmecINDATA, AbsentAsymmetricAxisArraysAreZero) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("lasym"), true);
+  ASSERT_TRUE(j.contains("raxis_s"));
+  ASSERT_TRUE(j.contains("zaxis_c"));
+  j.erase("raxis_s");
+  j.erase("zaxis_c");
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  ASSERT_TRUE(indata->raxis_s.has_value());
+  ASSERT_TRUE(indata->zaxis_c.has_value());
+  ASSERT_EQ(indata->raxis_s->size(), indata->ntor + 1);
+  ASSERT_EQ(indata->zaxis_c->size(), indata->ntor + 1);
+  EXPECT_THAT(*indata->raxis_s, testing::Each(DoubleEq(0.0)));
+  EXPECT_THAT(*indata->zaxis_c, testing::Each(DoubleEq(0.0)));
+
+  EXPECT_TRUE(IsConsistent(*indata, /*enable_info_messages=*/false).ok());
+}  // AbsentAsymmetricAxisArraysAreZero
+
 // The asymmetric coefficients are only populated when lasym is set, so the
 // round trip has to be checked for both symmetry classes.
 void CheckHdf5RoundTrip(const std::string& filename) {
@@ -558,6 +598,49 @@ TEST(TestVmecINDATA, SetMpolNtor) {
     }
   }
 }  // SetMpolNtor
+
+// IsConsistent cannot size the asymmetric arrays of a VmecINDATA that was
+// filled in by hand, so lasym without them has to be rejected.
+TEST(TestVmecINDATA, CheckLasymNeedsTheAsymmetricArrays) {
+  VmecINDATA hand_built;
+  ASSERT_TRUE(IsConsistent(hand_built, /*enable_info_messages=*/false).ok());
+
+  hand_built.lasym = true;
+  const absl::Status hand_built_status =
+      IsConsistent(hand_built, /*enable_info_messages=*/false);
+  EXPECT_EQ(hand_built_status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(hand_built_status.message()),
+              testing::HasSubstr("'raxis_s' has to be set"));
+
+  // SetMpolNtor sizes all four of them.
+  hand_built.SetMpolNtor(hand_built.mpol, hand_built.ntor);
+  EXPECT_TRUE(IsConsistent(hand_built, /*enable_info_messages=*/false).ok());
+
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  const auto expect_rejected_without = [&indata](const std::string& name,
+                                                 auto reset) {
+    VmecINDATA without = *indata;
+    reset(without);
+    const absl::Status status =
+        IsConsistent(without, /*enable_info_messages=*/false);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << name;
+    EXPECT_THAT(std::string(status.message()),
+                testing::HasSubstr("'" + name + "' has to be set"));
+  };
+  expect_rejected_without(
+      "raxis_s", [](VmecINDATA& m_indata) { m_indata.raxis_s.reset(); });
+  expect_rejected_without(
+      "zaxis_c", [](VmecINDATA& m_indata) { m_indata.zaxis_c.reset(); });
+  expect_rejected_without("rbs",
+                          [](VmecINDATA& m_indata) { m_indata.rbs.reset(); });
+  expect_rejected_without("zbc",
+                          [](VmecINDATA& m_indata) { m_indata.zbc.reset(); });
+}  // CheckLasymNeedsTheAsymmetricArrays
 
 TEST(TestVmecINDATA, CopyMethod) {
   const VmecINDATA indata =

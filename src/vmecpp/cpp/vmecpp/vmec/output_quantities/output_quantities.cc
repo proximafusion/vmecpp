@@ -1199,10 +1199,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
 #undef WRITEMEMBER
 #undef READMEMBER
 
-absl::Status vmecpp::OutputQuantities::Save(
-    const std::filesystem::path& path) const {
-  H5::H5File file(path, H5F_ACC_TRUNC);
-
+absl::Status vmecpp::OutputQuantities::WriteTo(H5::H5File& file) const {
   absl::Status status;
 
   status = vmec_internal_results.WriteTo(file);
@@ -1308,10 +1305,8 @@ absl::Status vmecpp::OutputQuantities::Save(
   return absl::OkStatus();
 }
 
-absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
-    const std::filesystem::path& path) {
-  H5::H5File file(path, H5F_ACC_RDONLY);
-
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::ReadFrom(
+    H5::H5File& file) {
   OutputQuantities oq;
   absl::Status status;
 
@@ -1426,6 +1421,30 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
   }
 
   return oq;
+}
+
+absl::Status vmecpp::OutputQuantities::Save(
+    const std::filesystem::path& path) const {
+  try {
+    H5::H5File file(path, H5F_ACC_TRUNC);
+    return WriteTo(file);
+  } catch (const H5::Exception& exception) {
+    return absl::InternalError(
+        absl::StrFormat("could not write '%s': %s: %s", path.string(),
+                        exception.getFuncName(), exception.getDetailMsg()));
+  }
+}
+
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
+    const std::filesystem::path& path) {
+  try {
+    H5::H5File file(path, H5F_ACC_RDONLY);
+    return ReadFrom(file);
+  } catch (const H5::Exception& exception) {
+    return absl::InternalError(
+        absl::StrFormat("could not read '%s': %s: %s", path.string(),
+                        exception.getFuncName(), exception.getDetailMsg()));
+  }
 }
 
 vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
@@ -4957,7 +4976,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // COMPUTE |B| = SQRT(|B|**2) and store in bsq, bsqa
   std::vector<double> magnetic_pressure((fc.ns - 1) * s.nZnT, 0.0);
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp parallel for num_threads(fc.max_threads())
 #endif
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -4972,11 +4991,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // The Nyquist-grid forward transform below sums over the reduced poloidal
   // range [0, nThetaReduced) for both parities; the symmetric and antisymmetric
   // parts are split inline in the loop (symoutput). The 0.5 integration norm is
-  // therefore the same with or without lasym. educational_VMEC doubles it for
-  // lasym because it integrates over the full poloidal range; applying that
-  // doubling here, where the sum is over the reduced range, double-counts and
-  // made a symmetric case run in lasym=true mode report these coefficients at
-  // twice their value.
+  // therefore the same with or without lasym.
   const double tmult = 0.5;
 
   // -------------------
@@ -5026,7 +5041,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   const int partial_sum_size = (s.mnyq + 1) * s.nZeta;
 
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(fc.max_threads())
   {
 #endif
     std::vector<double> Fc_gsqrt(partial_sum_size), Fs_gsqrt(partial_sum_size),
@@ -5337,7 +5352,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // Use the same two-phase separable DFT as the half-grid loop above,
   // parallelised over full-grid surfaces jF.
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(fc.max_threads())
   {
 #endif
     std::vector<double> Fc_bsubs_full(partial_sum_size),
@@ -5484,6 +5499,19 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         // NOTE: R does not have m=0 contributions in 2D,
         // since sin(m * theta) == 0 for m = 0 and sin(n * zeta) == 0 for n = 0
       }  // n
+
+      // extrapolate to axis if 3D, as for lmns above
+      if (s.lthreed && jF == 0) {
+        int mn = -1;
+        for (int n = 0; n <= s.ntor; ++n) {
+          mn++;
+          const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const double t1 = t.mscale[m_0] * t.nscale[n];
+          lmnc1[mn] = t1 * (2.0 * m_vmec_internal_results.lmncc(idx_ns_1) -
+                            m_vmec_internal_results.lmncc(idx_ns_2));
+        }  // n
+      }
 
       // now come the m>0, n=-ntor, ..., ntor entries
       for (int m = 1; m < s.mpol; ++m) {

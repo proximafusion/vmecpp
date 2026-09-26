@@ -449,7 +449,7 @@ class VmecInput(BaseModelWithNumpy):
     delt: float = 1.0
     """Initial value for artificial time step in iterative solver."""
 
-    tcon0: float = 1.0
+    tcon0: float = 0.5
     """Constraint force scaling factor for ns --> 0."""
 
     lforbal: bool = False
@@ -462,9 +462,9 @@ class VmecInput(BaseModelWithNumpy):
     This is intended for debugging purposes (e.g. inspecting how far the geometry
     got, or where the force residuals blew up) since the returned quantities are
     computed from whatever internal state the solver was in when it gave up, and
-    can be arbitrarily unphysical. Always check `wout.ier_flag` / the accompanying
-    log warning to see why the run did not converge before interpreting any
-    physical quantity in the output.
+    can be arbitrarily unphysical. Always check `wout.ier_flag` and the residuals
+    `wout.fsqr`, `wout.fsqz`, `wout.fsql` against `wout.ftolv` before interpreting
+    any physical quantity in the output.
     """
 
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
@@ -814,7 +814,6 @@ def _lambda_on_full_grid(
     lambda_half: np.ndarray,
     xm: np.ndarray,
     phipf: np.ndarray,
-    extrapolate_axis: bool = True,
 ) -> np.ndarray:
     """Invert the radial interpolation that writes lambda onto the half grid.
 
@@ -843,7 +842,7 @@ def _lambda_on_full_grid(
         ) / w_out[:, j - 1]
 
     # the axis value of the m = 0 modes is not represented on the half grid
-    if extrapolate_axis and ns > 2 and phipf[0] != 0.0:
+    if ns > 2 and phipf[0] != 0.0:
         m_zero = xm == 0
         lambda_full[m_zero, 0] = (
             2.0 * lambda_full[m_zero, 1] * phipf[1] - lambda_full[m_zero, 2] * phipf[2]
@@ -1825,15 +1824,15 @@ class VmecWOut(BaseModelWithNumpy):
                     attrs[var_name] = fnc[var_name][()]
 
         # Fortran VMEC stores lambda on the half grid only.
-        halves = [("lmns", "lmns_full", True)]
+        halves = [("lmns", "lmns_full")]
         if attrs["lasym__logical__"]:
-            halves.append(("lmnc", "lmnc_full", False))
-        for half, full, extrapolate_axis in halves:
+            halves.append(("lmnc", "lmnc_full"))
+        for half, full in halves:
             if full in attrs:
                 continue
             if {half, "xm", "phipf"} <= attrs.keys():
                 attrs[full] = _lambda_on_full_grid(
-                    attrs[half], attrs["xm"], attrs["phipf"], extrapolate_axis
+                    attrs[half], attrs["xm"], attrs["phipf"]
                 )
             else:
                 attrs[full] = np.zeros([attrs["mnmax"], attrs["ns"]])
@@ -2098,7 +2097,8 @@ class Threed1GeometricAndMagneticQuantities(BaseModelWithNumpy):
     """Normalization factor used in the threed1 computation."""
 
     b0: float
-    """Magnetic field magnitude on the magnetic axis."""
+    """On-axis R B_phi (``rbtor0``) divided by the major radius of the magnetic axis at
+    phi = 0; the field strength on the axis only for a planar circular axis."""
 
     rmax_surf: float
     """Maximum major radius on the boundary."""
@@ -2819,8 +2819,8 @@ def run(
         >>> path = "examples/data/solovev.json"
         >>> vmec_input = vmecpp.VmecInput.from_file(path)
         >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
-        >>> round(output.wout.b0, 10) # Exact value may differ by C library
-        0.2033313711
+        >>> round(output.wout.b0, 6) # Exact value may differ by C library
+        0.203331
     """
     input = VmecInput.model_validate(input)
 

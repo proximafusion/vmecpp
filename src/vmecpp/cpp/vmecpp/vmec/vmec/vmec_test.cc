@@ -85,6 +85,34 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
       absl::StrContains(status.status().message(), "VMEC++ did not converge"));
 }  // CheckErrorOnNonConvergence
 
+// The thread count a run uses is a property of that run: a coarse run must
+// not cap the thread budget that a later run, or another OpenMP user in the
+// process, reads from the runtime.
+TEST(TestVmec, RunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // five surfaces admit two radial threads, fewer than most machines have
+  indata.ns_array.setConstant(5);
+  indata.niter_array.setConstant(3);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const int process_thread_count = omp_get_max_threads();
+
+  ASSERT_TRUE(vmecpp::run(indata).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+
+  ASSERT_TRUE(vmecpp::run(indata, std::nullopt, /*max_threads=*/1).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
+}  // RunLeavesTheProcessThreadCountUnchanged
+
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   // make sure VMEC++ returns the outputs without an error
   // if explicitly instructed to do so
