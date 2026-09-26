@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790446105447,
+  "lastUpdate": 1790463073589,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20071,6 +20071,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.37337643600017145,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0e0d9bba9bbeceea2693527b5a2c3fda162a4776",
+          "message": "Drop unknown INDATA variables with a warning (#898)\n\n* Test that indata_to_json drops unknown INDATA variables\n\nindata2json drops assignments to variables that are not in the INDATA\nnamelist (e.g. VMEC2000's pt_type) with a warning on stderr\n(jonathanschilling/indata2json#15).\n\n* Bump indata2json to drop unknown INDATA variables with a warning\n\nAlso includes jonathanschilling/indata2json#12, #13 and #14.",
+          "timestamp": "2026-09-27T00:44:16+02:00",
+          "tree_id": "3e810cf9116bb095477a273832ae30ef771b9989",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0e0d9bba9bbeceea2693527b5a2c3fda162a4776"
+        },
+        "date": 1790463069044,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3747015994000094,
+            "range": "stddev: 0.0034705384396592643",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.4666061843333105,
+            "range": "stddev: 0.017481904647887365",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.09235361966671,
+            "range": "stddev: 0.0029654603871625525",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6516064160000117,
+            "range": "stddev: 0.00713007315406713",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4750045676666634,
+            "range": "stddev: 0.004180430696198233",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.738954930000015,
+            "range": "stddev: 0.029386239625446214",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.165486882999971,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.49924034299999676,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
