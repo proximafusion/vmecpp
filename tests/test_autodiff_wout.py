@@ -109,11 +109,28 @@ def _load_input(name: str, ftol: float) -> vmecpp.VmecInput:
     niter_array = np.array(indata.niter_array)
     niter_array[-1] = max(niter_array[-1], 50000)
     update = {"ftol_array": ftol_array, "niter_array": niter_array}
-    if indata.lfreeb:
-        update["mgrid_file"] = str(
-            REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
-        )
     return indata.model_copy(update=update)
+
+
+def _run_cpp(indata: vmecpp.VmecInput):
+    """The low-level C++ run; free-boundary vacuum fields come from makegrid on the
+    coils, since not every netCDF build reads the shipped mgrid files."""
+    cpp_indata = indata._to_cpp_vmecindata()
+    if not indata.lfreeb:
+        return _vmecpp.run(cpp_indata, verbose=_vmecpp.OutputMode.SILENT, max_threads=1)
+    parameters = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    table = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", parameters
+    )
+    cpp_indata.mgrid_file = "NONE"
+    return _vmecpp.run(
+        cpp_indata,
+        magnetic_response_table=table._to_cpp_magnetic_field_response_table(),
+        verbose=_vmecpp.OutputMode.SILENT,
+        max_threads=1,
+    )
 
 
 def _assert_field_close(name, actual, expected, reference_wout) -> None:
@@ -151,10 +168,7 @@ def _assert_field_close(name, actual, expected, reference_wout) -> None:
 @pytest.fixture(scope="module", params=list(_CASES))
 def solved_case(request):
     indata = _load_input(request.param, _CASES[request.param])
-    output = _vmecpp.run(
-        indata._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT, max_threads=1
-    )
-    return indata, output
+    return indata, _run_cpp(indata)
 
 
 def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
@@ -178,8 +192,14 @@ def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:
     indata, output = solved_case
     expected = vmecpp.VmecWOut._from_cpp_wout(output.wout)
     for name, value in autodiff_wout.static_fields(indata).items():
-        if expected.lfreeb and name in {"mgrid_mode", "potvac", "xmpot", "xnpot"}:
-            continue  # set by the vacuum solve
+        if expected.lfreeb and name in {
+            "mgrid_file",
+            "mgrid_mode",
+            "potvac",
+            "xmpot",
+            "xnpot",
+        }:
+            continue  # set by the vacuum field source and solve
         _assert_field_close(name, value, getattr(expected, name), expected)
 
 

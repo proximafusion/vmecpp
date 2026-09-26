@@ -446,7 +446,14 @@ def test_vmecwout_holds_jax_arrays(cma_output: vmecpp.VmecOutput):
             assert actual.variables.keys() == expected.variables.keys()
             for varname, expected_value in expected.variables.items():
                 assert actual[varname].dimensions == expected_value.dimensions
-                np.testing.assert_equal(actual[varname][:], expected_value[:])
+                actual_value = actual[varname][:]
+                np.testing.assert_array_equal(
+                    np.ma.getmaskarray(actual_value),
+                    np.ma.getmaskarray(expected_value[:]),
+                )
+                np.testing.assert_array_equal(
+                    np.ma.getdata(actual_value), np.ma.getdata(expected_value[:])
+                )
 
 
 def test_jxbout_bindings(cma_output: vmecpp.VmecOutput):
