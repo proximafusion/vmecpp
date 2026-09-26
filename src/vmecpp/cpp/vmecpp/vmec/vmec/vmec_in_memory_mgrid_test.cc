@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"  // ElementsAreArray
@@ -78,6 +82,65 @@ TEST(TestVmec, InMemoryMgridWithMismatchedNzetaIsRejected) {
               ::testing::HasSubstr("phi grid points"));
 }
 
+// Sizes raises nzeta to 2 * ntor + 4 when the input asks for less, so the
+// vacuum field has to carry the toroidal resolution of the run, not the one in
+// the input.
+TEST(TestVmec, InMemoryMgridIsHeldToTheRaisedNzeta) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = maybe_indata.value();
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+
+  // A coarse R-Z grid so that building the tables stays cheap.
+  makegrid_params.number_of_r_grid_points = 5;
+  makegrid_params.number_of_z_grid_points = 5;
+
+  // The input and the table agree on a toroidal resolution below the one the
+  // run is raised to. Still even, which the symmetric grid requires.
+  ASSERT_EQ(indata.ntor, 4);
+  const int raised_nzeta = 2 * indata.ntor + 4;
+  indata.nzeta = raised_nzeta - 4;
+  makegrid_params.number_of_phi_grid_points = indata.nzeta;
+
+  const auto maybe_table_below = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_table_below.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_table_below);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              HasSubstr("12 toroidal grid points"));
+
+  // A table at the raised resolution is the one the run matches.
+  makegrid_params.number_of_phi_grid_points = raised_nzeta;
+
+  const auto maybe_table_raised = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_table_raised.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(indata, &*maybe_table_raised);
+  ASSERT_TRUE(maybe_vmec.ok()) << maybe_vmec.status();
+  const absl::StatusOr<bool> reached_checkpoint =
+      (*maybe_vmec)
+          ->run(VmecCheckpoint::SPECTRAL_CONSTRAINT,
+                /*iterations_before_checkpointing=*/1);
+  ASSERT_TRUE(reached_checkpoint.ok()) << reached_checkpoint.status();
+  EXPECT_TRUE(*reached_checkpoint);
+}
+
 // The number of field periods of the vacuum field sets the toroidal extent of
 // its planes, so it has to be the one the solver runs with.
 TEST(TestVmec, InMemoryMgridWithMismatchedNfpIsRejected) {
@@ -116,6 +179,44 @@ TEST(TestVmec, InMemoryMgridWithMismatchedNfpIsRejected) {
   EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(std::string(output.status().message()),
               ::testing::HasSubstr("field periods"));
+}
+
+// The vacuum solve sizes a nested parallel region of its own, on a thread
+// count decoupled from the radial one. Like the radial solve it has to request
+// that team with a num_threads clause: narrowing the process-wide count
+// instead would outlive the run. Seven surfaces admit three radial threads,
+// fewer than most machines have, while the vacuum team takes the full budget.
+TEST(TestVmec, FreeBoundaryRunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.ns_array.setConstant(7);
+  indata.niter_array.setConstant(60);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      *maybe_makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const int process_thread_count = omp_get_max_threads();
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
 }
 
 // The stellarator-symmetry operation maps toroidal plane k onto (kp - k) % kp

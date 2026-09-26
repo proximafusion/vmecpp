@@ -96,6 +96,7 @@ namespace vmecpp {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -218,6 +219,7 @@ VmecINDATA::VmecINDATA() {
   mgrid_file = "NONE";  // default from Fortran VMEC via indata2json
   // extcur is left empty
   nvacskip = 1;
+  signgs = -1;
   free_boundary_method = FreeBoundaryMethod::NESTOR;
 
   // tweaking parameters
@@ -225,7 +227,7 @@ VmecINDATA::VmecINDATA() {
   aphi.resize(1);
   aphi[0] = 1.0;
   delt = 1.0;
-  tcon0 = 1.0;
+  tcon0 = 0.5;
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
@@ -342,6 +344,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lfreeb, "/indata/lfreeb", file);
   WriteH5Dataset(mgrid_file, "/indata/mgrid_file", file);
   WriteH5Dataset(nvacskip, "/indata/nvacskip", file);
+  WriteH5Dataset(signgs, "/indata/signgs", file);
 
   // special treatment for enums
   WriteH5Dataset(ToString(free_boundary_method), "/indata/free_boundary_method",
@@ -423,6 +426,9 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.lfreeb, "/indata/lfreeb", from_file);
   ReadH5Dataset(m_indata.mgrid_file, "/indata/mgrid_file", from_file);
   ReadH5Dataset(m_indata.nvacskip, "/indata/nvacskip", from_file);
+  if (from_file.nameExists("/indata/signgs")) {
+    ReadH5Dataset(m_indata.signgs, "/indata/signgs", from_file);
+  }
 
   // special treatment for enums
   std::string fbdy_method_str;
@@ -548,7 +554,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
 
 absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     const std::string& indata_json) {
-  json j = json::parse(indata_json);
+  absl::StatusOr<json> maybe_json = JsonParse(indata_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   if (!j.is_object()) {
     return absl::InvalidArgumentError("root JSON element is not an object");
@@ -874,6 +884,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.nvacskip = maybe_nvacskip->value();
   }
 
+  auto maybe_signgs = JsonReadInt(j, "signgs");
+  if (!maybe_signgs.ok()) {
+    return maybe_signgs.status();
+  }
+  if (maybe_signgs->has_value()) {
+    vmec_indata.signgs = maybe_signgs->value();
+  }
+
   auto maybe_free_boundary_method = JsonReadString(j, "free_boundary_method");
   if (!maybe_free_boundary_method.ok()) {
     return maybe_free_boundary_method.status();
@@ -1004,6 +1022,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
 
   if (vmec_indata.lasym) {
+    // an absent raxis_s or zaxis_c is a zero one, as for raxis_c and zaxis_s
+    vmec_indata.raxis_s.emplace().setZero(expected_axis_size);
+    vmec_indata.zaxis_c.emplace().setZero(expected_axis_size);
+
     auto maybe_raxis_s = JsonReadVectorDouble(j, "raxis_s");
     if (!maybe_raxis_s.ok()) {
       return maybe_raxis_s.status();
@@ -1245,6 +1267,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["mgrid_file"] = mgrid_file;
   output["extcur"] = extcur;
   output["nvacskip"] = nvacskip;
+  output["signgs"] = signgs;
   output["free_boundary_method"] = ToString(free_boundary_method);
 
   // Tweaking Parameters
@@ -1339,6 +1362,12 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(
         absl::StrFormat("input variable 'nzeta' needs to be >= 0, but is %d\n",
                         vmec_indata.nzeta));
+  }
+
+  if (vmec_indata.signgs != -1 && vmec_indata.signgs != 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'signgs' needs to be -1 or +1, but is %d\n",
+        vmec_indata.signgs));
   }
 
   // the free-boundary case additionally requires nvacskip >= 1; see below
@@ -1457,10 +1486,10 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.pres_scale));
   }
 
-  // adiabatic_index
+  // gamma
   if (vmec_indata.gamma == 1.0) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("input variable 'adiabatic_index' must not be 1.0\n"));
+        absl::StrFormat("input variable 'gamma' must not be 1.0\n"));
   }
 
   // spres_ped
@@ -1598,6 +1627,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.raxis_s.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'raxis_s' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zaxis_c.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zaxis_c' has to be set when 'lasym' is true.");
+    }
     // raxis_s
     if (vmec_indata.raxis_s->size() != expected_axis_size) {
       return absl::InvalidArgumentError(
@@ -1656,6 +1694,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.rbs.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'rbs' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zbc.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zbc' has to be set when 'lasym' is true.");
+    }
     // rbs
     if (vmec_indata.rbs->rows() != vmec_indata.mpol) {
       return absl::InvalidArgumentError(

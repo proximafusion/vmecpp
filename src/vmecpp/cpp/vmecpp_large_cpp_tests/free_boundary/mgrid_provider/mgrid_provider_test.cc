@@ -4,9 +4,12 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _OPENMP
@@ -457,6 +460,175 @@ TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
     EXPECT_FALSE(name.empty());
     EXPECT_EQ(name.find_last_not_of(' '), name.size() - 1)
         << "name '" << name << "' still carries padding";
+  }
+}
+
+// A file may declare more coil groups than nextcur. The names are read into a
+// buffer sized for the coil_group variable the file declares, and the first
+// nextcur are kept.
+TEST(MGridProviderValidation, LoadFileReadsMoreCoilGroupsThanNextcur) {
+  constexpr int kNumR = 3;
+  constexpr int kNumZ = 3;
+  constexpr int kNumPhi = 2;
+  constexpr int kWidth = 30;
+  const std::vector<std::string> names = {"first", "second", "third"};
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_three_coil_groups.nc";
+
+  int ncid = 0;
+  ASSERT_EQ(nc_create(filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);
+  int dim_groups = 0;
+  int dim_width = 0;
+  int dim_one = 0;
+  std::array<int, 3> dim_grid = {0, 0, 0};
+  ASSERT_EQ(nc_def_dim(ncid, "external_coil_groups", names.size(), &dim_groups),
+            NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "stringsize", kWidth, &dim_width), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "dim_00001", 1, &dim_one), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "phi", kNumPhi, &dim_grid[0]), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "zee", kNumZ, &dim_grid[1]), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "rad", kNumR, &dim_grid[2]), NC_NOERR);
+
+  const std::vector<std::pair<std::string, int> > int_scalars = {
+      {"ir", kNumR},
+      {"jz", kNumZ},
+      {"kp", kNumPhi},
+      {"nfp", 1},
+      {"nextcur", 1}};
+  const std::vector<std::pair<std::string, double> > double_scalars = {
+      {"rmin", 1.0}, {"rmax", 2.0}, {"zmin", -0.5}, {"zmax", 0.5}};
+  std::vector<int> int_ids(int_scalars.size());
+  std::vector<int> double_ids(double_scalars.size());
+  for (size_t i = 0; i < int_scalars.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, int_scalars[i].first.c_str(), NC_INT, 0, nullptr,
+                         &int_ids[i]),
+              NC_NOERR);
+  }
+  for (size_t i = 0; i < double_scalars.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, double_scalars[i].first.c_str(), NC_DOUBLE, 0,
+                         nullptr, &double_ids[i]),
+              NC_NOERR);
+  }
+  const std::array<int, 2> dim_coil_group = {dim_groups, dim_width};
+  int id_coil_group = 0;
+  int id_mgrid_mode = 0;
+  ASSERT_EQ(nc_def_var(ncid, "coil_group", NC_CHAR, 2, dim_coil_group.data(),
+                       &id_coil_group),
+            NC_NOERR);
+  ASSERT_EQ(
+      nc_def_var(ncid, "mgrid_mode", NC_CHAR, 1, &dim_one, &id_mgrid_mode),
+      NC_NOERR);
+  const std::array<std::string, 3> field_names = {"br_001", "bp_001", "bz_001"};
+  std::array<int, 3> field_ids = {0, 0, 0};
+  for (size_t i = 0; i < field_names.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, field_names[i].c_str(), NC_DOUBLE, 3,
+                         dim_grid.data(), &field_ids[i]),
+              NC_NOERR);
+  }
+  ASSERT_EQ(nc_enddef(ncid), NC_NOERR);
+
+  for (size_t i = 0; i < int_scalars.size(); ++i) {
+    ASSERT_EQ(nc_put_var_int(ncid, int_ids[i], &int_scalars[i].second),
+              NC_NOERR);
+  }
+  for (size_t i = 0; i < double_scalars.size(); ++i) {
+    ASSERT_EQ(nc_put_var_double(ncid, double_ids[i], &double_scalars[i].second),
+              NC_NOERR);
+  }
+  std::string padded_names;
+  for (const std::string& name : names) {
+    padded_names += name + std::string(kWidth - name.size(), ' ');
+  }
+  ASSERT_EQ(nc_put_var_text(ncid, id_coil_group, padded_names.data()),
+            NC_NOERR);
+  const char mgrid_mode = 'R';
+  ASSERT_EQ(nc_put_var_text(ncid, id_mgrid_mode, &mgrid_mode), NC_NOERR);
+  const std::vector<double> field(kNumPhi * kNumZ * kNumR, 0.0);
+  for (const int field_id : field_ids) {
+    ASSERT_EQ(nc_put_var_double(ncid, field_id, field.data()), NC_NOERR);
+  }
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  MGridProvider mgrid;
+  ASSERT_TRUE(mgrid.LoadFile(filename, Eigen::VectorXd::Ones(1)).ok());
+  EXPECT_THAT(mgrid.coil_group_names, ::testing::ElementsAre("first"));
+}
+
+TEST(MGridPolynomialInterpolation,
+     ReproducesTensorPolynomialsOnAvailableStencil) {
+  for (const int num_r : {2, 3, 4, 7}) {
+    for (const int num_z : {2, 3, 4, 8}) {
+      for (const int degree : {1, 2, 3}) {
+        makegrid::MagneticFieldResponseTable table;
+        auto& parameters = table.parameters;
+        parameters.normalize_by_currents = false;
+        parameters.number_of_field_periods = 3;
+        parameters.r_grid_minimum = 1.0;
+        parameters.r_grid_maximum = 3.0;
+        parameters.z_grid_minimum = -0.7;
+        parameters.z_grid_maximum = 0.9;
+        parameters.number_of_r_grid_points = num_r;
+        parameters.number_of_z_grid_points = num_z;
+        parameters.number_of_phi_grid_points = 5;
+        const int num_cells = num_r * num_z * 5;
+        table.b_r.resize(2, num_cells);
+        table.b_p.resize(2, num_cells);
+        table.b_z.resize(2, num_cells);
+        const auto polynomial = [degree](double r, double z, int k) {
+          return std::pow(r, degree) + 2 * std::pow(z, degree) +
+                 std::pow(r * z, degree) + 0.3 * r * z + k;
+        };
+        for (int k = 0; k < 5; ++k) {
+          for (int j = 0; j < num_z; ++j) {
+            for (int i = 0; i < num_r; ++i) {
+              const double value = polynomial(1.0 + 2.0 * i / (num_r - 1),
+                                              -0.7 + 1.6 * j / (num_z - 1), k);
+              const int index = (k * num_z + j) * num_r + i;
+              table.b_r(0, index) = value;
+              table.b_p(0, index) = 2 * value;
+              table.b_z(0, index) = -value;
+              table.b_r(1, index) = 3 * value;
+              table.b_p(1, index) = 6 * value;
+              table.b_z(1, index) = -3 * value;
+            }
+          }
+        }
+        Eigen::VectorXd currents(2);
+        currents << 2.0, -0.25;
+        SCOPED_TRACE(
+            absl::StrFormat("nr=%d nz=%d polynomial=%d", num_r, num_z, degree));
+        MGridProvider provider;
+        ASSERT_TRUE(provider.LoadFields(table, currents).ok());
+        Eigen::VectorXd r(205), z(205), br(205), bp(205), bz(205);
+        for (int i = 0; i < 205; ++i) {
+          r[i] = 1.0 + 2.0 * (((i * 37) % 205) + 0.5) / 205.0;
+          z[i] = -0.7 + 1.6 * (((i * 71) % 205) + 0.5) / 205.0;
+        }
+        r[0] = 1.0;
+        z[0] = -0.7;
+        r[1] = 3.0;
+        z[1] = 0.9;
+        r[2] = 3.0;
+        z[2] = -0.7;
+        r[3] = 1.0;
+        z[3] = 0.9;
+        ASSERT_TRUE(
+            provider.interpolate(0, 205, 5, 205, r, z, br, bp, bz).ok());
+        double error = 0.0;
+        for (int i = 0; i < 205; ++i) {
+          const double expected = 1.25 * polynomial(r[i], z[i], i % 5);
+          error = std::max({error, std::abs(br[i] - expected),
+                            std::abs(bp[i] - 2 * expected),
+                            std::abs(bz[i] + expected)});
+        }
+        const bool exact = num_r > degree && num_z > degree;
+        if (exact) {
+          EXPECT_LT(error, 1e-11);
+        } else {
+          EXPECT_GT(error, 1e-4);
+        }
+      }
+    }
   }
 }
 
