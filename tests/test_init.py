@@ -688,9 +688,9 @@ def test_raise_invalid_threadcount():
 def test_run_under_an_openmp_thread_limit():
     """Runs under OMP_THREAD_LIMIT=2 get fewer threads than they request.
 
-    The fixed-boundary run requests four radial threads and gets two, so it is the
-    two-thread run. The free-boundary run requests two radial threads with a nested
-    vacuum team of two, which the limit leaves one thread.
+    The fixed-boundary run requests four radial threads and gets two, which makes it the
+    run with two threads. The free-boundary run requests two radial threads with a
+    nested vacuum team of two, which the limit leaves one thread.
     """
     script = f"""\
 from pathlib import Path
