@@ -534,6 +534,13 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
         lmnc_full = _to_combined(
             setup, geometry.lambda_cc, geometry.lambda_ss, cosine=True
         )
+        if setup.lthreed:
+            # extrapolated to the axis like the m = 0 modes of lmns_full
+            lambda_cc = jnp.asarray(geometry.lambda_cc)
+            axis = (
+                2.0 * lambda_cc[1, 0, :] * phip_f[1] - lambda_cc[2, 0, :] * phip_f[2]
+            ) / phip_f[0]
+            lmnc_full = lmnc_full.at[np.flatnonzero(setup.xm == 0), 0].set(axis)
         quantities.update(
             rmns=_to_combined(setup, geometry.r_sc, geometry.r_cs, cosine=False),
             zmnc=_to_combined(setup, geometry.z_cc, geometry.z_ss, cosine=True),
