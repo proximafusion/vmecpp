@@ -57,7 +57,9 @@ _SCALE_OF = {
 # amplifies the roundoff of the latter by 1 / (mu_0 ds); the Mercier terms are
 # products of such differences.
 _TOLERANCE = {
-    "jdotb": 1.0e-6,
+    # a difference of two O(1 / mu_0) terms, the least well-conditioned field;
+    # 2e-5 of its maximum matches the atol of the Fortran reference test
+    "jdotb": 2.0e-5,
     "jcuru": 1.0e-6,
     "jcurv": 1.0e-6,
     "ctor": 1.0e-6,
