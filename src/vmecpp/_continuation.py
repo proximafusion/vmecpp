@@ -31,7 +31,7 @@ import typing
 import numpy as np
 
 if typing.TYPE_CHECKING:
-    from vmecpp import OutputMode, VmecInput, VmecOutput
+    from vmecpp import IterationSnapshot, OutputMode, VmecInput, VmecOutput
     from vmecpp._free_boundary import MagneticFieldResponseTable
 
 # State-vector geometry arrays, shape [mn_mode, n_surfaces]. These are the only
@@ -301,6 +301,7 @@ def _run_fourier_continuation(
     max_threads: int | None,
     verbose: bool | int | OutputMode,
     restart_from: VmecOutput | None,
+    iteration_callback: typing.Callable[[IterationSnapshot], bool | None] | None = None,
 ) -> VmecOutput:
     """Solves an equilibrium by continuation in Fourier resolution.
 
@@ -363,6 +364,7 @@ def _run_fourier_continuation(
             max_threads=max_threads,
             verbose=verbose,
             restart_from=guess,
+            iteration_callback=iteration_callback,
         )
 
     assert output is not None  # n_steps >= 1, so the loop always assigns output

@@ -24,6 +24,8 @@ cc_library(
         "//vmecpp/vmec/handover_storage",
         "//vmecpp/vmec/radial_partitioning",
         "//vmecpp/vmec/output_quantities",
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
         "//vmecpp/free_boundary/free_boundary_base",
         "//vmecpp/free_boundary/nestor",
         "//vmecpp/free_boundary/only_coils",
@@ -46,6 +48,8 @@ cc_test(
         "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
         "//vmecpp/vmec/output_quantities:test_helpers",
         "//vmecpp/vmec/vmec",
         "@googletest//:gtest_main",
