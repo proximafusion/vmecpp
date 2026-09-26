@@ -40,6 +40,7 @@ using vmecpp::vmec_algorithm_constants::kEvenParity;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
 using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
+using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerUndampedFactor;
 using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerZeroGuard;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
@@ -374,8 +375,10 @@ IdealMhdModel::IdealMhdModel(
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0, bool lforbal) {
+                                  double tcon0, bool lforbal,
+                                  bool undamped_lambda_preconditioner) {
   this->ncurr = ncurr;
+  this->undamped_lambda_preconditioner_ = undamped_lambda_preconditioner;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
   // The m=1 trig weights below are built on the reduced poloidal grid, so the
@@ -2139,8 +2142,11 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // 1/lamscale^2 converts the stiffness of the internally rescaled lambda
   // coefficients; the remaining kLambdaPreconditionerDampingFactor / 4 = 0.5
   // is an inherited, unexplained damping (see vmec_algorithm_constants.h).
-  const double pFactor = kLambdaPreconditionerDampingFactor /
-                         (4.0 * constants_.lamscale * constants_.lamscale);
+  const double damping = undamped_lambda_preconditioner_
+                             ? kLambdaPreconditionerUndampedFactor
+                             : kLambdaPreconditionerDampingFactor;
+  const double pFactor =
+      damping / (4.0 * constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point

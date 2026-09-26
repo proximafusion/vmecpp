@@ -449,6 +449,9 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    undamped_lambda_preconditioner: bool = False
+    """Scale the lambda preconditioner by 1 / lamscale^2 alone."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

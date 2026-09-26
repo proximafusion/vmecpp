@@ -219,6 +219,10 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Scale the lambda preconditioner by 1 / lamscale^2 alone, dropping the
+  // further factor 0.5 inherited from VMEC.
+  bool undamped_lambda_preconditioner;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)
