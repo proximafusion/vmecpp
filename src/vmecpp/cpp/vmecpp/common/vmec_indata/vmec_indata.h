@@ -86,6 +86,15 @@ class VmecINDATA {
   int mpol_geometry;
   int ntor_geometry;
 
+  // Optional larger Fourier cutoffs for the vacuum potential of a
+  // free-boundary run. NESTOR expands the potential to (mpol, ntor) like
+  // the plasma, which limits the vacuum field on helically excursing
+  // boundaries; a value above mpol / ntor raises the potential's cutoff
+  // alone, with nzeta at least 2 * vacuum_ntor + 4. 0 (default) means
+  // "use mpol / ntor".
+  int vacuum_mpol;
+  int vacuum_ntor;
+
   // number of poloidal grid points; if odd: is rounded to next smaller even
   // number
   int ntheta;
