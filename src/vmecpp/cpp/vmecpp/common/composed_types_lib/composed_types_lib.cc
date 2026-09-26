@@ -13,8 +13,14 @@
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 
 namespace composed_types {
+
+namespace {
+// the UTF-8 byte order mark, which some programs write ahead of the first line
+constexpr absl::string_view kUtf8ByteOrderMark = "\xEF\xBB\xBF";
+}  // namespace
 
 absl::Status IsVector3dFullyPopulated(const Vector3d& vector,
                                       absl::string_view vector_name) {
@@ -248,7 +254,8 @@ absl::StatusOr<CurveRZFourier> CurveRZFourierFromCsv(
     return absl::InvalidArgumentError("cannot read header line");
   }
 
-  if (absl::StripAsciiWhitespace(header_line) !=
+  if (absl::StripAsciiWhitespace(
+          absl::StripPrefix(header_line, kUtf8ByteOrderMark)) !=
       "n,raxis_c,zaxis_s,raxis_s,zaxis_c") {
     return absl::NotFoundError(
         "header line 'n,raxis_c,zaxis_s,raxis_s,zaxis_c' not found");
@@ -454,7 +461,8 @@ absl::StatusOr<SurfaceRZFourier> SurfaceRZFourierFromCsv(
     return absl::InvalidArgumentError("cannot read header line");
   }
 
-  if (absl::StripAsciiWhitespace(header_line) != "n,m,rbc,zbs,rbs,zbc") {
+  if (absl::StripAsciiWhitespace(absl::StripPrefix(
+          header_line, kUtf8ByteOrderMark)) != "n,m,rbc,zbs,rbs,zbc") {
     return absl::NotFoundError("header line 'n,m,rbc,zbs,rbs,zbc' not found");
   }
 
