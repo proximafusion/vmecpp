@@ -422,7 +422,7 @@ class VmecModel {
           "VmecModel.get_geometry: model is not initialized");
     }
     const vmecpp::VmecInternalResults internal = vmecpp::GatherDataFromThreads(
-        vmecpp::Vmec::kSignOfJacobian, vmec_->s_, vmec_->fc_, vmec_->constants_,
+        vmec_->indata_.signgs, vmec_->s_, vmec_->fc_, vmec_->constants_,
         vmec_->r_, vmec_->decomposed_x_, vmec_->m_, vmec_->p_);
     return vmecpp::MakeGeometry(vmec_->indata_, internal);
   }
@@ -503,6 +503,7 @@ class VmecModel {
       }
     };
 
+    const double sigma = -vmec_->indata_.signgs;
     auto add_m1_pair = [&](std::span<double> first, std::span<double> second,
                            int first_bar_block, int second_bar_block) {
       const int first_offset = first_bar_block * coefficient_size;
@@ -511,10 +512,12 @@ class VmecModel {
         for (int n = 0; n <= vmec_->s_.ntor; ++n) {
           const int index = (j * vmec_->s_.mpol + 1) * (vmec_->s_.ntor + 1) + n;
           const double scale = coefficient_scale(j, 1, n, false);
-          first[index] += scale * (coefficient_bar[first_offset + index] +
-                                   coefficient_bar[second_offset + index]);
-          second[index] += scale * (coefficient_bar[first_offset + index] -
-                                    coefficient_bar[second_offset + index]);
+          first[index] +=
+              scale * (coefficient_bar[first_offset + index] +
+                       sigma * coefficient_bar[second_offset + index]);
+          second[index] +=
+              scale * (sigma * coefficient_bar[first_offset + index] -
+                       coefficient_bar[second_offset + index]);
         }
       }
     };
@@ -558,9 +561,8 @@ class VmecModel {
               "VmecModel.geometry_state_vjp: invalid phipH for the ncurr=1 "
               "flux cotangent");
         }
-        const double c_k = static_cast<double>(vmecpp::Vmec::kSignOfJacobian) *
-                           2.0 * std::numbers::pi * vmec_->fc_.deltaS *
-                           phip_h[k];
+        const double c_k = static_cast<double>(vmec_->indata_.signgs) * 2.0 *
+                           std::numbers::pi * vmec_->fc_.deltaS * phip_h[k];
         chip_bar[k] = c_k * tail / phip_h[k];
       }
       result += ChipStateVjp(chip_bar);
@@ -851,7 +853,13 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor, py::arg("new_mpol"),
                py::arg("new_ntor"))
           .def("from_file", &VmecINDATA::FromFile)
-          .def("from_json", &VmecINDATA::FromJson)
+          .def_static(
+              "from_json",
+              [](const std::string &indata_json) {
+                auto maybe_indata = VmecINDATA::FromJson(indata_json);
+                return GetValueOrThrow(maybe_indata);
+              },
+              py::arg("indata_json"))
           .def("to_json", &VmecINDATA::ToJsonOrException)
           .def("copy", &VmecINDATA::Copy)
 

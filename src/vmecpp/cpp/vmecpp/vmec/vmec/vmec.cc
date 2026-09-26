@@ -82,11 +82,13 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
     return absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end));
   }
 
-  // check for matching `ns`
-  if (initial_state.indata.ns_array[initial_state.indata.ns_array.size() - 1] !=
-      indata.ns_array[0]) {
-    return absl::InvalidArgumentError(
-        absl::StrCat(msg_start, "ns_array", msg_end));
+  // check for matching `ns`: the state is read from the wout, one column per
+  // flux surface
+  if (initial_state.wout.ns != indata.ns_array[0]) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%sns_array%s The wout of the initial state has ns = %d, but "
+        "ns_array[0] = %d.",
+        msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0]));
   }
 
   return absl::OkStatus();
@@ -243,12 +245,20 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return status;
       }
     }
-    if (mgrid_.numPhi != indata_.nzeta) {
+    // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
+    // toroidal resolution of the run.
+    if (mgrid_.numPhi != s_.nZeta) {
+      const std::string raised_from =
+          s_.nZeta == indata_.nzeta
+              ? ""
+              : absl::StrFormat(
+                    " (nzeta = %d in VmecINDATA, raised to the "
+                    "minimum for ntor = %d)",
+                    indata_.nzeta, indata_.ntor);
       return absl::InvalidArgumentError(absl::StrFormat(
-          "MGridProvider has %d phi grid points, but VmecINDATA "
-          "has %d nzeta grid points. Please ensure that the two "
-          "are consistent.",
-          mgrid_.numPhi, indata_.nzeta));
+          "MGridProvider has %d phi grid points, but the run has %d toroidal "
+          "grid points%s. Please ensure that the two are consistent.",
+          mgrid_.numPhi, s_.nZeta, raised_from));
     }
     if (mgrid_.nfp != indata_.nfp) {
       return absl::InvalidArgumentError(absl::StrFormat(
@@ -829,7 +839,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(num_threads_)
 #endif  // _OPENMP
   {
 #ifdef _OPENMP

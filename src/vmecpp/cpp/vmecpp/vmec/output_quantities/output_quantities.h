@@ -1397,14 +1397,22 @@ struct OutputQuantities {
   bool operator!=(const OutputQuantities& o) const { return !(*this == o); }
 
   // Write the output quantities to the HDF5 file at the specified path.
-  // If a file already exists, it is overwritten.
+  // If a file already exists, it is overwritten. A file HDF5 cannot create or
+  // write is reported as kInternal.
   absl::Status Save(const std::filesystem::path& path) const;
 
   // Return a OutputQuantities instance populated with the contents of the
   // specified HDF5 file. The file is expected to have the same schema as the
-  // one produced by OutputQuantities::Save.
+  // one produced by OutputQuantities::Save. A file HDF5 cannot open or read is
+  // reported as kInternal.
   static absl::StatusOr<OutputQuantities> Load(
       const std::filesystem::path& path);
+
+ private:
+  // Save and Load on an open file; HDF5 reports a failure in them by throwing
+  // an H5::Exception.
+  absl::Status WriteTo(H5::H5File& file) const;
+  static absl::StatusOr<OutputQuantities> ReadFrom(H5::H5File& file);
 };
 
 // Compute the output quantities of VMEC++.

@@ -90,8 +90,8 @@ class VmecINDATA {
   // number
   int ntheta;
 
-  // number of toroidal grid points; must match nzeta of mgrid file if using
-  // free-boundary
+  // number of toroidal grid points, raised to 2 * ntor + 4 when smaller; the
+  // mgrid file must carry the resulting number if using free-boundary
   int nzeta;
 
   // ---------------------------------

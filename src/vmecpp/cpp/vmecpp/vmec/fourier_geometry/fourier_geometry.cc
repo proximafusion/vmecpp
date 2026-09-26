@@ -24,6 +24,29 @@ std::span<const double> SurfaceOf(std::span<const double> coefficients,
   }
   return coefficients.subspan(surface_offset, coefficients_per_surface);
 }
+
+// R and Z Fourier coefficients of one flux surface in the product basis,
+// indexed like the Boundaries arrays by m * (ntor + 1) + n.
+struct ProductBasisSurface {
+  explicit ProductBasisSurface(int mnsize)
+      : rcc(mnsize),
+        rss(mnsize),
+        rsc(mnsize),
+        rcs(mnsize),
+        zsc(mnsize),
+        zcs(mnsize),
+        zcc(mnsize),
+        zss(mnsize) {}
+
+  std::vector<double> rcc;
+  std::vector<double> rss;
+  std::vector<double> rsc;
+  std::vector<double> rcs;
+  std::vector<double> zsc;
+  std::vector<double> zcs;
+  std::vector<double> zcc;
+  std::vector<double> zss;
+};
 }  // namespace
 
 FourierGeometry::FourierGeometry(const Sizes* s, const RadialPartitioning* r,
@@ -205,60 +228,106 @@ void FourierGeometry::InitFromState(
   const int max_ns_to_set_rz_on_from_state = (b == nullptr) ? ns : ns - 1;
   const int max_ns_to_set_rz_on_from_state_locally =
       std::min(nsMax_, max_ns_to_set_rz_on_from_state);
-  for (int jF = nsMin_; jF < max_ns_to_set_rz_on_from_state_locally; ++jF) {
+
+  // Surface jF of the given state in the product basis, scaled like the
+  // coefficients held here.
+  const int mnsize = s_.mpol * (s_.ntor + 1);
+  const auto state_surface = [&](int jF) {
+    ProductBasisSurface surface(mnsize);
+
     const Eigen::VectorXd rmnc_col = rmnc.col(jF);
     const std::vector<double> rmnc_col_vector(
         rmnc_col.data(), rmnc_col.data() + rmnc_col.size());
-    std::vector<double> rmncc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> rmnss_at_jF(s_.mpol * (s_.ntor + 1));
-    fb.cos_to_cc_ss(rmnc_col_vector, rmncc_at_jF, rmnss_at_jF, s_.ntor,
+    fb.cos_to_cc_ss(rmnc_col_vector, surface.rcc, surface.rss, s_.ntor,
                     s_.mpol);
 
     const Eigen::VectorXd zmns_col = zmns.col(jF);
     const std::vector<double> zmns_col_vector(
         zmns_col.data(), zmns_col.data() + zmns_col.size());
-    std::vector<double> zmnsc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> zmncs_at_jF(s_.mpol * (s_.ntor + 1));
-    fb.sin_to_sc_cs(zmns_col_vector, zmnsc_at_jF, zmncs_at_jF, s_.ntor,
+    fb.sin_to_sc_cs(zmns_col_vector, surface.zsc, surface.zcs, s_.ntor,
                     s_.mpol);
 
     // Antisymmetric half: R is written to the wout in the combined sine basis
     // and Z in the combined cosine basis, i.e. mirrored with respect to the
     // symmetric half above, so the two conversions swap accordingly.
-    std::vector<double> rmnsc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> rmncs_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> zmncc_at_jF(s_.mpol * (s_.ntor + 1));
-    std::vector<double> zmnss_at_jF(s_.mpol * (s_.ntor + 1));
     if (s_.lasym) {
       const Eigen::VectorXd rmns_col = rmns.col(jF);
       const std::vector<double> rmns_col_vector(
           rmns_col.data(), rmns_col.data() + rmns_col.size());
-      fb.sin_to_sc_cs(rmns_col_vector, rmnsc_at_jF, rmncs_at_jF, s_.ntor,
+      fb.sin_to_sc_cs(rmns_col_vector, surface.rsc, surface.rcs, s_.ntor,
                       s_.mpol);
 
       const Eigen::VectorXd zmnc_col = zmnc.col(jF);
       const std::vector<double> zmnc_col_vector(
           zmnc_col.data(), zmnc_col.data() + zmnc_col.size());
-      fb.cos_to_cc_ss(zmnc_col_vector, zmncc_at_jF, zmnss_at_jF, s_.ntor,
+      fb.cos_to_cc_ss(zmnc_col_vector, surface.zcc, surface.zss, s_.ntor,
                       s_.mpol);
     }
+    return surface;
+  };
 
+  for (int jF = nsMin_; jF < max_ns_to_set_rz_on_from_state_locally; ++jF) {
+    const ProductBasisSurface surface = state_surface(jF);
     for (int m = 0; m < s_.mpol; ++m) {
       for (int n = 0; n < s_.ntor + 1; ++n) {
         const int idx_mn = m * (s_.ntor + 1) + n;
         const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
-        rmncc[idx_jmn] = rmncc_at_jF[idx_mn];
-        zmnsc[idx_jmn] = zmnsc_at_jF[idx_mn];
+        rmncc[idx_jmn] = surface.rcc[idx_mn];
+        zmnsc[idx_jmn] = surface.zsc[idx_mn];
         if (s_.lthreed) {
-          rmnss[idx_jmn] = rmnss_at_jF[idx_mn];
-          zmncs[idx_jmn] = zmncs_at_jF[idx_mn];
+          rmnss[idx_jmn] = surface.rss[idx_mn];
+          zmncs[idx_jmn] = surface.zcs[idx_mn];
         }
         if (s_.lasym) {
-          rmnsc[idx_jmn] = rmnsc_at_jF[idx_mn];
-          zmncc[idx_jmn] = zmncc_at_jF[idx_mn];
+          rmnsc[idx_jmn] = surface.rsc[idx_mn];
+          zmncc[idx_jmn] = surface.zcc[idx_mn];
           if (s_.lthreed) {
-            rmncs[idx_jmn] = rmncs_at_jF[idx_mn];
-            zmnss[idx_jmn] = zmnss_at_jF[idx_mn];
+            rmncs[idx_jmn] = surface.rcs[idx_mn];
+            zmnss[idx_jmn] = surface.zss[idx_mn];
+          }
+        }
+      }
+    }
+  }
+
+  if (b != nullptr) {
+    // Shift the inner surfaces by the difference between the boundary from b
+    // and the outermost surface of the state, weighted like the initial guess
+    // of interpFromBoundaryAndAxis: s for m = 0 and s^{m/2} for m > 0. The
+    // inner surfaces do not carry the m=1 constraint yet, so b enters with it
+    // undone.
+    Boundaries boundary = *b;
+    boundary.ensureM1Constrained(1.0);
+    const ProductBasisSurface lcfs = state_surface(ns - 1);
+    for (int jF = nsMin_; jF < max_ns_to_set_rz_on_from_state_locally; ++jF) {
+      const double sqrt_s = p.sqrtSF[jF - r_.nsMinF1];
+      for (int m = 0; m < s_.mpol; ++m) {
+        const double weight = (m == 0) ? sqrt_s * sqrt_s : pow(sqrt_s, m);
+        for (int n = 0; n < s_.ntor + 1; ++n) {
+          const int idx_mn = m * (s_.ntor + 1) + n;
+          const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+          const double basis_norm = 1.0 / (fb.mscale[m] * fb.nscale[n]);
+          rmncc[idx_jmn] +=
+              weight * (basis_norm * boundary.rbcc[idx_mn] - lcfs.rcc[idx_mn]);
+          zmnsc[idx_jmn] +=
+              weight * (basis_norm * boundary.zbsc[idx_mn] - lcfs.zsc[idx_mn]);
+          if (s_.lthreed) {
+            rmnss[idx_jmn] += weight * (basis_norm * boundary.rbss[idx_mn] -
+                                        lcfs.rss[idx_mn]);
+            zmncs[idx_jmn] += weight * (basis_norm * boundary.zbcs[idx_mn] -
+                                        lcfs.zcs[idx_mn]);
+          }
+          if (s_.lasym) {
+            rmnsc[idx_jmn] += weight * (basis_norm * boundary.rbsc[idx_mn] -
+                                        lcfs.rsc[idx_mn]);
+            zmncc[idx_jmn] += weight * (basis_norm * boundary.zbcc[idx_mn] -
+                                        lcfs.zcc[idx_mn]);
+            if (s_.lthreed) {
+              rmncs[idx_jmn] += weight * (basis_norm * boundary.rbcs[idx_mn] -
+                                          lcfs.rcs[idx_mn]);
+              zmnss[idx_jmn] += weight * (basis_norm * boundary.zbss[idx_mn] -
+                                          lcfs.zss[idx_mn]);
+            }
           }
         }
       }

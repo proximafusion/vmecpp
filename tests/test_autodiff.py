@@ -196,9 +196,12 @@ def test_solve_model_accepts_a_non_final_step_that_does_not_converge() -> None:
     assert model.fsqr < model.ftolv
 
 
-def test_geometry_state_vjp_is_the_transpose_in_three_dimensions() -> None:
+@pytest.mark.parametrize("signgs", [-1, 1])
+def test_geometry_state_vjp_is_the_transpose_in_three_dimensions(signgs: int) -> None:
     """The 2D case leaves the ``lthreed`` branch of the map untested."""
-    indata = _small_3d_input()._to_cpp_vmecindata()
+    vmec_input = _small_3d_input()
+    vmec_input.signgs = signgs
+    indata = vmec_input._to_cpp_vmecindata()
     model = _vmecpp.VmecModel.create(indata, 5)
     assert model.lthreed
     state = np.asarray(model.get_state(), dtype=np.float64)

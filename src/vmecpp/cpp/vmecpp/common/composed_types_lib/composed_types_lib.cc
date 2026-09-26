@@ -248,7 +248,8 @@ absl::StatusOr<CurveRZFourier> CurveRZFourierFromCsv(
     return absl::InvalidArgumentError("cannot read header line");
   }
 
-  if (header_line != "n,raxis_c,zaxis_s,raxis_s,zaxis_c") {
+  if (absl::StripAsciiWhitespace(header_line) !=
+      "n,raxis_c,zaxis_s,raxis_s,zaxis_c") {
     return absl::NotFoundError(
         "header line 'n,raxis_c,zaxis_s,raxis_s,zaxis_c' not found");
   }
@@ -453,7 +454,7 @@ absl::StatusOr<SurfaceRZFourier> SurfaceRZFourierFromCsv(
     return absl::InvalidArgumentError("cannot read header line");
   }
 
-  if (header_line != "n,m,rbc,zbs,rbs,zbc") {
+  if (absl::StripAsciiWhitespace(header_line) != "n,m,rbc,zbs,rbs,zbc") {
     return absl::NotFoundError("header line 'n,m,rbc,zbs,rbs,zbc' not found");
   }
 

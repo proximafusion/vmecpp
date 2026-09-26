@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -37,6 +39,27 @@ struct DataSource {
   double tolerance = 0.0;
   std::vector<int> iter2_to_test = {1, 2};
 };
+
+// Value at the monomial t^l of a linear functional given on the Chebyshev
+// polynomials T_0, ..., T_l:
+//   t^l = 2^{1-l} sum_{j=0}^{floor(l/2)} binom(l, j) T_{l-2j},
+// with the T_0 term halved. The reference data of educational_VMEC is in
+// powers of t (cmns, T_l, S_l); VMEC++ holds the same quantities in the
+// Chebyshev basis.
+static double AtMonomial(int l, const std::vector<double>& at_chebyshev) {
+  double sum = 0.0;
+  double binomial = 1.0;
+  for (int j = 0; 2 * j <= l; ++j) {
+    const double weight = (l - 2 * j == 0) ? 0.5 : 1.0;
+    sum += weight * binomial * at_chebyshev[l - 2 * j];
+    binomial *= static_cast<double>(l - j) / (j + 1);
+  }
+  return sum * std::ldexp(1.0, 1 - l);
+}
+
+static double ChebyshevT(int k, double t) {
+  return std::cos(k * std::acos(std::clamp(t, -1.0, 1.0)));
+}
 
 class CmnsTest : public TestWithParam<DataSource> {
  protected:
@@ -85,14 +108,24 @@ TEST_P(CmnsTest, CheckCmns) {
 
       const int nf = s.ntor;
       const int mf = s.mpol + 1;
+      // cmns are the monomial coefficients of the add-back polynomials, whose
+      // Chebyshev coefficients VMEC++ holds; the two are compared as values.
       for (int n = 0; n < nf + 1; ++n) {
         for (int m = 0; m < mf + 1; ++m) {
-          for (int l = std::abs(m - n); l <= m + n; l += 2) {
-            int lnm = (l * (nf + 1) + n) * (mf + 1) + m;
-
-            EXPECT_TRUE(IsCloseRelAbs(vac1n_precal["cmns"][l][m][n],
-                                      alp * si.cmns[lnm], tolerance));
-          }  // l
+          for (const double t : {-1.0, -0.6, -0.2, 0.1, 0.5, 0.9, 1.0}) {
+            double expected = 0.0;
+            for (int l = 0; l <= m + n; ++l) {
+              const double cmns = vac1n_precal["cmns"][l][m][n];
+              expected += cmns * std::pow(t, l);
+            }  // l
+            double actual = 0.0;
+            for (int k = 0; k <= mf + nf; ++k) {
+              const int knm = (k * (nf + 1) + n) * (mf + 1) + m;
+              actual += si.chebyshev_coefficients[knm] * ChebyshevT(k, t);
+            }  // k
+            EXPECT_TRUE(IsCloseRelAbs(expected, alp * actual, tolerance))
+                << "(m, n) = (" << m << ", " << n << ") at t = " << t;
+          }  // t
         }  // m
       }  // n
     }  // thread_id
@@ -101,7 +134,7 @@ TEST_P(CmnsTest, CheckCmns) {
 
 INSTANTIATE_TEST_SUITE_P(TestSingularIntegrals, CmnsTest,
                          Values(DataSource{.identifier = "cth_like_free_bdy",
-                                           .tolerance = 1.0e-14,
+                                           .tolerance = 1.0e-12,
                                            .iter2_to_test = {53}}));
 
 class AnalytTest : public TestWithParam<DataSource> {
@@ -155,19 +188,28 @@ TEST_P(AnalytTest, CheckAnalyt) {
 
       const SingularIntegrals& si = n.GetSingularIntegrals();
 
-      for (int fl = 0; fl < mf + nf + 1; ++fl) {
-        for (int kl = tp.ztMin; kl < tp.ztMax; ++kl) {
-          const int l = kl / s.nZeta;
-          const int k = kl % s.nZeta;
+      // T_l and S_l of the reference are the monomial counterparts of the
+      // Chebyshev moments
+      std::vector<double> at_chebyshev_p(mf + nf + 1);
+      std::vector<double> at_chebyshev_m(mf + nf + 1);
 
-          const int klRel = kl - tp.ztMin;
+      for (int kl = tp.ztMin; kl < tp.ztMax; ++kl) {
+        const int l = kl / s.nZeta;
+        const int k = kl % s.nZeta;
 
+        const int klRel = kl - tp.ztMin;
+
+        for (int order = 0; order < mf + nf + 1; ++order) {
+          at_chebyshev_p[order] = si.chebyshev_moments_p[order][klRel];
+          at_chebyshev_m[order] = si.chebyshev_moments_m[order][klRel];
+        }
+        for (int fl = 0; fl < mf + nf + 1; ++fl) {
           EXPECT_TRUE(IsCloseRelAbs(vac1n_analyt["all_tlp"][fl][k][l],
-                                    si.Tlp[fl][klRel], tolerance));
+                                    AtMonomial(fl, at_chebyshev_p), tolerance));
           EXPECT_TRUE(IsCloseRelAbs(vac1n_analyt["all_tlm"][fl][k][l],
-                                    si.Tlm[fl][klRel], tolerance));
-        }  // kl
-      }  // fl
+                                    AtMonomial(fl, at_chebyshev_m), tolerance));
+        }  // fl
+      }  // kl
 
       // bvec needs to be accumulated over all threads to be compared
       // --> accumulate contributions to Fourier transform from all threads
@@ -179,19 +221,25 @@ TEST_P(AnalytTest, CheckAnalyt) {
       }
 
       if (vmec.m_[0]->get_ivacskip() == 0) {
-        for (int fl = 0; fl < mf + nf + 1; ++fl) {
-          for (int kl = tp.ztMin; kl < tp.ztMax; ++kl) {
-            const int l = kl / s.nZeta;
-            const int k = kl % s.nZeta;
+        for (int kl = tp.ztMin; kl < tp.ztMax; ++kl) {
+          const int l = kl / s.nZeta;
+          const int k = kl % s.nZeta;
 
-            const int klRel = kl - tp.ztMin;
+          const int klRel = kl - tp.ztMin;
 
+          for (int order = 0; order < mf + nf + 1; ++order) {
+            at_chebyshev_p[order] = si.chebyshev_s_moments_p[order][klRel];
+            at_chebyshev_m[order] = si.chebyshev_s_moments_m[order][klRel];
+          }
+          for (int fl = 0; fl < mf + nf + 1; ++fl) {
             EXPECT_TRUE(IsCloseRelAbs(vac1n_analyt["all_slp"][fl][k][l],
-                                      si.Slp[fl][klRel], tolerance));
+                                      AtMonomial(fl, at_chebyshev_p),
+                                      tolerance));
             EXPECT_TRUE(IsCloseRelAbs(vac1n_analyt["all_slm"][fl][k][l],
-                                      si.Slm[fl][klRel], tolerance));
-          }  // kl
-        }  // fl
+                                      AtMonomial(fl, at_chebyshev_m),
+                                      tolerance));
+          }  // fl
+        }  // kl
 
         // grpmn can be tested here already, as there is no reduction over
         // threads involved

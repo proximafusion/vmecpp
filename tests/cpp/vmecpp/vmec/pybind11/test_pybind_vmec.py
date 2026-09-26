@@ -115,6 +115,18 @@ def test_indata_readwrite():
         indata.rbc = np.array([])
 
 
+def test_indata_from_json():
+    """Test that VmecINDATA.from_json returns the input that from_file reads."""
+    indata_file = TEST_DATA_DIR / "cth_like_fixed_bdy.json"
+    indata = vmec.VmecINDATA.from_json(indata_file.read_text())
+    indata_from_file = vmec.VmecINDATA.from_file(indata_file)
+    assert json.loads(indata.to_json()) == json.loads(indata_from_file.to_json())
+
+    # an inconsistent input is reported as an exception
+    with pytest.raises(AttributeError, match="ncurr"):
+        vmec.VmecINDATA.from_json('{"ncurr": 2}')
+
+
 def test_output_quantities():
     case_name = "cma"
 

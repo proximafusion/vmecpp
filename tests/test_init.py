@@ -104,6 +104,23 @@ def test_run_with_hot_restart():
     assert vmec_output_hot_restarted.wout.niter == 2
 
 
+def test_hot_restart_matches_ns_against_the_wout_of_the_state():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    ns = vmec_output.wout.ns
+    vmec_output.input = vmec_input.model_copy(
+        update={"ns_array": np.array([2 * ns - 1])}
+    )
+
+    # the state is read from its wout, whatever the ns of its input
+    restarted = vmecpp.run(vmec_input, verbose=False, restart_from=vmec_output)
+    assert restarted.wout.niter <= 3
+
+    finer = vmec_input.model_copy(update={"ns_array": np.array([2 * ns - 1])})
+    with pytest.raises((RuntimeError, AttributeError), match="ns_array"):
+        vmecpp.run(finer, verbose=False, restart_from=vmec_output)
+
+
 @pytest.fixture(scope="module")
 def cma_output() -> vmecpp.VmecOutput:
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")

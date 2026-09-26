@@ -5,9 +5,11 @@
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _OPENMP
@@ -459,6 +461,97 @@ TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
     EXPECT_EQ(name.find_last_not_of(' '), name.size() - 1)
         << "name '" << name << "' still carries padding";
   }
+}
+
+// A file may declare more coil groups than nextcur. The names are read into a
+// buffer sized for the coil_group variable the file declares, and the first
+// nextcur are kept.
+TEST(MGridProviderValidation, LoadFileReadsMoreCoilGroupsThanNextcur) {
+  constexpr int kNumR = 3;
+  constexpr int kNumZ = 3;
+  constexpr int kNumPhi = 2;
+  constexpr int kWidth = 30;
+  const std::vector<std::string> names = {"first", "second", "third"};
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_three_coil_groups.nc";
+
+  int ncid = 0;
+  ASSERT_EQ(nc_create(filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);
+  int dim_groups = 0;
+  int dim_width = 0;
+  int dim_one = 0;
+  std::array<int, 3> dim_grid = {0, 0, 0};
+  ASSERT_EQ(nc_def_dim(ncid, "external_coil_groups", names.size(), &dim_groups),
+            NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "stringsize", kWidth, &dim_width), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "dim_00001", 1, &dim_one), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "phi", kNumPhi, &dim_grid[0]), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "zee", kNumZ, &dim_grid[1]), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "rad", kNumR, &dim_grid[2]), NC_NOERR);
+
+  const std::vector<std::pair<std::string, int> > int_scalars = {
+      {"ir", kNumR},
+      {"jz", kNumZ},
+      {"kp", kNumPhi},
+      {"nfp", 1},
+      {"nextcur", 1}};
+  const std::vector<std::pair<std::string, double> > double_scalars = {
+      {"rmin", 1.0}, {"rmax", 2.0}, {"zmin", -0.5}, {"zmax", 0.5}};
+  std::vector<int> int_ids(int_scalars.size());
+  std::vector<int> double_ids(double_scalars.size());
+  for (size_t i = 0; i < int_scalars.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, int_scalars[i].first.c_str(), NC_INT, 0, nullptr,
+                         &int_ids[i]),
+              NC_NOERR);
+  }
+  for (size_t i = 0; i < double_scalars.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, double_scalars[i].first.c_str(), NC_DOUBLE, 0,
+                         nullptr, &double_ids[i]),
+              NC_NOERR);
+  }
+  const std::array<int, 2> dim_coil_group = {dim_groups, dim_width};
+  int id_coil_group = 0;
+  int id_mgrid_mode = 0;
+  ASSERT_EQ(nc_def_var(ncid, "coil_group", NC_CHAR, 2, dim_coil_group.data(),
+                       &id_coil_group),
+            NC_NOERR);
+  ASSERT_EQ(
+      nc_def_var(ncid, "mgrid_mode", NC_CHAR, 1, &dim_one, &id_mgrid_mode),
+      NC_NOERR);
+  const std::array<std::string, 3> field_names = {"br_001", "bp_001", "bz_001"};
+  std::array<int, 3> field_ids = {0, 0, 0};
+  for (size_t i = 0; i < field_names.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, field_names[i].c_str(), NC_DOUBLE, 3,
+                         dim_grid.data(), &field_ids[i]),
+              NC_NOERR);
+  }
+  ASSERT_EQ(nc_enddef(ncid), NC_NOERR);
+
+  for (size_t i = 0; i < int_scalars.size(); ++i) {
+    ASSERT_EQ(nc_put_var_int(ncid, int_ids[i], &int_scalars[i].second),
+              NC_NOERR);
+  }
+  for (size_t i = 0; i < double_scalars.size(); ++i) {
+    ASSERT_EQ(nc_put_var_double(ncid, double_ids[i], &double_scalars[i].second),
+              NC_NOERR);
+  }
+  std::string padded_names;
+  for (const std::string& name : names) {
+    padded_names += name + std::string(kWidth - name.size(), ' ');
+  }
+  ASSERT_EQ(nc_put_var_text(ncid, id_coil_group, padded_names.data()),
+            NC_NOERR);
+  const char mgrid_mode = 'R';
+  ASSERT_EQ(nc_put_var_text(ncid, id_mgrid_mode, &mgrid_mode), NC_NOERR);
+  const std::vector<double> field(kNumPhi * kNumZ * kNumR, 0.0);
+  for (const int field_id : field_ids) {
+    ASSERT_EQ(nc_put_var_double(ncid, field_id, field.data()), NC_NOERR);
+  }
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  MGridProvider mgrid;
+  ASSERT_TRUE(mgrid.LoadFile(filename, Eigen::VectorXd::Ones(1)).ok());
+  EXPECT_THAT(mgrid.coil_group_names, ::testing::ElementsAre("first"));
 }
 
 TEST(MGridPolynomialInterpolation,
