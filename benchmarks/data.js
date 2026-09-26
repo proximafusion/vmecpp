@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790379071250,
+  "lastUpdate": 1790445944025,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -19991,6 +19991,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.32179184099993563,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "507b933548fb2dc30fa7426c9133534e7139848d",
+          "message": "Take the vacuum magnetic pressure alone as the total pressure outside the free boundary (#830)",
+          "timestamp": "2026-09-26T17:59:10Z",
+          "tree_id": "a28a6f6a50b4360b3fd063e51a980bfcaeb227f6",
+          "url": "https://github.com/proximafusion/vmecpp/commit/507b933548fb2dc30fa7426c9133534e7139848d"
+        },
+        "date": 1790445936425,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3392786189999697,
+            "range": "stddev: 0.0010909878823874893",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.8896995779999393,
+            "range": "stddev: 0.021311188453617694",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1323881683332122,
+            "range": "stddev: 0.005974568171962756",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.950965440999956,
+            "range": "stddev: 0.017886604042145583",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.307264020333302,
+            "range": "stddev: 0.005726070930590385",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.37428077166669,
+            "range": "stddev: 0.01471579480699015",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.0049084010001934,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.37337643600017145,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
