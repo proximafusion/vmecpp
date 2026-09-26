@@ -172,7 +172,7 @@ FetchContent_Declare(
 FetchContent_Declare(
   indata2json
   GIT_REPOSITORY https://github.com/jonathanschilling/indata2json.git
-  GIT_TAG f59e3ddd66486b63536f141a786d39c23d654c77
+  GIT_TAG a29c5e3e932df15dd2beab0341b1d7bbe7eb32eb
   GIT_SHALLOW TRUE
 )
 FetchContent_Declare(
