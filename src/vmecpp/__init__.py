@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import enum
 import json
 import logging
@@ -12,15 +13,18 @@ import sys
 import tempfile
 import types
 import typing
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 
+import jax
 import jaxtyping as jt
 import netCDF4
 import numpy as np
 import pydantic
 
-from vmecpp import _util
+from vmecpp import _util, autodiff_wout
+from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
     MagneticFieldResponseTable,
@@ -37,6 +41,8 @@ from vmecpp._iteration import (
 from vmecpp._pydantic_numpy import (
     _DAPPER_TYPE_FIELD,
     BaseModelWithNumpy,
+    FloatOrJax,
+    NpOrJax,
     own_model_fields,
 )
 from vmecpp._rescale import rescale
@@ -490,12 +496,12 @@ class VmecInput(BaseModelWithNumpy):
     """
 
     rbc: SerializableSparseCoefficientArray[
-        jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
     """Boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric"""
 
     zbs: SerializableSparseCoefficientArray[
-        jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
     """Boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric"""
 
@@ -965,24 +971,24 @@ class VmecWOut(BaseModelWithNumpy):
     ]
     """Flag indicating reversed-field pinch configuration."""
 
-    wb: float
+    wb: FloatOrJax
     """Magnetic energy: volume integral of `|B|^2/(2 mu0)`."""
 
-    wp: float
+    wp: FloatOrJax
     """Kinetic energy: volume integral of `p`."""
 
-    rmax_surf: float
+    rmax_surf: FloatOrJax
     """Maximum ``R`` on the plasma boundary over all grid points."""
 
-    rmin_surf: float
+    rmin_surf: FloatOrJax
     """Minimum ``R`` on the plasma boundary over all grid points."""
 
-    zmax_surf: float
+    zmax_surf: FloatOrJax
     """Maximum ``Z`` on the plasma boundary over all grid points."""
 
-    aspect: float
+    aspect: FloatOrJax
     """Aspect ratio (major radius over minor radius) of the plasma boundary."""
-    betapol: float
+    betapol: FloatOrJax
     r"""Poloidal plasma beta.
 
     The ratio of the total thermal energy of the plasma to the total poloidal magnetic
@@ -990,7 +996,7 @@ class VmecWOut(BaseModelWithNumpy):
     / (2 \mu_0)\, dV \right )`
     """
 
-    betator: float
+    betator: FloatOrJax
     r"""Toroidal plasma beta.
 
     The ratio of the total thermal energy of the plasma to the total toroidal magnetic
@@ -998,69 +1004,69 @@ class VmecWOut(BaseModelWithNumpy):
     \mu_0)\, dV \right )`
     """
 
-    betaxis: float
+    betaxis: FloatOrJax
     """Plasma beta on the magnetic axis."""
 
-    b0: float
+    b0: FloatOrJax
     """Toroidal magnetic flux density from poloidal current and magnetic axis position
     at ``phi=0``."""
 
-    rbtor0: float
+    rbtor0: FloatOrJax
     """Poloidal ribbon current at the axis."""
 
-    rbtor: float
+    rbtor: FloatOrJax
     """Poloidal ribbon current at the plasma boundary."""
 
-    IonLarmor: float
+    IonLarmor: FloatOrJax
     """Larmor radius of plasma ions."""
 
-    ctor: float
+    ctor: FloatOrJax
     """Net toroidal plasma current."""
 
-    Aminor_p: float
+    Aminor_p: FloatOrJax
     """Minor radius of the plasma."""
 
-    Rmajor_p: float
+    Rmajor_p: FloatOrJax
     """Major radius of the plasma."""
 
-    volume: typing.Annotated[float, pydantic.Field(alias="volume_p")]
+    volume: typing.Annotated[FloatOrJax, pydantic.Field(alias="volume_p")]
     """Plasma volume."""
 
-    fsqr: float
+    fsqr: FloatOrJax
     """Invariant force residual of the force on ``R`` at end of the run."""
 
-    fsqz: float
+    fsqz: FloatOrJax
     """Invariant force residual of the force on ``Z`` at end of the run."""
 
-    fsql: float
+    fsql: FloatOrJax
     """Invariant force residual of the force on ``lambda`` at end of the run."""
 
-    ftolv: float
+    ftolv: FloatOrJax
     """Force tolerance value used to determine convergence."""
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
     itfsq: int = 0
     """Number of force-balance iterations after which the run terminated."""
 
-    phipf: jt.Float[np.ndarray, "n_surfaces"]
+    phipf: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed toroidal magnetic flux ``phi'`` on the full-
     grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    chipf: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    chipf: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Radial derivative of enclosed poloidal magnetic flux ``chi'`` on the full-
     grid."""
 
-    jcuru: jt.Float[np.ndarray, "n_surfaces"]
+    jcuru: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed poloidal current on full-grid."""
 
-    jcurv: jt.Float[np.ndarray, "n_surfaces"]
+    jcurv: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed toroidal current on full-grid."""
 
     # Default initialized so reading stays backwards compatible pre v0.4.0
-    fsqt: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    fsqt: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the total force residual along the run.
@@ -1068,28 +1074,28 @@ class VmecWOut(BaseModelWithNumpy):
     This is the sum of ``force_residual_r``, ``force_residual_z``, and ``force_residual_lambda``.
     """
 
-    force_residual_r: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    force_residual_r: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the r radial force residual along the run."""
 
-    force_residual_z: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    force_residual_z: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the z vertical force residual along the run."""
 
-    force_residual_lambda: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    force_residual_lambda: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the lambda force residual along the run."""
 
-    delbsq: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    delbsq: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the force residual at the vacuum boundary along the run."""
 
     restart_reason_timetrace: typing.Annotated[
-        jt.Int[np.ndarray, "time"],
+        jt.Int[NpOrJax, "time"],
         pydantic.Field(alias="restart_reasons"),
         pydantic.BeforeValidator(lambda x: np.array(x).astype(np.int64)),
     ] = pydantic.Field(default_factory=lambda: np.array([], dtype=np.int64))
@@ -1099,41 +1105,41 @@ class VmecWOut(BaseModelWithNumpy):
     instead of integer status codes.
     """
 
-    wdot: jt.Float[np.ndarray, "time"] = pydantic.Field(
+    wdot: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     """Evolution of the MHD energy decay along the run."""
 
-    jdotb: jt.Float[np.ndarray, "n_surfaces"]
+    jdotb: jt.Float[NpOrJax, "n_surfaces"]
     r"""Flux-surface-averaged :math:`\langle j \cdot B \rangle` on full-grid."""
 
-    bdotb: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    bdotb: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Flux-surface-averaged :math:`\langle B \cdot B \rangle` on full-grid."""
 
-    bdotgradv: jt.Float[np.ndarray, "n_surfaces"]
+    bdotgradv: jt.Float[NpOrJax, "n_surfaces"]
     r"""Flux-surface-averaged toroidal magnetic field component :math:`B \cdot \nabla v`
     on full-grid."""
 
-    DMerc: jt.Float[np.ndarray, "n_surfaces"]
+    DMerc: jt.Float[NpOrJax, "n_surfaces"]
     """Full Mercier stability criterion on the full-grid."""
 
-    equif: jt.Float[np.ndarray, "n_surfaces"]
+    equif: jt.Float[NpOrJax, "n_surfaces"]
     """Radial force balance residual on full-grid."""
 
-    potvac: jt.Float[np.ndarray, "mnpd"] | None = None
+    potvac: jt.Float[NpOrJax, "mnpd"] | None = None
     """Fourier coefficients of Nestor's scalar magnetic potential, ``sin(mu - nv)``
     followed by ``cos(mu - nv)``. ``None`` for a fixed-boundary run."""
 
-    xmpot: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_pot"]] | None = None
+    xmpot: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_pot"]] | None = None
     """Poloidal mode numbers ``m`` for the ``potvac`` coefficients.
 
     ``None`` for a
     fixed-boundary run.
     """
 
-    xnpot: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_pot"]] | None = None
+    xnpot: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_pot"]] | None = None
     """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
     ``potvac`` coefficients.
 
@@ -1141,85 +1147,85 @@ class VmecWOut(BaseModelWithNumpy):
     """
 
     # In wout these are stored as float64, although they only take integer values.
-    xm: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xm: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode"]]
     """Poloidal mode numbers ``m`` for the Fourier coefficients in the state vector."""
 
-    xn: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode"]]
+    xn: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode"]]
     """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
     Fourier coefficients in the state vector."""
 
-    xm_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xm_nyq: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_nyq"]]
     """Poloidal mode numbers ``m`` for the Fourier coefficients in the Nyquist-
     quantities."""
 
-    xn_nyq: SerializeIntAsFloat[jt.Int[np.ndarray, "mn_mode_nyq"]]
+    xn_nyq: SerializeIntAsFloat[jt.Int[NpOrJax, "mn_mode_nyq"]]
     """Toroidal mode numbers times number of toroidal field periods ``n * nfp`` for the
     Fourier coefficients in the Nyquist-quantities."""
 
-    mass: jt.Float[np.ndarray, "n_surfaces"]
+    mass: jt.Float[NpOrJax, "n_surfaces"]
     """Plasma mass profile ``m`` on half-grid."""
 
-    buco: jt.Float[np.ndarray, "n_surfaces"]
+    buco: jt.Float[NpOrJax, "n_surfaces"]
     """Profile of enclosed toroidal current ``I`` on half-grid."""
 
-    bvco: jt.Float[np.ndarray, "n_surfaces"]
+    bvco: jt.Float[NpOrJax, "n_surfaces"]
     """Profile of enclosed poloidal ribbon current ``G`` on half-grid."""
 
-    phips: jt.Float[np.ndarray, "n_surfaces"]
+    phips: jt.Float[NpOrJax, "n_surfaces"]
     """Radial derivative of enclosed toroidal magnetic flux ``phi'`` on the half-
     grid."""
 
-    bmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (cos) of the magnetic field strength ``|B|`` on the half-
     grid."""
 
-    gmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    gmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the Jacobian :math:`\sqrt{g}` on the half-grid."""
 
-    bsubumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{\theta}` on the half-grid."""
 
-    bsubvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{\phi}` on the half-grid."""
 
-    bsubsmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
     :math:`B_{s}` on the full- grid."""
 
-    bsupumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\theta}` on the half-grid."""
 
-    bsupvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"]
+    bsupvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    currumnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] = pydantic.Field(
+    currumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid."""
 
     # Defaulted for backwards compatibility with old wout files
-    currvmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] = pydantic.Field(
+    currvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid."""
 
-    rmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    rmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (cos) for ``R`` of the geometry of the flux surfaces on the
     full- grid."""
 
-    zmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    zmns: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (sin) for ``Z`` of the geometry of the flux surfaces on the
     full- grid."""
 
-    lmns: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    lmns: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (sin) for ``lambda`` stream function on the half-grid."""
 
-    lmns_full: jt.Float[np.ndarray, "mn_mode n_surfaces"]
+    lmns_full: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (sin) for ``lambda`` stream function on the full-grid.
 
     This quantity is VMEC++ specific and required for hot-restart to work properly. We
@@ -1227,19 +1233,19 @@ class VmecWOut(BaseModelWithNumpy):
     with lmns.
     """
 
-    rmns: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    rmns: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (sin) for `R` of the geometry of the flux surfaces on the
     full-grid; non-stellarator-symmetric."""
 
-    zmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    zmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (cos) for `Z` of the geometry of the flux surfaces on the
     full-grid; non-stellarator-symmetric."""
 
-    lmnc: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    lmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (cos) for `lambda` stream function on the half-grid; non-
     stellarator-symmetric."""
 
-    lmnc_full: jt.Float[np.ndarray, "mn_mode n_surfaces"] | None = None
+    lmnc_full: jt.Float[NpOrJax, "mn_mode n_surfaces"] | None = None
     """Fourier coefficients (cos) for `lambda` stream function on the full-grid; non-
     stellarator-symmetric.
 
@@ -1249,39 +1255,39 @@ class VmecWOut(BaseModelWithNumpy):
     configurations).
     """
 
-    gmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    gmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the Jacobian :math:`\sqrt{g}` on the half-grid;
     non-stellarator-symmetric."""
 
-    bmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     """Fourier coefficients (sin) of the magnetic field strength ``|B|`` on the half-
     grid; non-stellarator-symmetric."""
 
-    bsubumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsubumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the covariant magnetic field component
     :math:`B_{\theta}` on the half-grid; non-stellarator-symmetric."""
 
-    bsubvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsubvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the covariant magnetic field component
     :math:`B_{\phi}` on the half-grid; non-stellarator-symmetric."""
 
-    bsubsmnc: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsubsmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     """Fourier coefficients (cos) of the covariant magnetic field component
     :math:`B_{s}` on the full- grid; non-stellarator-symmetric."""
 
-    bsupumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsupumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
     :math:`B^{\theta}` on the half-grid; non-stellarator-symmetric."""
 
-    bsupvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    bsupvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
     :math:`B^{\phi}` on the half-grid; non-stellarator-symmetric."""
 
-    currumns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    currumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\theta}` on the full-grid; non-
     stellarator-symmetric."""
 
-    currvmns: jt.Float[np.ndarray, "mn_mode_nyq n_surfaces"] | None = None
+    currvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\zeta}` on the full-grid; non-
     stellarator-symmetric."""
 
@@ -1294,34 +1300,34 @@ class VmecWOut(BaseModelWithNumpy):
     piota_type: ProfileType
     """Parametrization of iota profile (copied from input)."""
 
-    am: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
+    am: ProfileCoeffType[jt.Float[NpOrJax, "_preset"]]
     """Mass/pressure profile coefficients (copied from input)."""
 
-    ac: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
+    ac: ProfileCoeffType[jt.Float[NpOrJax, "_preset"]]
     """Enclosed toroidal current profile coefficients (copied from input)."""
 
-    ai: ProfileCoeffType[jt.Float[np.ndarray, "_preset"]]
+    ai: ProfileCoeffType[jt.Float[NpOrJax, "_preset"]]
     """Iota profile coefficients (copied from input)."""
 
-    am_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
+    am_aux_s: AuxSType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline mass/pressure profile: knot locations in ``s`` (copied from input)."""
 
-    am_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
+    am_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline mass/pressure profile: values at knots (copied from input)."""
 
-    ac_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
+    ac_aux_s: AuxSType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline toroidal current profile: knot locations in ``s`` (copied from input)."""
 
-    ac_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
+    ac_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline toroidal current profile: values at knots (copied from input)."""
 
-    ai_aux_s: AuxSType[jt.Float[np.ndarray, "_ndfmax"]]
+    ai_aux_s: AuxSType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline iota profile: knot locations in ``s`` (copied from input)."""
 
-    ai_aux_f: AuxFType[jt.Float[np.ndarray, "_ndfmax"]]
+    ai_aux_f: AuxFType[jt.Float[NpOrJax, "_ndfmax"]]
     """Spline iota profile: values at knots (copied from input)."""
 
-    gamma: float
+    gamma: FloatOrJax
     r"""Adiabatic index :math:`\gamma` (copied from input)."""
 
     mgrid_file: typing.Annotated[str, pydantic.Field(max_length=200)]
@@ -1331,7 +1337,7 @@ class VmecWOut(BaseModelWithNumpy):
     """Number of external coil currents."""
 
     extcur: typing.Annotated[
-        jt.Float[np.ndarray, "ext_current"],
+        jt.Float[NpOrJax, "ext_current"],
         pydantic.BeforeValidator(lambda x: x if np.shape(x) != () else np.array([])),
         pydantic.WrapSerializer(
             lambda x, handler, _: (
@@ -1351,13 +1357,13 @@ class VmecWOut(BaseModelWithNumpy):
     """Indicates if the mgrid file was normalized to unit currents ("S") or not
     ("R")."""
 
-    iotas: jt.Float[np.ndarray, "n_surfaces"]
+    iotas: jt.Float[NpOrJax, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the half-grid."""
 
-    iotaf: jt.Float[np.ndarray, "n_surfaces"]
+    iotaf: jt.Float[NpOrJax, "n_surfaces"]
     r"""Rotational transform :math:`\iota` on the full-grid."""
 
-    betatotal: float
+    betatotal: FloatOrJax
     r"""Total plasma beta.
 
     The ratio of the total thermal energy of the plasma to the total magnetic energy.
@@ -1366,79 +1372,79 @@ class VmecWOut(BaseModelWithNumpy):
     )`
     """
 
-    raxis_cc: jt.Float[np.ndarray, "ntor_plus_1"]
+    raxis_cc: jt.Float[NpOrJax, "ntor_plus_1"]
     """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry."""
 
-    zaxis_cs: jt.Float[np.ndarray, "ntor_plus_1"]
+    zaxis_cs: jt.Float[NpOrJax, "ntor_plus_1"]
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry."""
 
-    raxis_cs: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    raxis_cs: jt.Float[NpOrJax, "ntor_plus_1"] | None = None
     """Fourier coefficients of :math:`R(phi)` of the magnetic axis geometry; non-
     stellarator-symmetric."""
 
-    zaxis_cc: jt.Float[np.ndarray, "ntor_plus_1"] | None = None
+    zaxis_cc: jt.Float[NpOrJax, "ntor_plus_1"] | None = None
     """Fourier coefficients of :math:`Z(phi)` of the magnetic axis geometry; non-
     stellarator-symmetric."""
 
-    vp: jt.Float[np.ndarray, "n_surfaces"]
+    vp: jt.Float[NpOrJax, "n_surfaces"]
     r"""Differential volume :math:`V' = \frac{\partial V}{\partial s}` on half-grid."""
 
-    presf: jt.Float[np.ndarray, "n_surfaces"]
+    presf: jt.Float[NpOrJax, "n_surfaces"]
     """Kinetic pressure ``p`` on the full-grid."""
 
-    pres: jt.Float[np.ndarray, "n_surfaces"]
+    pres: jt.Float[NpOrJax, "n_surfaces"]
     """Kinetic pressure ``p`` on the half-grid."""
 
-    phi: jt.Float[np.ndarray, "n_surfaces"]
+    phi: jt.Float[NpOrJax, "n_surfaces"]
     r"""Enclosed toroidal magnetic flux :math:`\phi` on the full-grid."""
 
     signgs: int
     """Sign of the Jacobian of the coordinate transform between flux coordinates and
     cylindrical coordinates."""
 
-    volavgB: float
+    volavgB: FloatOrJax
     """Volume-averaged magnetic field strength."""
 
     # Defaulted for backwards compatibility with old wout files.
-    q_factor: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    q_factor: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Safety factor :math:`q = 1/\iota` on the full-grid."""
 
     # Defaulted for backwards compatibility with old wout files.
-    chi: jt.Float[np.ndarray, "n_surfaces"] = pydantic.Field(
+    chi: jt.Float[NpOrJax, "n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
     r"""Enclosed poloidal magnetic flux :math:`\chi` on the full-grid."""
 
-    specw: jt.Float[np.ndarray, "n_surfaces"]
+    specw: jt.Float[NpOrJax, "n_surfaces"]
     """Spectral width ``M`` on the full-grid."""
 
-    over_r: jt.Float[np.ndarray, "n_surfaces"]
+    over_r: jt.Float[NpOrJax, "n_surfaces"]
     r"""``<\tau / R> / V'`` on half-grid.
 
     :math:`\left\langle \frac{\tau}{R} \right\rangle / V'`
     """
 
-    DShear: jt.Float[np.ndarray, "n_surfaces"]
+    DShear: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to magnetic shear."""
 
-    DWell: jt.Float[np.ndarray, "n_surfaces"]
+    DWell: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to magnetic well."""
 
-    DCurr: jt.Float[np.ndarray, "n_surfaces"]
+    DCurr: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to plasma currents."""
 
-    DGeod: jt.Float[np.ndarray, "n_surfaces"]
+    DGeod: jt.Float[NpOrJax, "n_surfaces"]
     """Mercier stability criterion contribution due to geodesic curvature."""
 
     niter: int
     """Number of force-balance iterations taken to converge."""
 
-    beta_vol: jt.Float[np.ndarray, "n_surfaces"]
+    beta_vol: jt.Float[NpOrJax, "n_surfaces"]
     """Flux-surface averaged plasma beta on half-grid."""
 
-    version_: float
+    version_: FloatOrJax
     """Version number of VMEC, that this VMEC++ wout file is compatible with.
 
     Some codes change how they interpret values in the wout file depending on this
@@ -1601,15 +1607,17 @@ class VmecWOut(BaseModelWithNumpy):
                 elif value is None:
                     # Skip None values (e.g., asymmetric arrays when lasym=False)
                     continue
-                elif field_type is np.ndarray or field_type is list:
+                elif isinstance(value, (np.ndarray, list, jt.Array)):
                     value_array = np.array(value)
                     # Fallback to default dimension names like dim_00001, dim_00002, etc.
                     shape_string = tuple(
                         [f"dim_{dim:05d}" for dim in value_array.shape]
                     )
-                    # Asymmetric arrays are annotated as `<array type> | None`;
-                    # unwrap such unions to recover the jaxtyping array
-                    # annotation that carries the dimension names.
+                    # Array fields are annotated as `jt.Float[NpOrJax, ...]`,
+                    # which jaxtyping expands to a union of one array type per
+                    # backend, and asymmetric arrays additionally as `... | None`;
+                    # unwrap such unions to recover a jaxtyping array annotation
+                    # that carries the dimension names.
                     annotation = (
                         field_info.annotation if field_info is not None else None
                     )
@@ -1622,6 +1630,13 @@ class VmecWOut(BaseModelWithNumpy):
                             for arg in typing.get_args(annotation)
                             if arg is not type(None)
                         ]
+                        if all(
+                            isinstance(arg, type)
+                            and issubclass(arg, jt.AbstractArray)
+                            and arg.dim_str == non_none_args[0].dim_str
+                            for arg in non_none_args
+                        ):
+                            non_none_args = non_none_args[:1]
                         annotation = (
                             non_none_args[0] if len(non_none_args) == 1 else None
                         )
@@ -1844,6 +1859,81 @@ class VmecWOut(BaseModelWithNumpy):
             attrs.setdefault("ai_aux_s", np.array([]))
             attrs.setdefault("ai_aux_f", np.array([]))
         return VmecWOut.model_validate(attrs, by_alias=True)
+
+
+def _frozen(value):
+    """A hashable stand-in for a model field value."""
+    if isinstance(value, np.ndarray):
+        return ("ndarray", value.shape, value.dtype.str, value.tobytes())
+    if isinstance(value, float):
+        return ("float", value.hex())  # NaN compares equal to NaN
+    if isinstance(value, list | tuple):
+        return tuple(_frozen(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((key, _frozen(item)) for key, item in value.items()))
+    return value
+
+
+class _ModelAuxData:
+    """Pytree aux data of a pydantic model: its non-leaf fields.
+
+    Equality and hash cover every field but ``unkeyed``, the solver diagnostics
+    of a wout. Those do not key the jit cache, so ``jax.jit`` does not recompile
+    when only ``niter`` differs; a model returned from a compiled function
+    carries them as seen at trace time.
+    """
+
+    __slots__ = ("extra", "fields", "fields_set", "key")
+
+    def __init__(self, fields, extra, fields_set, unkeyed):
+        self.fields = fields
+        self.extra = extra
+        self.fields_set = fields_set
+        self.key = _frozen(
+            {
+                name: value
+                for name, value in {**fields, **extra}.items()
+                if name not in unkeyed
+            }
+        )
+
+    def __eq__(self, other):
+        return isinstance(other, _ModelAuxData) and self.key == other.key
+
+    def __hash__(self):
+        return hash(self.key)
+
+
+def _register_model_pytree(model_type, leaf_names, unkeyed=frozenset()) -> None:
+    leaf_names = tuple(leaf_names)
+
+    def flatten(model):
+        values = model.__dict__
+        fields = {
+            name: value for name, value in values.items() if name not in leaf_names
+        }
+        extra = dict(model.__pydantic_extra__ or {})
+        aux = _ModelAuxData(fields, extra, frozenset(model.model_fields_set), unkeyed)
+        return tuple(values[name] for name in leaf_names), aux
+
+    def unflatten(aux, leaves):
+        return model_type.model_construct(
+            _fields_set=set(aux.fields_set),
+            **aux.fields,
+            **dict(zip(leaf_names, leaves, strict=True)),
+            **aux.extra,
+        )
+
+    jax.tree_util.register_pytree_node(model_type, flatten, unflatten)
+
+
+# The physics fields and the vacuum potential are the leaves; input echoes and
+# sizes key the jit cache, the solver diagnostics travel along without keying it.
+_register_model_pytree(
+    VmecWOut,
+    (*autodiff_wout.WOUT_QUANTITIES, "potvac"),
+    unkeyed=frozenset(autodiff_wout.UNKNOWN_DIAGNOSTICS),
+)
 
 
 class Threed1Volumetrics(BaseModelWithNumpy):
@@ -2454,6 +2544,229 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
+# The boundary is the differentiable input; the other fields key the jit cache.
+_register_model_pytree(VmecInput, ("rbc", "zbs"))
+# Every field of the output and of its C++ tables is a leaf.
+for _model_type in (
+    JxBOut,
+    Mercier,
+    Threed1Volumetrics,
+    Threed1FirstTable,
+    Threed1GeometricAndMagneticQuantities,
+    Threed1AxisGeometry,
+    Threed1Betas,
+    Threed1ShafranovIntegrals,
+    VmecOutput,
+):
+    _register_model_pytree(_model_type, own_model_fields(_model_type))
+
+
+_use_jax_output_stage = contextvars.ContextVar("_use_jax_output_stage", default=True)
+"""Whether run() computes the wout physics fields with the JAX output stage.
+
+The CLI turns it off: a one-shot process would pay the stage's compilation on
+every run, and nothing there differentiates the result.
+"""
+
+
+def _float64():
+    """JAX float64 in the current thread, whatever the caller's jax_enable_x64."""
+    enable_x64 = getattr(jax, "enable_x64", None)
+    if enable_x64 is None:  # jax < 0.7
+        from jax.experimental import (  # noqa: PLC0415
+            enable_x64,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+    return enable_x64(True)
+
+
+@contextlib.contextmanager
+def _float64_on_cpu() -> Generator[None, None, None]:
+    with _float64(), jax.default_device(jax.devices("cpu")[0]):
+        yield
+
+
+def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
+    """The VmecOutput members besides input and wout, from a C++ run."""
+    return {
+        "jxbout": JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout),
+        "mercier": Mercier._from_cpp_mercier(cpp_output_quantities.mercier),
+        "threed1_volumetrics": Threed1Volumetrics._from_cpp_threed1volumetrics(
+            cpp_output_quantities.threed1_volumetrics
+        ),
+        "threed1_first_table": Threed1FirstTable._from_cpp_threed1_first_table(
+            cpp_output_quantities.threed1_first_table
+        ),
+        "threed1_geometric_magnetic": Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
+            cpp_output_quantities.threed1_geometric_magnetic
+        ),
+        "threed1_axis": Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
+            cpp_output_quantities.threed1_axis
+        ),
+        "threed1_betas": Threed1Betas._from_cpp_threed1_betas(
+            cpp_output_quantities.threed1_betas
+        ),
+        "threed1_shafranov_integrals": (
+            Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
+                cpp_output_quantities.threed1_shafranov_integrals
+            )
+        ),
+    }
+
+
+def _as_numpy(value):
+    if value is None:
+        return None
+    array = np.array(value)
+    return float(array) if array.ndim == 0 else array
+
+
+def _iota_or_current(vmec_input: VmecInput, iotas, buco) -> dict[str, typing.Any]:
+    """The prescribed profile of a C++ run, from its wout, for wout_quantities.
+
+    The flux increments of the geometry reproduce iota only to roundoff that the
+    cumulative sums amplify; with ncurr = 1, solving chi' from the enclosed current as
+    the solver does keeps <B_u> at the prescribed current to roundoff.
+    """
+    if vmec_input.ncurr == 1:
+        return {"current_half": buco[1:]}
+    return {"iota_half": iotas[1:]}
+
+
+def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
+    """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
+
+    Input echoes, solver diagnostics and the free-boundary vacuum potential come from
+    the C++ run; the mass profile too, so that every profile type is covered, and the
+    prescribed iota or toroidal current profile.
+    """
+    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
+    with _float64_on_cpu():
+        quantities = autodiff_wout.wout_quantities(
+            _geometry.make(cpp_output_quantities),
+            vmec_input,
+            mass_half=np.asarray(wout.mass)[1:] * autodiff_wout.MU_0,
+            **_iota_or_current(vmec_input, wout.iotas, wout.buco),
+        )
+        update = {name: _as_numpy(value) for name, value in quantities.items()}
+    return wout.model_copy(update=update)
+
+
+def _output_mode(verbose: bool | int | OutputMode) -> OutputMode:
+    output_mode = OutputMode(verbose)
+    if output_mode == OutputMode.PROGRESS:
+        # Rich printing has been requested, let's auto detect if the terminal
+        # is TTY capable
+        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+        if not is_tty:
+            output_mode = OutputMode.PROGRESS_NON_TTY
+    if output_mode in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
+        _print_progress_tip_once()
+    return output_mode
+
+
+def _is_traced(value) -> bool:
+    """Whether value is a JAX tracer, i.e. run() is called under a transformation."""
+    try:
+        np.asarray(value)
+    except jax.errors.TracerArrayConversionError:
+        return True
+    return False
+
+
+def _run_traced(
+    vmec_input: VmecInput,
+    magnetic_field,
+    *,
+    max_threads: int | None,
+    verbose: bool | int | OutputMode,
+    restart_from: VmecOutput | None,
+) -> VmecOutput:
+    """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
+
+    The forward solve is a full C++ run; its VJP needs an Enzyme-enabled build.
+    When the forward solve is observable (eager calls, ``jax.grad``), jxbout,
+    mercier, the threed1 tables and the wout diagnostics come from its C++
+    output stage; under ``jax.jit`` they are ``None`` and
+    :data:`vmecpp.autodiff_wout.UNKNOWN_DIAGNOSTICS`.
+    """
+    from vmecpp import autodiff  # noqa: PLC0415
+
+    unsupported = {
+        "a free-boundary input": vmec_input.lfreeb,
+        "lasym=True": vmec_input.lasym,
+        # VmecModel's geometry, at which the VJP linearizes, is left-handed
+        "signgs=+1": vmec_input.signgs != -1,
+        # the adjoint omits the dependence of the mass profile on R_00
+        "gamma != 0": vmec_input.gamma != 0.0,
+        "Fourier continuation": not isinstance(vmec_input.mpol, int)
+        or not isinstance(vmec_input.ntor, int),
+        "magnetic_field": magnetic_field is not None,
+        "restart_from": restart_from is not None,
+    }
+    for name, present in unsupported.items():
+        if present:
+            msg = f"run() with a traced boundary does not support {name}"
+            raise NotImplementedError(msg)
+    if any(
+        np.dtype(getattr(value, "dtype", np.float64)) != np.float64
+        for value in (vmec_input.rbc, vmec_input.zbs)
+    ):
+        warnings.warn(
+            "The traced boundary is not float64, so the solve sees it rounded; "
+            "enable jax_enable_x64 to differentiate at full precision.",
+            stacklevel=3,
+        )
+    shape = np.shape(vmec_input.rbc)
+    template = vmec_input.model_copy(
+        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape)}
+    )
+    solver = autodiff._RunSolver(
+        template, max_threads=max_threads, verbose=_output_mode(verbose).value
+    )
+    with _float64():
+        boundary = jax.numpy.stack(
+            [
+                jax.numpy.asarray(vmec_input.rbc, dtype=np.float64),
+                jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
+            ]
+        )
+        geometry, extra = solver._solve(boundary)
+        mass_half, iotas, buco = jax.numpy.split(jax.lax.stop_gradient(extra), 3)
+        # With ncurr = 1, iota follows from the geometry through the current
+        # constraint, and so does its derivative; otherwise it is prescribed.
+        profile = _iota_or_current(
+            vmec_input, jax.numpy.pad(iotas, (1, 0)), jax.numpy.pad(buco, (1, 0))
+        )
+        # The forward callback has run unless this is a jax.jit trace.
+        jax.effects_barrier()
+        forward = solver.forward_outputs()
+        if forward is None:
+            fields = {
+                **autodiff_wout.static_fields(template),
+                **autodiff_wout.UNKNOWN_DIAGNOSTICS,
+            }
+            others = dict.fromkeys(
+                (
+                    "jxbout",
+                    "mercier",
+                    "threed1_volumetrics",
+                    "threed1_first_table",
+                    "threed1_geometric_magnetic",
+                    "threed1_axis",
+                    "threed1_betas",
+                    "threed1_shafranov_integrals",
+                )
+            )
+        else:
+            fields = forward["wout_fields"]
+            others = forward["tables"]
+        quantities = autodiff_wout.wout_quantities(
+            geometry, template, mass_half=mass_half, **profile
+        )
+    wout = VmecWOut.model_construct(**{**fields, **quantities})
+    return VmecOutput.model_construct(input=vmec_input, wout=wout, **others)
+
+
 _progress_tip_shown = False
 
 
@@ -2511,6 +2824,15 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
+    if _is_traced(input.rbc) or _is_traced(input.zbs):
+        return _run_traced(
+            input,
+            magnetic_field,
+            max_threads=max_threads,
+            verbose=verbose,
+            restart_from=restart_from,
+        )
+
     if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
         return _run_fourier_continuation(
             input,
@@ -2537,16 +2859,7 @@ def run(
         )
         raise RuntimeError(msg)
 
-    _verbose = OutputMode(verbose)
-
-    if _verbose == OutputMode.PROGRESS:
-        # Rich printing has been requested, let's auto detect if the terminal
-        # is TTY capable
-        is_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
-        if not is_tty:
-            _verbose = OutputMode.PROGRESS_NON_TTY
-    if _verbose in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
-        _print_progress_tip_once()
+    _verbose = _output_mode(verbose)
 
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
@@ -2567,41 +2880,12 @@ def run(
             verbose=_verbose.value,
         )
 
-    cpp_wout = cpp_output_quantities.wout
-    wout = VmecWOut._from_cpp_wout(cpp_wout)
-    jxbout = JxBOut._from_cpp_jxbout(cpp_output_quantities.jxbout)
-    mercier = Mercier._from_cpp_mercier(cpp_output_quantities.mercier)
-    threed1_volumetrics = Threed1Volumetrics._from_cpp_threed1volumetrics(
-        cpp_output_quantities.threed1_volumetrics
-    )
-    threed1_first_table = Threed1FirstTable._from_cpp_threed1_first_table(
-        cpp_output_quantities.threed1_first_table
-    )
-    threed1_geometric_magnetic = Threed1GeometricAndMagneticQuantities._from_cpp_threed1_geometric_and_magnetic_quantities(
-        cpp_output_quantities.threed1_geometric_magnetic
-    )
-    threed1_axis = Threed1AxisGeometry._from_cpp_threed1_axis_geometry(
-        cpp_output_quantities.threed1_axis
-    )
-    threed1_betas = Threed1Betas._from_cpp_threed1_betas(
-        cpp_output_quantities.threed1_betas
-    )
-    threed1_shafranov_integrals = (
-        Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
-            cpp_output_quantities.threed1_shafranov_integrals
-        )
-    )
+    if _use_jax_output_stage.get():
+        wout = _wout_from_output_stage(input, cpp_output_quantities)
+    else:
+        wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     return VmecOutput(
-        input=input,
-        wout=wout,
-        jxbout=jxbout,
-        mercier=mercier,
-        threed1_volumetrics=threed1_volumetrics,
-        threed1_first_table=threed1_first_table,
-        threed1_geometric_magnetic=threed1_geometric_magnetic,
-        threed1_axis=threed1_axis,
-        threed1_betas=threed1_betas,
-        threed1_shafranov_integrals=threed1_shafranov_integrals,
+        input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
     )
 
 

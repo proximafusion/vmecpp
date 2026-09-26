@@ -302,25 +302,25 @@ class Vmec(Optimizable):
         """Return the plasma aspect ratio."""
         self.run()
         assert self.wout is not None
-        return self.wout.aspect
+        return float(self.wout.aspect)
 
     def volume(self) -> float:
         """Return the volume inside the VMEC last closed flux surface."""
         self.run()
         assert self.wout is not None
-        return self.wout.volume_p
+        return float(self.wout.volume_p)
 
     def iota_axis(self) -> float:
         """Return the rotational transform on axis."""
         self.run()
         assert self.wout is not None
-        return self.wout.iotaf[0]
+        return float(self.wout.iotaf[0])
 
     def iota_edge(self) -> float:
         """Return the rotational transform at the boundary."""
         self.run()
         assert self.wout is not None
-        return self.wout.iotaf[-1]
+        return float(self.wout.iotaf[-1])
 
     def mean_iota(self) -> float:
         """Return the mean rotational transform.
@@ -428,7 +428,7 @@ class Vmec(Optimizable):
         mu0 = 4 * np.pi * (1.0e-7)
         # The formula in the next line follows from Ampere's law:
         # \int \vec{B} dot (d\vec{r} / d phi) d phi = mu_0 I.
-        return 2 * np.pi * bvco / mu0
+        return float(2 * np.pi * bvco / mu0)
 
     @property
     def boundary(self) -> SurfaceRZFourier:
@@ -489,8 +489,8 @@ class Vmec(Optimizable):
             target_mpol,
             target_ntor,
         )
-        vi.rbc.fill(0.0)
-        vi.zbs.fill(0.0)
+        np.asarray(vi.rbc).fill(0.0)
+        np.asarray(vi.zbs).fill(0.0)
         rbs = None
         zbc = None
         if vi.lasym:

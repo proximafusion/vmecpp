@@ -92,6 +92,9 @@ def main() -> None:
         vmecpp._progress_tip_shown = True
 
     vmec_input = vmecpp.VmecInput.from_file(args.input_file)
+    # The wout of a CLI run comes straight from the C++ output stage, sparing
+    # every invocation the JAX compilation of vmecpp.autodiff_wout.
+    vmecpp._use_jax_output_stage.set(False)
     output = vmecpp.run(vmec_input, max_threads=args.max_threads, verbose=verbose)
 
     configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
