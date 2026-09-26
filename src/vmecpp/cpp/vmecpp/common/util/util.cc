@@ -346,4 +346,33 @@ int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
   return std::min(max_threads, n_znt);
 }
 
+int GrantedThreads(const int requested_threads) {
+  int granted_threads = 1;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(requested_threads)
+  {
+#pragma omp single
+    granted_threads = omp_get_num_threads();
+  }
+#else
+  (void)requested_threads;
+#endif  // _OPENMP
+  return granted_threads;
+}
+
+int GrantedNestedThreads(const int outer_threads, const int nested_threads) {
+  int granted_threads = 1;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(outer_threads)
+  {
+#pragma omp single
+    granted_threads = GrantedThreads(nested_threads);
+  }
+#else
+  (void)outer_threads;
+  (void)nested_threads;
+#endif  // _OPENMP
+  return granted_threads;
+}
+
 }  // namespace vmecpp

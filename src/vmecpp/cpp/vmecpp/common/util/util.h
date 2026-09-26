@@ -289,6 +289,16 @@ int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 // clause.
 int vmec_adjust_vacuum_num_threads(int max_threads, int n_znt);
 
+// Number of threads the OpenMP runtime grants a parallel region that requests
+// requested_threads from the calling context. OMP_THREAD_LIMIT and the active
+// nesting levels can make it smaller than the request; without OpenMP it is 1.
+int GrantedThreads(int requested_threads);
+
+// Number of threads the OpenMP runtime grants a parallel region that requests
+// nested_threads from the single thread of a team of outer_threads threads, as
+// IdealMhdModel::update opens the vacuum solve inside the radial solve.
+int GrantedNestedThreads(int outer_threads, int nested_threads);
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_COMMON_UTIL_UTIL_H_

@@ -212,6 +212,10 @@ class HandoverStorage {
   // First error from the nested vacuum team; reset to OK before each solve.
   absl::Status vacuum_status = absl::OkStatus();
 
+  // Threads the runtime granted the last nested vacuum team, checked against
+  // the team the vacuum solvers are partitioned for.
+  int vacuum_team_size = 0;
+
  private:
   const Sizes& s_;
 
