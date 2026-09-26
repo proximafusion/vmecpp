@@ -685,6 +685,49 @@ def test_raise_invalid_threadcount():
         vmecpp.run(vmec_input, max_threads=0)
 
 
+def test_run_under_an_openmp_thread_limit():
+    """Runs under OMP_THREAD_LIMIT=2 get fewer threads than they request.
+
+    The fixed-boundary run requests four radial threads and gets two, which makes it the
+    run with two threads. The free-boundary run requests two radial threads with a
+    nested vacuum team of two, which the limit leaves one thread.
+    """
+    script = f"""\
+from pathlib import Path
+
+import vmecpp
+
+data = Path({str(TEST_DATA_DIR)!r})
+fixed = vmecpp.VmecInput.from_file(data / "solovev.json")
+print("fixed", repr(vmecpp.run(fixed, max_threads=4, verbose=False).wout.volume))
+free = vmecpp.VmecInput.from_file(data / "cth_like_free_bdy.json")
+free.mgrid_file = str(data / "mgrid_cth_like.nc")
+print("free", repr(vmecpp.run(free, max_threads=2, verbose=False).wout.volume))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "OMP_THREAD_LIMIT": "2"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    volumes = {}
+    for line in result.stdout.splitlines():
+        words = line.split()
+        if len(words) == 2 and words[0] in ("fixed", "free"):
+            volumes[words[0]] = float(words[1])
+
+    fixed = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    two_threads = vmecpp.run(fixed, max_threads=2, verbose=False)
+    assert volumes["fixed"] == two_threads.wout.volume
+
+    free = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    free.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
+    two_vacuum_threads = vmecpp.run(free, max_threads=2, verbose=False)
+    assert volumes["free"] == pytest.approx(two_vacuum_threads.wout.volume, rel=1e-10)
+
+
 def test_vmec_input_validation():
     test_file = TEST_DATA_DIR / "solovev.json"
     vmec_input = vmecpp.VmecInput.from_file(test_file)

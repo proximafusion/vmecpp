@@ -127,10 +127,12 @@ class Vmec {
 
   // -------------------
 
-  // Build the free-boundary vacuum solvers (fb_vac_/tp_vac_) and compute
-  // vac_num_threads_. Call once, only when lfreeb is set and after the mgrid
-  // has been loaded. The solvers are ns-independent and persist across
-  // multigrid steps.
+  // Size the free-boundary vacuum team (vac_num_threads_) to the threads the
+  // runtime grants next to the radial team of num_threads_ threads, and build
+  // the vacuum solvers (fb_vac_/tp_vac_) when that size changes. Call only
+  // when lfreeb is set, after num_threads_ is set for the multigrid step and
+  // the mgrid has been loaded. The solvers are ns-independent and persist
+  // across multigrid steps.
   void SetupVacuumSolvers();
 
   absl::StatusOr<bool> InitializeRadial(
