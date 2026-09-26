@@ -121,6 +121,29 @@ def test_hot_restart_matches_ns_against_the_wout_of_the_state():
         vmecpp.run(finer, verbose=False, restart_from=vmec_output)
 
 
+def test_repeated_ns_array_entry_resumes_the_previous_step():
+    single_step = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    single_step.ns_array = np.array([11])
+    single_step.ftol_array = np.array([1.0e-12])
+    single_step.niter_array = np.array([2000])
+    reference = vmecpp.run(single_step, verbose=False)
+
+    # the second entry tightens ftol on the radial grid of the first
+    repeated = single_step.model_copy(
+        update={
+            "ns_array": np.array([11, 11]),
+            "ftol_array": np.array([1.0e-8, 1.0e-12]),
+            "niter_array": np.array([2000, 2000]),
+        }
+    )
+    vmec_output = vmecpp.run(repeated, verbose=False)
+
+    # the second step starts from the converged first step
+    assert vmec_output.wout.niter < reference.wout.niter
+    np.testing.assert_allclose(vmec_output.wout.rmnc, reference.wout.rmnc, atol=1e-7)
+    np.testing.assert_allclose(vmec_output.wout.zmns, reference.wout.zmns, atol=1e-7)
+
+
 @pytest.fixture(scope="module")
 def cma_output() -> vmecpp.VmecOutput:
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")

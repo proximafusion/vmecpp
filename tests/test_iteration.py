@@ -439,11 +439,11 @@ def test_callback_records_iteration_state():
 def test_reinitialize_preserves_lambda_scaling():
     """Reinitialize() must leave the lambda scaling (lamscale) unchanged.
 
-    InitializeRadial accumulates rmsPhiP across calls (Vmec::run resets the
-    constants before each call); without the matching reset in reinitialize(),
-    a second initialization doubles rmsPhiP, rescales lamscale by sqrt(2), and
-    the whole lambda sector (preconditioned residual fsql1 above all) silently
-    diverges from the C++ on every post-reguess trajectory.
+    evalRadialProfiles accumulates rmsPhiP, and InitializeRadial resets the
+    constants before it re-evaluates the profiles; a second initialization that
+    kept them would double rmsPhiP, rescale lamscale by sqrt(2), and shift the
+    whole lambda sector (preconditioned residual fsql1 above all) away from the
+    C++ on every post-reguess trajectory.
     """
     cpp_indata = _single_resolution_indata("solovev", 15, 1.0e-12, 3000)
 

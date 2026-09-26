@@ -319,8 +319,6 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
     const int max_grids = std::min(fc_.multi_ns_grid, maximum_multi_grid_step);
     for (int igrid = -jacob_off_; igrid < max_grids; igrid++) {
-      constants_.reset();
-
       // retrieve settings for (ns, ftol, niter) for current multi-grid
       // iteration
       if (igrid < 0) {
@@ -602,6 +600,11 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   bool linterp = (ns_old < fc_.ns && ns_old != 0);
 
   if (ns_old != fc_.ns) {
+    // rmsPhiP and lamscale belong to the radial grid: evalRadialProfiles below
+    // accumulates rmsPhiP for the new grid and lamscale follows from it. A
+    // step that repeats ns skips this branch and keeps both.
+    constants_.reset();
+
     // ALLOCATE NS-DEPENDENT ARRAYS
 
     // backup current xc, scalxc in xstore, scalxc
