@@ -641,12 +641,18 @@ def test_threed1_free_boundary_bindings(cma_output: vmecpp.VmecOutput):
     run that does not ask carries none."""
     assert cma_output.threed1_free_boundary is None
 
-    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vmec_input.mgrid_file = str(
-        REPO_ROOT / "src" / "vmecpp" / "cpp" / vmec_input.mgrid_file
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
     )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
     vmec_input.return_vacuum_field = True
-    boundary = vmecpp.run(vmec_input, verbose=False).threed1_free_boundary
+    boundary = vmecpp.run(vmec_input, response, verbose=False).threed1_free_boundary
     assert boundary is not None
     for varname in vmecpp.Threed1FreeBoundary.model_fields:
         assert getattr(boundary, varname).shape == boundary.bsqvacf.shape, varname
