@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790504080693,
+  "lastUpdate": 1790509041503,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20471,6 +20471,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3792628040000068,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7a4487508853ac5a470efd8368acc14d734a1b09",
+          "message": "Add public VmecInput.resize() method (#901)\n\nAdd public VmecInput.resize() and use it in simsopt_compat\n\nReplaces the private _to_cpp_vmecindata/_set_mpol_ntor/_from_cpp_vmecindata\nround-trip in Vmec.set_mpol_ntor with a pure-Python resize method on VmecInput.",
+          "timestamp": "2026-09-27T13:29:56+02:00",
+          "tree_id": "6c998a5d0a998c7452fc165cdda078060fdb185f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7a4487508853ac5a470efd8368acc14d734a1b09"
+        },
+        "date": 1790509037211,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7295814562000033,
+            "range": "stddev: 0.021200178992467397",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.3010510263333495,
+            "range": "stddev: 1.1864151359631179",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1126603256667142,
+            "range": "stddev: 0.0048133883170748135",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.3000832033333913,
+            "range": "stddev: 1.0371995305463455",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.479495656000002,
+            "range": "stddev: 0.006341479121518779",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.916723057666711,
+            "range": "stddev: 0.02324787382078899",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.568844180000042,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5122668410001552,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
