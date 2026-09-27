@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790501631419,
+  "lastUpdate": 1790503918963,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20391,6 +20391,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3199976370000286,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9ead5ea53a2145154478b057cf48ddb5fc5805d8",
+          "message": "Size the JAX output stage from the geometry it receives (#900)\n\nWith return_outputs_even_if_not_converged, a run that stops early in a\ncoarser ns_array step returns that step's outputs; the output stage took\nns from the last ns_array entry and failed with a shape mismatch, so\nvmecpp.run raised instead of returning them. cma with one iteration per\nstep stops at ns = 25 with a bad Jacobian and now returns its wout.",
+          "timestamp": "2026-09-27T12:05:02+02:00",
+          "tree_id": "92e0366515ea2e3350571a9d1a4e18cd8ddbfb1e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/9ead5ea53a2145154478b057cf48ddb5fc5805d8"
+        },
+        "date": 1790503911419,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5909310749999918,
+            "range": "stddev: 0.003947333524420252",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.506605698000006,
+            "range": "stddev: 1.0352377811368842",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1342926799999873,
+            "range": "stddev: 0.003367913798464534",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.440388614333339,
+            "range": "stddev: 0.8399228962421744",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.3043449050000124,
+            "range": "stddev: 0.005728472054617304",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.371547683333347,
+            "range": "stddev: 0.04195830128221595",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.255698747999986,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3792628040000068,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
