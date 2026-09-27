@@ -219,6 +219,12 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Return the boundary quantities of a free-boundary run (freeb_data in
+  // Fortran VMEC): the boundary geometry, the plasma-side and vacuum-side
+  // pressures, and the cylindrical field components NESTOR computes on the
+  // vacuum side, on the solver's (zeta, theta) grid.
+  bool return_vacuum_field;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

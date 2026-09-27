@@ -177,6 +177,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.delt, 1.0);
   EXPECT_EQ(indata.tcon0, 0.5);
   EXPECT_EQ(indata.lforbal, false);
+  EXPECT_EQ(indata.return_vacuum_field, false);
 
   // initial guess for magnetic axis
   EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
@@ -527,6 +528,7 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.delt, indata_from_file.delt);
   EXPECT_EQ(indata.tcon0, indata_from_file.tcon0);
   EXPECT_EQ(indata.lforbal, indata_from_file.lforbal);
+  EXPECT_EQ(indata.return_vacuum_field, indata_from_file.return_vacuum_field);
   EXPECT_EQ(indata.raxis_c, indata_from_file.raxis_c);
   EXPECT_EQ(indata.zaxis_s, indata_from_file.zaxis_s);
   EXPECT_EQ(indata.raxis_s, indata_from_file.raxis_s);
@@ -739,6 +741,7 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.delt, indata.delt);
   EXPECT_EQ(copy.tcon0, indata.tcon0);
   EXPECT_EQ(copy.lforbal, indata.lforbal);
+  EXPECT_EQ(copy.return_vacuum_field, indata.return_vacuum_field);
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);
