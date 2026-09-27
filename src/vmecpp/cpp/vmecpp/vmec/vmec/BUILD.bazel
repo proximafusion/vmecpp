@@ -89,3 +89,22 @@ cc_test(
     ],
     size = "medium",
 )
+
+cc_test(
+    name = "energy_hessian_test",
+    srcs = ["energy_hessian_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:li383_low_res",
+        "//vmecpp/test_data:up_down_asym",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "large",
+)
