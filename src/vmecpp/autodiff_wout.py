@@ -770,7 +770,7 @@ def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
     def value(name):
         return jnp.asarray(parameters.get(name, getattr(vmec_input, name)), float)
 
-    def series(c, x, integrate=False):
+    def series(c, x, integrate=False) -> Any:
         if integrate:  # I(s) from the power series of I'(s)
             return x * jnp.polyval((c / jnp.arange(1, c.size + 1))[::-1], x)
         return jnp.polyval(c[::-1], x) if c.size else jnp.zeros_like(x)
