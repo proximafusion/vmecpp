@@ -700,9 +700,13 @@ import vmecpp
 data = Path({str(TEST_DATA_DIR)!r})
 fixed = vmecpp.VmecInput.from_file(data / "solovev.json")
 print("fixed", repr(vmecpp.run(fixed, max_threads=4, verbose=False).wout.volume))
+grid = vmecpp.MakegridParameters.from_file(data / "makegrid_parameters_cth_like.json")
+grid.number_of_r_grid_points = 31
+grid.number_of_phi_grid_points = 36
+grid.number_of_z_grid_points = 20
+field = vmecpp.MagneticFieldResponseTable.from_coils_file(data / "coils.cth_like", grid)
 free = vmecpp.VmecInput.from_file(data / "cth_like_free_bdy.json")
-free.mgrid_file = str(data / "mgrid_cth_like.nc")
-print("free", repr(vmecpp.run(free, max_threads=2, verbose=False).wout.volume))
+print("free", repr(vmecpp.run(free, field, max_threads=2, verbose=False).wout.volume))
 """
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -722,9 +726,17 @@ print("free", repr(vmecpp.run(free, max_threads=2, verbose=False).wout.volume))
     two_threads = vmecpp.run(fixed, max_threads=2, verbose=False)
     assert volumes["fixed"] == two_threads.wout.volume
 
+    grid = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    grid.number_of_r_grid_points = 31
+    grid.number_of_phi_grid_points = 36
+    grid.number_of_z_grid_points = 20
+    field = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", grid
+    )
     free = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    free.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
-    two_vacuum_threads = vmecpp.run(free, max_threads=2, verbose=False)
+    two_vacuum_threads = vmecpp.run(free, field, max_threads=2, verbose=False)
     assert volumes["free"] == pytest.approx(two_vacuum_threads.wout.volume, rel=1e-10)
 
 
