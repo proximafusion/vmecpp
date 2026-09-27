@@ -24,6 +24,13 @@ import netCDF4
 import numpy as np
 import pydantic
 
+try:
+    from jax import enable_x64
+except ImportError:  # jax < 0.7, the last releases for Python 3.10
+    from jax.experimental import (
+        enable_x64,  # pyright: ignore[reportAttributeAccessIssue]
+    )
+
 from vmecpp import _util, autodiff_wout
 from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
@@ -2613,7 +2620,7 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
         profile = {"current_half": np.asarray(wout.buco)[1:]}
     else:
         profile = {"iota_half": np.asarray(wout.iotas)[1:]}
-    with jax.enable_x64(True):
+    with enable_x64(True):
         quantities = autodiff_wout.wout_quantities(
             _geometry.make(cpp_output_quantities),
             vmec_input,
@@ -2691,7 +2698,7 @@ def _run_traced(
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
     )
-    with jax.enable_x64(True):
+    with enable_x64(True):
         boundary = jax.numpy.stack(
             [
                 jax.numpy.asarray(vmec_input.rbc, dtype=np.float64),
