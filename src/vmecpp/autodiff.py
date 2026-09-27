@@ -74,7 +74,7 @@ def _make_indata(template, boundary: np.ndarray):
 # did not converge.
 _VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
 
-# State vectors of recent forward solves, keyed by (solver token, boundary
+# State vectors of recent forward solves, keyed by (solver id, boundary
 # bytes), so the VJP linearizes at the solved state instead of solving again.
 # The cache is module-level and holds NumPy data only: JAX keeps callback
 # closures alive in its caches, so anything a solver instance owned would live
@@ -83,7 +83,8 @@ _FORWARD_SOLVES: collections.OrderedDict[tuple[int, bytes], dict[str, Any]] = (
     collections.OrderedDict()
 )
 _FORWARD_SOLVES_SIZE = 2
-_SOLVER_TOKENS = itertools.count()
+# Unique per solver, so solvers of different inputs never share a cache entry.
+_SOLVER_IDS = itertools.count()
 
 _MU_0 = 4.0e-7 * np.pi
 
@@ -380,8 +381,8 @@ class DifferentiableVmec:
     """
 
     vmec_input: Any
-    _token: int = field(
-        default_factory=lambda: next(_SOLVER_TOKENS),
+    _solver_id: int = field(
+        default_factory=lambda: next(_SOLVER_IDS),
         init=False,
         repr=False,
         compare=False,
@@ -430,7 +431,7 @@ class DifferentiableVmec:
         return (self.geometry_size + self.extra_size,)
 
     def _remember(self, boundary: np.ndarray, solve: dict[str, Any]) -> None:
-        _FORWARD_SOLVES[self._token, np.asarray(boundary).tobytes()] = solve
+        _FORWARD_SOLVES[self._solver_id, np.asarray(boundary).tobytes()] = solve
         while len(_FORWARD_SOLVES) > _FORWARD_SOLVES_SIZE:
             _FORWARD_SOLVES.popitem(last=False)
 
@@ -452,7 +453,9 @@ class DifferentiableVmec:
         A model created cold and set to a solved state reproduces the solved model's
         forces, Hessian products and preconditioner exactly.
         """
-        solve = _FORWARD_SOLVES.pop((self._token, np.asarray(boundary).tobytes()), None)
+        solve = _FORWARD_SOLVES.pop(
+            (self._solver_id, np.asarray(boundary).tobytes()), None
+        )
         state = self._solved_state(boundary) if solve is None else solve["state"]
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary)
         model = _vmecpp.VmecModel.create(indata, self.ns)
@@ -610,8 +613,8 @@ class _RunSolver(DifferentiableVmec):
 
     def forward_outputs(self) -> dict[str, Any] | None:
         """The C++ outputs of this solver's latest forward solve, if it has run."""
-        for (token, _), solve in reversed(_FORWARD_SOLVES.items()):
-            if token == self._token:
+        for (solver_id, _), solve in reversed(_FORWARD_SOLVES.items()):
+            if solver_id == self._solver_id:
                 return solve
         return None
 
