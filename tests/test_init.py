@@ -158,8 +158,8 @@ def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
 
 
 def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
-    """An mgrid file whose mode is "N", as simsopt's mgrid writer sets it, runs, and
-    the mode survives a round trip through a wout file."""
+    """An mgrid file whose mode is "N" runs, and the mode survives a round trip through
+    a wout file."""
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
     mgrid_file = tmp_path / "mgrid_mode_none.nc"
     shutil.copyfile(
