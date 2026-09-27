@@ -141,9 +141,13 @@ ProfileCoeffType = typing.Annotated[
 ]
 
 MgridModeType: typing.TypeAlias = typing.Annotated[
-    typing.Literal["R", "S", ""], pydantic.Field(max_length=1)
+    typing.Literal["R", "S", "N", ""], pydantic.Field(max_length=1)
 ]
-"""[Scaled, Raw, Unset]"""
+"""[Raw, Scaled, None, Unset].
+
+"N" is the mode simsopt's mgrid writer sets, and the one LIBSTELL assigns to an mgrid
+file that carries no mode.
+"""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
 

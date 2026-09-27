@@ -157,6 +157,26 @@ def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
     assert "mgrid_file" in caplog.text
 
 
+def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
+    """An mgrid file whose mode is "N", as simsopt's mgrid writer sets it, runs, and
+    the mode survives a round trip through a wout file."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    mgrid_file = tmp_path / "mgrid_mode_none.nc"
+    shutil.copyfile(
+        REPO_ROOT / "src" / "vmecpp" / "cpp" / vmec_input.mgrid_file, mgrid_file
+    )
+    with netCDF4.Dataset(mgrid_file, "r+") as fnc:
+        fnc.variables["mgrid_mode"][0] = b"N"
+    vmec_input.mgrid_file = str(mgrid_file)
+
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.mgrid_mode == "N"
+
+    wout_filename = tmp_path / "wout_mgrid_mode_none.nc"
+    wout.save(wout_filename)
+    assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == "N"
+
+
 def test_vmecinput_io():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     with tempfile.TemporaryDirectory() as tmp_dir:
