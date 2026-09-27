@@ -18,6 +18,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 import jax
+import jax.core
 import jaxtyping as jt
 import netCDF4
 import numpy as np
@@ -2569,22 +2570,6 @@ every run, and nothing there differentiates the result.
 """
 
 
-def _float64():
-    """JAX float64 in the current thread, whatever the caller's jax_enable_x64."""
-    enable_x64 = getattr(jax, "enable_x64", None)
-    if enable_x64 is None:  # jax < 0.7
-        from jax.experimental import (  # noqa: PLC0415
-            enable_x64,  # pyright: ignore[reportAttributeAccessIssue]
-        )
-    return enable_x64(True)
-
-
-@contextlib.contextmanager
-def _float64_on_cpu() -> Generator[None, None, None]:
-    with _float64(), jax.default_device(jax.devices("cpu")[0]):
-        yield
-
-
 def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
     """The VmecOutput members besides input and wout, from a C++ run."""
     return {
@@ -2613,41 +2598,33 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
     }
 
 
-def _as_numpy(value):
-    if value is None:
-        return None
-    array = np.array(value)
-    return float(array) if array.ndim == 0 else array
-
-
-def _iota_or_current(vmec_input: VmecInput, iotas, buco) -> dict[str, typing.Any]:
-    """The prescribed profile of a C++ run, from its wout, for wout_quantities.
-
-    The flux increments of the geometry reproduce iota only to roundoff that the
-    cumulative sums amplify; with ncurr = 1, solving chi' from the enclosed current as
-    the solver does keeps <B_u> at the prescribed current to roundoff.
-    """
-    if vmec_input.ncurr == 1:
-        return {"current_half": buco[1:]}
-    return {"iota_half": iotas[1:]}
-
-
 def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
     """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
 
     Input echoes, solver diagnostics and the free-boundary vacuum potential come from
     the C++ run; the mass profile too, so that every profile type is covered, and the
-    prescribed iota or toroidal current profile.
+    prescribed iota or, with ncurr = 1, the toroidal current profile. The flux
+    increments of the geometry reproduce iota only to roundoff that the cumulative sums
+    amplify; solving chi' from the enclosed current as the solver does keeps <B_u> at
+    the prescribed current to roundoff.
     """
     wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
-    with _float64_on_cpu():
+    if vmec_input.ncurr == 1:
+        profile = {"current_half": np.asarray(wout.buco)[1:]}
+    else:
+        profile = {"iota_half": np.asarray(wout.iotas)[1:]}
+    with jax.enable_x64(True):
         quantities = autodiff_wout.wout_quantities(
             _geometry.make(cpp_output_quantities),
             vmec_input,
             mass_half=np.asarray(wout.mass)[1:] * autodiff_wout.MU_0,
-            **_iota_or_current(vmec_input, wout.iotas, wout.buco),
+            **profile,
         )
-        update = {name: _as_numpy(value) for name, value in quantities.items()}
+    # writable NumPy arrays and Python floats, as the C++ wout provides
+    update = {}
+    for name, value in quantities.items():
+        array = None if value is None else np.array(value)
+        update[name] = array.item() if array is not None and array.ndim == 0 else array
     return wout.model_copy(update=update)
 
 
@@ -2662,15 +2639,6 @@ def _output_mode(verbose: bool | int | OutputMode) -> OutputMode:
     if output_mode in (OutputMode.PROGRESS, OutputMode.PROGRESS_NON_TTY):
         _print_progress_tip_once()
     return output_mode
-
-
-def _is_traced(value) -> bool:
-    """Whether value is a JAX tracer, i.e. run() is called under a transformation."""
-    try:
-        np.asarray(value)
-    except jax.errors.TracerArrayConversionError:
-        return True
-    return False
 
 
 def _run_traced(
@@ -2723,7 +2691,7 @@ def _run_traced(
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
     )
-    with _float64():
+    with jax.enable_x64(True):
         boundary = jax.numpy.stack(
             [
                 jax.numpy.asarray(vmec_input.rbc, dtype=np.float64),
@@ -2734,9 +2702,10 @@ def _run_traced(
         mass_half, iotas, buco = jax.numpy.split(jax.lax.stop_gradient(extra), 3)
         # With ncurr = 1, iota follows from the geometry through the current
         # constraint, and so does its derivative; otherwise it is prescribed.
-        profile = _iota_or_current(
-            vmec_input, jax.numpy.pad(iotas, (1, 0)), jax.numpy.pad(buco, (1, 0))
-        )
+        if vmec_input.ncurr == 1:
+            profile = {"current_half": buco}
+        else:
+            profile = {"iota_half": iotas}
         # The forward callback has run unless this is a jax.jit trace.
         jax.effects_barrier()
         forward = solver.forward_outputs()
@@ -2824,7 +2793,7 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    if _is_traced(input.rbc) or _is_traced(input.zbs):
+    if isinstance(input.rbc, jax.core.Tracer) or isinstance(input.zbs, jax.core.Tracer):
         return _run_traced(
             input,
             magnetic_field,
