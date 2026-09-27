@@ -305,30 +305,21 @@ hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 > The autodiff API is not yet stable. We are planning to make autodiff the default
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
-The `wout` physics quantities come from `vmecpp.autodiff_wout`, a JAX port of the C++
-output stage, so `jax.grad` can differentiate an objective written in `wout` quantities
-with respect to the boundary coefficients `rbc`, `zbs`. When they are JAX tracers,
-`vmecpp.run` solves through the implicit adjoint of the force residual, which needs a
-build with `-DVMECPP_ENABLE_ENZYME=ON`, and returns the `wout` as JAX arrays; this covers
-fixed-boundary, stellarator-symmetric inputs. Otherwise it returns NumPy arrays as
-before. The computation runs in float64 regardless of `jax_enable_x64`.
+The `wout` quantities support autodiff with JAX. `jax.grad` can objectives written
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
 
-`VmecInput`, `VmecWOut` and `VmecOutput` are JAX pytrees. The leaves are the boundary
-and the `wout` physics fields; input settings key the `jax.jit` cache, while solver
-diagnostics (`niter`, `fsqr`, the residual traces, ...) and the jxbout, Mercier and
-threed1 tables are carried along without keying it. Under `jax.jit` these tables are
-`None` and the diagnostics unknown, since the solve runs only when the compiled function
-executes. The command line interface keeps the C++ output stage, which spares each
-invocation the JAX compilation.
+Leaves that change shape depending on iteration progress (`fsqt` trace for example)
+are treated as aux data to support differentiability. jxbout, Mercier and threed1
+tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
+and diagnostics are `None`.
 
 ```python
 import jax
 import jax.numpy as jnp
 import vmecpp
-
-# JAX arrays are float32 by default; vmecpp computes in float64 either way, but a
-# float32 boundary reaches the solver rounded.
-jax.config.update("jax_enable_x64", True)
 
 vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
 
