@@ -306,12 +306,10 @@ hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
 The `wout` quantities support autodiff with JAX. `jax.grad` can objectives written
-in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`
-and the profile parameters `am`, `pres_scale`, `ai` (with `ncurr = 0`), `ac` and
-`curtor` (with `ncurr = 1`). Profile derivatives need `power_series` profiles and
-`gamma = 0`. When any of these are JAX tracers, `vmecpp.run` solves through the
-implicit adjoint of the force residual, which needs a build with
-`-DVMECPP_ENABLE_ENZYME=ON`. Otherwise it returns NumPy arrays as before.
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
 
 Leaves that change shape depending on iteration progress (`fsqt` trace for example)
 are treated as aux data to support differentiability. jxbout, Mercier and threed1
@@ -334,23 +332,6 @@ def aspect(rbc, zbs):
 rbc = jnp.asarray(vmec_input.rbc)
 zbs = jnp.asarray(vmec_input.zbs)
 d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
-
-
-def betatotal(am, ac):
-    profiles = vmec_input.model_copy(
-        update={
-            "pmass_type": "power_series",
-            "pcurr_type": "power_series",
-            "am": am,
-            "ac": ac,
-        }
-    )
-    return vmecpp.run(profiles, verbose=False).wout.betatotal
-
-
-d_beta_d_am, d_beta_d_ac = jax.grad(betatotal, argnums=(0, 1))(
-    jnp.asarray([1.0, -2.0, 1.0]), jnp.asarray([1.0, -1.0])
-)
 ```
 
 ## Full tests and validation against the reference Fortran VMEC v8.52

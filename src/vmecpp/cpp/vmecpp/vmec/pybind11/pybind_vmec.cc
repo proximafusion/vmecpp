@@ -705,31 +705,15 @@ class VmecModel {
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
   }
 
-  // Cotangents of the half-grid pressure presH, iota iotaH and enclosed
-  // current currH at the current state, from a decomposed-force cotangent
-  // force_bar (the space ExactHessianVectorProductTranspose reads) and a
-  // cotangent poloidal_flux_bar of MakeGeometry's poloidal_flux (empty for
-  // zero). The toroidal flux and the lambda normalization depend on phi' only,
-  // not on these profiles. presH is frozen in the force composition, so this
-  // requires gamma == 0.
+  // Cotangents of the half-grid presH, iotaH and currH from a decomposed-force
+  // cotangent force_bar and a cotangent poloidal_flux_bar of MakeGeometry's
+  // poloidal_flux. presH is frozen in the force composition, so gamma == 0.
   std::tuple<Eigen::VectorXd, Eigen::VectorXd, Eigen::VectorXd> ProfileVjp(
       const Eigen::VectorXd &force_bar,
       const Eigen::VectorXd &poloidal_flux_bar) {
     RequireLforbalDisabledForExactDerivatives();
-    if (vmec_->indata_.lfreeb || vmec_->indata_.lasym) {
-      throw std::runtime_error(
-          "VmecModel.profile_vjp supports fixed-boundary, stellarator-"
-          "symmetric models only");
-    }
     if (vmec_->indata_.gamma != 0.0) {
-      throw std::runtime_error(
-          "VmecModel.profile_vjp requires gamma == 0: with gamma != 0 the "
-          "pressure depends on the state through dV/ds");
-    }
-    if (poloidal_flux_bar.size() != 0 &&
-        poloidal_flux_bar.size() != vmec_->fc_.ns) {
-      throw std::runtime_error(
-          "VmecModel.profile_vjp: poloidal_flux_bar has wrong length");
+      throw std::runtime_error("VmecModel.profile_vjp requires gamma == 0");
     }
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
@@ -751,10 +735,9 @@ class VmecModel {
     model.profileVjp(exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
                      *vmec_->physical_f_[0], chip_bar.data(), pres_bar.data(),
                      chip_profile_bar.data(), curr_bar.data());
-    // chipH = iotaH * phipH for a prescribed iota.
-    const Eigen::VectorXd iota_bar =
-        chip_profile_bar.cwiseProduct(vmec_->p_[0]->phipH);
-    return {pres_bar, iota_bar, curr_bar};
+    // chipH = iotaH * phipH for a prescribed iota
+    return {pres_bar, chip_profile_bar.cwiseProduct(vmec_->p_[0]->phipH),
+            curr_bar};
   }
 #endif  // VMECPP_ENABLE_ENZYME
 

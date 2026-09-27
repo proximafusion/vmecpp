@@ -285,7 +285,7 @@ def test_wout_pytree_round_trip(solovev_wout) -> None:
     leaves, treedef = jax.tree_util.tree_flatten(solovev_wout)
     assert len(leaves) == sum(
         getattr(solovev_wout, name) is not None
-        for name in (*autodiff_wout.WOUT_QUANTITIES, "am", "ac", "ai")
+        for name in autodiff_wout.WOUT_QUANTITIES
     )
     rebuilt = jax.tree_util.tree_unflatten(treedef, leaves)
     for name in own_model_fields(vmecpp.VmecWOut):
@@ -433,7 +433,7 @@ def test_vjp_linearizes_at_the_forward_solve() -> None:
     indata = _cth_like_input()
     solver = autodiff._RunSolver(indata, max_threads=1)
     boundary = np.asarray(_boundary(indata))
-    solver._forward_callback(boundary, {})
+    solver._forward_callback(boundary)
     hot_restarted = solver._solved_model(boundary)
     solved = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
     hot_restarted.evaluate(2, 2, True)
@@ -453,7 +453,7 @@ def test_forward_solves_keep_no_cpp_objects() -> None:
     solver = autodiff._RunSolver(indata, max_threads=1)
     boundary = np.asarray(_boundary(indata))
     for scale in (1.0, 1.0 + 1.0e-6, 1.0 + 2.0e-6):
-        solver._forward_callback(boundary * scale, {})
+        solver._forward_callback(boundary * scale)
     assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE
     for solve in autodiff._FORWARD_SOLVES.values():
         assert isinstance(solve["state"], np.ndarray)

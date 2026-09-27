@@ -15,7 +15,6 @@ import functools
 from typing import Any
 
 import jax
-import jax.core
 import jax.numpy as jnp
 import numpy as np
 
@@ -640,12 +639,9 @@ def static_fields(vmec_input: Any) -> dict[str, Any]:
     xm, xn = _mode_table(sizes.mpol, sizes.ntor, sizes.nfp)
     xm_nyq, xn_nyq = _mode_table(sizes.mnyq + 1, sizes.nnyq, sizes.nfp)
 
-    def padded(values, size: int, fill: float) -> np.ndarray | jax.Array:
-        if isinstance(values, jax.core.Tracer):
-            values = jnp.ravel(values)
-            return jnp.pad(
-                values, (0, max(0, size - values.size)), constant_values=fill
-            )
+    def padded(values, size: int, fill: float) -> Any:
+        if isinstance(values, jax.Array):  # a traced profile coefficient
+            return jnp.pad(values, (0, size - values.size), constant_values=fill)
         values = np.asarray(values, dtype=np.float64).ravel()
         if values.size == 0:
             values = np.asarray([fill])
@@ -752,115 +748,52 @@ def mass_profile(vmec_input: Any, s_half: np.ndarray) -> np.ndarray:
     return mass
 
 
-PROFILE_PARAMETERS = ("am", "pres_scale", "ai", "ac", "curtor")
-"""The :class:`vmecpp.VmecInput` profile fields that :func:`half_grid_profiles`
-differentiates."""
+PROFILE_PARAMETERS = {
+    "am": "pmass_type",
+    "pres_scale": "pmass_type",
+    "ai": "piota_type",
+    "ac": "pcurr_type",
+    "curtor": "pcurr_type",
+}
+"""The differentiable profile fields and the profile type each belongs to."""
 
 
-def half_grid_profiles(
-    vmec_input: Any,
-    ns: int,
-    parameters: dict[str, Any],
-    constants: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """The half-grid profiles of the C++ radial profiles, as JAX functions of
-    ``parameters``.
-
-    Args:
-        vmec_input: Supplies the profile types, ``aphi``, ``bloat``,
-            ``spres_ped``, ``signgs`` and every entry of
-            :data:`PROFILE_PARAMETERS` missing from ``parameters`` and
-            ``constants``.
-        ns: The number of full-grid surfaces.
-        parameters: Values of :data:`PROFILE_PARAMETERS` fields to
-            differentiate; their profile type must be ``power_series``.
-        constants: Values of further :data:`PROFILE_PARAMETERS` fields, not
-            differentiated.
-
-    Returns:
-        ``mass_half`` (``mu_0 p``), ``iota_half`` (before the solver's theta
-        flip) and ``current_half`` (the enclosed current scaled to ``curtor``),
-        each of length ``ns - 1``.
-    """
-    constants = constants or {}
-    unknown = (set(parameters) | set(constants)) - set(PROFILE_PARAMETERS)
-    if unknown:
-        error_message = f"not differentiable profile parameters: {sorted(unknown)}"
-        raise ValueError(error_message)
-    if vmec_input.gamma != 0.0:
-        error_message = (
-            "profile derivatives require gamma = 0: with gamma != 0 the pressure "
-            "depends on the geometry through dV/ds"
-        )
-        raise NotImplementedError(error_message)
-    kinds = {
-        "am": "pmass_type",
-        "pres_scale": "pmass_type",
-        "ai": "piota_type",
-        "ac": "pcurr_type",
-        "curtor": "pcurr_type",
-    }
+def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
+    """The C++ half-grid ``(mu_0 p, iota, currH)`` as a JAX function of power-series
+    ``parameters``, stacked to shape ``(3, ns - 1)``; iota is before the theta flip."""
     for name in parameters:
-        if getattr(vmec_input, kinds[name]) != "power_series":
-            error_message = (
-                f"differentiating {name} requires {kinds[name]} = 'power_series', "
-                f"not '{getattr(vmec_input, kinds[name])}'"
-            )
-            raise NotImplementedError(error_message)
+        kind = getattr(vmec_input, PROFILE_PARAMETERS[name])
+        if kind != "power_series" or vmec_input.gamma != 0.0:
+            msg = f"differentiating {name} needs power_series profiles and gamma = 0"
+            raise NotImplementedError(msg)
 
     def value(name):
-        if name in parameters:
-            return jnp.asarray(parameters[name], dtype=jnp.float64)
-        if name in constants:
-            return jnp.asarray(constants[name], dtype=jnp.float64)
-        return jnp.asarray(getattr(vmec_input, name), dtype=jnp.float64)
+        return jnp.asarray(parameters.get(name, getattr(vmec_input, name)), float)
+
+    def series(c, x, integrate=False):
+        if integrate:  # I(s) from the power series of I'(s)
+            return x * jnp.polyval((c / jnp.arange(1, c.size + 1))[::-1], x)
+        return jnp.polyval(c[::-1], x) if c.size else jnp.zeros_like(x)
 
     aphi = np.asarray(vmec_input.aphi, dtype=np.float64)
-    if aphi.size == 0:
-        aphi = np.asarray([1.0])
+    aphi = aphi if aphi.size else np.ones(1)
+    s = (np.arange(ns - 1) + 0.5) / (ns - 1.0)
 
-    def torflux(s):
-        return np.minimum(np.polyval(np.concatenate([aphi[::-1], [0.0]]), s), 1.0)
-
-    def power_series(coefficients, x):
-        if coefficients.size == 0:
-            return jnp.zeros_like(x)
-        return jnp.polyval(coefficients[::-1], x)
-
-    def enclosed_current(coefficients, x):
-        # the integral of the power series of I'(s), as evalPowerSeries integrates
-        if coefficients.size == 0:
-            return jnp.zeros_like(x)
-        powers = jnp.arange(1, coefficients.size + 1)
-        return x * jnp.polyval((coefficients / powers)[::-1], x)
+    def torflux(x):
+        return np.minimum(np.polyval(np.concatenate([aphi[::-1], [0.0]]), x), 1.0)
 
     bloat = vmec_input.bloat
-    s_half = (np.arange(ns - 1) + 0.5) / (ns - 1.0)
-    mass_position = np.minimum(
-        np.abs(torflux(np.minimum(s_half, vmec_input.spres_ped)) * bloat), 1.0
-    )
-    current_position = np.minimum(np.abs(torflux(s_half) * bloat), 1.0)
-
-    mass_half = MU_0 * value("pres_scale") * power_series(value("am"), mass_position)
-    iota_half = power_series(value("ai"), jnp.asarray(torflux(s_half)))
-    current_half = jnp.zeros(ns - 1)
-    if vmec_input.pcurr_type == "power_series":
-        curtor = value("curtor")
-        ac = value("ac")
-        edge_current = enclosed_current(ac, jnp.asarray(min(abs(bloat), 1.0)))
-        scaled = jnp.abs(edge_current) > jnp.abs(np.finfo(np.float64).eps * curtor)
-        safe_edge_current = jnp.where(scaled, edge_current, 1.0)
-        itor = jnp.where(
-            scaled,
-            vmec_input.signgs * MU_0 * curtor / (2.0 * np.pi * safe_edge_current),
-            0.0,
-        )
-        current_half = itor * enclosed_current(ac, jnp.asarray(current_position))
-    return {
-        "mass_half": mass_half,
-        "iota_half": iota_half,
-        "current_half": current_half,
-    }
+    x_mass = np.minimum(np.abs(torflux(np.minimum(s, vmec_input.spres_ped)) * bloat), 1)
+    mass = MU_0 * value("pres_scale") * series(value("am"), jnp.asarray(x_mass))
+    iota = series(value("ai"), jnp.asarray(torflux(s)))
+    current = jnp.zeros(ns - 1)
+    if vmec_input.ncurr == 1 and value("ac").size:
+        ac, curtor = value("ac"), value("curtor")
+        edge = series(ac, jnp.asarray(min(abs(bloat), 1.0)), integrate=True)
+        itor = vmec_input.signgs * MU_0 * curtor / (2.0 * np.pi * edge)
+        x_current = jnp.asarray(np.minimum(np.abs(torflux(s) * bloat), 1.0))
+        current = itor * series(ac, x_current, integrate=True)
+    return jnp.stack([mass, iota, current])
 
 
 @dataclasses.dataclass(frozen=True)

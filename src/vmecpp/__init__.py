@@ -1985,12 +1985,11 @@ def _register_model_pytree(model_type, leaf_names, unkeyed=frozenset()) -> None:
     jax.tree_util.register_pytree_node(model_type, flatten, unflatten)
 
 
-# The physics fields, the vacuum potential and the echoed profile coefficients,
-# which a traced input carries, are the leaves; the other input echoes and
+# The physics fields and the vacuum potential are the leaves; input echoes and
 # sizes key the jit cache, the solver diagnostics travel along without keying it.
 _register_model_pytree(
     VmecWOut,
-    (*autodiff_wout.WOUT_QUANTITIES, "potvac", "am", "ac", "ai"),
+    (*autodiff_wout.WOUT_QUANTITIES, "potvac"),
     unkeyed=frozenset(autodiff_wout.UNKNOWN_DIAGNOSTICS),
 )
 
@@ -2603,10 +2602,8 @@ class VmecOutput(BaseModelWithNumpy):
     """Python equivalent of VMEC's "wout" file."""
 
 
-# The boundary and the profile parameters are the differentiable inputs; the
-# other fields key the jit cache.
-_TRACEABLE_FIELDS = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
-_register_model_pytree(VmecInput, _TRACEABLE_FIELDS)
+# The boundary is the differentiable input; the other fields key the jit cache.
+_register_model_pytree(VmecInput, ("rbc", "zbs"))
 # Every field of the output and of its C++ tables is a leaf.
 for _model_type in (
     JxBOut,
@@ -2709,8 +2706,7 @@ def _run_traced(
     verbose: bool | int | OutputMode,
     restart_from: VmecOutput | None,
 ) -> VmecOutput:
-    """Run() for a boundary ``rbc, zbs`` or profile parameters (see
-    :data:`vmecpp.autodiff_wout.PROFILE_PARAMETERS`) that JAX differentiates or traces.
+    """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
 
     The forward solve is a full C++ run; its VJP needs an Enzyme-enabled build.
     When the forward solve is observable (eager calls, ``jax.grad``), jxbout,
@@ -2736,26 +2732,23 @@ def _run_traced(
         if present:
             msg = f"run() with a traced boundary does not support {name}"
             raise NotImplementedError(msg)
+    if any(
+        np.dtype(getattr(value, "dtype", np.float64)) != np.float64
+        for value in (vmec_input.rbc, vmec_input.zbs)
+    ):
+        warnings.warn(
+            "The traced boundary is not float64, so the solve sees it rounded; "
+            "enable jax_enable_x64 to differentiate at full precision.",
+            stacklevel=3,
+        )
+    shape = np.shape(vmec_input.rbc)
     profiles = {
         name: getattr(vmec_input, name)
         for name in autodiff_wout.PROFILE_PARAMETERS
         if isinstance(getattr(vmec_input, name), jax.core.Tracer)
     }
-    if any(
-        np.dtype(getattr(value, "dtype", np.float64)) != np.float64
-        for value in (vmec_input.rbc, vmec_input.zbs, *profiles.values())
-    ):
-        warnings.warn(
-            "The traced input is not float64, so the solve sees it rounded; "
-            "enable jax_enable_x64 to differentiate at full precision.",
-            stacklevel=3,
-        )
-    shape = np.shape(vmec_input.rbc)
-    # concrete placeholders; the forward solve sets the traced values
-    placeholders = {
-        name: np.zeros(np.shape(value)) if np.ndim(value) else 0.0
-        for name, value in profiles.items()
-    }
+    # concrete placeholders; the forward solve receives the traced values
+    placeholders = {name: np.zeros(np.shape(value)) for name, value in profiles.items()}
     template = vmec_input.model_copy(
         update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
     )
@@ -2772,13 +2765,14 @@ def _run_traced(
         geometry, extra = solver._solve(boundary, profiles)
         extra = jax.lax.stop_gradient(extra)
         mass_half, iotas, buco = jax.numpy.split(extra[:-1], 3)
-        iota_sign = extra[-1]
-        if profiles:
-            # the solver's profiles, differentiated through their parameterization
-            tangents = autodiff.profile_tangents(template, solver.ns, profiles)
-            mass_half = mass_half + tangents["mass_half"]
-            iotas = iotas + iota_sign * tangents["iota_half"]
-            buco = buco + tangents["current_half"]
+        # the solver's profiles, with the derivative of their parameterization
+        half = autodiff_wout.half_grid_profiles(template, solver.ns, profiles)
+        half = half - jax.lax.stop_gradient(half)
+        mass_half, iotas, buco = (
+            mass_half + half[0],
+            iotas + extra[-1] * half[1],
+            buco + half[2],
+        )
         # With ncurr = 1, iota follows from the geometry through the current
         # constraint, and so does its derivative; otherwise it is prescribed.
         if vmec_input.ncurr == 1:
@@ -2806,7 +2800,12 @@ def _run_traced(
                 )
             )
         else:
-            fields = forward["wout_fields"]
+            # the C++ echoes of traced profile coefficients carry no derivative
+            echoes = autodiff_wout.static_fields(vmec_input)
+            echoes = {
+                name: echoes[name] for name in ("am", "ac", "ai") if name in profiles
+            }
+            fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
         quantities = autodiff_wout.wout_quantities(
             geometry, template, mass_half=mass_half, **profile
@@ -2872,9 +2871,8 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    if any(
-        isinstance(getattr(input, name), jax.core.Tracer) for name in _TRACEABLE_FIELDS
-    ):
+    traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
+    if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
         return _run_traced(
             input,
             magnetic_field,

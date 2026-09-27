@@ -323,7 +323,7 @@ def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity() -> None:
 
     seed_state = _parser_state_tangent(indata, boundary, direction)
     tangent = _tangent_through_the_solve(indata, boundary, seed_state)
-    adjoint, _ = solver._backward_callback(boundary, {}, cotangent, False)
+    adjoint = solver._backward_callback(boundary, cotangent)[0]
 
     np.testing.assert_allclose(
         float(cotangent @ tangent), float((adjoint * direction).sum()), rtol=1.0e-6
