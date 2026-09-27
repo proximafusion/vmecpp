@@ -641,7 +641,9 @@ def static_fields(vmec_input: Any) -> dict[str, Any]:
 
     def padded(values, size: int, fill: float) -> Any:
         if isinstance(values, jax.Array):  # a traced profile coefficient
-            return jnp.pad(values, (0, size - values.size), constant_values=fill)
+            return jnp.pad(
+                values, (0, max(0, size - values.size)), constant_values=fill
+            )
         values = np.asarray(values, dtype=np.float64).ravel()
         if values.size == 0:
             values = np.asarray([fill])

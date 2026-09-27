@@ -558,7 +558,8 @@ class VmecModel {
   }
 
   // Cotangent of the half-grid chi' from one of MakeGeometry's poloidal_flux:
-  // chi_j = sum_{k<j} signOfJacobian * 2 pi deltaS chipH_k.
+  // chi_j = sum_{k<j} signOfJacobian * 2 pi deltaS phipH_k iotaH_k, with
+  // phipH_k iotaH_k = chipH_k where phipH_k != 0.
   Eigen::VectorXd ChipBarFromPoloidalFluxBar(
       const Eigen::VectorXd &poloidal_flux_bar) const {
     Eigen::VectorXd chip_bar = Eigen::VectorXd::Zero(vmec_->fc_.ns - 1);
@@ -573,7 +574,7 @@ class VmecModel {
     double tail = 0.0;
     for (int j = vmec_->fc_.ns - 1; j >= 1; --j) {
       tail += poloidal_flux_bar[j];
-      chip_bar[j - 1] = c * tail;
+      chip_bar[j - 1] = vmec_->p_[0]->phipH[j - 1] != 0.0 ? c * tail : 0.0;
     }
     return chip_bar;
   }
