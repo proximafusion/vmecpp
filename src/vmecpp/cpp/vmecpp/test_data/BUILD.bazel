@@ -12,6 +12,14 @@ filegroup(
 )
 
 filegroup(
+    name = "circular_tokamak",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "circular_tokamak.json",
+    ],
+)
+
+filegroup(
     name = "up_down_asym",
     visibility = ["//visibility:public"],
     srcs = [
