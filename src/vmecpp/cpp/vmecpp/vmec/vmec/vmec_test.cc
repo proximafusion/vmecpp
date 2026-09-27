@@ -138,6 +138,63 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   CHECK(status.ok());
 }  // CheckNoErrorOnNonConvergenceIfDesired
 
+// A run that runs out of iterations advances its state after the last force
+// evaluation. Its output carries the force residuals and the energies of the
+// state it returns, which a run given one more iteration computes in its last
+// evaluation. Fortran VMEC recomputes the fields at that state in fileout but
+// writes the residuals of the state before the last step.
+TEST(TestVmec, OutputAtTheIterationLimitDescribesTheReturnedState) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.return_outputs_even_if_not_converged = true;
+
+  // cth_like_fixed_bdy converges in 119 iterations
+  indata.niter_array[0] = 59;
+  const auto stopped = vmecpp::run(indata);
+  ASSERT_TRUE(stopped.ok()) << stopped.status();
+  ASSERT_EQ(stopped->wout.ier_flag, 0);
+
+  // halted after its 60th evaluation, which is at the returned state
+  indata.niter_array[0] = 60;
+  auto maybe_vmec = Vmec::FromIndata(indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& continued = **maybe_vmec;
+  const absl::StatusOr<bool> reached_checkpoint = continued.run(
+      VmecCheckpoint::EVOLVE, /*iterations_before_checkpointing=*/60);
+  ASSERT_TRUE(reached_checkpoint.ok()) << reached_checkpoint.status();
+  ASSERT_TRUE(*reached_checkpoint);
+
+  const vmecpp::WOutFileContents& wout = stopped->wout;
+  EXPECT_EQ(wout.fsqr, continued.fc_.fsqr);
+  EXPECT_EQ(wout.fsqz, continued.fc_.fsqz);
+  EXPECT_EQ(wout.fsql, continued.fc_.fsql);
+  EXPECT_EQ(wout.wb, continued.h_.magneticEnergy);
+  EXPECT_EQ(wout.wp, continued.h_.thermalEnergy);
+}  // OutputAtTheIterationLimitDescribesTheReturnedState
+
+// A time step that makes the flux surfaces cross leaves a returned state whose
+// Jacobian changes sign, which the output of a run out of iterations reports.
+TEST(TestVmec, OutputAtTheIterationLimitReportsABadJacobian) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.return_outputs_even_if_not_converged = true;
+  indata.niter_array[0] = 1;
+  indata.delt = 5.0;
+
+  const auto output = vmecpp::run(indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_EQ(output->wout.ier_flag,
+            vmecpp::VmecStatusCode(vmecpp::VmecStatus::BAD_JACOBIAN));
+}  // OutputAtTheIterationLimitReportsABadJacobian
+
 // With ncurr = 1 the current profile is scaled to curtor by its value at the
 // boundary, so a profile that encloses no net current there cannot be imposed
 // and used to run silently with zero current.
