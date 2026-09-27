@@ -58,6 +58,21 @@ cc_test(
 )
 
 cc_test(
+    name = "energy_gradient_test",
+    srcs = ["energy_gradient_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "medium",
+)
+
+cc_test(
     name = "vmec_allocation_test",
     srcs = ["vmec_allocation_test.cc"],
     data = [
