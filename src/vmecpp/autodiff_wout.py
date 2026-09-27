@@ -1206,7 +1206,7 @@ def _currents(setup: _Setup, bsubs_mn, bsubu_mn, bsubv_mn, *, sign: float):
         else:
             axis = 2.0 * values[:, 0] - values[:, 1]
             edge = 2.0 * values[:, -1] - values[:, -2]
-        axis = jnp.where(setup.xm_nyq <= 1, axis, 0.0)
+        axis = axis * (setup.xm_nyq <= 1)
         full = jnp.concatenate(
             [jnp.expand_dims(axis, 1), values, jnp.expand_dims(edge, 1)], axis=1
         )
