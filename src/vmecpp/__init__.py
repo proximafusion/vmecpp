@@ -688,6 +688,56 @@ class VmecInput(BaseModelWithNumpy):
 
         return resized_coeff
 
+    def resize(self, mpol_new: int, ntor_new: int) -> VmecInput:
+        """Return a copy of this input resampled to a new (mpol, ntor) Fourier
+        resolution.
+
+        Boundary coefficients are zero-padded or truncated to match, discarding
+        higher modes with a warning; see :meth:`resize_2d_coeff`. Axis
+        coefficients are zero-padded or, when shrinking ntor, truncated with a
+        warning.
+        """
+
+        def resize_axis(
+            coeff: jt.Float[np.ndarray, "ntor_plus_1"],
+        ) -> jt.Float[np.ndarray, "ntor_new_plus_1"]:
+            new_len = ntor_new + 1
+            if coeff.size > new_len:
+                logger.warning(
+                    f"Discarding axis coefficients because ntor={coeff.size - 1} "
+                    f"is larger than ntor_new={ntor_new}"
+                )
+                coeff = coeff[:new_len]
+            return self.resize_1d_axis_coeff(coeff, ntor_new)
+
+        updated_fields: dict[str, typing.Any] = {}
+        updated_fields["mpol"] = mpol_new
+        updated_fields["ntor"] = ntor_new
+        updated_fields["rbc"] = self.resize_2d_coeff(
+            np.asarray(self.rbc), mpol_new, ntor_new
+        )
+        updated_fields["zbs"] = self.resize_2d_coeff(
+            np.asarray(self.zbs), mpol_new, ntor_new
+        )
+        updated_fields["raxis_c"] = resize_axis(self.raxis_c)
+        updated_fields["zaxis_s"] = resize_axis(self.zaxis_s)
+
+        if self.lasym:
+            assert self.rbs is not None
+            assert self.zbc is not None
+            assert self.raxis_s is not None
+            assert self.zaxis_c is not None
+            updated_fields["rbs"] = self.resize_2d_coeff(
+                np.asarray(self.rbs), mpol_new, ntor_new
+            )
+            updated_fields["zbc"] = self.resize_2d_coeff(
+                np.asarray(self.zbc), mpol_new, ntor_new
+            )
+            updated_fields["raxis_s"] = resize_axis(self.raxis_s)
+            updated_fields["zaxis_c"] = resize_axis(self.zaxis_c)
+
+        return self.model_copy(update=updated_fields)
+
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
         """Build a VmecInput from either a VMEC++ JSON input file or a classic INDATA
