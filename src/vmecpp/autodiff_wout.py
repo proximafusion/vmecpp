@@ -1,11 +1,7 @@
-"""JAX port of the VMEC++ output stage: ``wout`` quantities from a converged geometry.
+"""JAX port of output_quantities.cc: ``wout`` quantities from a converged geometry.
 
-The solver returns the equilibrium as a :class:`vmecpp.geometry.Geometry` in the
-internal product basis. This module maps it to the physics quantities of a ``wout``
-file with the same discretization as the C++ output stage (output_quantities.cc):
-the inverse DFT with the odd-m ``sqrt(s)`` scaling, the half-grid Jacobian, metric
-and magnetic field, the low-pass filter of the covariant field, the jxbforce,
-Mercier and threed1 stages, and the Nyquist-band forward DFT.
+The solver returns the equilibrium in the internal product basis. From this we can
+compute all the physics quantities in a ``wout``.
 
 Only the geometry leaves are traced. Radial and angular grids, mode tables and the
 flux and mass profiles are concrete NumPy arrays taken from the input, so
@@ -16,7 +12,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import math
 from typing import Any
 
 import jax
@@ -25,7 +20,7 @@ import numpy as np
 
 from vmecpp import geometry as vmec_geometry
 
-MU_0 = 4.0e-7 * math.pi
+MU_0 = 4.0e-7 * np.pi
 
 # Blending weight of the two full-grid estimates of B_v in the hybrid lambda
 # force, 2 * kPDamp * (1 - s) in the C++ radial profiles.
@@ -326,7 +321,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     rbtor0 = 1.5 * bvco_solver[0] - 0.5 * bvco_solver[1]
     rbtor = 1.5 * bvco_solver[-1] - 0.5 * bvco_solver[-2]
     ctor = (
-        (1.5 * buco_solver[-1] - 0.5 * buco_solver[-2]) * signgs * 2.0 * math.pi / MU_0
+        (1.5 * buco_solver[-1] - 0.5 * buco_solver[-2]) * signgs * 2.0 * np.pi / MU_0
     )
 
     # The output stage rebuilds B_v from the hybrid lambda force, restores the
@@ -358,7 +353,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
 
     # jxbforce: current density and flux-surface averages on the interior
     # full grid (ComputeJxBOutputFileContents).
-    dnorm1 = 4.0 * math.pi**2
+    dnorm1 = 4.0 * np.pi**2
     ovp = 2.0 / (dvds_h[1:] + dvds_h[:-1]) / dnorm1
     tjnorm = ovp * signgs
     w_int_2d = jnp.asarray(setup.w_int)[None, :]
@@ -385,9 +380,9 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
 
     # Mercier stability (ComputeIntermediateMercierQuantities,
     # ComputeMercierStability).
-    phip_real_h = 2.0 * math.pi * phip_h * signgs
+    phip_real_h = 2.0 * np.pi * phip_h * signgs
     vp_real = signgs * dnorm1 * dvds_h / phip_real_h
-    torcur = signgs * 2.0 * math.pi * buco_solver
+    torcur = signgs * 2.0 * np.pi * buco_solver
     phip_real_f = interior_full(phip_real_h)
     denom = phip_real_f * delta_s
     shear = jnp.diff(iota_h) / denom
@@ -444,7 +439,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     bvco_h = bvco_solver
     chi = (
         2.0
-        * math.pi
+        * np.pi
         * delta_s
         * jnp.concatenate([jnp.zeros(1), jnp.cumsum(phip_h * iota_h)])
     )
@@ -469,8 +464,8 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     # Geometric and magnetic quantities
     # (ComputeIntermediateThreed1GeometricMagneticQuantities,
     # ComputeThreed1GeometricMagneticQuantities, ComputeThreed1Betas).
-    anorm = 2.0 * math.pi * delta_s
-    vnorm = 2.0 * math.pi * anorm
+    anorm = 2.0 * np.pi * delta_s
+    vnorm = 2.0 * np.pi * anorm
     sump = vnorm * jnp.sum(dvds_h * pres_h)
     sumbtot = 2.0 * (vnorm * jnp.sum(total_pressure * tau_w) - sump)
     sumbtor = vnorm * jnp.sum(tau_w * (r12 * bsupv) ** 2)
@@ -479,10 +474,10 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     z_lcfs = z.value_e[-1] + z.value_o[-1]
     zu_lcfs = z.dtheta_e[-1] + z.dtheta_o[-1]
     w_lcfs = jnp.asarray(setup.w_int)[None, :]
-    cross_area_p = 2.0 * math.pi * jnp.abs(jnp.sum(r_lcfs * zu_lcfs * w_lcfs))
-    volume_p = 2.0 * math.pi**2 * jnp.abs(jnp.sum(r_lcfs**2 * zu_lcfs * w_lcfs))
-    rmajor_p = volume_p / (2.0 * math.pi * cross_area_p)
-    aminor_p = jnp.sqrt(cross_area_p / math.pi)
+    cross_area_p = 2.0 * np.pi * jnp.abs(jnp.sum(r_lcfs * zu_lcfs * w_lcfs))
+    volume_p = 2.0 * np.pi**2 * jnp.abs(jnp.sum(r_lcfs**2 * zu_lcfs * w_lcfs))
+    rmajor_p = volume_p / (2.0 * np.pi * cross_area_p)
+    aminor_p = jnp.sqrt(cross_area_p / np.pi)
     volavgb = jnp.sqrt(jnp.abs(sumbtot / volume_p))
     fpsi0 = 1.5 * bvco_h[0] - 0.5 * bvco_h[1]
     b0 = fpsi0 / r.value_e[0, 0, 0]
@@ -589,10 +584,10 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
             np.finfo(float).max,
         ),
         phi=toroidal_flux,
-        phipf=signgs * 2.0 * math.pi * phip_f,
+        phipf=signgs * 2.0 * np.pi * phip_f,
         phips=_pad_axis(phip_h),
         chi=chi,
-        chipf=signgs * 2.0 * math.pi * chip_f,
+        chipf=signgs * 2.0 * np.pi * chip_f,
         presf=_half_to_full(pres_h) / MU_0,
         pres=_pad_axis(pres_h) / MU_0,
         mass=_pad_axis(mass_h) / MU_0,
@@ -697,9 +692,9 @@ UNKNOWN_DIAGNOSTICS: dict[str, Any] = {
     "ier_flag": -1,
     "niter": 0,
     "itfsq": 0,
-    "fsqr": math.nan,
-    "fsqz": math.nan,
-    "fsql": math.nan,
+    "fsqr": np.nan,
+    "fsqz": np.nan,
+    "fsql": np.nan,
     "fsqt": np.zeros(0),
     "force_residual_r": np.zeros(0),
     "force_residual_z": np.zeros(0),
@@ -721,7 +716,7 @@ def toroidal_flux_derivative(vmec_input: Any, s: np.ndarray) -> np.ndarray:
     powers = np.arange(1, aphi.size + 1)
     derivative = np.polyval((powers * aphi)[::-1], s)
     edge_flux = np.polyval(np.concatenate([aphi[::-1], [0.0]]), 1.0)
-    scale = vmec_input.signgs * vmec_input.phiedge * vmec_input.bloat / (2.0 * math.pi)
+    scale = vmec_input.signgs * vmec_input.phiedge * vmec_input.bloat / (2.0 * np.pi)
     if edge_flux != 0.0:
         scale /= edge_flux
     return scale * derivative
@@ -878,8 +873,8 @@ def _profiles(vmec_input: Any, sizes: _Sizes, mass_half) -> dict[str, Any]:
 
 
 def _grids(sizes: _Sizes) -> tuple[np.ndarray, np.ndarray]:
-    theta = 2.0 * math.pi * np.arange(sizes.ntheta_eff) / sizes.ntheta_even
-    zeta = 2.0 * math.pi * np.arange(sizes.nzeta) / sizes.nzeta
+    theta = 2.0 * np.pi * np.arange(sizes.ntheta_eff) / sizes.ntheta_even
+    zeta = 2.0 * np.pi * np.arange(sizes.nzeta) / sizes.nzeta
     return theta, zeta
 
 
@@ -941,7 +936,7 @@ def _make_setup(sizes: _Sizes, profiles, kernels) -> _Setup:
     sqrt_s_half = np.sqrt((np.arange(ns - 1) + 0.5) / (ns - 1.0))
     # Odd-m coefficients are divided by sqrt(s), the axis taking the value of
     # the first surface (RadialProfiles::scalxc).
-    odd_scale = 1.0 / np.maximum(sqrt_s_full, math.sqrt(1.0 / (ns - 1)))
+    odd_scale = 1.0 / np.maximum(sqrt_s_full, np.sqrt(1.0 / (ns - 1)))
 
     return _Setup(
         ns=ns,
@@ -992,7 +987,7 @@ def _nyquist_kernels(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Dense forward-DFT kernels ``(mn, k, l)`` for cos(mu - nv) and sin(mu - nv)."""
     m = np.arange(mnyq + 1)
-    mscale = np.where(m == 0, 1.0, math.sqrt(2.0))
+    mscale = np.where(m == 0, 1.0, np.sqrt(2.0))
     int_norm = 1.0 / (nzeta * (ntheta_reduced - 1))
     cosmui = np.cos(np.outer(m, theta)) * mscale[:, None] * int_norm
     sinmui = np.sin(np.outer(m, theta)) * mscale[:, None] * int_norm
@@ -1002,7 +997,7 @@ def _nyquist_kernels(
         cosmui[mnyq] /= 2.0
 
     n = np.arange(nnyq + 1)
-    nscale = np.where(n == 0, 1.0, math.sqrt(2.0))
+    nscale = np.where(n == 0, 1.0, np.sqrt(2.0))
     cosnv = np.cos(np.outer(zeta, n)) * nscale[None, :]
     sinnv = np.sin(np.outer(zeta, n)) * nscale[None, :]
     if nnyq != 0:
@@ -1039,8 +1034,8 @@ def _low_pass_kernels(
     """
     m = np.arange(mpol)
     n = np.arange(ntor + 1)
-    mscale = np.where(m == 0, 1.0, math.sqrt(2.0))
-    nscale = np.where(n == 0, 1.0, math.sqrt(2.0))
+    mscale = np.where(m == 0, 1.0, np.sqrt(2.0))
+    nscale = np.where(n == 0, 1.0, np.sqrt(2.0))
     int_norm = 1.0 / (nzeta * (ntheta_reduced - 1))
     poloidal = {
         "c": np.cos(np.outer(m, theta)) * mscale[:, None],
