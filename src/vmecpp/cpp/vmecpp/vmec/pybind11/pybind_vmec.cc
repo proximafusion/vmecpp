@@ -66,7 +66,7 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
     // python exception types.
     // https://pybind11.readthedocs.io/en/stable/advanced/exceptions.html
     if (absl::IsInvalidArgument(s.status())) {
-      throw pybind11::attribute_error(std::string(s.status().message()));
+      throw pybind11::value_error(std::string(s.status().message()));
     } else {
       throw std::runtime_error(std::string(s.status().message()));
     }

@@ -185,7 +185,7 @@ def _assert_mirror_image(wout: vmecpp.VmecWOut, mirrored: vmecpp.VmecWOut) -> No
 def test_signgs_must_be_a_sign():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
     vmec_input.signgs = 2
-    with pytest.raises((RuntimeError, AttributeError), match="signgs"):
+    with pytest.raises(ValueError, match="signgs"):
         vmecpp.run(vmec_input, verbose=False)
 
 
