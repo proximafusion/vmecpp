@@ -792,10 +792,8 @@ def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
         edge = series(ac, jnp.asarray(min(abs(bloat), 1.0)), integrate=True)
         # RadialProfiles scales to curtor only for a sufficiently nonzero edge
         scaled = jnp.abs(edge) > jnp.abs(np.finfo(float).eps * curtor)
-        edge = jnp.where(scaled, edge, 1.0)
-        itor = jnp.where(
-            scaled, vmec_input.signgs * MU_0 * curtor / (2 * np.pi * edge), 0
-        )
+        edge = edge + jnp.logical_not(scaled)  # finite where not scaled
+        itor = scaled * vmec_input.signgs * MU_0 * curtor / (2 * np.pi * edge)
         x_current = jnp.asarray(np.minimum(np.abs(torflux(s) * bloat), 1.0))
         current = itor * series(ac, x_current, integrate=True)
     return jnp.stack([mass, iota, current])
