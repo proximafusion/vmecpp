@@ -218,6 +218,29 @@ def test_run_returns_the_output_stage_wout() -> None:
         np.testing.assert_array_equal(value, getattr(reference, name), err_msg=name)
 
 
+def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
+    """One iteration per step stops cma in its ns = 25 step with a bad Jacobian;
+    return_outputs_even_if_not_converged then returns that step's wout.
+
+    The field of a bad-Jacobian state is not meaningful, so only the geometry is
+    compared.
+    """
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json").model_copy(
+        update={
+            "niter_array": np.asarray([1, 1]),
+            "return_outputs_even_if_not_converged": True,
+        }
+    )
+    output = _run_cpp(indata)
+    expected = vmecpp.VmecWOut._from_cpp_wout(output.wout)
+    assert expected.ns < indata.ns_array[-1]
+    actual = vmecpp._wout_from_output_stage(indata, output)
+    assert actual.bmnc.shape == expected.bmnc.shape
+    np.testing.assert_allclose(
+        actual.rmnc, expected.rmnc, rtol=0.0, atol=1.0e-12 * np.abs(expected.rmnc).max()
+    )
+
+
 def test_cli_uses_the_cpp_output_stage(tmp_path) -> None:
     script = (
         "import runpy, sys\n"
