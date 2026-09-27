@@ -1048,15 +1048,11 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER_COMPAT(niter, "maximum_iterations");
   READMEMBER(lfreeb);
   READMEMBER(mgrid_file);
-  // Compatibility with HDF5 files that do not have the nextcur and extcur
-  // fields yet (before v0.3.3)
-  if (m_obj.lfreeb) {
-    READMEMBER(nextcur);
-    READMEMBER(extcur);
-  } else {
-    m_obj.nextcur = 0;
-    m_obj.extcur = Eigen::Vector<double, 0>::Zero();
-  }
+  READMEMBER(extcur);
+  // Files written before v0.3.3 carry no nextcur, the number of extcur
+  // entries.
+  m_obj.nextcur = static_cast<int>(m_obj.extcur.size());
+  READMEMBER_OPTIONAL(nextcur);
   READMEMBER(mgrid_mode);
   READMEMBER(wb);
   READMEMBER(wp);
