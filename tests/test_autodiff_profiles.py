@@ -55,6 +55,12 @@ def test_half_grid_profiles_match_the_solver(ncurr: int) -> None:
         np.testing.assert_allclose(current, wout.buco[1:], rtol=1e-10)
 
 
+def test_half_grid_profiles_keep_zero_current() -> None:
+    indata = _cth_like(1).model_copy(update={"ac": np.zeros(1)})
+    current = autodiff_wout.half_grid_profiles(indata, 15, {})[2]
+    np.testing.assert_array_equal(current, np.zeros(14))
+
+
 def _check_gradient(objective, parameters: dict) -> None:
     direction = {
         name: 1e-4 * (jnp.abs(value) + 1e-2 * jnp.max(jnp.abs(value)))

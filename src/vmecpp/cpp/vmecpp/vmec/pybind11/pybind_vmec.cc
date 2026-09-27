@@ -558,27 +558,22 @@ class VmecModel {
   }
 
   // Cotangent of the half-grid chi' from one of MakeGeometry's poloidal_flux:
-  // chi_j = sum_{k<j} c_k iotaH_k with c_k = signOfJacobian * 2 pi deltaS
-  // phipH_k and iotaH_k = chipH_k / phipH_k.
+  // chi_j = sum_{k<j} signOfJacobian * 2 pi deltaS chipH_k.
   Eigen::VectorXd ChipBarFromPoloidalFluxBar(
       const Eigen::VectorXd &poloidal_flux_bar) const {
-    const Eigen::VectorXd &phip_h = vmec_->p_[0]->phipH;
-    const int nHalf = vmec_->fc_.ns - 1;
-    Eigen::VectorXd chip_bar = Eigen::VectorXd::Zero(nHalf);
+    Eigen::VectorXd chip_bar = Eigen::VectorXd::Zero(vmec_->fc_.ns - 1);
     if (poloidal_flux_bar.size() == 0) {
       return chip_bar;
     }
+    if (poloidal_flux_bar.size() != vmec_->fc_.ns) {
+      throw std::runtime_error("VmecModel: poloidal_flux_bar has wrong length");
+    }
+    const double c = static_cast<double>(vmec_->indata_.signgs) * 2.0 *
+                     std::numbers::pi * vmec_->fc_.deltaS;
     double tail = 0.0;
     for (int j = vmec_->fc_.ns - 1; j >= 1; --j) {
       tail += poloidal_flux_bar[j];
-      const int k = j - 1;
-      if (phip_h[k] == 0.0) {
-        throw std::runtime_error(
-            "VmecModel: invalid phipH for the poloidal-flux cotangent");
-      }
-      const double c_k = static_cast<double>(vmec_->indata_.signgs) * 2.0 *
-                         std::numbers::pi * vmec_->fc_.deltaS * phip_h[k];
-      chip_bar[k] = c_k * tail / phip_h[k];
+      chip_bar[j - 1] = c * tail;
     }
     return chip_bar;
   }
@@ -712,8 +707,9 @@ class VmecModel {
       const Eigen::VectorXd &force_bar,
       const Eigen::VectorXd &poloidal_flux_bar) {
     RequireLforbalDisabledForExactDerivatives();
-    if (vmec_->indata_.gamma != 0.0) {
-      throw std::runtime_error("VmecModel.profile_vjp requires gamma == 0");
+    if (vmec_->indata_.gamma != 0.0 || vmec_->indata_.lasym) {
+      throw std::runtime_error(
+          "VmecModel.profile_vjp requires gamma == 0 and lasym == false");
     }
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());

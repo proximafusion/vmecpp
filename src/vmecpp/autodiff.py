@@ -70,8 +70,11 @@ def _make_indata(template, boundary: np.ndarray, profiles=None):
 
 
 def _key(solver_id: int, boundary: np.ndarray, profiles: dict) -> tuple[int, bytes]:
-    values = [np.asarray(profiles[name]).tobytes() for name in sorted(profiles)]
-    return solver_id, b"".join([np.asarray(boundary).tobytes(), *values])
+    values = [
+        (name, np.shape(value), np.asarray(value).tobytes())
+        for name, value in sorted(profiles.items())
+    ]
+    return solver_id, repr((np.asarray(boundary).tobytes(), values)).encode()
 
 
 # VmecModel.status's integer value for vmecpp::VmecStatus::SUCCESSFUL_TERMINATION (see
