@@ -25,7 +25,7 @@ import numpy as np
 import pydantic
 
 try:
-    from jax import enable_x64
+    from jax import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 except ImportError:  # jax < 0.7, the last releases for Python 3.10
     from jax.experimental import (
         enable_x64,  # pyright: ignore[reportAttributeAccessIssue]
