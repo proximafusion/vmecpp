@@ -320,9 +320,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     wp = jnp.sum(pres_h * dvds_h) * delta_s
     rbtor0 = 1.5 * bvco_solver[0] - 0.5 * bvco_solver[1]
     rbtor = 1.5 * bvco_solver[-1] - 0.5 * bvco_solver[-2]
-    ctor = (
-        (1.5 * buco_solver[-1] - 0.5 * buco_solver[-2]) * signgs * 2.0 * np.pi / MU_0
-    )
+    ctor = (1.5 * buco_solver[-1] - 0.5 * buco_solver[-2]) * signgs * 2.0 * np.pi / MU_0
 
     # The output stage rebuilds B_v from the hybrid lambda force, restores the
     # enclosed poloidal current, and low-pass filters both covariant
