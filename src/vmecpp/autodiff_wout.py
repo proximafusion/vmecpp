@@ -171,7 +171,8 @@ def wout_quantities(
         The fields listed in :data:`WOUT_QUANTITIES`, in the layout of
         :class:`vmecpp.VmecWOut`.
     """
-    sizes = _sizes(vmec_input)
+    # A run that stops early at a coarser ns_array step returns that step's geometry.
+    sizes = _sizes(vmec_input, ns=np.shape(geometry.toroidal_flux)[0])
     profiles = _profiles(vmec_input, sizes, mass_half)
     if iota_half is not None and current_half is not None:
         error_message = "pass iota_half or current_half, not both"
@@ -829,13 +830,14 @@ class _Sizes:
         return max(0, self.nzeta // 2, self.ntor)
 
 
-def _sizes(vmec_input: Any) -> _Sizes:
+def _sizes(vmec_input: Any, ns: int | None = None) -> _Sizes:
     if not isinstance(vmec_input.mpol, int) or not isinstance(vmec_input.ntor, int):
         error_message = "wout_quantities requires scalar mpol and ntor"
         raise ValueError(error_message)
     mpol = vmec_input.mpol
     ntor = vmec_input.ntor
-    ns = int(np.asarray(vmec_input.ns_array)[-1])
+    if ns is None:
+        ns = int(np.asarray(vmec_input.ns_array)[-1])
     if ns < 3:
         error_message = "wout_quantities requires ns >= 3"
         raise ValueError(error_message)
