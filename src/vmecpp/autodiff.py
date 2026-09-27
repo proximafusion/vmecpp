@@ -6,19 +6,21 @@ and solves the transposed interior force system. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
 
-The first public parameterization is the fixed-boundary case, with either a
+The public parameterization is the fixed-boundary case, with either a
 prescribed iota or a prescribed toroidal current profile (``ncurr``). The
-differentiable parameter is one dense array with rows ``rbc`` and ``zbs`` and
-shape ``(2, mpol, 2 * ntor + 1)``. This first solver wrapper deliberately
-supports the stellarator-symmetric fixed-boundary case. The geometry API
-itself already supports asymmetric snapshots; profile and free-boundary
-parameter VJPs remain explicit unsupported cases until their residual
-dependence is exposed by the exact C++ derivative path.
+differentiable parameters are one dense array with rows ``rbc`` and ``zbs`` and
+shape ``(2, mpol, 2 * ntor + 1)`` and, optionally, the power-series profile
+parameters of :data:`autodiff_wout.PROFILE_PARAMETERS`. Their residual
+dependence enters through the half-grid pressure, chi' and current of the exact
+C++ force composition. This solver wrapper supports the stellarator-symmetric
+fixed-boundary case; the geometry API itself already supports asymmetric
+snapshots.
 """
 
 from __future__ import annotations
 
 import collections
+import functools
 import itertools
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,7 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 
-from vmecpp import geometry
+from vmecpp import autodiff_wout, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 _GEOMETRY_COEFFICIENTS = (
@@ -61,11 +63,25 @@ def _cpp_geometry_flat(value, ns: int, mpol: int, ntor: int) -> np.ndarray:
     return np.concatenate(arrays)
 
 
-def _make_indata(template, boundary: np.ndarray):
+def _make_indata(template, boundary: np.ndarray, profiles: dict[str, np.ndarray]):
     indata = template.copy()
     indata.rbc[...] = boundary[0]
     indata.zbs[...] = boundary[1]
+    for name, value in profiles.items():
+        if np.ndim(value) == 0:
+            setattr(indata, name, float(value))
+        else:
+            setattr(indata, name, np.asarray(value, dtype=np.float64))
     return indata
+
+
+def _solve_key(solver_id: int, boundary: np.ndarray, profiles: dict[str, np.ndarray]):
+    parts = [np.asarray(boundary).tobytes()]
+    parts.extend(
+        np.asarray(profiles[name], dtype=np.float64).tobytes()
+        for name in sorted(profiles)
+    )
+    return solver_id, b"|".join(parts)
 
 
 # VmecModel.status's integer value for vmecpp::VmecStatus::SUCCESSFUL_TERMINATION (see
@@ -74,8 +90,8 @@ def _make_indata(template, boundary: np.ndarray):
 # did not converge.
 _VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
 
-# State vectors of recent forward solves, keyed by (solver id, boundary
-# bytes), so the VJP linearizes at the solved state instead of solving again.
+# State vectors of recent forward solves, keyed by (solver id, boundary and
+# profile bytes), so the VJP linearizes at the solved state instead of solving again.
 # The cache is module-level and holds NumPy data only: JAX keeps callback
 # closures alive in its caches, so anything a solver instance owned would live
 # as long as those, and C++ objects must not outlive the callback that made them.
@@ -89,7 +105,7 @@ _SOLVER_IDS = itertools.count()
 _MU_0 = 4.0e-7 * np.pi
 
 
-def _solve_model(template, boundary: np.ndarray):
+def _solve_model(template, boundary: np.ndarray, profiles=None):
     """Run all requested VMEC++ resolutions and return the final model.
 
     Each entry of ``ns_array`` converges to its own ``ftol_array`` entry.
@@ -100,7 +116,7 @@ def _solve_model(template, boundary: np.ndarray):
     first steps for a cheap solve is only valid if its new last step is
     standalone-convergent.
     """
-    indata = _make_indata(template, boundary)
+    indata = _make_indata(template, boundary, profiles or {})
     resolutions = [int(value) for value in np.asarray(indata.ns_array)]
     model = None
     for ns in resolutions:
@@ -301,7 +317,14 @@ def _structural_nullfree_interior(
     return np.asarray(keep, dtype=np.int64)
 
 
-def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
+def _implicit_vjp(
+    model, geometry_bar: np.ndarray, *, with_profiles: bool
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """The boundary cotangent and, with ``with_profiles``, the cotangents.
+
+    ``(mass_half, iota_half, current_half)`` of :func:`autodiff_wout.half_grid_profiles`
+    stacked into shape ``(3, ns - 1)``.
+    """
     if not getattr(model, "has_exact_force_jacobian", False):
         error_message = (
             "This VMEC++ build has no exact residual transpose. Rebuild with "
@@ -367,17 +390,34 @@ def _implicit_boundary_vjp(model, geometry_bar: np.ndarray) -> np.ndarray:
     internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
     full_state_bar = np.zeros(state_size)
     full_state_bar[boundary] = internal_boundary_bar
-    return _boundary_from_state_vjp(model, full_state_bar)
+    boundary_bar = _boundary_from_state_vjp(model, full_state_bar)
+    if not with_profiles:
+        return boundary_bar, None
+    # dJ/dp = J_p - adjoint^T F_p, with the direct J_p through the poloidal flux
+    mass_bar, iota_bar, current_bar = model.profile_vjp(
+        np.ascontiguousarray(-embedded), np.ascontiguousarray(poloidal_flux_bar)
+    )
+    # the solver flips the sign of iota for a boundary it has to reorient
+    flip = -1.0 if model.have_to_flip_theta else 1.0
+    profile_bar = np.stack(
+        [
+            np.asarray(mass_bar, dtype=np.float64),
+            flip * np.asarray(iota_bar, dtype=np.float64),
+            np.asarray(current_bar, dtype=np.float64),
+        ]
+    )
+    return boundary_bar, profile_bar
 
 
 @dataclass(frozen=True)
 class DifferentiableVmec:
     """A callable JAX view of one fixed-boundary VMEC++ input.
 
-    The current exact VJP covers the boundary coefficients. Pressure, iota,
-    current, and flux parameters are intentionally not accepted as hidden
-    constants: exposing them requires their residual derivatives in the C++
-    contract, rather than a finite-difference fallback.
+    The exact VJP covers the boundary coefficients and, passed as ``profiles``,
+    the :data:`autodiff_wout.PROFILE_PARAMETERS`: the pressure ``am`` and
+    ``pres_scale``, the iota ``ai`` (``ncurr = 0``) and the current ``ac`` and
+    ``curtor`` (``ncurr = 1``). Profile derivatives need ``power_series``
+    profiles and ``gamma = 0``. The flux profile is not a parameter.
     """
 
     vmec_input: Any
@@ -430,47 +470,68 @@ class DifferentiableVmec:
     def output_shape(self) -> tuple[int]:
         return (self.geometry_size + self.extra_size,)
 
-    def _remember(self, boundary: np.ndarray, solve: dict[str, Any]) -> None:
-        _FORWARD_SOLVES[self._solver_id, np.asarray(boundary).tobytes()] = solve
+    def _remember(
+        self, boundary: np.ndarray, profiles: dict[str, np.ndarray], solve: dict
+    ) -> None:
+        _FORWARD_SOLVES[_solve_key(self._solver_id, boundary, profiles)] = solve
         while len(_FORWARD_SOLVES) > _FORWARD_SOLVES_SIZE:
             _FORWARD_SOLVES.popitem(last=False)
 
-    def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
-        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
-        self._remember(boundary, {"state": np.array(model.get_state())})
+    def _forward_callback(
+        self, boundary: np.ndarray, profiles: dict[str, np.ndarray]
+    ) -> np.ndarray:
+        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
+        self._remember(boundary, profiles, {"state": np.array(model.get_state())})
         return _cpp_geometry_flat(
             model.get_geometry(), model.ns, model.mpol, model.ntor
         )
 
-    def _solved_state(self, boundary: np.ndarray) -> np.ndarray:
+    def _solved_state(
+        self, boundary: np.ndarray, profiles: dict[str, np.ndarray]
+    ) -> np.ndarray:
         """The state vector of a fresh forward solve, for a cache miss."""
-        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary)
+        model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
         return np.array(model.get_state())
 
-    def _solved_model(self, boundary: np.ndarray):
+    def _solved_model(
+        self, boundary: np.ndarray, profiles: dict[str, np.ndarray] | None = None
+    ):
         """A model at the forward solve's state, consumed by the VJP.
 
         A model created cold and set to a solved state reproduces the solved model's
         forces, Hessian products and preconditioner exactly.
         """
+        profiles = profiles or {}
         solve = _FORWARD_SOLVES.pop(
-            (self._solver_id, np.asarray(boundary).tobytes()), None
+            _solve_key(self._solver_id, boundary, profiles), None
         )
-        state = self._solved_state(boundary) if solve is None else solve["state"]
-        indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary)
+        state = (
+            self._solved_state(boundary, profiles) if solve is None else solve["state"]
+        )
+        indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
         model = _vmecpp.VmecModel.create(indata, self.ns)
         model.set_state(np.ascontiguousarray(state))
         return model
 
     def _backward_callback(
-        self, boundary: np.ndarray, geometry_bar: np.ndarray
-    ) -> np.ndarray:
-        return _implicit_boundary_vjp(self._solved_model(boundary), geometry_bar)
+        self,
+        boundary: np.ndarray,
+        profiles: dict[str, np.ndarray],
+        geometry_bar: np.ndarray,
+        with_profiles: bool,
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        return _implicit_vjp(
+            self._solved_model(boundary, profiles),
+            geometry_bar,
+            with_profiles=with_profiles,
+        )
 
-    def __call__(self, boundary) -> geometry.Geometry:
-        return self._solve(boundary)[0]
+    def __call__(self, boundary, profiles=None) -> geometry.Geometry:
+        """The solved geometry for ``boundary`` and, optionally, a dict of traced
+        :data:`autodiff_wout.PROFILE_PARAMETERS` values that replace the input's."""
+        return self._solve(boundary, profiles)[0]
 
-    def _solve(self, boundary) -> tuple[geometry.Geometry, jax.Array]:
+    def _solve(self, boundary, profiles=None) -> tuple[geometry.Geometry, jax.Array]:
         """The geometry and the non-differentiated outputs of :attr:`extra_size`."""
         boundary = jnp.asarray(boundary, dtype=jnp.float64)
         if boundary.shape != self.parameter_shape:
@@ -478,45 +539,95 @@ class DifferentiableVmec:
                 f"boundary has shape {boundary.shape}, expected {self.parameter_shape}"
             )
             raise ValueError(error_message)
+        profiles = {
+            name: jnp.asarray(value, dtype=jnp.float64)
+            for name, value in (profiles or {}).items()
+        }
+        unknown = set(profiles) - set(autodiff_wout.PROFILE_PARAMETERS)
+        if unknown:
+            error_message = f"not differentiable profile parameters: {sorted(unknown)}"
+            raise ValueError(error_message)
+        ns = self.ns
         output_spec = jax.ShapeDtypeStruct(self.output_shape, boundary.dtype)
-        parameter_spec = jax.ShapeDtypeStruct(boundary.shape, boundary.dtype)
+        cotangent_spec = (
+            jax.ShapeDtypeStruct(boundary.shape, boundary.dtype),
+            jax.ShapeDtypeStruct((3, ns - 1), boundary.dtype),
+        )
 
-        def forward_callback(value):
-            return self._forward_callback(np.asarray(value)).astype(
+        def concrete(values):
+            return {name: np.asarray(value) for name, value in values.items()}
+
+        def forward_callback(value, values):
+            return self._forward_callback(np.asarray(value), concrete(values)).astype(
                 np.asarray(value).dtype, copy=False
             )
 
-        def backward_callback(value, cotangent):
+        def backward_callback(value, values, cotangent, *, with_profiles):
             geometry_bar = np.asarray(cotangent)[: self.geometry_size]
-            return self._backward_callback(np.asarray(value), geometry_bar).astype(
-                np.asarray(value).dtype, copy=False
+            boundary_bar, profile_bar = self._backward_callback(
+                np.asarray(value), concrete(values), geometry_bar, with_profiles
+            )
+            if profile_bar is None:
+                profile_bar = np.zeros((3, ns - 1))
+            dtype = np.asarray(value).dtype
+            return boundary_bar.astype(dtype, copy=False), profile_bar.astype(
+                dtype, copy=False
+            )
+
+        def forward(value, values):
+            return jax.pure_callback(
+                forward_callback, output_spec, value, values, vmap_method="sequential"
             )
 
         @jax.custom_vjp
-        def solve_flat(value):
-            return jax.pure_callback(
-                forward_callback, output_spec, value, vmap_method="sequential"
-            )
+        def solve_flat(value, values):
+            return forward(value, values)
 
-        def solve_fwd(value):
-            result = jax.pure_callback(
-                forward_callback, output_spec, value, vmap_method="sequential"
-            )
-            return result, value
+        def solve_fwd(value, values):
+            # symbolic_zeros: the primals carry whether they are differentiated
+            primals = {name: primal.value for name, primal in values.items()}
+            perturbed = {
+                name: primals[name]
+                for name, primal in values.items()
+                if primal.perturbed
+            }
+            return forward(value.value, primals), (value.value, primals, perturbed)
 
-        def solve_bwd(value, cotangent):
-            result = jax.pure_callback(
-                backward_callback,
-                parameter_spec,
+        def solve_bwd(residuals, cotangent):
+            value, values, perturbed = residuals
+            if isinstance(cotangent, jax.custom_derivatives.SymbolicZero):
+                cotangent = jnp.zeros(self.output_shape, dtype=value.dtype)
+            boundary_bar, profile_bar = jax.pure_callback(
+                functools.partial(backward_callback, with_profiles=bool(perturbed)),
+                cotangent_spec,
                 value,
+                values,
                 cotangent,
                 vmap_method="sequential",
             )
-            return (result,)
+            values_bar = {name: jnp.zeros_like(item) for name, item in values.items()}
+            if perturbed:
+                constants = {
+                    name: item for name, item in values.items() if name not in perturbed
+                }
+                _, pullback = jax.vjp(
+                    lambda p: autodiff_wout.half_grid_profiles(
+                        self.vmec_input, ns, p, constants=constants
+                    ),
+                    perturbed,
+                )
+                (perturbed_bar,) = pullback(
+                    {
+                        "mass_half": profile_bar[0],
+                        "iota_half": profile_bar[1],
+                        "current_half": profile_bar[2],
+                    }
+                )
+                values_bar.update(perturbed_bar)
+            return boundary_bar, values_bar
 
-        solve_flat.defvjp(solve_fwd, solve_bwd)
-        flat = solve_flat(boundary)
-        ns = self.ns
+        solve_flat.defvjp(solve_fwd, solve_bwd, symbolic_zeros=True)
+        flat = solve_flat(boundary, profiles)
         mpol = self.vmec_input.mpol
         ntor = self.vmec_input.ntor
         modes = ns * mpol * (ntor + 1)
@@ -555,6 +666,59 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     return DifferentiableVmec(vmec_input)
 
 
+def profile_tangents(vmec_input, ns: int, profiles: dict[str, Any]) -> dict:
+    """Zeros shaped as :func:`autodiff_wout.half_grid_profiles`, with its derivative.
+
+    Adding these to profiles computed by the solver carries the derivative of the
+    profile parameterization without evaluating it in the forward pass, so a
+    parameterization without a JAX port only fails when it is differentiated.
+    """
+
+    @jax.custom_vjp
+    def tangents(values):
+        del values
+        return dict.fromkeys(
+            ("mass_half", "iota_half", "current_half"), jnp.zeros(ns - 1)
+        )
+
+    def tangents_fwd(values):
+        primals = {name: primal.value for name, primal in values.items()}
+        perturbed = {
+            name: primals[name] for name, primal in values.items() if primal.perturbed
+        }
+        return tangents(primals), (primals, perturbed)
+
+    def tangents_bwd(residuals, cotangent):
+        values, perturbed = residuals
+        cotangent = {
+            name: jnp.zeros(ns - 1)
+            if isinstance(item, jax.custom_derivatives.SymbolicZero)
+            else item
+            for name, item in cotangent.items()
+        }
+        values_bar = {name: jnp.zeros_like(item) for name, item in values.items()}
+        if perturbed:
+            constants = {
+                name: item for name, item in values.items() if name not in perturbed
+            }
+            _, pullback = jax.vjp(
+                lambda p: autodiff_wout.half_grid_profiles(
+                    vmec_input, ns, p, constants=constants
+                ),
+                perturbed,
+            )
+            values_bar.update(pullback(cotangent)[0])
+        return (values_bar,)
+
+    tangents.defvjp(tangents_fwd, tangents_bwd, symbolic_zeros=True)
+    return tangents(
+        {
+            name: jnp.asarray(value, dtype=jnp.float64)
+            for name, value in profiles.items()
+        }
+    )
+
+
 @dataclass(frozen=True)
 class _RunSolver(DifferentiableVmec):
     """:class:`DifferentiableVmec` whose forward solve is a full ``vmecpp.run``.
@@ -571,10 +735,11 @@ class _RunSolver(DifferentiableVmec):
 
     @property
     def extra_size(self) -> int:
-        return 3 * (self.ns - 1)
+        """The half-grid mass, iota and buco, then the sign the solver gives iota."""
+        return 3 * (self.ns - 1) + 1
 
-    def _run(self, boundary: np.ndarray):
-        indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary)
+    def _run(self, boundary: np.ndarray, profiles: dict[str, np.ndarray]):
+        indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
         output = _vmecpp.run(
             indata,
             max_threads=self.max_threads,
@@ -582,15 +747,19 @@ class _RunSolver(DifferentiableVmec):
         )
         initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
         model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)
-        return output, np.array(model.get_state())
+        flip = -1.0 if model.have_to_flip_theta else 1.0
+        return output, np.array(model.get_state()), flip
 
-    def _forward_callback(self, boundary: np.ndarray) -> np.ndarray:
+    def _forward_callback(
+        self, boundary: np.ndarray, profiles: dict[str, np.ndarray]
+    ) -> np.ndarray:
         import vmecpp  # noqa: PLC0415
 
-        output, state = self._run(boundary)
+        output, state, flip = self._run(boundary, profiles)
         wout = vmecpp.VmecWOut._from_cpp_wout(output.wout)
         self._remember(
             boundary,
+            profiles,
             {
                 "state": state,
                 "wout_fields": dict(wout.__dict__),
@@ -606,10 +775,12 @@ class _RunSolver(DifferentiableVmec):
         mass_half = np.asarray(wout.mass, dtype=np.float64)[1:] * _MU_0
         iota_half = np.asarray(wout.iotas, dtype=np.float64)[1:]
         buco_half = np.asarray(wout.buco, dtype=np.float64)[1:]
-        return np.concatenate([geometry_flat, mass_half, iota_half, buco_half])
+        return np.concatenate([geometry_flat, mass_half, iota_half, buco_half, [flip]])
 
-    def _solved_state(self, boundary: np.ndarray) -> np.ndarray:
-        return self._run(boundary)[1]
+    def _solved_state(
+        self, boundary: np.ndarray, profiles: dict[str, np.ndarray]
+    ) -> np.ndarray:
+        return self._run(boundary, profiles)[1]
 
     def forward_outputs(self) -> dict[str, Any] | None:
         """The C++ outputs of this solver's latest forward solve, if it has run."""

@@ -3043,11 +3043,9 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
 }
 
 #ifdef VMECPP_ENABLE_ENZYME
-void IdealMhdModel::applyExactForceJacobianTranspose(
-    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
-    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
-    FourierGeometry& m_decomposed_out, bool fix_m1_gauge) {
-  const int gS = geom_stride;
+std::vector<double> IdealMhdModel::forceDensityCotangentFromDecomposed(
+    FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+    bool fix_m1_gauge) {
   const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
 
   // C^T: transpose of [scatter -> forcesToFourier -> decompose -> m1 -> zeroZ].
@@ -3095,6 +3093,16 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
     gather(14, clmn_e);
     gather(15, clmn_o);
   }
+  return force_bar;
+}
+
+void IdealMhdModel::applyExactForceJacobianTranspose(
+    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
+    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
+    FourierGeometry& m_decomposed_out, bool fix_m1_gauge) {
+  const int gS = geom_stride;
+  const std::vector<double> force_bar = forceDensityCotangentFromDecomposed(
+      m_decomposed_in, m_physical_f, fix_m1_gauge);
 
   // J_g^T: reverse-mode force-density kernel.
   std::vector<double> geom_bar(20 * gS, 0.0);
@@ -3220,6 +3228,35 @@ void IdealMhdModel::chipStateVjp(const double* geomP, int geom_stride,
   m_physical_scratch.extrapolateTowardsAxisTranspose();
   m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
+}
+
+void IdealMhdModel::profileVjp(const double* geomP, int geom_stride,
+                               FourierForces& m_decomposed_in,
+                               FourierForces& m_physical_f,
+                               const double* chip_bar, double* m_presH_bar,
+                               double* m_chipH_bar, double* m_currH_bar) {
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  const int nH = r_.nsMaxH - r_.nsMinH;
+  std::vector<double> force_bar = forceDensityCotangentFromDecomposed(
+      m_decomposed_in, m_physical_f, /*fix_m1_gauge=*/true);
+  if (ncurr == 1) {
+    for (int jH = 0; jH < nH; ++jH) {
+      force_bar[20 * nForce + jH] += chip_bar[jH];
+    }
+  }
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nWork = LocalForceWorkSize(comp);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> work_bar(nWork, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
+  ExactForceDensityProfileVjp(geomP, work.data(), work_bar.data(), force.data(),
+                              force_bar.data(), &comp, m_presH_bar, m_chipH_bar,
+                              m_currH_bar);
+  if (ncurr != 1) {
+    for (int jH = 0; jH < nH; ++jH) {
+      m_chipH_bar[jH] += chip_bar[jH];
+    }
+  }
 }
 
 // Diagnostic: max |composed force density - production force density| at the
