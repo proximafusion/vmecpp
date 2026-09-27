@@ -762,7 +762,7 @@ def half_grid_profiles(
     ns: int,
     parameters: dict[str, Any],
     constants: dict[str, Any] | None = None,
-) -> dict[str, jax.Array]:
+) -> dict[str, Any]:
     """The half-grid profiles of the C++ radial profiles, as JAX functions of
     ``parameters``.
 
