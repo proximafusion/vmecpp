@@ -361,6 +361,7 @@ TEST(ComposedTypesLibTest, CheckOrthonormalFrameAroundAxis) {
 
   // test around an arbitrary vector
   // and test that projections among each other vanish
+  // and that each axis has unit length
   Vector3d vector_4;
   vector_4.set_x(3.14);
   vector_4.set_y(2.71);
@@ -373,6 +374,9 @@ TEST(ComposedTypesLibTest, CheckOrthonormalFrameAroundAxis) {
                             kTolerance));
   EXPECT_TRUE(IsCloseRelAbs(0.0, DotProduct(axes_around_4[1], axes_around_4[2]),
                             kTolerance));
+  for (const Vector3d& unit_axis : axes_around_4) {
+    EXPECT_TRUE(IsCloseRelAbs(1.0, Length(unit_axis), kTolerance));
+  }
 }  // CheckOrthonormalFrameAroundAxis
 
 TEST(TestReadCoefficientsFromCsv, CheckReadAxisCoefficientsFromCsv) {
