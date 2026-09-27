@@ -1198,11 +1198,16 @@ def _currents(setup: _Setup, bsubs_mn, bsubu_mn, bsubv_mn, *, sign: float):
     currv = -sign * m * t1 + t2
 
     def extrapolate(values):
-        # axis for m <= 1 first, then the edge, as _extrapolate_both
-        full = jnp.pad(values, ((0, 0), (1, 1)))
-        axis = jnp.where(setup.xm_nyq <= 1, 2.0 * full[:, 1] - full[:, 2], 0.0)
-        full = full.at[:, 0].set(axis)
-        full = full.at[:, -1].set(2.0 * full[:, -2] - full[:, -3])
+        # Axis (m <= 1 only) and edge from the interior columns alone; with a
+        # single interior column (ns = 3) both ends take its value
+        # (ExtrapolateFullGridEnds).
+        if ns < 4:
+            axis = edge = values[:, 0]
+        else:
+            axis = 2.0 * values[:, 0] - values[:, 1]
+            edge = 2.0 * values[:, -1] - values[:, -2]
+        axis = jnp.where(setup.xm_nyq <= 1, axis, 0.0)
+        full = jnp.concatenate([axis[:, None], values, edge[:, None]], axis=1)
         return full / MU_0
 
     return extrapolate(curru), extrapolate(currv)
