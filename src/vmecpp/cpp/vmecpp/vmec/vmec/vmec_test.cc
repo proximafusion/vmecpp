@@ -159,6 +159,38 @@ TEST(TestVmec, RejectsACurrentProfileWithoutEdgeCurrent) {
               ::testing::HasSubstr("encloses no net current"));
 }
 
+// With a current profile too small at the boundary to scale, Fortran VMEC runs
+// without current whatever curtor asks for; a nonzero curtor on such a profile
+// is rejected here, and curtor = 0 still runs.
+TEST(TestVmec, RejectsANonzeroCurtorOnAVanishingCurrentProfile) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  ASSERT_NE(indata.curtor, 0.0);
+  indata.pcurr_type = "power_series";
+  // the default empty ac, a zero ac, and I(s) = 1e-30 s
+  const std::vector<Eigen::VectorXd> vanishing_profiles = {
+      Eigen::VectorXd(), Eigen::VectorXd::Zero(3),
+      Eigen::VectorXd::Constant(1, 1.0e-30)};
+  for (const Eigen::VectorXd& ac : vanishing_profiles) {
+    indata.ac = ac;
+    const auto output = vmecpp::run(indata);
+    ASSERT_FALSE(output.ok()) << "ac = [" << ac.transpose() << "]";
+    EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(output.status().message()),
+                ::testing::HasSubstr("too small to be scaled to curtor"));
+  }
+
+  indata.ac = Eigen::VectorXd();
+  indata.curtor = 0.0;
+  indata.niter_array[0] = 1;
+  indata.return_outputs_even_if_not_converged = true;
+  EXPECT_TRUE(vmecpp::run(indata).ok());
+}
+
 TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   // Verify that FromIndata returns an error status (rather than throwing)
   // when a free-boundary run specifies a non-existent mgrid file.

@@ -56,6 +56,12 @@ double Coef(const Eigen::VectorXd& c, int i) {
   return (i >= 0 && i < static_cast<int>(c.size())) ? c[i] : 0.0;
 }
 
+// Whether an enclosed current profile with this value at the boundary is
+// scaled to curtor; below the bound it is left unscaled and carries no current.
+bool EdgeCurrentScalesToCurtor(double edge_current, double curtor) {
+  return std::abs(edge_current) > std::abs(DBL_EPSILON * curtor);
+}
+
 // Per-interval cubic coefficients of the Akima spline through (knots, values),
 // ported 1:1 from educational_VMEC spline_akima.f. The construction is shared
 // between the direct evaluation and the integrated variant. Fortran uses the
@@ -482,6 +488,14 @@ absl::Status RadialProfiles::CheckCurrentProfileEnclosesEdgeCurrent() {
         "curtor; give a profile with I(1) != 0 or prescribe iota with ncurr = "
         "0",
         id_.pcurr_type, edge_current, largest_current));
+  }
+  if (id_.curtor != 0.0 &&
+      !EdgeCurrentScalesToCurtor(edge_current, id_.curtor)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "the current profile '%s' has I(1) = %.3e at the boundary, too small "
+        "to be scaled to curtor = %.3e; give a profile that carries current, "
+        "set curtor = 0, or prescribe iota with ncurr = 0",
+        id_.pcurr_type, edge_current, id_.curtor));
   }
   return absl::OkStatus();
 }
@@ -1064,7 +1078,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
   // way. The guard exists to keep the division below from blowing up on a
   // vanishing edge value; currv differs from curtor only by MU_0, so which of
   // the two sets the scale makes no practical difference.
-  if (std::abs(edgeCurrent) > std::abs(DBL_EPSILON * id_.curtor)) {
+  if (EdgeCurrentScalesToCurtor(edgeCurrent, id_.curtor)) {
     // FACTOR OF SIGNGS NEEDED HERE, SINCE MATCH IS MADE TO LINE INTEGRAL OF
     // BSUBU (IN GETIOTA) ~ SIGNGS * CURTOR
     Itor = signOfJacobian * currv / (2.0 * M_PI * edgeCurrent);

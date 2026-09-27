@@ -52,7 +52,9 @@ class RadialProfiles {
 
   // With ncurr = 1 the enclosed current profile is a shape scaled to curtor by
   // its value at the boundary, so a profile that encloses no net current there
-  // while carrying current inside cannot be imposed.
+  // while carrying current inside cannot be imposed, and neither can a nonzero
+  // curtor on a profile whose value at the boundary is too small to scale, such
+  // as one that is zero everywhere.
   absl::Status CheckCurrentProfileEnclosesEdgeCurrent();
 
   // Evaluate the radial profile function specified by the given
