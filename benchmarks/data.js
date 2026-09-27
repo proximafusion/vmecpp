@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790465699522,
+  "lastUpdate": 1790501496689,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20311,6 +20311,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.17255984800004853,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "matildevalente@proximafusion.com",
+            "name": "matildevalente-pf",
+            "username": "matildevalente-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "026301802a3b6959c1068d4a88f313afbaea4d73",
+          "message": "JAX port of the wout output post processing (#861)\n\n* Make vmecpp.run the differentiable entry point with a JAX port of the wout output stage\n\nAdd vmecpp.autodiff_wout.wout_arrays, a JAX port of the C++ output stage\nfrom a converged Geometry to the wout arrays (rmnc, zmns, lmns, lmns_full,\ngmnc, bmnc, bsubumnc, bsubvmnc, bsupumnc, bsupvmnc, bsubsmns, iotas, iotaf,\nphi, chi, phipf, chipf, presf, pres, aspect, volume_p, volavgB, betatotal,\nb0) in the (mn, ns) layout of VmecWOut. Grids, mode tables, DFT kernels and\nthe flux and mass profiles are NumPy and static under jit; only the geometry\nleaves are traced.\n\nAdd vmecpp.autodiff.run(vmec_input, *, boundary=None) returning a pytree of\nWoutArrays and Geometry, and vmecpp.run(..., differentiable=False) which\ndispatches to it with typed overloads so the default return type is\nunchanged. Document the differentiable path in the README.\n\nValidation against vmecpp.run(...).wout on the CTH-like fixed-boundary case\n(ncurr = 0, prescribed iota) and a truncated W7-X case: every array within\n1e-12 of the largest reference entry, worst relative deviation 2.3e-14.\njax.grad of aspect and of a bmnc quasisymmetry proxy against central\ndifferences of the fully re-solved pipeline at ns = 25, ftol = 1e-14:\nrelative differences 5.8e-6 to 6.0e-5.\n\n* Accept JAX arrays in VmecWOut array fields\n\nVmecWOut array fields are annotated jt.Float/Int[NpOrJax, ...], so the\nautodiff output stage can fill a VmecWOut with JAX arrays. jaxtyping\nexpands that annotation into a union of one array type per backend;\nsave() now collapses such a union to recover the NetCDF dimension names,\nand writes JAX-array values like numpy ones.\n\n* Skip the autodiff.run tests on builds without Enzyme\n\nmake_solver raises without VMECPP_ENABLE_ENZYME, so every test going\nthrough autodiff.run failed on the default CI wheel. The wout_arrays\ncomparisons against the C++ output stage need no Enzyme and still run.\n\n* Expose the iteration count, energy trace and delbsq on VmecModel\n\nautodiff.run fills the solver diagnostics of its VmecWOut from the model it\nsolved; niter, wdot and delbsq were the three wout fields without a\nVmecModel counterpart.\n\n* Compute every wout physics field in JAX and drop differentiable=\n\nThe JAX output stage now covers all VmecWOut physics fields, for\nstellarator-symmetric and asymmetric, fixed- and free-boundary runs:\nbesides the geometry, field and profile arrays already ported, the\ncurrents (currumnc/currvmnc), jxbforce averages (jdotb, bdotb,\nbdotgradv), the Mercier terms, the threed1 profiles and scalars (buco,\nbvco, jcuru, jcurv, equif, over_r, beta_vol, betas, extents, energies,\nrbtor, ctor, IonLarmor), the spectral width, the axis and the\nnon-symmetric counterparts. The asymmetric grid is the full-theta\ninverse DFT, with the reflection projections of symoutput and fsym_fft\nfor the forward DFT and the low-pass filter.\n\nvmecpp.run evaluates this stage on the converged geometry and returns\nNumPy arrays; input echoes, solver diagnostics, the mass profile and the\nfree-boundary vacuum potential come from the C++ run. autodiff.run\nreturns the same VmecWOut with JAX arrays, so the differentiable=True\nflag of vmecpp.run and its VmecOutput | DifferentiableRun return type go.\n\nVmecWOut is registered as a pytree. The physics fields are the leaves;\nthe remaining fields travel as aux data that compares equal regardless\nof content, so a diagnostic like niter does not key the jit cache.\nFloat fields are annotated float | Float[Array, \"\"].\n\nThe stage is jitted per input sizes, so repeated runs at the same\nresolution compile once per process. Measured single-threaded on this\nmachine: a warm call adds 4-22 ms to vmecpp.run (solovev, cma,\ncth_like_fixed_bdy, up_down_asym, li383_low_res); the first call per\nprocess and sizes adds 0.9-1.5 s of tracing and XLA compilation, and\nthe CLI accordingly 0.9-1.25 s per invocation.\n\ntests/test_autodiff_wout.py compares every VmecWOut field against the\nC++ output stage on six inputs. specw is evaluated on the returned\ngeometry; the C++ solver evaluates it on the state before the final time\nstep, so the two agree to the force tolerance rather than to roundoff.\n\n* Keep the CLI on the C++ output stage\n\nA CLI invocation is a one-shot process, so the JAX output stage would add\nits tracing and compilation (0.9-1.25 s measured) to every run, and\nnothing there differentiates the result. A private context variable lets\n__main__ opt out; vmecpp.run keeps the JAX stage by default. CLI times\nnow match the C++-only baseline, and no JAX backend is initialised.\n\n* Revert \"Expose the iteration count, energy trace and delbsq on VmecModel\"\n\nThis reverts commit 928db3abf60c5d1102903e712faf6dd4607dc2ee.\n\n* Differentiate through vmecpp.run and drop autodiff.run\n\nWith the wout computed by the JAX output stage, autodiff.run differed\nfrom vmecpp.run only in carrying the implicit VJP. vmecpp.run now takes\nthat path itself when rbc or zbs is a JAX tracer:\n\n    jax.grad(lambda b: vmecpp.run(\n        vmec_input.model_copy(update={\"rbc\": b[0], \"zbs\": b[1]})\n    ).wout.aspect)(boundary)\n\nThe forward solve of that path is a full C++ run inside the callback, so\nwhen it is observable (eager, jax.grad) jxbout, mercier, the threed1\ntables and the wout diagnostics come from its output stage, and the\nVmecModel bindings for niter, wdot and delbsq are not needed (reverted).\nUnder jax.jit those members are None and the diagnostics unknown. The\nVJP still re-solves through VmecModel, so the linearization point agrees\nwith the forward solve to the force tolerance. The forward path needs no\nEnzyme, so jit over run() works on every build; the VJP raises without it.\n\nThe traced path computes in float64 through a scoped jax.enable_x64\nrather than the caller's config, and warns when the caller's boundary is\nnot float64. rbc and zbs accept JAX arrays. VmecInput and VmecOutput are\npytrees: the boundary and the wout physics fields are leaves; the other\ninput fields key the jit cache, while the C++ tables travel as aux data\nthat does not.\n\n* Solve once per gradient and address the review of the output stage\n\nThe VJP no longer solves the equilibrium a second time. A forward solve\nrecords its state vector; the backward callback creates a VmecModel cold\nand sets that state, which reproduces the solved model's forces, Hessian\nproducts and preconditioner bitwise. run()'s forward solve is a full C++\nrun, whose state comes from a VmecModel hot-restarted from its wout: that\nmatches the run to 6e-17, whereas an independent VmecModel solve of cma\n(ftol 1e-6, two grid steps) lands 2.5e-3 away in lambda. The record lives\nin a module-level cache of two entries holding NumPy data only, which the\nVJP consumes. JAX keeps callback closures alive in its caches, so nothing\na solver instance owns, and no C++ object, outlives its callback; peak RSS\nstays flat over 150 jitted runs and 60 fresh jits.\n\nReview of the output stage:\n- VmecWOut aux data keys the jit cache on everything but the solver\n  diagnostics, so a changed nfp, ns or signgs retraces instead of being\n  returned stale. The vacuum potential and the jxbout, Mercier and threed1\n  tables are pytree leaves.\n- ns = 3 follows the C++ extrapolation order: axis from entries 1, 2 with\n  the edge still zero, then the edge.\n- iota, and for ncurr = 1 chi' solved from the enclosed current as in\n  computeBContra, come from the C++ run. The flux increments of the\n  geometry reproduce iota only to roundoff amplified by the cumulative\n  sums, which left buco of cma at 7e-16 against 2e-17; jcurv now matches\n  the Fortran reference to 1.3e-9 like the C++ (was 4.4e-8 to 7.6e-8, the\n  reference tolerance being 1e-7). chi integrates the iota in use.\n- The traced path takes the mass, iota and current profiles from the\n  forward callback, so every profile type works under jit, and rejects\n  signgs = +1 (VmecModel's geometry is left-handed) and gamma != 0 (the\n  adjoint omits the mass profile's dependence on R_00).\n\n* Extrapolate lmnc_full to the axis and type simsopt_compat's scalars\n\nmain now extrapolates the m = 0 modes of lmnc_full to the axis in 3D,\nas for lmns_full (output_quantities.cc); the JAX output stage follows,\nwhich fixes the asymmetric wout parity, the full-grid lambda recovery\nand the toroidal-rotation equivariance tests of the merge.\n\nsimsopt_compat's float accessors convert the wout scalars, now\nfloat | Float[Array, \"\"], and zero the boundary through np.asarray, for\npyright.\n\n* Make the new wout tests portable across netCDF and NumPy builds\n\nThe conda environment's netCDF cannot open mgrid_cth_like.nc, which its\nworkflow already works around by deselecting the reference-wout test; the\nfree-boundary parity case now takes its vacuum field from makegrid on the\ncoils, as test_free_boundary does. test_vmecwout_holds_jax_arrays compares\nmasks and data separately, since NumPy 1.x reports two masked scalars as a\nNaN-location mismatch.\n\n* Allow the ARM roundoff of jdotb in the wout parity test\n\nOn ubuntu-24.04-arm the extrapolated edge value of jdotb for cma differs\nfrom the C++ one by 1.9e-6 of the profile maximum (5e-7 on x86): J.B is a\ndifference of two O(1 / mu_0) terms, so FMA contraction shows first there.\n2e-5 of the maximum matches the atol the Fortran reference test uses.\n\n* Update autodiff_wout.py\n\n* Update README.md\n\n* Format autodiff_wout.py\n\n* Extrapolate the current densities as the C++ output stage now does\n\nmain's ExtrapolateFullGridEnds (#865) fills axis and edge from interior\ncolumns alone, and for ns = 3 copies the single interior column to both;\nthe JAX output stage follows.\n\n* Inline the output-stage helpers of run()\n\njax.enable_x64 replaces the _float64 / _float64_on_cpu wrappers, which\nalso pinned the stage to the CPU; the prescribed-profile choice and the\nconversion to writable NumPy arrays and floats move to their one call\nsite each; a traced boundary is detected with isinstance(x,\njax.core.Tracer).\n\n* Rename the forward-solve cache token to a solver id\n\n* Import enable_x64 from jax.experimental on jax < 0.7\n\njax 0.6.2, the last release for Python 3.10, has only\njax.experimental.enable_x64; jax >= 0.7 has only jax.enable_x64. Both take\nenable_x64(True).\n\n* Satisfy pyright on jax 0.6.2 (Python 3.10)\n\nEach branch of the enable_x64 import is unknown to one jax version, and\njax 0.6.2's stubs reject indexing a jnp.where result with [:, None].\n\n* Mask the axis of the current densities without jnp.where\n\njax 0.6.2's stubs type a jnp.where result as Array | tuple.\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-27T09:25:40Z",
+          "tree_id": "48ca79429ac634aed1a005e8f406f2a820281b67",
+          "url": "https://github.com/proximafusion/vmecpp/commit/026301802a3b6959c1068d4a88f313afbaea4d73"
+        },
+        "date": 1790501492224,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.521734015200002,
+            "range": "stddev: 0.0026292431031438553",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.553085437333342,
+            "range": "stddev: 0.848860438576844",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.9094886220000262,
+            "range": "stddev: 0.004125741291221098",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.71945872533333,
+            "range": "stddev: 0.6799718914417823",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2862413690000192,
+            "range": "stddev: 0.01277439997542142",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.703100517000034,
+            "range": "stddev: 0.040728356247997005",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.53205921,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3199976370000286,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
