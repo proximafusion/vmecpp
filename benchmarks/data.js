@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790585531601,
+  "lastUpdate": 1790585690654,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -63710,6 +63710,162 @@ window.BENCHMARK_DATA = {
             "value": 0.002274539194950441,
             "unit": "seconds",
             "extra": "iterations: 588\ncpu: 0.0022671864829931967 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "omeneghini@proximafusion.com",
+            "name": "Orso Meneghini",
+            "username": "omeneghini-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "53537b5753fd26e1b70558620716be6b60203ebf",
+          "message": "Document bsubsmns as the half-grid B_s; derive the half-grid lambda in interpolate_solution (#911)\n\n* Document bsubsmns as the half-grid B_s it is\n\nVmecWOut.bsubsmns holds VMEC 8.52's half-grid covariant B_s, with an extrapolated first column instead of a zero, but its docstring said full grid. Wout files from Fortran VMEC 9.0 and later store the full-grid B_s in the same variable; the docstring now says both.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n* Derive the half-grid lambda from the interpolated full-grid lambda in interpolate_solution\n\ninterpolate_solution interpolated lmns and lmnc, which live on the half grid, as full-grid geometry. The result disagreed with the interpolated lmns_full and lmnc_full by up to 2.7e-3 on cma. The half-grid lambda is now computed from the interpolated full-grid lambda with the rule the wout output uses, and _lambda_to_half_grid takes the mode numbers instead of the solver setup so both callers share it. The hot restart reads only the full-grid lambda, so restarts are unchanged.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-09-28T10:44:44+02:00",
+          "tree_id": "d1ff074a082a583b3f95aa2f5ca966c6be65c770",
+          "url": "https://github.com/proximafusion/vmecpp/commit/53537b5753fd26e1b70558620716be6b60203ebf"
+        },
+        "date": 1790585690102,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00002422688026963425,
+            "unit": "seconds",
+            "extra": "iterations: 55809\ncpu: 2.4225730616925588e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000031766311479459244,
+            "unit": "seconds",
+            "extra": "iterations: 44017\ncpu: 3.176433114478498e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005874060761664084,
+            "unit": "seconds",
+            "extra": "iterations: 2434\ncpu: 0.0005873607374691868 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014488464327739902,
+            "unit": "seconds",
+            "extra": "iterations: 963\ncpu: 0.0014487091443406027 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016318610359101593,
+            "unit": "seconds",
+            "extra": "iterations: 8533\ncpu: 0.00016317665651001994 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00014014839886372762,
+            "unit": "seconds",
+            "extra": "iterations: 9948\ncpu: 0.00014014179483313232 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003217001367356067,
+            "unit": "seconds",
+            "extra": "iterations: 4345\ncpu: 0.0003216722789413119 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00028465468782296684,
+            "unit": "seconds",
+            "extra": "iterations: 4923\ncpu: 0.00028464370810481416 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005205341167051276,
+            "unit": "seconds",
+            "extra": "iterations: 2727\ncpu: 0.0005205045218188483 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004484835196667769,
+            "unit": "seconds",
+            "extra": "iterations: 3175\ncpu: 0.00044840142866141736 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.001753235459327698,
+            "unit": "seconds",
+            "extra": "iterations: 800\ncpu: 0.0017531456437500004 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019527270807234269,
+            "unit": "seconds",
+            "extra": "iterations: 716\ncpu: 0.0019525904706703895 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00003224608527371985,
+            "unit": "seconds",
+            "extra": "iterations: 41107\ncpu: 3.227717225776532e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017442134930647393,
+            "unit": "seconds",
+            "extra": "iterations: 7996\ncpu: 0.00017448459792396252 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0008572920662010728,
+            "unit": "seconds",
+            "extra": "iterations: 1626\ncpu: 0.0008572566088561051 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027527451372200117,
+            "unit": "seconds",
+            "extra": "iterations: 51686\ncpu: 2.752374710753319e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0001561844814722526,
+            "unit": "seconds",
+            "extra": "iterations: 9085\ncpu: 0.0001561452914694524 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007818696954772351,
+            "unit": "seconds",
+            "extra": "iterations: 1731\ncpu: 0.0007818452264587247 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002992802749748271,
+            "unit": "seconds",
+            "extra": "iterations: 4665\ncpu: 0.0002992742274383709 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001181505545221194,
+            "unit": "seconds",
+            "extra": "iterations: 1188\ncpu: 0.0011814526203703711 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005643367767333984,
+            "unit": "seconds",
+            "extra": "iterations: 249\ncpu: 0.005643074297188758 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.01558915170436167,
+            "unit": "seconds",
+            "extra": "iterations: 237\ncpu: 0.014975491324894518 seconds\nthreads: 1"
           }
         ]
       }
