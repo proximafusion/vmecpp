@@ -510,7 +510,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
             / phip_f[0]
         )
         lmns_full = lmns_full.at[np.flatnonzero(m0), 0].set(axis)
-    lmns = _lambda_to_half_grid(setup, lmns_full)
+    lmns = _lambda_to_half_grid(lmns_full, setup.xm)
     raxis_cc = jnp.asarray(geometry.r_cc)[0, 0, :]
     zaxis_cs = (
         -jnp.asarray(geometry.z_cs)[0, 0, :]
@@ -539,7 +539,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
             rmns=_to_combined(setup, geometry.r_sc, geometry.r_cs, cosine=False),
             zmnc=_to_combined(setup, geometry.z_cc, geometry.z_ss, cosine=True),
             lmnc_full=lmnc_full,
-            lmnc=_lambda_to_half_grid(setup, lmnc_full),
+            lmnc=_lambda_to_half_grid(lmnc_full, setup.xm),
             gmns=gmns,
             bmns=bmns,
             bsubumns=bsubumns,
@@ -1429,18 +1429,22 @@ def _to_combined(setup: _Setup, first, second, *, cosine: bool) -> jax.Array:
     return jnp.where(axis_mask, 0.0, combined)
 
 
-def _lambda_to_half_grid(setup: _Setup, lambda_full: jax.Array) -> jax.Array:
+def _lambda_to_half_grid(
+    lambda_full: jax.Array | np.ndarray, xm: np.ndarray
+) -> jax.Array:
     """Radial interpolation of lambda onto the half grid (classic ``lmns``)."""
-    ns = setup.ns
-    sm = setup.sqrt_s_half / setup.sqrt_s_full[1:]
+    ns = lambda_full.shape[1]
+    sqrt_s_full = np.sqrt(np.arange(ns) / (ns - 1.0))
+    sqrt_s_half = np.sqrt((np.arange(ns - 1) + 0.5) / (ns - 1.0))
+    sm = sqrt_s_half / sqrt_s_full[1:]
     sp = np.empty_like(sm)
-    sp[1:] = setup.sqrt_s_half[1:] / setup.sqrt_s_full[1:-1]
+    sp[1:] = sqrt_s_half[1:] / sqrt_s_full[1:-1]
     sp[0] = sm[0]
     outside = lambda_full[:, 1:]
     inside = lambda_full[:, :-1]
-    low_m = (setup.xm <= 1)[:, None] & (np.arange(ns - 1) == 0)[None, :]
+    low_m = (xm <= 1)[:, None] & (np.arange(ns - 1) == 0)[None, :]
     inside = jnp.where(low_m, outside, inside)
-    odd = (setup.xm % 2 == 1)[:, None]
+    odd = (xm % 2 == 1)[:, None]
     half = jnp.where(
         odd,
         0.5 * (sm[None, :] * outside + sp[None, :] * inside),

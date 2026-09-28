@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp import autodiff_wout
 from vmecpp._continuation import _state_mode_table, _step_input
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -123,6 +124,37 @@ def test_interpolate_fourier_pad_and_truncate(solovev_output: vmecpp.VmecOutput)
 
 
 # --- continuation driver -----------------------------------------------------
+
+
+def _half_grid_lambda(wout: vmecpp.VmecWOut) -> np.ndarray:
+    with vmecpp.enable_x64(True):
+        return np.asarray(
+            autodiff_wout._lambda_to_half_grid(
+                np.asarray(wout.lmns_full), np.asarray(wout.xm)
+            )
+        )
+
+
+def test_interpolate_keeps_half_grid_lambda_consistent(cma_direct: vmecpp.VmecOutput):
+    """``lmns`` is the half-grid lambda of ``lmns_full`` before and after a change of
+    the radial resolution."""
+    wout = cma_direct.wout
+    scale = np.abs(np.asarray(wout.lmns_full)).max()
+    np.testing.assert_allclose(
+        np.asarray(wout.lmns), _half_grid_lambda(wout), rtol=0.0, atol=1e-13 * scale
+    )
+
+    for ns_new in (int(wout.ns) - 10, 2 * int(wout.ns) - 1):
+        target = _step_input(
+            cma_direct.input, ns_new, int(wout.mpol), int(wout.ntor), 1e-12, 1
+        )
+        guess = vmecpp.interpolate_solution(cma_direct, target).wout
+        np.testing.assert_allclose(
+            np.asarray(guess.lmns),
+            _half_grid_lambda(guess),
+            rtol=0.0,
+            atol=1e-13 * scale,
+        )
 
 
 def test_mpol_ntor_length_one_sequence_collapses_to_scalar(
