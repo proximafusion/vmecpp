@@ -1250,7 +1250,13 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
-    :math:`B_{s}` on the full- grid."""
+    :math:`B_{s}` on the half-grid, as written by VMEC 8.52.
+
+    Unlike the other half-grid quantities, the first column is not zero but
+    ``2 * bsubsmns[:, 1] - bsubsmns[:, 2]``. Fortran VMEC 9.0 and later write the
+    full-grid :math:`B_{s}` here instead; a wout file from those versions, loaded with
+    ``from_wout_file``, carries that full-grid array.
+    """
 
     bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
