@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790585690654,
+  "lastUpdate": 1790586289317,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20871,6 +20871,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.5095948740000154,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5f4045db7955f66f3837d90ac2d8137de65aca7c",
+          "message": "Differentiate the adjoint with respect to the pressure, iota and current profiles (#906)\n\n* Differentiate the adjoint with respect to the pressure, iota and current profiles\n\nThe implicit VJP now also returns the cotangents of the power-series profile\nparameters am, pres_scale, ai (ncurr = 0), ac and curtor (ncurr = 1). The\nEnzyme reverse pass of the force composition marks presH, chipH and currH\nactive; the JAX output stage differentiates the solver's mass, iota and\ncurrent profiles through the same parameterization.\n\n* Annotate half_grid_profiles for the jnp.polyval stubs of CI's JAX\n\n* Shrink the profile-gradient path and keep derivatives of the echoed coefficients\n\nThe VJP is taken with respect to the half-grid profiles, and JAX differentiates\nthe power-series coefficients from them. Drops the pytree-leaf, symbolic-zero and\nlazy-tangent machinery. Eager and compiled runs both differentiate wout.am/ac/ai.\n\n* Address review: cache key, zero-current guard, profile_vjp checks, phi' cancellation\n\n* Annotate the power-series helper for CI's jnp.polyval stubs\n\n* Write the edge-current guard without jnp.where for CI's JAX stubs\n\n* Zero the chi' cotangent where phi' vanishes; pad long traced profile echoes without truncation",
+          "timestamp": "2026-09-28T10:56:37+02:00",
+          "tree_id": "a2a0602f1c214eb28a405310de59d9846153d3f0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5f4045db7955f66f3837d90ac2d8137de65aca7c"
+        },
+        "date": 1790586282008,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5031412325999896,
+            "range": "stddev: 0.058995930504768535",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.0140127299999904,
+            "range": "stddev: 0.6498637330455179",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6822628050000125,
+            "range": "stddev: 0.013304345993361728",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.394494166999986,
+            "range": "stddev: 0.6003795297026878",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.095237209000004,
+            "range": "stddev: 0.021318604712518417",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 4.5961730983333196,
+            "range": "stddev: 0.018329318090119198",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.942351961999975,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.19513001300003907,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
