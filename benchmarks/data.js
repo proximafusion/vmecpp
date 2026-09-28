@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790526209107,
+  "lastUpdate": 1790585531601,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20791,6 +20791,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.17355532499999526,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "omeneghini@proximafusion.com",
+            "name": "Orso Meneghini",
+            "username": "omeneghini-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "53537b5753fd26e1b70558620716be6b60203ebf",
+          "message": "Document bsubsmns as the half-grid B_s; derive the half-grid lambda in interpolate_solution (#911)\n\n* Document bsubsmns as the half-grid B_s it is\n\nVmecWOut.bsubsmns holds VMEC 8.52's half-grid covariant B_s, with an extrapolated first column instead of a zero, but its docstring said full grid. Wout files from Fortran VMEC 9.0 and later store the full-grid B_s in the same variable; the docstring now says both.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n* Derive the half-grid lambda from the interpolated full-grid lambda in interpolate_solution\n\ninterpolate_solution interpolated lmns and lmnc, which live on the half grid, as full-grid geometry. The result disagreed with the interpolated lmns_full and lmnc_full by up to 2.7e-3 on cma. The half-grid lambda is now computed from the interpolated full-grid lambda with the rule the wout output uses, and _lambda_to_half_grid takes the mode numbers instead of the solver setup so both callers share it. The hot restart reads only the full-grid lambda, so restarts are unchanged.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-09-28T10:44:44+02:00",
+          "tree_id": "d1ff074a082a583b3f95aa2f5ca966c6be65c770",
+          "url": "https://github.com/proximafusion/vmecpp/commit/53537b5753fd26e1b70558620716be6b60203ebf"
+        },
+        "date": 1790585527378,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6911306129999844,
+            "range": "stddev: 0.01547903308664419",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.2544499706666556,
+            "range": "stddev: 1.2055946631299292",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1161715810000032,
+            "range": "stddev: 0.001577785250124086",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.2943205440000156,
+            "range": "stddev: 1.048770775667964",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4862513180000103,
+            "range": "stddev: 0.0075742289933956215",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.823965528333342,
+            "range": "stddev: 0.011061554150208538",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.5277968770000143,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5095948740000154,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
