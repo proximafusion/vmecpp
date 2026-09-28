@@ -2748,8 +2748,15 @@ def _run_traced(
             stacklevel=3,
         )
     shape = np.shape(vmec_input.rbc)
+    profiles = {
+        name: getattr(vmec_input, name)
+        for name in autodiff_wout.PROFILE_PARAMETERS
+        if isinstance(getattr(vmec_input, name), jax.core.Tracer)
+    }
+    # concrete placeholders; the forward solve receives the traced values
+    placeholders = {name: np.zeros(np.shape(value)) for name, value in profiles.items()}
     template = vmec_input.model_copy(
-        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape)}
+        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
     )
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
@@ -2761,8 +2768,17 @@ def _run_traced(
                 jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
             ]
         )
-        geometry, extra = solver._solve(boundary)
-        mass_half, iotas, buco = jax.numpy.split(jax.lax.stop_gradient(extra), 3)
+        geometry, extra = solver._solve(boundary, profiles)
+        extra = jax.lax.stop_gradient(extra)
+        mass_half, iotas, buco = jax.numpy.split(extra[:-1], 3)
+        # the solver's profiles, with the derivative of their parameterization
+        half = autodiff_wout.half_grid_profiles(template, solver.ns, profiles)
+        half = half - jax.lax.stop_gradient(half)
+        mass_half, iotas, buco = (
+            mass_half + half[0],
+            iotas + extra[-1] * half[1],
+            buco + half[2],
+        )
         # With ncurr = 1, iota follows from the geometry through the current
         # constraint, and so does its derivative; otherwise it is prescribed.
         if vmec_input.ncurr == 1:
@@ -2774,7 +2790,7 @@ def _run_traced(
         forward = solver.forward_outputs()
         if forward is None:
             fields = {
-                **autodiff_wout.static_fields(template),
+                **autodiff_wout.static_fields(vmec_input),
                 **autodiff_wout.UNKNOWN_DIAGNOSTICS,
             }
             others = dict.fromkeys(
@@ -2790,7 +2806,12 @@ def _run_traced(
                 )
             )
         else:
-            fields = forward["wout_fields"]
+            # the C++ echoes of traced profile coefficients carry no derivative
+            echoes = autodiff_wout.static_fields(vmec_input)
+            echoes = {
+                name: echoes[name] for name in ("am", "ac", "ai") if name in profiles
+            }
+            fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
         quantities = autodiff_wout.wout_quantities(
             geometry, template, mass_half=mass_half, **profile
@@ -2856,7 +2877,8 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    if isinstance(input.rbc, jax.core.Tracer) or isinstance(input.zbs, jax.core.Tracer):
+    traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
+    if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
         return _run_traced(
             input,
             magnetic_field,
