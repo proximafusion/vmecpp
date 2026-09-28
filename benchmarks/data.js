@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790586289317,
+  "lastUpdate": 1790586424698,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -63946,6 +63946,162 @@ window.BENCHMARK_DATA = {
             "value": 0.01558915170436167,
             "unit": "seconds",
             "extra": "iterations: 237\ncpu: 0.014975491324894518 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5f4045db7955f66f3837d90ac2d8137de65aca7c",
+          "message": "Differentiate the adjoint with respect to the pressure, iota and current profiles (#906)\n\n* Differentiate the adjoint with respect to the pressure, iota and current profiles\n\nThe implicit VJP now also returns the cotangents of the power-series profile\nparameters am, pres_scale, ai (ncurr = 0), ac and curtor (ncurr = 1). The\nEnzyme reverse pass of the force composition marks presH, chipH and currH\nactive; the JAX output stage differentiates the solver's mass, iota and\ncurrent profiles through the same parameterization.\n\n* Annotate half_grid_profiles for the jnp.polyval stubs of CI's JAX\n\n* Shrink the profile-gradient path and keep derivatives of the echoed coefficients\n\nThe VJP is taken with respect to the half-grid profiles, and JAX differentiates\nthe power-series coefficients from them. Drops the pytree-leaf, symbolic-zero and\nlazy-tangent machinery. Eager and compiled runs both differentiate wout.am/ac/ai.\n\n* Address review: cache key, zero-current guard, profile_vjp checks, phi' cancellation\n\n* Annotate the power-series helper for CI's jnp.polyval stubs\n\n* Write the edge-current guard without jnp.where for CI's JAX stubs\n\n* Zero the chi' cotangent where phi' vanishes; pad long traced profile echoes without truncation",
+          "timestamp": "2026-09-28T10:56:37+02:00",
+          "tree_id": "a2a0602f1c214eb28a405310de59d9846153d3f0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5f4045db7955f66f3837d90ac2d8137de65aca7c"
+        },
+        "date": 1790586424354,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000013869677352806035,
+            "unit": "seconds",
+            "extra": "iterations: 80723\ncpu: 1.3869139080559444e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000018096485862719544,
+            "unit": "seconds",
+            "extra": "iterations: 76975\ncpu: 1.809593556349464e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.00029969958502412783,
+            "unit": "seconds",
+            "extra": "iterations: 4588\ncpu: 0.00029968917763731475 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.000832702664445199,
+            "unit": "seconds",
+            "extra": "iterations: 1651\ncpu: 0.0008326678328285884 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00008695415095620695,
+            "unit": "seconds",
+            "extra": "iterations: 15869\ncpu: 8.692926321759406e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00007910736060947976,
+            "unit": "seconds",
+            "extra": "iterations: 17553\ncpu: 7.908403748646954e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00017462250885525292,
+            "unit": "seconds",
+            "extra": "iterations: 7814\ncpu: 0.00017459244983363196 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00016628549051690036,
+            "unit": "seconds",
+            "extra": "iterations: 8825\ncpu: 0.0001662562101983003 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.00033780128328789774,
+            "unit": "seconds",
+            "extra": "iterations: 4114\ncpu: 0.00033772662566844967 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0002667082023795752,
+            "unit": "seconds",
+            "extra": "iterations: 5445\ncpu: 0.0002666053357208449 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0011082665842861196,
+            "unit": "seconds",
+            "extra": "iterations: 1263\ncpu: 0.0011082108788598576 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0009369745533517066,
+            "unit": "seconds",
+            "extra": "iterations: 1504\ncpu: 0.0009366806070478724 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000019248559242029285,
+            "unit": "seconds",
+            "extra": "iterations: 73179\ncpu: 1.925552491835085e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00011045814260344684,
+            "unit": "seconds",
+            "extra": "iterations: 12775\ncpu: 0.00011045930481408834 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0005439495842369143,
+            "unit": "seconds",
+            "extra": "iterations: 2529\ncpu: 0.000543922880980627 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000016151806384018636,
+            "unit": "seconds",
+            "extra": "iterations: 87055\ncpu: 1.615202322669596e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00009740157814667482,
+            "unit": "seconds",
+            "extra": "iterations: 14091\ncpu: 9.737633148818445e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0005078980985205719,
+            "unit": "seconds",
+            "extra": "iterations: 2670\ncpu: 0.0005078544318352164 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00016323421523795043,
+            "unit": "seconds",
+            "extra": "iterations: 8631\ncpu: 0.00016322337087243649 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0006769729066649203,
+            "unit": "seconds",
+            "extra": "iterations: 2055\ncpu: 0.0006769348326034066 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.002802826154350054,
+            "unit": "seconds",
+            "extra": "iterations: 505\ncpu: 0.0028024685920792066 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.0024812599969288663,
+            "unit": "seconds",
+            "extra": "iterations: 567\ncpu: 0.002472805467372134 seconds\nthreads: 1"
           }
         ]
       }
