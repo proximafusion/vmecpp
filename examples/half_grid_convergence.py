@@ -76,15 +76,31 @@ def coefficient_rows(case, svals, nfp, modes):
     }
 
 
-def _select(points, funcs, count):
+# Row pivots of the collocation grids, {(lasym, gauge): (r_s points, r_u points)}:
+# the points gen/mms_colloc.py of Stellarocq pivoted on for the certificates.
+PIVOTS = {
+    (False, False): ([0, 10, 3, 12, 6], [5, 7, 14, 4]),
+    (True, True): ([0, 7, 10, 21, 23, 13, 3, 20, 17], [5, 20, 7, 22, 19, 4]),
+}
+
+
+def _select(points, funcs, pivots):
+    """Greedy row pivoting on the basis matrix along the given pivots, each of which has
+    the largest remaining norm to 1e-12; ties at that precision are otherwise decided by
+    the last bits of cos and sin, which differ between platforms."""
+    if len(pivots) != len(funcs):
+        msg = f"{len(pivots)} pivots for {len(funcs)} functions"
+        raise ValueError(msg)
     A = np.array([[f(u, v) for f in funcs] for (u, v) in points])
     R = A.copy()
     chosen = []
-    for _ in range(count):
+    for i in pivots:
         norms = np.linalg.norm(R, axis=1)
-        for i in chosen:
-            norms[i] = -1.0
-        i = int(np.argmax(norms))
+        for k in chosen:
+            norms[k] = -1.0
+        if norms[i] < (1.0 - 1e-12) * norms.max():
+            msg = f"pivot {i} is not a largest remaining row"
+            raise ValueError(msg)
         chosen.append(i)
         q = R[i] / norms[i]
         R = R - np.outer(R @ q, q)
@@ -113,16 +129,16 @@ def collocation(modes, nfp, lasym, gauge):
             for i in range(nu)
             for k in range(nv)
         ]
-        return _select(grid, cosf + sinf, len(cosf + sinf)), _select(
-            grid, sinf + cosz, len(sinf + cosz)
-        )
+        ps, pu = PIVOTS[(lasym, gauge)]
+        return _select(grid, cosf + sinf, ps), _select(grid, sinf + cosz, pu)
     nu = mpol + 1
     grid = [
         ((i + 0.5) * math.pi / nu, 2 * math.pi * k / (nfp * nv))
         for i in range(nu)
         for k in range(nv)
     ]
-    return _select(grid, cosf, len(cosf)), _select(grid, sinf, len(sinf))
+    ps, pu = PIVOTS[(lasym, gauge)]
+    return _select(grid, cosf, ps), _select(grid, sinf, pu)
 
 
 class Continuum:
