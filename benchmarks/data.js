@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790717937931,
+  "lastUpdate": 1790718807566,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21431,6 +21431,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.5162632760000179,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6cc0efd8a5d5a9ac7e775efd58d4960c4345c000",
+          "message": "Retry a bad initial Jacobian from a three-surface mesh (#884)\n\n* Retry a bad initial Jacobian from a three-surface mesh\n\nAddressed by both CharlesCNorton and Philipp Bogdan in independent PRs\n\n---------\n\nCo-authored-by: Philipp Bogdan <philippbogdan@users.noreply.github.com>",
+          "timestamp": "2026-09-29T21:47:33Z",
+          "tree_id": "42e68539a0bb6067c74af3c74f5c2a0cd8f54cbb",
+          "url": "https://github.com/proximafusion/vmecpp/commit/6cc0efd8a5d5a9ac7e775efd58d4960c4345c000"
+        },
+        "date": 1790718801618,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.4624537878000069,
+            "range": "stddev: 0.003224694438790739",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.501005910999993,
+            "range": "stddev: 0.6948490567500372",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8530761533333475,
+            "range": "stddev: 0.011331792774978866",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.9947160419999932,
+            "range": "stddev: 0.6513095673767884",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.9511115396666696,
+            "range": "stddev: 0.013292434103745898",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.063199748000007,
+            "range": "stddev: 0.15004056851806188",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.582127635999996,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.22301190700000006,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
