@@ -36,7 +36,7 @@ GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 GOOD = "#0ca30c"
 # the force residuals of R, Z and lambda
-SERIES = {"R": "#2a78d6", "Z": "#eb6834", "λ": "#1baf7a"}
+SERIES = {"R": "#2a78d6", "Z": "#eb6834", r"$\lambda$": "#1baf7a"}
 # the inner flux surfaces, light to dark with the radius
 RAMP = (
     "#86b6ef",
@@ -191,7 +191,7 @@ class SolveView:
         for k, zeta in enumerate(self.zetas):
             ax = self.fig.add_subplot(top[0, k])
             ax.set_aspect("equal")
-            ax.set_title(f"φ = {np.degrees(zeta):.0f}°", loc="left")
+            ax.set_title(rf"$\varphi$ = {np.degrees(zeta):.0f}$^\circ$", loc="left")
             ax.set_xlabel("R (m)")
             if k == 0:
                 ax.set_ylabel("Z (m)")
@@ -292,17 +292,7 @@ class SolveView:
 
         parts: list[Artist]
         if output.wout.ier_flag == 0:
-            parts = [
-                TextArea(
-                    "✓",
-                    textprops={
-                        "color": GOOD,
-                        "fontsize": 11,
-                        "fontfamily": "DejaVu Sans",
-                    },
-                ),
-                TextArea("converged", textprops={"color": INK_SECONDARY}),
-            ]
+            parts = [TextArea("converged", textprops={"color": GOOD})]
         elif output.wout.ier_flag == STOPPED:
             parts = [TextArea("stopped", textprops={"color": INK_MUTED})]
         else:
