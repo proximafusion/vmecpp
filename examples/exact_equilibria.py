@@ -69,6 +69,7 @@ import math
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from numpy.polynomial import Chebyshev, Polynomial
@@ -847,7 +848,7 @@ def run_suite(suite, members=None, out_dir=None, max_threads=None, reference=Non
         if members and scan.member not in members:
             continue
         member = MEMBERS[scan.member]
-        entry = {
+        entry: dict[str, Any] = {
             "radial": [
                 _row(member, scan, ns, scan.mpol, scan.ntor, max_threads)
                 for ns in scan.ns
@@ -874,22 +875,74 @@ def run_suite(suite, members=None, out_dir=None, max_threads=None, reference=Non
     return results
 
 
-def summary(results, suite, reference=None):
-    """The errors, observed orders and checks as markdown tables."""
-    lines = [f"## Exact equilibria, {suite} suite", ""]
+# The quantities the report shows, with the radial order each is expected to reach.
+HEADLINE = (
+    ("psi", r"$\psi$ (surfaces)", 1),
+    ("axis", "axis [m]", 1),
+    ("B, s >= 1/4", r"$B$, $s\geq 1/4$", 2),
+    ("current, s >= 1/4", r"$I_{tor}$, $s\geq 1/4$", 2),
+    ("jcurv, s >= 1/4", r"$dI/ds$, $s\geq 1/4$", 2),
+)
+
+
+def local_orders(ns_list, values):
+    """The midpoints of consecutive h and the observed orders between them."""
+    h = 1.0 / (np.asarray(ns_list, float) - 1.0)
+    return np.sqrt(h[:-1] * h[1:]), np.asarray(orders(ns_list, values))
+
+
+def _converged(row):
+    return row["fsq"] <= 3.0 * ftol_for(row["ns"])
+
+
+def _full_table(rows, first, first_of):
     keys = [*MEASURES, "fsq"]
+    lines = [
+        f"| {first} | " + " | ".join(keys) + " |",
+        "|---" * (len(keys) + 1) + "|",
+    ]
+    lines += [
+        f"| {first_of(r)} | " + " | ".join(f"{r[k]:.2e}" for k in keys) + " |"
+        for r in rows
+    ]
+    return lines
+
+
+def summary(results, suite, reference=None):
+    """Per member a short table of the headline errors at the finest ns and their last
+    observed orders, then the checks; the complete tables folded below."""
+    lines = [f"## Exact equilibria, {suite} suite", ""]
     for name, entry in results.items():
         rows = entry["radial"]
+        ns = [r["ns"] for r in rows]
+        unconverged = [r["ns"] for r in rows if not _converged(r)]
         lines += [
-            f"### {name}, mpol {rows[0]['mpol']}, ntor {rows[0]['ntor']}",
+            f"**{name}**, ns {ns[0]} to {ns[-1]}, mpol {rows[0]['mpol']}, "
+            f"ntor {rows[0]['ntor']}"
+            + (f", not converged at ns {unconverged}" if unconverged else ""),
             "",
-            "| ns | " + " | ".join(keys) + " |",
-            "|---" * (len(keys) + 1) + "|",
+            f"| quantity | error at ns {ns[-1]} | order, last pair | expected |",
+            "|---|---|---|---|",
         ]
+        for key, _, expected in HEADLINE:
+            last = entry["orders"][key][-1]
+            flag = "" if last >= expected - 0.3 else " ⚠"
+            lines.append(
+                f"| {key} | {rows[-1][key]:.1e} | {last:.2f}{flag} | {expected} |"
+            )
+        lines.append("")
+    found = checks(results, reference)
+    if found:
+        lines += ["| check | measured | result |", "|---|---|---|"]
         lines += [
-            f"| {r['ns']} | " + " | ".join(f"{r[k]:.2e}" for k in keys) + " |"
-            for r in rows
+            f"| {name} | {measured} | {'pass' if ok else '**FAIL**'} |"
+            for name, _, measured, ok in found
         ]
+        lines.append("")
+    lines += ["<details><summary>All deviations and criteria</summary>", ""]
+    for name, entry in results.items():
+        lines += [f"### {name}", ""]
+        lines += _full_table(entry["radial"], "ns", lambda r: r["ns"])
         lines += [
             "| order | "
             + " | ".join(
@@ -899,95 +952,115 @@ def summary(results, suite, reference=None):
             "",
         ]
         if entry["angular"]:
-            rows = entry["angular"]
-            lines += [
-                f"{name} at ns {rows[0]['ns']}:",
-                "",
-                "| mpol, ntor | " + " | ".join(keys) + " |",
-                "|---" * (len(keys) + 1) + "|",
-            ]
-            lines += [
-                f"| {r['mpol']}, {r['ntor']} | "
-                + " | ".join(f"{r[k]:.2e}" for k in keys)
-                + " |"
-                for r in rows
-            ]
+            lines += _full_table(
+                entry["angular"], "mpol, ntor", lambda r: f"{r['mpol']}, {r['ntor']}"
+            )
             lines.append("")
-    found = checks(results, reference)
-    if found:
-        lines += [
-            "### Checks",
-            "",
-            "| check | criterion | measured | result |",
-            "|---|---|---|---|",
-        ]
-        lines += [
-            f"| {name} | {criterion} | {measured} | {'pass' if ok else 'FAIL'} |"
-            for name, criterion, measured, ok in found
-        ]
-        lines.append("")
+    lines += [f"- **{name}**: {criterion}" for name, criterion, _, _ in found]
+    lines += ["", "</details>", ""]
     return "\n".join(lines) + "\n"
 
 
 def plot(results, out_dir, suite):
-    """For each member the errors against h, against mpol, and the enclosed current over
-    s against its exact limit at the axis."""
+    """One figure per member: (a) the headline errors against h with their expected
+    orders, (b) the observed order between consecutive ns, (c) the error in the
+    enclosed current over s, and (d) the errors against mpol with the radial floor
+    at that ns. Runs that did not reach ftol are drawn hollow."""
     import matplotlib.pyplot as plt  # noqa: PLC0415
 
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     for name, entry in results.items():
         member = MEMBERS[name]
-        rows = entry["radial"]
-        fig, ax = plt.subplots(figsize=(7, 5))
-        h = np.array([1.0 / (r["ns"] - 1) for r in rows])
-        for key in MEASURES:
-            ax.loglog(h, [r[key] for r in rows], "o-", label=key)
-        scale = rows[-1]["current"]
-        for order, style in ((1, ":"), (2, "--")):
-            ax.loglog(h, scale * (h / h[-1]) ** order, "k" + style, label=f"h^{order}")
-        ax.set_xlabel("h = 1 / (ns - 1)")
-        ax.set_ylabel("deviation from the exact solution")
-        ax.set_title(f"{name}, mpol {rows[0]['mpol']}, ntor {rows[0]['ntor']}")
-        ax.legend(fontsize=7)
-        fig.tight_layout()
-        fig.savefig(out_dir / f"{suite}_{name}_radial.png", dpi=120)
-        plt.close(fig)
-        fig, ax = plt.subplots(figsize=(7, 5))
-        for r in rows:
+        rad, ang = entry["radial"], entry["angular"]
+        ns = np.array([r["ns"] for r in rad])
+        h = 1.0 / (ns - 1.0)
+        conv = np.array([_converged(r) for r in rad])
+        fig, axs = plt.subplots(2, 2, figsize=(9, 7))
+        axs = axs.ravel()
+
+        ax = axs[0]
+        for (key, label, p), c in zip(HEADLINE, colors, strict=False):
+            e = np.array([r[key] for r in rad])
+            ax.loglog(h[conv], e[conv], "o-", color=c, label=label)
+            ax.loglog(h[~conv], e[~conv], "o", mfc="none", color=c)
+            ax.loglog(h, e[0] * (h / h[0]) ** p, ":", color=c, lw=1)
+        ax.invert_xaxis()
+        ax.set(xlabel="h = 1/(ns-1)", ylabel="deviation from the exact solution")
+        ax.set_title("(a) radial convergence")
+        ax.legend(fontsize=7, loc="lower left")
+
+        ax = axs[1]
+        for (key, _, _), c in zip(HEADLINE, colors, strict=False):
+            hm, o = local_orders(ns, [r[key] for r in rad])
+            ax.semilogx(hm, o, "o-", color=c)
+        for p in (1, 2):
+            ax.axhspan(p - 0.2, p + 0.2, color="0.9", zorder=0)
+            ax.text(
+                0.02,
+                (p + 1) / 4,
+                f"O(h$^{p}$)",
+                transform=ax.transAxes,
+                va="center",
+                fontsize=7,
+            )
+        ax.invert_xaxis()
+        ax.set(xlabel="h, midpoint of the pair", ylabel="observed order", ylim=(-1, 3))
+        ax.set_title("(b) observed order between consecutive ns")
+
+        ax = axs[2]
+        for r in rad:
             s = np.asarray(r["current profile"]["s"])
-            ax.plot(
+            exact = member.buco_of_s(s)
+            error = np.abs(np.asarray(r["current profile"]["buco"]) - exact)
+            ax.semilogy(
                 s,
-                np.asarray(r["current profile"]["buco"]) / s,
+                error / np.abs(exact).max(),
                 ".-",
-                ms=3,
+                ms=2,
+                lw=0.8,
                 label=f"ns {r['ns']}",
             )
-        s = np.linspace(1e-3, 1.0, 400)
-        ax.plot(s, member.buco_of_s(s) / s, "k-", label="exact")
-        ax.set_xlabel("s")
-        ax.set_ylabel("buco / s")
-        ax.set_title(f"{name}: enclosed current over s")
+        ax.axvline(0.25, color="k", lw=0.5, ls="--")
+        ax.set(xlabel="s", ylabel="relative error in the enclosed current")
+        ax.set_title("(c) enclosed current over s")
         ax.legend(fontsize=7)
-        fig.tight_layout()
-        fig.savefig(out_dir / f"{suite}_{name}_current.png", dpi=120)
-        plt.close(fig)
-        if entry["angular"]:
-            rows = entry["angular"]
-            fig, ax = plt.subplots(figsize=(7, 5))
-            for key in MEASURES:
-                ax.semilogy(
-                    [r["mpol"] for r in rows], [r[key] for r in rows], "o-", label=key
-                )
-            ax.set_xlabel("mpol, with ntor = mpol - 2")
-            ax.set_ylabel("deviation from the exact solution")
-            ax.set_title(f"{name}, ns {rows[0]['ns']}")
+
+        ax = axs[3]
+        if ang:
+            mpol = np.array([r["mpol"] for r in ang])
+            for (key, label, _), c in zip(HEADLINE[:3], colors, strict=False):
+                e = np.array([r[key] for r in ang])
+                ax.semilogy(mpol, e, "o-", color=c, label=label)
+                ax.axhline(e[-1], color=c, lw=0.6, ls="--")
+                above = e > 3.0 * e[-1]
+                if above.sum() >= 2:
+                    rate = -np.polyfit(mpol[above], np.log(e[above]), 1)[0]
+                    ax.text(
+                        mpol[0],
+                        e[0],
+                        f" e$^{{-{rate:.2f}\\,mpol}}$",
+                        color=c,
+                        fontsize=7,
+                        va="bottom",
+                    )
+            ax.set(xlabel="mpol, with ntor = mpol - 2")
+            ax.set_title(f"(d) angular convergence at ns {ang[0]['ns']}")
             ax.legend(fontsize=7)
-            fig.tight_layout()
-            fig.savefig(out_dir / f"{suite}_{name}_angular.png", dpi=120)
-            plt.close(fig)
+        else:
+            ax.set_visible(False)
+
+        fig.suptitle(
+            f"{name}, {suite} suite, mpol {rad[0]['mpol']}, ntor {rad[0]['ntor']}; "
+            "hollow: not converged to ftol",
+            fontsize=9,
+        )
+        fig.tight_layout()
+        fig.savefig(out_dir / f"{suite}_{name}.png", dpi=110)
+        plt.close(fig)
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--suite", choices=list(SUITES), default="demo")
     parser.add_argument(
         "--member",
