@@ -635,6 +635,34 @@ def test_threed1_shafranov_integrals_bindings(cma_output: vmecpp.VmecOutput):
         )
 
 
+def test_threed1_free_boundary_bindings(cma_output: vmecpp.VmecOutput):
+    """The boundary quantities of a free-boundary run come back when the input asks for
+    them, and the vacuum field among them gives the vacuum pressure the run balanced; a
+    run that does not ask carries none."""
+    assert cma_output.threed1_free_boundary is None
+
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.return_vacuum_field = True
+    boundary = vmecpp.run(vmec_input, response, verbose=False).threed1_free_boundary
+    assert boundary is not None
+    for varname in vmecpp.Threed1FreeBoundary.model_fields:
+        assert getattr(boundary, varname).shape == boundary.bsqvacf.shape, varname
+    np.testing.assert_allclose(
+        0.5 * (boundary.brv**2 + boundary.bphiv**2 + boundary.bzv**2),
+        boundary.bsqvacf,
+        rtol=1e-12,
+    )
+
+
 def test_is_vmec2000_input():
     vmec2000_input_file = TEST_DATA_DIR / "input.cma"
     vmecpp_input_file = TEST_DATA_DIR / "cma.json"
@@ -745,6 +773,10 @@ def test_vmec_output_serialization(cma_output: vmecpp.VmecOutput):
     for field in vmecpp.VmecOutput.model_fields:
         deserialized_field = getattr(deserialized_output, field)
         output_field = getattr(cma_output, field)
+        # an optional part the input did not ask for is absent on both sides
+        if output_field is None:
+            assert deserialized_field is None, field
+            continue
         # Check the individual fields of the nested object
         for attr in vars(output_field):
             error_msg = f"mismatch in {attr}"

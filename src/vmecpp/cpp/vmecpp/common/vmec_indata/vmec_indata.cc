@@ -301,6 +301,8 @@ VmecINDATA::VmecINDATA() {
   delt = 1.0;
   tcon0 = 0.5;
   lforbal = false;
+  enable_force_source = false;
+  return_vacuum_field = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
 
@@ -429,6 +431,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(enable_force_source, "/indata/enable_force_source", file);
+  WriteH5Dataset(return_vacuum_field, "/indata/return_vacuum_field", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
 
@@ -540,6 +544,14 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+  if (from_file.nameExists("/indata/enable_force_source")) {
+    ReadH5Dataset(m_indata.enable_force_source, "/indata/enable_force_source",
+                  from_file);
+  }
+  if (from_file.nameExists("/indata/return_vacuum_field")) {
+    ReadH5Dataset(m_indata.return_vacuum_field, "/indata/return_vacuum_field",
+                  from_file);
+  }
 
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(),
@@ -1044,6 +1056,22 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lforbal = maybe_lforbal->value();
   }
 
+  auto maybe_enable_force_source = JsonReadBool(j, "enable_force_source");
+  if (!maybe_enable_force_source.ok()) {
+    return maybe_enable_force_source.status();
+  }
+  if (maybe_enable_force_source->has_value()) {
+    vmec_indata.enable_force_source = maybe_enable_force_source->value();
+  }
+
+  auto maybe_return_vacuum_field = JsonReadBool(j, "return_vacuum_field");
+  if (!maybe_return_vacuum_field.ok()) {
+    return maybe_return_vacuum_field.status();
+  }
+  if (maybe_return_vacuum_field->has_value()) {
+    vmec_indata.return_vacuum_field = maybe_return_vacuum_field->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1374,6 +1402,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["delt"] = delt;
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
+  output["enable_force_source"] = enable_force_source;
+  output["return_vacuum_field"] = return_vacuum_field;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
