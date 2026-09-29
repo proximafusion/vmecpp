@@ -27,4 +27,17 @@ void ExactForceDensityVjp(const double* geom, double* geom_bar, double* work,
                     enzyme_dup, force, force_bar, enzyme_const, c);
 }
 
+void ExactForceDensityProfileVjp(const double* geom, double* work,
+                                 double* work_bar, double* force,
+                                 double* force_bar,
+                                 const LocalForceComposition* c,
+                                 double* presH_bar, double* chipH_bar,
+                                 double* currH_bar) {
+  __enzyme_autodiff(
+      reinterpret_cast<void*>(ComputeLocalForceDensityWithProfiles),
+      enzyme_const, geom, enzyme_dup, work, work_bar, enzyme_dup, force,
+      force_bar, enzyme_const, c, enzyme_dup, c->presH, presH_bar, enzyme_dup,
+      c->chipH, chipH_bar, enzyme_dup, c->currH, currH_bar);
+}
+
 }  // namespace vmecpp
