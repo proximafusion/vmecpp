@@ -64,9 +64,10 @@ struct HotRestartState {
 // Called periodically from the iteration loop.
 using InterruptCallback = std::function<bool()>;
 
-// The state of the force iteration that just completed, handed to an
-// IterationCallback by the master thread while the other threads wait.
-struct IterationSnapshot {
+// The state of the solver after the force iteration that just completed,
+// handed to an IterationCallback by the master thread while the other threads
+// wait.
+struct SolverState {
   // iteration counter of the current multigrid stage, as printed
   int iteration;
   // index into ns_array of the current stage; -1 for the inserted ns = 3 stage
@@ -94,7 +95,7 @@ struct IterationSnapshot {
 
 // Called once per force iteration; return false to stop the run, which then
 // returns the output quantities of the state reached.
-using IterationCallback = std::function<bool(const IterationSnapshot&)>;
+using IterationCallback = std::function<bool(const SolverState&)>;
 
 // This is the preferred way to run VMEC++.
 absl::StatusOr<OutputQuantities> run(
@@ -298,8 +299,9 @@ class Vmec {
   void NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                bool& m_liter_flag);
 
-  // The R, Z and lambda coefficients of the current state as a Geometry.
-  Geometry CurrentGeometry() const;
+  // The R, Z and lambda coefficients of the current equilibrium state as a
+  // Geometry.
+  Geometry EquilibriumState() const;
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;

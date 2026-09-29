@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import dataclasses
 import enum
 import json
 import logging
@@ -2847,19 +2848,69 @@ def _print_progress_tip_once() -> None:
         )
 
 
-IterationSnapshot: typing.TypeAlias = _vmecpp.IterationSnapshot
-"""The state of one force iteration, handed to the ``iteration_callback`` of
-:func:`run`.
+@dataclasses.dataclass(frozen=True)
+class SolverState:
+    """The state of the solver after one force iteration, handed to the
+    ``iteration_callback`` of :func:`run`."""
 
-Its attributes are ``iteration`` (the counter of the current multigrid stage, as
-printed), ``multigrid_step`` (the index into ``ns_array``, -1 for the inserted
-ns = 3 stage), ``ns``, the invariant force residuals ``fsqr``, ``fsqz``, ``fsql``
-and the ``ftol`` they are tested against, the time step ``delt``,
-``restart_reason`` (1 no restart, 2 bad Jacobian, 3 bad progress, 4 huge initial
-forces), ``jacobian_resets``, ``vacuum_pressure_active``, ``mhd_energy`` and
-``geometry``, the R, Z and lambda coefficients of the state as a ``Geometry`` that
-``vmecpp.geometry.from_cpp`` reads.
-"""
+    iteration: int
+    """Iteration counter of the current multigrid stage, as printed."""
+
+    multigrid_step: int
+    """Index into ``ns_array`` of the current stage; -1 for the inserted ns = 3
+    stage."""
+
+    ns: int
+    """Number of flux surfaces of the current stage."""
+
+    fsqr: float
+    """Invariant force residual of R."""
+
+    fsqz: float
+    """Invariant force residual of Z."""
+
+    fsql: float
+    """Invariant force residual of lambda."""
+
+    ftol: float
+    """Tolerance the three residuals are tested against."""
+
+    delt: float
+    """Current time step."""
+
+    restart_reason: int
+    """1 no restart, 2 bad Jacobian, 3 bad progress, 4 huge initial forces; any value
+    but 1 means the state was reverted to the last backup."""
+
+    jacobian_resets: int
+    """Jacobian resets so far in this stage."""
+
+    vacuum_pressure_active: bool
+    """Whether the vacuum pressure is part of the force balance yet."""
+
+    mhd_energy: float
+    """MHD energy of the state."""
+
+    geometry: _geometry.Geometry
+    """R, Z and lambda coefficients of the state."""
+
+    @staticmethod
+    def _from_cpp(cpp_state: _vmecpp.SolverState) -> SolverState:
+        return SolverState(
+            iteration=cpp_state.iteration,
+            multigrid_step=cpp_state.multigrid_step,
+            ns=cpp_state.ns,
+            fsqr=cpp_state.fsqr,
+            fsqz=cpp_state.fsqz,
+            fsql=cpp_state.fsql,
+            ftol=cpp_state.ftol,
+            delt=cpp_state.delt,
+            restart_reason=cpp_state.restart_reason,
+            jacobian_resets=cpp_state.jacobian_resets,
+            vacuum_pressure_active=cpp_state.vacuum_pressure_active,
+            mhd_energy=cpp_state.mhd_energy,
+            geometry=_geometry.from_cpp(cpp_state.geometry),
+        )
 
 
 def run(
@@ -2869,7 +2920,7 @@ def run(
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
-    iteration_callback: typing.Callable[[IterationSnapshot], bool | None] | None = None,
+    iteration_callback: typing.Callable[[SolverState], bool | None] | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
@@ -2891,7 +2942,7 @@ def run(
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
-        iteration_callback: called once per force iteration with an :class:`IterationSnapshot`
+        iteration_callback: called once per force iteration with a :class:`SolverState`
             of the state just reached, after every thread has finished the step. Returning
             ``False`` stops the run, which then returns the outputs of that state with
             ``wout.ier_flag`` reporting no convergence; returning ``None`` or ``True`` continues.
@@ -2952,13 +3003,19 @@ def run(
 
     _verbose = _output_mode(verbose)
 
+    cpp_iteration_callback = None
+    if iteration_callback is not None:
+
+        def cpp_iteration_callback(cpp_state: _vmecpp.SolverState) -> bool | None:
+            return iteration_callback(SolverState._from_cpp(cpp_state))
+
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
-            iteration_callback=iteration_callback,
+            iteration_callback=cpp_iteration_callback,
         )
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
@@ -2970,7 +3027,7 @@ def run(
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
-            iteration_callback=iteration_callback,
+            iteration_callback=cpp_iteration_callback,
         )
 
     if _use_jax_output_stage.get():
@@ -3174,6 +3231,6 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
-    "IterationSnapshot",
+    "SolverState",
     "has_exact_force_jacobian",
 ]

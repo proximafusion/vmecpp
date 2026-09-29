@@ -1535,7 +1535,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                    bool& m_liter_flag) {
-  const IterationSnapshot snapshot{
+  const SolverState state{
       .iteration = iter2,
       .multigrid_step = multigrid_step_,
       .ns = fc_.ns,
@@ -1549,9 +1549,9 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
       .vacuum_pressure_active =
           vacuum_pressure_state_ >= VacuumPressureState::kInitialized,
       .mhd_energy = h_.mhdEnergy * 4.0 * std::numbers::pi * std::numbers::pi,
-      .geometry = CurrentGeometry(),
+      .geometry = EquilibriumState(),
   };
-  if (!iteration_callback_(snapshot)) {
+  if (!iteration_callback_(state)) {
     m_liter_flag = false;
     status_ = VmecStatus::MORE_ITERATIONS_NEEDED;
 #ifdef _OPENMP
@@ -1561,7 +1561,7 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
   }
 }
 
-Geometry Vmec::CurrentGeometry() const {
+Geometry Vmec::EquilibriumState() const {
   return MakeGeometry(indata_, GatherSpectralStateFromThreads(
                                    kSignOfJacobian, s_, fc_, constants_, r_,
                                    decomposed_x_, p_));

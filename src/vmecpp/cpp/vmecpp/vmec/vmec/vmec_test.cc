@@ -239,38 +239,37 @@ TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
   absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(indata.ok());
 
-  std::vector<vmecpp::IterationSnapshot> snapshots;
-  const auto output = vmecpp::run(
-      *indata, std::nullopt, std::nullopt, vmecpp::OutputMode::kSilent, nullptr,
-      [&snapshots](const vmecpp::IterationSnapshot& snapshot) {
-        snapshots.push_back(snapshot);
-        return true;
-      });
+  std::vector<vmecpp::SolverState> states;
+  const auto output = vmecpp::run(*indata, std::nullopt, std::nullopt,
+                                  vmecpp::OutputMode::kSilent, nullptr,
+                                  [&states](const vmecpp::SolverState& state) {
+                                    states.push_back(state);
+                                    return true;
+                                  });
   ASSERT_TRUE(output.ok());
   const vmecpp::WOutFileContents& wout = output->wout;
 
   const int num_stages = static_cast<int>(indata->ns_array.size());
   int recorded = 0;
   int stage_ends = 0;
-  for (std::size_t i = 0; i < snapshots.size(); ++i) {
-    const vmecpp::IterationSnapshot& snapshot = snapshots[i];
+  for (std::size_t i = 0; i < states.size(); ++i) {
+    const vmecpp::SolverState& state = states[i];
     const bool last_of_stage =
-        i + 1 == snapshots.size() ||
-        snapshots[i + 1].multigrid_step != snapshot.multigrid_step;
+        i + 1 == states.size() ||
+        states[i + 1].multigrid_step != state.multigrid_step;
     if (last_of_stage) {
       ++stage_ends;
-      EXPECT_EQ(snapshot.ns, indata->ns_array[snapshot.multigrid_step]);
-      EXPECT_LE(std::max({snapshot.fsqr, snapshot.fsqz, snapshot.fsql}),
-                snapshot.ftol);
+      EXPECT_EQ(state.ns, indata->ns_array[state.multigrid_step]);
+      EXPECT_LE(std::max({state.fsqr, state.fsqz, state.fsql}), state.ftol);
       continue;
     }
-    if (snapshot.restart_reason != vmecpp::RestartReason::NO_RESTART) {
+    if (state.restart_reason != vmecpp::RestartReason::NO_RESTART) {
       continue;
     }
     ASSERT_LT(recorded, wout.force_residual_r.size());
-    EXPECT_EQ(snapshot.fsqr, wout.force_residual_r[recorded]);
-    EXPECT_EQ(snapshot.fsqz, wout.force_residual_z[recorded]);
-    EXPECT_EQ(snapshot.fsql, wout.force_residual_lambda[recorded]);
+    EXPECT_EQ(state.fsqr, wout.force_residual_r[recorded]);
+    EXPECT_EQ(state.fsqz, wout.force_residual_z[recorded]);
+    EXPECT_EQ(state.fsql, wout.force_residual_lambda[recorded]);
     ++recorded;
   }
   EXPECT_EQ(stage_ends, num_stages);
@@ -279,20 +278,20 @@ TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
   const vmecpp::Geometry final_geometry =
       vmecpp::MakeGeometry(output->indata, output->vmec_internal_results,
                            vmecpp::GeometryCoefficientState::kPhysical);
-  EXPECT_EQ(snapshots.back().geometry.coefficients.r_cc,
+  EXPECT_EQ(states.back().geometry.coefficients.r_cc,
             final_geometry.coefficients.r_cc);
-  EXPECT_EQ(snapshots.back().geometry.coefficients.z_sc,
+  EXPECT_EQ(states.back().geometry.coefficients.z_sc,
             final_geometry.coefficients.z_sc);
-  EXPECT_EQ(snapshots.back().geometry.coefficients.lambda_sc,
+  EXPECT_EQ(states.back().geometry.coefficients.lambda_sc,
             final_geometry.coefficients.lambda_sc);
 
   int seen = 0;
-  const auto stopped = vmecpp::run(
-      *indata, std::nullopt, std::nullopt, vmecpp::OutputMode::kSilent, nullptr,
-      [&seen](const vmecpp::IterationSnapshot& snapshot) {
-        ++seen;
-        return snapshot.iteration < 20;
-      });
+  const auto stopped = vmecpp::run(*indata, std::nullopt, std::nullopt,
+                                   vmecpp::OutputMode::kSilent, nullptr,
+                                   [&seen](const vmecpp::SolverState& state) {
+                                     ++seen;
+                                     return state.iteration < 20;
+                                   });
   ASSERT_TRUE(stopped.ok());
   EXPECT_EQ(seen, 20);
   EXPECT_EQ(stopped->wout.ns, indata->ns_array[0]);

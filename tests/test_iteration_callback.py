@@ -34,9 +34,9 @@ NO_RESTART = 1
 
 
 def _collect(vmec_input):
-    snapshots = []
-    output = vmecpp.run(vmec_input, verbose=False, iteration_callback=snapshots.append)
-    return snapshots, output
+    states = []
+    output = vmecpp.run(vmec_input, verbose=False, iteration_callback=states.append)
+    return states, output
 
 
 @pytest.mark.parametrize(
@@ -45,24 +45,25 @@ def _collect(vmec_input):
     ids=["solovev", "cth_like_fixed_bdy"],
 )
 def test_callback_sees_every_iteration_of_the_residual_history(case):
-    """One snapshot per force iteration: the residual history of the wout, in order and
-    bit for bit, plus the converged iteration that closes each multigrid stage, which
-    the solver does not record."""
+    """One state per force iteration: the residual history of the wout, in order and bit
+    for bit, plus the converged iteration that closes each multigrid stage, which the
+    solver does not record."""
     vmec_input = vmecpp.VmecInput.from_file(case)
-    snapshots, output = _collect(vmec_input)
+    states, output = _collect(vmec_input)
     wout = output.wout
 
+    assert all(isinstance(state, vmecpp.SolverState) for state in states)
     stage_ends = {}
-    for index, snapshot in enumerate(snapshots):
-        stage_ends[snapshot.multigrid_step] = index
+    for index, state in enumerate(states):
+        stage_ends[state.multigrid_step] = index
     assert sorted(stage_ends) == list(range(len(vmec_input.ns_array)))
     for stage, index in stage_ends.items():
-        assert snapshots[index].ns == vmec_input.ns_array[stage]
-        assert snapshots[index].ftol == vmec_input.ftol_array[stage]
+        assert states[index].ns == vmec_input.ns_array[stage]
+        assert states[index].ftol == vmec_input.ftol_array[stage]
 
     recorded = [
         s
-        for index, s in enumerate(snapshots)
+        for index, s in enumerate(states)
         if s.restart_reason == NO_RESTART and index not in stage_ends.values()
     ]
     assert len(recorded) == wout.fsqt.size
@@ -76,7 +77,7 @@ def test_callback_sees_every_iteration_of_the_residual_history(case):
         [s.fsql for s in recorded], np.asarray(wout.force_residual_lambda)
     )
 
-    last = snapshots[-1]
+    last = states[-1]
     assert last.fsqr == wout.fsqr
     assert last.fsqz == wout.fsqz
     assert last.fsql == wout.fsql
@@ -88,13 +89,13 @@ def test_callback_sees_every_iteration_of_the_residual_history(case):
     [SOLOVEV, TEST_DATA_DIR / "cth_like_fixed_bdy_asym.json"],
     ids=["solovev", "cth_like_fixed_bdy_asym"],
 )
-def test_last_snapshot_carries_the_converged_geometry(case):
+def test_last_state_carries_the_converged_geometry(case):
     vmec_input = vmecpp.VmecInput.from_file(case)
-    snapshots, _ = _collect(vmec_input)
+    states, _ = _collect(vmec_input)
     cpp_output = _vmecpp.run(
         vmec_input._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT
     )
-    live = vmec_geometry.from_cpp(snapshots[-1].geometry)
+    live = states[-1].geometry
     final = vmec_geometry.make(cpp_output)
     for name in (
         "r_cc",
@@ -125,9 +126,9 @@ def test_returning_false_stops_the_run_with_the_state_reached():
     vmec_input = vmecpp.VmecInput.from_file(SOLOVEV)
     seen = []
 
-    def stop_at_twenty(snapshot):
-        seen.append(snapshot.iteration)
-        return snapshot.iteration < 20
+    def stop_at_twenty(state):
+        seen.append(state.iteration)
+        return state.iteration < 20
 
     output = vmecpp.run(vmec_input, verbose=False, iteration_callback=stop_at_twenty)
     assert seen == list(range(1, 21))
@@ -140,8 +141,8 @@ def test_returning_false_stops_the_run_with_the_state_reached():
 def test_exception_in_the_callback_propagates():
     vmec_input = vmecpp.VmecInput.from_file(SOLOVEV)
 
-    def fail_at_five(snapshot):
-        if snapshot.iteration == 5:
+    def fail_at_five(state):
+        if state.iteration == 5:
             msg = "stop here"
             raise KeyError(msg)
 
@@ -162,9 +163,8 @@ def test_drawn_cross_sections_match_the_geometry_evaluator(case):
     cpp_output = _vmecpp.run(
         vmec_input._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT
     )
-    geometry = _vmecpp.make_geometry(cpp_output)
-    jax_geometry = vmec_geometry.from_cpp(geometry)
-    ns = geometry.dimensions.ns
+    geometry = vmec_geometry.make(cpp_output)
+    ns = geometry.r_cc.shape[0]
     rows = watch_solve.surface_indices(ns, 6)
     assert rows[-1] == ns - 1
     theta = np.linspace(0.0, 2.0 * np.pi, 7)
@@ -173,16 +173,12 @@ def test_drawn_cross_sections_match_the_geometry_evaluator(case):
         for i, j in enumerate(rows):
             for k, t in enumerate(theta):
                 point = np.asarray(
-                    vmec_geometry.evaluate(
-                        jax_geometry, jnp.array([j / (ns - 1), t, zeta])
-                    )
+                    vmec_geometry.evaluate(geometry, jnp.array([j / (ns - 1), t, zeta]))
                 )
                 assert abs(r[i, k] - point[0, 0]) < 1.0e-12
                 assert abs(z[i, k] - point[1, 0]) < 1.0e-12
         r_axis, z_axis = watch_solve.magnetic_axis(geometry, zeta)
-        axis = np.asarray(
-            vmec_geometry.evaluate(jax_geometry, jnp.array([0.0, 0.0, zeta]))
-        )
+        axis = np.asarray(vmec_geometry.evaluate(geometry, jnp.array([0.0, 0.0, zeta])))
         assert abs(r_axis - axis[0, 0]) < 1.0e-12
         assert abs(z_axis - axis[1, 0]) < 1.0e-12
 
@@ -215,9 +211,9 @@ def test_closing_the_window_stops_the_solve(monkeypatch):
     drawn = []
     original = watch_solve.SolveView.draw
 
-    def draw(self, snapshot):
-        drawn.append(snapshot.iteration)
-        original(self, snapshot)
+    def draw(self, state):
+        drawn.append(state.iteration)
+        original(self, state)
 
     monkeypatch.setattr(watch_solve.SolveView, "draw", draw)
     monkeypatch.setattr(

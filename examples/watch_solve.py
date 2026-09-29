@@ -84,13 +84,13 @@ def surface_curves(
     """R and Z of full-grid surfaces at the cylindrical angle ``zeta``, one row per
     entry of ``surface_indices`` and one column per ``theta``.
 
-    ``geometry`` is the ``Geometry`` of an ``IterationSnapshot``.
+    ``geometry`` is the ``geometry`` of a ``vmecpp.SolverState``.
     """
-    dimensions = geometry.dimensions
     c = _coefficient_arrays(geometry)
-    cos_m = np.cos(np.outer(theta, np.arange(dimensions.mpol)))
-    sin_m = np.sin(np.outer(theta, np.arange(dimensions.mpol)))
-    toroidal = np.arange(dimensions.ntor + 1) * dimensions.nfp
+    _, mpol, ntor_plus_one = c["r_cc"].shape
+    cos_m = np.cos(np.outer(theta, np.arange(mpol)))
+    sin_m = np.sin(np.outer(theta, np.arange(mpol)))
+    toroidal = np.arange(ntor_plus_one) * geometry.nfp
     cos_n = np.cos(toroidal * zeta)
     sin_n = np.sin(toroidal * zeta)
     rows = np.asarray(surface_indices, dtype=int)
@@ -112,9 +112,8 @@ def surface_curves(
 def magnetic_axis(geometry, zeta: float) -> tuple[float, float]:
     """R and Z of the magnetic axis at the cylindrical angle ``zeta``: the m = 0
     coefficients of the innermost surface."""
-    dimensions = geometry.dimensions
     c = _coefficient_arrays(geometry)
-    toroidal = np.arange(dimensions.ntor + 1) * dimensions.nfp
+    toroidal = np.arange(c["r_cc"].shape[2]) * geometry.nfp
     cos_n = np.cos(toroidal * zeta)
     sin_n = np.sin(toroidal * zeta)
     r = c["r_cc"][0, 0] @ cos_n + c["r_cs"][0, 0] @ sin_n
@@ -130,15 +129,8 @@ def surface_indices(ns: int, count: int) -> np.ndarray:
 
 
 def _coefficient_arrays(geometry) -> dict[str, np.ndarray]:
-    dimensions = geometry.dimensions
-    shape = (dimensions.ns, dimensions.mpol, dimensions.ntor + 1)
-
-    def block(values):
-        array = np.asarray(values, dtype=float)
-        return array.reshape(shape) if array.size else np.zeros(shape)
-
     names = ("r_cc", "r_ss", "r_sc", "r_cs", "z_sc", "z_cs", "z_cc", "z_ss")
-    return {name: block(getattr(geometry.coefficients, name)) for name in names}
+    return {name: np.asarray(getattr(geometry, name)) for name in names}
 
 
 def backend_is_interactive() -> bool:
@@ -259,32 +251,32 @@ class SolveView:
         self.fps = fps
         self.writer = None
 
-    def on_iteration(self, snapshot) -> bool:
+    def on_iteration(self, state) -> bool:
         """Record the iteration, draw it when due, and stop the run once the window is
         closed."""
         self.count += 1
-        self.last = snapshot
-        if snapshot.multigrid_step != self.stage:
+        self.last = state
+        if state.multigrid_step != self.stage:
             if self.stage is not None:
                 # break the residual lines between multigrid stages
                 self.iterations.append(self.count - 0.5)
                 for values in self.residuals.values():
                     values.append(np.nan)
-            self.stage = snapshot.multigrid_step
-            self._event(f"ns {snapshot.ns}")
+            self.stage = state.multigrid_step
+            self._event(f"ns {state.ns}")
         self.iterations.append(self.count)
         for name, value in zip(
-            SERIES, (snapshot.fsqr, snapshot.fsqz, snapshot.fsql), strict=True
+            SERIES, (state.fsqr, state.fsqz, state.fsql), strict=True
         ):
             self.residuals[name].append(value)
-        if snapshot.restart_reason != NO_RESTART:
+        if state.restart_reason != NO_RESTART:
             self.restarts.append(self.count)
-        if snapshot.vacuum_pressure_active and not self.vacuum_active:
+        if state.vacuum_pressure_active and not self.vacuum_active:
             self.vacuum_active = True
             self._event("vacuum on")
-        self.ftol = snapshot.ftol
+        self.ftol = state.ftol
         if self.count % self.every == 0:
-            self.draw(snapshot)
+            self.draw(state)
         return self.window_open()
 
     def finish(self, output) -> None:
@@ -335,9 +327,9 @@ class SolveView:
     def window_open(self) -> bool:
         return not self.show or self.plt.fignum_exists(self.fig.number)
 
-    def draw(self, snapshot) -> None:
-        geometry = snapshot.geometry
-        rows = surface_indices(geometry.dimensions.ns, self.surfaces)
+    def draw(self, state) -> None:
+        geometry = state.geometry
+        rows = surface_indices(geometry.r_cc.shape[0], self.surfaces)
         for k, zeta in enumerate(self.zetas):
             r, z = surface_curves(geometry, rows, self.theta, zeta)
             for line, ri, zi in zip(
@@ -370,10 +362,10 @@ class SolveView:
         if self.restarts and self.restart_marks not in self.legend_handles:
             self._legend()
 
-        fsq = max(snapshot.fsqr, snapshot.fsqz, snapshot.fsql)
+        fsq = max(state.fsqr, state.fsqz, state.fsql)
         self.status.set_text(
-            f"ns {snapshot.ns}  ·  iteration {self.count:,}  ·  "
-            f"largest residual {fsq:.2e}  ·  ftol {snapshot.ftol:.0e}"
+            f"ns {state.ns}  |  iteration {self.count:,}  |  "
+            f"largest residual {fsq:.2e}  |  ftol {state.ftol:.0e}"
         )
         if self.show and self.window_open():
             self.plt.pause(1.0e-3)

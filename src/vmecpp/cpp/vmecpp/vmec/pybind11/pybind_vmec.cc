@@ -85,10 +85,10 @@ struct PythonIterationCallback {
     if (callable.is_none()) {
       return nullptr;
     }
-    return [this](const vmecpp::IterationSnapshot &snapshot) -> bool {
+    return [this](const vmecpp::SolverState &state) -> bool {
       py::gil_scoped_acquire acquire;
       try {
-        py::object keep_going = callable(snapshot);
+        py::object keep_going = callable(state);
         return keep_going.is_none() || py::cast<bool>(keep_going);
       } catch (py::error_already_set &e) {
         error.emplace(std::move(e));
@@ -1536,26 +1536,24 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("coefficients", &vmecpp::Geometry::coefficients)
       .def("evaluate", &vmecpp::EvaluateGeometry, py::arg("s"),
            py::arg("theta"), py::arg("zeta"));
-  py::class_<vmecpp::IterationSnapshot>(m, "IterationSnapshot")
-      .def_readonly("iteration", &vmecpp::IterationSnapshot::iteration)
-      .def_readonly("multigrid_step",
-                    &vmecpp::IterationSnapshot::multigrid_step)
-      .def_readonly("ns", &vmecpp::IterationSnapshot::ns)
-      .def_readonly("fsqr", &vmecpp::IterationSnapshot::fsqr)
-      .def_readonly("fsqz", &vmecpp::IterationSnapshot::fsqz)
-      .def_readonly("fsql", &vmecpp::IterationSnapshot::fsql)
-      .def_readonly("ftol", &vmecpp::IterationSnapshot::ftol)
-      .def_readonly("delt", &vmecpp::IterationSnapshot::delt)
+  py::class_<vmecpp::SolverState>(m, "SolverState")
+      .def_readonly("iteration", &vmecpp::SolverState::iteration)
+      .def_readonly("multigrid_step", &vmecpp::SolverState::multigrid_step)
+      .def_readonly("ns", &vmecpp::SolverState::ns)
+      .def_readonly("fsqr", &vmecpp::SolverState::fsqr)
+      .def_readonly("fsqz", &vmecpp::SolverState::fsqz)
+      .def_readonly("fsql", &vmecpp::SolverState::fsql)
+      .def_readonly("ftol", &vmecpp::SolverState::ftol)
+      .def_readonly("delt", &vmecpp::SolverState::delt)
       .def_property_readonly("restart_reason",
-                             [](const vmecpp::IterationSnapshot &snapshot) {
-                               return static_cast<int>(snapshot.restart_reason);
+                             [](const vmecpp::SolverState &state) {
+                               return static_cast<int>(state.restart_reason);
                              })
-      .def_readonly("jacobian_resets",
-                    &vmecpp::IterationSnapshot::jacobian_resets)
+      .def_readonly("jacobian_resets", &vmecpp::SolverState::jacobian_resets)
       .def_readonly("vacuum_pressure_active",
-                    &vmecpp::IterationSnapshot::vacuum_pressure_active)
-      .def_readonly("mhd_energy", &vmecpp::IterationSnapshot::mhd_energy)
-      .def_readonly("geometry", &vmecpp::IterationSnapshot::geometry);
+                    &vmecpp::SolverState::vacuum_pressure_active)
+      .def_readonly("mhd_energy", &vmecpp::SolverState::mhd_energy)
+      .def_readonly("geometry", &vmecpp::SolverState::geometry);
   m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
     return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
                                 vmecpp::GeometryCoefficientState::kPhysical);
