@@ -66,7 +66,7 @@ class IdealMhdModel {
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
-                     bool lforbal);
+                     bool lforbal, double lambda_preconditioner_scale);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -529,6 +529,7 @@ class IdealMhdModel {
   Eigen::VectorXd dLambda;
   Eigen::VectorXd cLambda;
   Eigen::VectorXd lambdaPreconditioner;
+  double lambda_preconditioner_scale_ = 0.5;
 
   // R,Z preconditioner
   Eigen::VectorXd ax;

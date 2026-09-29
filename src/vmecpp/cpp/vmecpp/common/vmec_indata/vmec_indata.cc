@@ -332,6 +332,7 @@ VmecINDATA::VmecINDATA() {
   delt = 1.0;
   tcon0 = 0.5;
   lforbal = false;
+  lambda_preconditioner_scale = 0.5;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
 
@@ -460,6 +461,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(lambda_preconditioner_scale,
+                 "/indata/lambda_preconditioner_scale", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
 
@@ -571,6 +574,14 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+  // Legacy way of checking for dataset existence
+  if (H5Lexists(from_file.getId(), "/indata/lambda_preconditioner_scale", 0) ==
+      1) {
+    ReadH5Dataset(m_indata.lambda_preconditioner_scale,
+                  "/indata/lambda_preconditioner_scale", from_file);
+  } else {
+    m_indata.lambda_preconditioner_scale = 0.5;
+  }
 
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(),
@@ -1075,6 +1086,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lforbal = maybe_lforbal->value();
   }
 
+  auto maybe_lambda_preconditioner_scale =
+      JsonReadDouble(j, "lambda_preconditioner_scale");
+  if (!maybe_lambda_preconditioner_scale.ok()) {
+    return maybe_lambda_preconditioner_scale.status();
+  }
+  if (maybe_lambda_preconditioner_scale->has_value()) {
+    vmec_indata.lambda_preconditioner_scale =
+        maybe_lambda_preconditioner_scale->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1405,6 +1426,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["delt"] = delt;
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
+  output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
@@ -1767,6 +1789,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'tcon0' has to be in the range [0.0, 1.0], but is %g\n",
         vmec_indata.tcon0));
+  }
+
+  if (!(vmec_indata.lambda_preconditioner_scale > 0.0) ||
+      !std::isfinite(vmec_indata.lambda_preconditioner_scale)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'lambda_preconditioner_scale' has to be positive and "
+        "finite, but is %g\n",
+        vmec_indata.lambda_preconditioner_scale));
   }
 
   // lforbal
