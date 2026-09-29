@@ -839,16 +839,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (r_.nsMaxF1 == m_fc_.ns) {
-        // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
-        // double edgePressure = 1.5 * p.presH[r.nsMaxH-1 - r.nsMinH] - 0.5 *
-        // p.presH[r.nsMinH - r.nsMinH];
-        double edgePressure =
-            m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-        if (edgePressure != 0.0) {
-          edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
-                         m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
-        }
-
         for (int kl = 0; kl < s_.nZnT; ++kl) {
           // extrapolate total pressure (from inside) to LCFS; this is
           // bsqsav(:,3) in Fortran VMEC
@@ -856,15 +846,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
               1.5 * totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl] -
               0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
 
-          // net pressure from outside on LCFS
+          // total pressure from outside on LCFS: the vacuum carries no kinetic
+          // pressure, so the boundary settles where B_vac^2/2 = p + B^2/2
           // FIXME(eguiraud) slow loop over Nestor output
           // NOTE: here is the interface between the fast-toroidal setup in
           // Nestor and fast-poloidal setup in VMEC
           const int k = kl / s_.nThetaEff;
           const int l = kl % s_.nThetaEff;
           const int idx_lk = l * s_.nZeta + k;
-          double outsideEdgePressure =
-              m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+          const double outsideEdgePressure =
+              m_h_.vacuum_magnetic_pressure[idx_lk];
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
@@ -3052,11 +3043,9 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
 }
 
 #ifdef VMECPP_ENABLE_ENZYME
-void IdealMhdModel::applyExactForceJacobianTranspose(
-    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
-    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
-    FourierGeometry& m_decomposed_out, bool fix_m1_gauge) {
-  const int gS = geom_stride;
+std::vector<double> IdealMhdModel::forceDensityCotangentFromDecomposed(
+    FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+    bool fix_m1_gauge) {
   const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
 
   // C^T: transpose of [scatter -> forcesToFourier -> decompose -> m1 -> zeroZ].
@@ -3104,6 +3093,16 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
     gather(14, clmn_e);
     gather(15, clmn_o);
   }
+  return force_bar;
+}
+
+void IdealMhdModel::applyExactForceJacobianTranspose(
+    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
+    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
+    FourierGeometry& m_decomposed_out, bool fix_m1_gauge) {
+  const int gS = geom_stride;
+  const std::vector<double> force_bar = forceDensityCotangentFromDecomposed(
+      m_decomposed_in, m_physical_f, fix_m1_gauge);
 
   // J_g^T: reverse-mode force-density kernel.
   std::vector<double> geom_bar(20 * gS, 0.0);
@@ -3229,6 +3228,35 @@ void IdealMhdModel::chipStateVjp(const double* geomP, int geom_stride,
   m_physical_scratch.extrapolateTowardsAxisTranspose();
   m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
+}
+
+void IdealMhdModel::profileVjp(const double* geomP, int geom_stride,
+                               FourierForces& m_decomposed_in,
+                               FourierForces& m_physical_f,
+                               const double* chip_bar, double* m_presH_bar,
+                               double* m_chipH_bar, double* m_currH_bar) {
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  const int nH = r_.nsMaxH - r_.nsMinH;
+  std::vector<double> force_bar = forceDensityCotangentFromDecomposed(
+      m_decomposed_in, m_physical_f, /*fix_m1_gauge=*/true);
+  if (ncurr == 1) {
+    for (int jH = 0; jH < nH; ++jH) {
+      force_bar[20 * nForce + jH] += chip_bar[jH];
+    }
+  }
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nWork = LocalForceWorkSize(comp);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> work_bar(nWork, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
+  ExactForceDensityProfileVjp(geomP, work.data(), work_bar.data(), force.data(),
+                              force_bar.data(), &comp, m_presH_bar, m_chipH_bar,
+                              m_currH_bar);
+  if (ncurr != 1) {
+    for (int jH = 0; jH < nH; ++jH) {
+      m_chipH_bar[jH] += chip_bar[jH];
+    }
+  }
 }
 
 // Diagnostic: max |composed force density - production force density| at the
