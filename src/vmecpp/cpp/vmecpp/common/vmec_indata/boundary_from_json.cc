@@ -47,8 +47,14 @@ BoundaryCoefficient::FromJson(const json& j, const std::string& name) {
       return m.status();
     }
     if (!m->has_value()) {
-      // skip entries where "m" is not specified
-      continue;
+      return absl::InvalidArgumentError(
+          absl::StrFormat("JSON entry '%s'[%d] has no 'm'", name, i));
+    }
+    if (m->value() < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("JSON entry '%s'[%d] has m = %d, but m cannot be "
+                          "negative",
+                          name, i, m->value()));
     }
 
     auto n = JsonReadInt(entry, "n");
@@ -56,8 +62,8 @@ BoundaryCoefficient::FromJson(const json& j, const std::string& name) {
       return n.status();
     }
     if (!n->has_value()) {
-      // skip entries where "n" is not specified
-      continue;
+      return absl::InvalidArgumentError(
+          absl::StrFormat("JSON entry '%s'[%d] has no 'n'", name, i));
     }
 
     auto value = JsonReadDouble(entry, "value");
@@ -65,8 +71,8 @@ BoundaryCoefficient::FromJson(const json& j, const std::string& name) {
       return value.status();
     }
     if (!value->has_value()) {
-      // skip entries where "value" is not specified
-      continue;
+      return absl::InvalidArgumentError(
+          absl::StrFormat("JSON entry '%s'[%d] has no 'value'", name, i));
     }
 
     BoundaryCoefficient boundary_coefficient = {

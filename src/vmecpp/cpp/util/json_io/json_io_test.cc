@@ -13,6 +13,21 @@ using nlohmann::json;
 
 using ::testing::ElementsAre;
 
+TEST(TestJsonIO, CheckJsonParse) {
+  const absl::StatusOr<json> parsed = JsonParse(R"({"integer_variable":42})");
+  ASSERT_TRUE(parsed.ok()) << parsed.status();
+  EXPECT_EQ(parsed->at("integer_variable"), 42);
+
+  // malformed, truncated and empty text
+  for (const std::string not_json : {"{not json", "{\"a\": 1", ""}) {
+    const absl::StatusOr<json> rejected = JsonParse(not_json);
+    ASSERT_FALSE(rejected.ok()) << not_json;
+    EXPECT_EQ(rejected.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(rejected.status().message()),
+                ::testing::HasSubstr("not valid JSON"));
+  }
+}  // CheckJsonParse
+
 TEST(TestJsonIO, CheckJsonReadBool) {
   json j = R"({"boolean_variable":true,"integer_variable":42})"_json;
 
