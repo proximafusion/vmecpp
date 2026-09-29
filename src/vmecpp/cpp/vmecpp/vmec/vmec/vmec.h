@@ -268,6 +268,10 @@ class Vmec {
   // set to true when the interrupt callback signals an interrupt
   bool interrupted_ = false;
 
+  // set when SolveEquilibriumLoop hands a bad Jacobian that the axis guess did
+  // not fix back to run(), which then retries from a three-surface mesh
+  bool retry_from_three_surfaces_ = false;
+
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;
 

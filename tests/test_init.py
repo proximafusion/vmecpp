@@ -85,6 +85,35 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
+def test_bad_initial_jacobian_is_retried_from_three_surfaces():
+    # ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ: its initial Jacobian stays
+    # bad at ns = 25 after the axis guess, and it converges from a solve at ns = 3
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_bad_initial_jacobian.json"
+    )
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+    # the non-stellarator-symmetric path retries the same way and reproduces the
+    # symmetric result
+    zeros = np.zeros_like(np.asarray(vmec_input.rbc))
+    axis_zeros = np.zeros(vmec_input.ntor + 1)
+    lasym_input = vmec_input.model_copy(
+        update={
+            "lasym": True,
+            "rbs": zeros.copy(),
+            "zbc": zeros.copy(),
+            "raxis_s": axis_zeros.copy(),
+            "zaxis_c": axis_zeros.copy(),
+        }
+    )
+    lasym_wout = vmecpp.run(lasym_input, verbose=False).wout
+    assert lasym_wout.ier_flag == 0
+    np.testing.assert_allclose(lasym_wout.rmnc, wout.rmnc, rtol=0.0, atol=2e-11)
+    np.testing.assert_allclose(lasym_wout.zmns, wout.zmns, rtol=0.0, atol=2e-11)
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
