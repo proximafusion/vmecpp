@@ -32,13 +32,16 @@ import vmecpp
 
 MU0 = 4.0e-7 * np.pi
 
+TEST_DATA_DIR = (
+    Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+)
+
 
 def cth_like(ns: int, ftol: float = 1.0e-14):
-    """The CTH-like free-boundary case at radial resolution ns, ramped through
-    coarser grids, with NESTOR's boundary vacuum field returned."""
-    td = Path(vmecpp.__file__).parent / "cpp" / "vmecpp" / "test_data"
-    vi = vmecpp.VmecInput.from_file(td / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(td / Path(vi.mgrid_file).name)
+    """The CTH-like free-boundary case at radial resolution ns, ramped through coarser
+    grids, with NESTOR's boundary vacuum field returned."""
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vi.mgrid_file = str(TEST_DATA_DIR / Path(vi.mgrid_file).name)
     vi.return_vacuum_field = True
     steps = [x for x in (9, 17, 25, 33, 49, 65, 97, 129, 193) if x < ns] + [ns]
     vi.ns_array = np.array(steps)
@@ -58,8 +61,8 @@ def _half_coefs(c_in, c_out, s_a, s_b, s_h, odd):
 
 
 def _half_total_pressure(wout, j_in, j_out, row, cosk, sink, m, n):
-    """p + B^2/2, mu0-scaled, at the half point between nodes j_in and j_out
-    (half-grid row `row`) on a grid of angles."""
+    """P + B^2/2, mu0-scaled, at the half point between nodes j_in and j_out (half-grid
+    row `row`) on a grid of angles."""
     h = 1.0 / (wout.ns - 1)
     s_a, s_b, s_h = j_in * h, j_out * h, (row - 0.5) * h
     odd = (m % 2) == 1
@@ -93,8 +96,8 @@ def _half_total_pressure(wout, j_in, j_out, row, cosk, sink, m, n):
 
 
 def edge_pressure(wout, theta, zeta) -> np.ndarray:
-    """The plasma-side total pressure at s = 1 on the angles theta x zeta, as
-    an array indexed [zeta, theta]."""
+    """The plasma-side total pressure at s = 1 on the angles theta x zeta, as an array
+    indexed [zeta, theta]."""
     if wout.lasym:
         msg = "the reconstruction here is the stellarator-symmetric one"
         raise ValueError(msg)
@@ -113,8 +116,8 @@ def edge_pressure(wout, theta, zeta) -> np.ndarray:
 
 
 def boundary_grid(fb):
-    """NESTOR's boundary angles: the poloidal half range of a symmetric run and
-    the toroidal angles of one field period."""
+    """NESTOR's boundary angles: the poloidal half range of a symmetric run and the
+    toroidal angles of one field period."""
     nth = fb.bsqvacf.shape[1]
     theta = 2.0 * np.pi * np.arange(nth) / (2 * (nth - 1))
     zeta = np.asarray(fb.phib)[:, 0]
@@ -122,10 +125,13 @@ def boundary_grid(fb):
 
 
 def vacuum_interpolant(fb, nfp: int):
-    """NESTOR's vacuum pressure between its grid points: the grid over the
-    poloidal half range extended by stellarator symmetry, P(-u, -v) = P(u, v),
-    and the trigonometric interpolant of the full grid, the Nyquist frequency of
-    an even grid carried as a cosine. It equals the grid values at the grid."""
+    """NESTOR's vacuum pressure between its grid points: the grid over the poloidal half
+    range extended by stellarator symmetry, P(-u, -v) = P(u, v), and the trigonometric
+    interpolant of the full grid, the Nyquist frequency of an even grid carried as a
+    cosine.
+
+    It equals the grid values at the grid.
+    """
     P = np.asarray(fb.bsqvacf, dtype=float)
     nzeta, nth = P.shape
     nu = 2 * (nth - 1)
@@ -167,8 +173,8 @@ def vacuum_interpolant(fb, nfp: int):
 
 
 def jump_between(out, refine: int = 4) -> np.ndarray:
-    """The jump against NESTOR's interpolated vacuum pressure on a grid refine
-    times finer than NESTOR's in each angle, over the full poloidal range."""
+    """The jump against NESTOR's interpolated vacuum pressure on a grid refine times
+    finer than NESTOR's in each angle, over the full poloidal range."""
     fb = out.threed1_free_boundary
     nzeta, nth = np.asarray(fb.bsqvacf).shape
     nfp = int(out.wout.nfp)
@@ -180,8 +186,8 @@ def jump_between(out, refine: int = 4) -> np.ndarray:
 
 
 def jump(out) -> dict:
-    """The jump on NESTOR's grid: against the reconstruction and against
-    VMEC++'s own extrapolated edge pressure."""
+    """The jump on NESTOR's grid: against the reconstruction and against VMEC++'s own
+    extrapolated edge pressure."""
     fb = out.threed1_free_boundary
     theta, zeta = boundary_grid(fb)
     te = edge_pressure(out.wout, theta, zeta)

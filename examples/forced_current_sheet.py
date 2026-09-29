@@ -47,10 +47,12 @@ S_RATIONAL = 0.625
 
 
 def rippled_tokamak(ns: int, ftol: float = 1.0e-15):
-    """The circular tokamak of the test data with a boundary ripple and an iota
-    profile that puts iota = 1/2 at s = 0.625, ramped through coarser grids."""
+    """The circular tokamak of the test data with a boundary ripple and an iota profile
+    that puts iota = 1/2 at s = 0.625, ramped through coarser grids."""
     base = (
-        Path(vmecpp.__file__).parent
+        Path(__file__).parent.parent
+        / "src"
+        / "vmecpp"
         / "cpp"
         / "vmecpp"
         / "test_data"
@@ -83,8 +85,8 @@ def rippled_tokamak(ns: int, ftol: float = 1.0e-15):
 
 
 def _pressure_slope(wout, s: float) -> float:
-    """dp/ds of a power-series pressure at s, in pascal, with the scale VMEC
-    applied recovered from the stored half-grid pressure."""
+    """Dp/ds of a power-series pressure at s, in pascal, with the scale VMEC applied
+    recovered from the stored half-grid pressure."""
     if str(wout.pmass_type).strip() not in ("power_series", ""):
         msg = f"pmass_type {wout.pmass_type!r} is not handled here"
         raise ValueError(msg)

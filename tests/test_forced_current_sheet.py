@@ -4,18 +4,20 @@
 # SPDX-License-Identifier: MIT
 """The forced current sheet of a rippled circular tokamak, as a regression.
 
-`examples/forced_current_sheet.py` runs the circular tokamak of the test data
-with a (1,1) boundary ripple and iota = 1/2 at s = 0.625, and reconstructs the
-radial force residual of the converged state on that surface by VMEC's own
-half-grid rule. Its non-resonant harmonics fall fourfold per doubling of ns,
-the order of the discretization; its (2,1) harmonic does not fall, because a
-nested-surface field cannot balance the force the ripple drives at the
-rational surface, whose ideal response is a current sheet.
+`examples/forced_current_sheet.py` runs the circular tokamak of the test data with a
+(1,1) boundary ripple and iota = 1/2 at s = 0.625, and reconstructs the radial force
+residual of the converged state on that surface by VMEC's own half-grid rule. Its non-
+resonant harmonics fall fourfold per doubling of ns, the order of the discretization;
+its (2,1) harmonic does not fall, because a nested-surface field cannot balance the
+force the ripple drives at the rational surface, whose ideal response is a current
+sheet.
 
-The numbers below are enclosures of the equispaced (2,1) harmonic on a 64 by
-32 grid of angles at the converged states of ns = 65, 129 and 257, established
-by Stellarocq's Harmonic.dharm_correct
-(https://github.com/CharlesCNorton/stellarocq, gen/forced_sheet.py). Over every
+The numbers below are enclosures of the equispaced (2,1) harmonic on a 64 by 32 grid of
+angles at the converged states of ns = 65, 129 and 257, established by Stellarocq's
+Harmonic.dharm_correct (
+
+https://github.com/CharlesCNorton/stellarocq,
+gen/forced_sheet.py). Over every
 state whose R, Z and lambda coefficients lie within a relative 1e-14 of the
 converged ones the harmonic stays above CERTIFIED_FLOOR at each ns.
 """

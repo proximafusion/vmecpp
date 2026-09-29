@@ -27,6 +27,7 @@ import vmecpp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from free_boundary_jump import (
+    TEST_DATA_DIR,
     boundary_grid,
     cth_like,
     jump,
@@ -58,8 +59,8 @@ def runs():
 
 
 def test_vacuum_field_exported(runs):
-    """The exported field is NESTOR's: its components give the vacuum
-    pressure VMEC++ balanced, on the grid of the boundary it returns."""
+    """The exported field is NESTOR's: its components give the vacuum pressure VMEC++
+    balanced, on the grid of the boundary it returns."""
     out = runs[25]
     fb = out.threed1_free_boundary
     assert fb is not None
@@ -74,15 +75,14 @@ def test_vacuum_field_exported(runs):
 
 
 def test_vacuum_field_off_by_default():
-    td = Path(vmecpp.__file__).parent / "cpp" / "vmecpp" / "test_data"
-    vi = vmecpp.VmecInput.from_file(td / "cth_like_free_bdy.json")
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
     assert vi.return_vacuum_field is False
 
 
 @pytest.mark.parametrize("ns", [25, 49, 97])
 def test_jump_within_certificate(runs, ns):
-    """The largest jump on NESTOR's grid lies in the certified interval, and
-    VMEC++'s own extrapolated edge pressure agrees with the certified one."""
+    """The largest jump on NESTOR's grid lies in the certified interval, and VMEC++'s
+    own extrapolated edge pressure agrees with the certified one."""
     j = jump(runs[ns])
     floor, ceiling = CERTIFIED[ns]
     big = float(np.abs(j["reconstruction"]).max())
@@ -99,8 +99,8 @@ def test_certified_jump_falls():
 
 
 def test_covering_holds_the_grid_certificates():
-    """The bound over the whole boundary is at least the jump certified at the
-    largest grid point of the same run."""
+    """The bound over the whole boundary is at least the jump certified at the largest
+    grid point of the same run."""
     for ns, bound in COVERED.items():
         assert CERTIFIED[ns][0] <= bound
 
@@ -118,7 +118,7 @@ def test_vacuum_interpolant_reproduces_the_grid(runs):
 
 
 def test_jump_between_grid_points_within_covering(runs):
-    """Off NESTOR's grid, on a grid four times finer in each angle, the jump
-    stays inside the bound the covering proves for the whole boundary."""
+    """Off NESTOR's grid, on a grid four times finer in each angle, the jump stays
+    inside the bound the covering proves for the whole boundary."""
     big = float(np.abs(jump_between(runs[25], refine=4)).max())
     assert big <= COVERED[25], big
