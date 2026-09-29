@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <numbers>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1547,7 +1548,7 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
       .jacobian_resets = fc_.ijacob,
       .vacuum_pressure_active =
           vacuum_pressure_state_ >= VacuumPressureState::kInitialized,
-      .mhd_energy = h_.mhdEnergy * 4.0 * M_PI * M_PI,
+      .mhd_energy = h_.mhdEnergy * 4.0 * std::numbers::pi * std::numbers::pi,
       .geometry = CurrentGeometry(),
   };
   if (!iteration_callback_(snapshot)) {
