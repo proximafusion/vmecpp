@@ -5,7 +5,6 @@
 #include <iostream>
 #include <string>
 
-#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "util/file_io/file_io.h"
@@ -26,12 +25,18 @@ int main(int argc, char **argv) {
 
   // read input file provided on command line
   absl::StatusOr<std::string> indata_json = ReadFile(argv[1]);
-  CHECK_OK(indata_json) << "Could not read input file '" << argv[1]
-                        << "': " << indata_json.status();
+  if (!indata_json.ok()) {
+    std::cerr << "Could not read input file '" << argv[1]
+              << "': " << indata_json.status() << "\n";
+    return 1;
+  }
 
   absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
-  CHECK_OK(vmec_indata) << "Could not parse input file '" << argv[1]
-                        << "' into VmecINDATA: " << vmec_indata.status();
+  if (!vmec_indata.ok()) {
+    std::cerr << "Could not parse input file '" << argv[1]
+              << "' into VmecINDATA: " << vmec_indata.status() << "\n";
+    return 1;
+  }
 
   std::optional<int> max_threads = std::nullopt;
   if (argc == 3) {
@@ -41,14 +46,20 @@ int main(int argc, char **argv) {
   const absl::StatusOr<OutputQuantities> out =
       vmecpp::run(*vmec_indata, /*initial_state=*/std::nullopt,
                   /*max_threads=*/max_threads);
-
-  CHECK_OK(out) << "Error encountered during the VMEC++ run: " << out.status();
+  if (!out.ok()) {
+    std::cerr << "Error encountered during the VMEC++ run: " << out.status()
+              << "\n";
+    return 1;
+  }
 
   const std::string out_path =
       absl::StrCat(absl::StripSuffix(argv[1], ".json"), ".out.h5");
   const absl::Status status = out->Save(out_path);
-  CHECK_OK(status) << "Error encountered writing the output file '" << out_path
-                   << "': " << status;
+  if (!status.ok()) {
+    std::cerr << "Error encountered writing the output file '" << out_path
+              << "': " << status << "\n";
+    return 1;
+  }
 
   return 0;
 }

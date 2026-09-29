@@ -4,6 +4,9 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,6 +26,7 @@ namespace makegrid {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -76,6 +80,25 @@ absl::Status IsValidMakegridParameters(
                         makegrid_parameters.number_of_z_grid_points));
   }
 
+  // the planes filled by stellarator symmetry are mirrored through Z = 0
+  constexpr double kZGridSymmetryTolerance =
+      64.0 * std::numeric_limits<double>::epsilon();
+  const double z_grid_symmetry_error =
+      makegrid_parameters.z_grid_minimum + makegrid_parameters.z_grid_maximum;
+  const double z_grid_symmetry_scale =
+      1.0 + std::max(std::abs(makegrid_parameters.z_grid_minimum),
+                     std::abs(makegrid_parameters.z_grid_maximum));
+  if (makegrid_parameters.assume_stellarator_symmetry &&
+      std::abs(z_grid_symmetry_error) >
+          kZGridSymmetryTolerance * z_grid_symmetry_scale) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "assume_stellarator_symmetry needs z_grid_minimum = -z_grid_maximum, "
+        "but the Z grid runs from z_grid_minimum = % .3e to z_grid_maximum = "
+        "% .3e, which sum to % .3e",
+        makegrid_parameters.z_grid_minimum, makegrid_parameters.z_grid_maximum,
+        z_grid_symmetry_error));
+  }
+
   // at least a single point in phi direction (one plane)
   if (makegrid_parameters.number_of_phi_grid_points < 1) {
     return absl::InvalidArgumentError(
@@ -88,7 +111,11 @@ absl::Status IsValidMakegridParameters(
 
 absl::StatusOr<MakegridParameters> ImportMakegridParametersFromJson(
     const std::string& makegrid_parameters_json) {
-  json j = json::parse(makegrid_parameters_json);
+  absl::StatusOr<json> maybe_json = JsonParse(makegrid_parameters_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   MakegridParameters makegrid_parameters;
 
@@ -964,10 +991,10 @@ absl::Status WriteMakegridNetCDFFile(
 
   for (int circuit_index = 0; circuit_index < n_serial_circuits;
        ++circuit_index) {
-    // TODO(jons): Figure out how the name of the coil groups is determined in
-    // MAKEGRID. The challenge is that many coils (with individual names) can
-    // belong to one coil group, but only a single name for a coil group is
-    // written to the mgrid file.
+    // TODO(jons): MAKEGRID names a coil group by the group name on the
+    // terminating line of its coils in the coils file. That name reaches here
+    // only once the MagneticConfiguration is threaded through or the names are
+    // carried on MagneticFieldResponseTable.
     std::string coil_group_name = absl::StrFormat("circuit_%d", circuit_index);
 
     // NOTE: 30 has to be consistent with the value of kStringSize.
