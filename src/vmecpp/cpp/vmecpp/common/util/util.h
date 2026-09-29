@@ -204,9 +204,13 @@ enum class VacuumPressureState : std::int8_t {
   // process of reducing rCon0,zCon0 *= 0.9;
   kInitialized = 1,
 
-  // vacuum pressure turned on
-  // in the process of reducing rCon0,zCon0 *= 0.9;
-  kActive = 2
+  // vacuum pressure turned on, R and Z force residuals still above 1e-3
+  // full vacuum update in every iteration; ivac == 2 in VMEC 8.52
+  kActive = 2,
+
+  // vacuum pressure turned on, R and Z force residuals below 1e-3
+  // vacuum update every nvacskip iterations; ivac > 2 in VMEC 8.52
+  kSettled = 3
 };
 
 int VmecStatusCode(const VmecStatus vmec_status);
@@ -270,8 +274,9 @@ void TridiagonalSolveOpenMP(
 // ----------------------
 // VMEC-specific
 
-// Compute the maximum allowed number of threads for a VMEC++ run with given
-// radial resolution and adjust the number of OpenMP threads accordingly.
+// Compute the number of threads for the radial solve at the given radial
+// resolution. The count is passed to the parallel region as a num_threads
+// clause; the process-wide OpenMP thread count is left alone.
 int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 
 // Compute the number of threads to use for the free-boundary (NESTOR) vacuum
@@ -279,8 +284,7 @@ int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 // (nZnT points), so - unlike the radial solve, which is capped at ns/2 - it can
 // use as many threads as there are tangential grid points. This count is
 // deliberately decoupled from the radial thread count so the vacuum solve can
-// use the full thread budget even at coarse multigrid steps (small ns).
-// Unlike vmec_adjust_num_threads, this does NOT call omp_set_num_threads: the
+// use the full thread budget even at coarse multigrid steps (small ns). The
 // vacuum solve runs in a nested parallel region with an explicit num_threads()
 // clause.
 int vmec_adjust_vacuum_num_threads(int max_threads, int n_znt);

@@ -30,7 +30,9 @@ class FourierGeometry : public FourierCoeffs {
   // coefficients. If a Boundaries object is specified (defaults to nullptr; in
   // order to avoid a copy when using std::optional), the geometry of the
   // outermost flux surface (at ns-1) is taken from that Boundaries object
-  // instead of from the Fourier coefficient matrices.
+  // instead of from the Fourier coefficient matrices, and the inner surfaces
+  // are shifted by the difference between the two with the radial weights of
+  // interpFromBoundaryAndAxis.
   // This latter use case applies to fixed-boundary hot-restart operation of
   // VMEC++.
   // rmns, zmnc and lmnc_full carry the non-stellarator-symmetric half of the
@@ -41,7 +43,7 @@ class FourierGeometry : public FourierCoeffs {
                      const RowMatrixXd& lmns_full, const RowMatrixXd& rmns,
                      const RowMatrixXd& zmnc, const RowMatrixXd& lmnc_full,
                      const RadialProfiles& p, const VmecConstants& constants,
-                     const Boundaries* b = nullptr);
+                     int sign_of_jacobian, const Boundaries* b = nullptr);
 
   void extrapolateTowardsAxis();
 

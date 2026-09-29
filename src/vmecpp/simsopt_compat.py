@@ -21,6 +21,13 @@ from vmecpp import (  # noqa: F401
     ensure_vmecpp_input,
     is_vmec2000_input,
 )
+from vmecpp._qs import (  # noqa: F401
+    # Quasisymmetry objectives, the VMEC++ counterpart to
+    # simsopt.mhd.vmec_diagnostics.QuasisymmetryRatioResidual.
+    magnetic_field_strength,
+    quasisymmetry_residuals,
+    quasisymmetry_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -295,25 +302,25 @@ class Vmec(Optimizable):
         """Return the plasma aspect ratio."""
         self.run()
         assert self.wout is not None
-        return self.wout.aspect
+        return float(self.wout.aspect)
 
     def volume(self) -> float:
         """Return the volume inside the VMEC last closed flux surface."""
         self.run()
         assert self.wout is not None
-        return self.wout.volume_p
+        return float(self.wout.volume_p)
 
     def iota_axis(self) -> float:
         """Return the rotational transform on axis."""
         self.run()
         assert self.wout is not None
-        return self.wout.iotaf[0]
+        return float(self.wout.iotaf[0])
 
     def iota_edge(self) -> float:
         """Return the rotational transform at the boundary."""
         self.run()
         assert self.wout is not None
-        return self.wout.iotaf[-1]
+        return float(self.wout.iotaf[-1])
 
     def mean_iota(self) -> float:
         """Return the mean rotational transform.
@@ -421,7 +428,7 @@ class Vmec(Optimizable):
         mu0 = 4 * np.pi * (1.0e-7)
         # The formula in the next line follows from Ampere's law:
         # \int \vec{B} dot (d\vec{r} / d phi) d phi = mu_0 I.
-        return 2 * np.pi * bvco / mu0
+        return float(2 * np.pi * bvco / mu0)
 
     @property
     def boundary(self) -> SurfaceRZFourier:
@@ -430,7 +437,7 @@ class Vmec(Optimizable):
     @boundary.setter
     def boundary(self, boundary: SurfaceRZFourier) -> None:
         if boundary is not self._boundary:
-            logging.debug("Replacing surface in boundary setter")
+            logger.debug("Replacing surface in boundary setter")
             self.remove_parent(self._boundary)
             self._boundary = boundary
             self.append_parent(boundary)
@@ -482,8 +489,8 @@ class Vmec(Optimizable):
             target_mpol,
             target_ntor,
         )
-        vi.rbc.fill(0.0)
-        vi.zbs.fill(0.0)
+        np.asarray(vi.rbc).fill(0.0)
+        np.asarray(vi.zbs).fill(0.0)
         rbs = None
         zbc = None
         if vi.lasym:
@@ -552,11 +559,7 @@ class Vmec(Optimizable):
 
     def set_mpol_ntor(self, new_mpol: int, new_ntor: int):
         assert self.indata is not None
-        # Converting to and back is a bit unfortunate, but avoids
-        # having the resize method both in C++ and Python
-        indata_wrapper = self.indata._to_cpp_vmecindata()
-        indata_wrapper._set_mpol_ntor(new_mpol, new_ntor)
-        self.indata = vmecpp.VmecInput._from_cpp_vmecindata(indata_wrapper)
+        self.indata = self.indata.resize(new_mpol, new_ntor)
 
         mpol_for_surfacerzfourier, ntor_for_surfacerzfourier = (
             self._surface_rzfourier_resolution(new_mpol, new_ntor)

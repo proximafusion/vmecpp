@@ -85,6 +85,34 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
       absl::StrContains(status.status().message(), "VMEC++ did not converge"));
 }  // CheckErrorOnNonConvergence
 
+// The thread count a run uses is a property of that run: a coarse run must
+// not cap the thread budget that a later run, or another OpenMP user in the
+// process, reads from the runtime.
+TEST(TestVmec, RunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // five surfaces admit two radial threads, fewer than most machines have
+  indata.ns_array.setConstant(5);
+  indata.niter_array.setConstant(3);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const int process_thread_count = omp_get_max_threads();
+
+  ASSERT_TRUE(vmecpp::run(indata).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+
+  ASSERT_TRUE(vmecpp::run(indata, std::nullopt, /*max_threads=*/1).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
+}  // RunLeavesTheProcessThreadCountUnchanged
+
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   // make sure VMEC++ returns the outputs without an error
   // if explicitly instructed to do so
@@ -109,6 +137,27 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
 
   CHECK(status.ok());
 }  // CheckNoErrorOnNonConvergenceIfDesired
+
+// With ncurr = 1 the current profile is scaled to curtor by its value at the
+// boundary, so a profile that encloses no net current there cannot be imposed
+// and used to run silently with zero current.
+TEST(TestVmec, RejectsACurrentProfileWithoutEdgeCurrent) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // I'(s) = 1 - 2 s integrates to zero at the boundary
+  indata.pcurr_type = "power_series";
+  indata.ac = Eigen::VectorXd(2);
+  indata.ac << 1.0, -2.0;
+  const auto output = vmecpp::run(indata);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("encloses no net current"));
+}
 
 TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   // Verify that FromIndata returns an error status (rather than throwing)
@@ -750,21 +799,23 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   ASSERT_TRUE(w.lasym);
 
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
-  // mgrid.
+  // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
+  // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
+  // way as in SingularIntegrals::update.
   const double tol = 1.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4351302689, w.aspect, tol))
+  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3073676511, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7719386349, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1420276234, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018738865, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512430727, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5742222261, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
@@ -795,8 +846,9 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // Regression guard for issue #330/#640 and other changes to the multigrid
   // convergence path. 344 with the historical unbalanced stage entry; 321
   // since the vacuum state is seeded across multigrid transitions (the
-  // second stage enters force-balanced instead of kicking the boundary).
-  EXPECT_EQ(output->wout.niter, 321);
+  // second stage enters force-balanced instead of kicking the boundary); 328
+  // with the corrected cross-term sign in NESTOR's analytic add-back.
+  EXPECT_EQ(output->wout.niter, 328);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved
@@ -979,3 +1031,137 @@ TEST(TestVmec, InconsistentIndataIsRejectedBeforeConstruction) {
     }
   }
 }  // InconsistentIndataIsRejectedBeforeConstruction
+
+// The nvacskip cadence only starts once the R and Z force residuals have
+// settled, so two free-boundary runs that differ only in nvacskip share the
+// same force-residual history up to that evaluation.
+TEST(TestVmec, VacuumUpdateCadenceStartsWhenResidualsSettle) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // a single grid step, to keep the multi-grid transitions out of it
+  auto solve = [&](int nvacskip) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 16);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-10);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 5000);
+    indata.nvacskip = nvacskip;
+    return vmecpp::run(indata, std::nullopt, 1);
+  };
+
+  const auto every_iteration = solve(1);
+  ASSERT_TRUE(every_iteration.ok());
+  const auto strided = solve(24);
+  ASSERT_TRUE(strided.ok());
+
+  const Eigen::VectorXd& fsqr = every_iteration->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz = every_iteration->wout.force_residual_z;
+  const Eigen::VectorXd& fsqr_strided = strided->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz_strided = strided->wout.force_residual_z;
+
+  // The vacuum pressure is switched on at the first evaluation below the
+  // threshold; the cadence can first take effect at the second one.
+  int below_threshold = 0;
+  int settled = -1;
+  for (int i = 0; i < fsqr.size(); ++i) {
+    if (fsqr(i) + fsqz(i) < 1.0e-3) {
+      ++below_threshold;
+      if (below_threshold == 2) {
+        settled = i;
+        break;
+      }
+    }
+  }
+  ASSERT_GE(settled, 20) << "the free-boundary transient is too short to "
+                            "distinguish the two cadences";
+  ASSERT_LE(settled, fsqr_strided.size());
+
+  for (int i = 0; i < settled; ++i) {
+    EXPECT_EQ(fsqr(i), fsqr_strided(i)) << "evaluation " << i;
+    EXPECT_EQ(fsqz(i), fsqz_strided(i)) << "evaluation " << i;
+  }
+}  // VacuumUpdateCadenceStartsWhenResidualsSettle
+
+// The bloating factor scales the enclosed toroidal flux, so the edge value of
+// phi comes out as phiedge * bloat.
+TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // bloat is only accepted for a constrained toroidal current
+  ASSERT_EQ(base_indata->ncurr, 1);
+
+  for (const double bloat : {1.0, 1.5, 0.5}) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 9);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 4000);
+    indata.bloat = bloat;
+
+    const auto output = vmecpp::run(indata, std::nullopt, 1);
+    ASSERT_TRUE(output.ok()) << "bloat = " << bloat;
+
+    const Eigen::VectorXd& phi = output->wout.phi;
+    EXPECT_TRUE(
+        IsCloseRelAbs(indata.phiedge * bloat, phi[phi.size() - 1], 1.0e-14))
+        << "bloat = " << bloat;
+  }
+}  // BloatScalesTheEnclosedToroidalFlux
+
+// A multigrid step count below one solves nothing and is rejected.
+TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> reached =
+      vmec.run(VmecCheckpoint::NONE, INT_MAX, /*maximum_multi_grid_step=*/0);
+  ASSERT_FALSE(reached.ok());
+  EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
+}  // ZeroMaximumMultiGridStepIsRejected
+
+// At ns == 3 the axis entry is also the third-from-last entry, so both ends of
+// the current density come from the single interior surface.
+TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array = Eigen::VectorXi::Constant(1, 3);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-12);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 2000);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  const auto& wout = output->wout;
+  ASSERT_EQ(wout.ns, 3);
+  for (int mn = 0; mn < wout.mnmax_nyq; ++mn) {
+    const double interior_u = wout.currumnc(mn, 1);
+    const double interior_v = wout.currvmnc(mn, 1);
+
+    if (wout.xm_nyq[mn] <= 1) {
+      EXPECT_EQ(wout.currumnc(mn, 0), interior_u) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), interior_v) << "mn = " << mn;
+    } else {
+      EXPECT_EQ(wout.currumnc(mn, 0), 0.0) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), 0.0) << "mn = " << mn;
+    }
+
+    EXPECT_EQ(wout.currumnc(mn, 2), interior_u) << "mn = " << mn;
+    EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
+  }
+}  // CurrentDensityEndsAtTheSmallestRadialResolution

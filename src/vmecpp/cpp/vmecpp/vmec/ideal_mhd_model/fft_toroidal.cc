@@ -383,9 +383,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
   m_physical_forces.setZero();
 
   int jMaxRZ = std::min(rp.nsMaxF, fc.ns - 1);
-  if (fc.lfreeb &&
-      (vacuum_pressure_state == VacuumPressureState::kInitialized ||
-       vacuum_pressure_state == VacuumPressureState::kActive)) {
+  if (fc.lfreeb && vacuum_pressure_state >= VacuumPressureState::kInitialized) {
     jMaxRZ = std::min(rp.nsMaxF, fc.ns);
   }
 
