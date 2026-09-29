@@ -2030,8 +2030,7 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
     }  // kl
   }  // j
 
-  // The sum starts at the axis, whose row is under 3 percent of it on the
-  // bundled cases.
+  // TODO(jons): exclude axis --> mimic PARVMEC
   // only unique radial points here;
   // decomposed_x is over nsMinF1 ... nsMaxF1 --> would count overlapping
   // elements twice !!!
@@ -2425,8 +2424,7 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Note that this needs to have the radial preconditioner updated.
  */
 double IdealMhdModel::constraintMultiplierScale() const {
-  // The growth in ns is empirical: the multiplier that converges fastest
-  // measures out per case rather than ordered by ns.
+  // An empirically determined scaling.
   const double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
