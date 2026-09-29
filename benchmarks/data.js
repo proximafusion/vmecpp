@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790682090629,
+  "lastUpdate": 1790716746118,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21271,6 +21271,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.37827136199996403,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "84c099666cc066ba30ea993c1eefd9a6158d6b7d",
+          "message": "Accept the mgrid mode N that simsopt writes and LIBSTELL assigns to mgrid files without a mode (#902)\n\n* Accept the mgrid mode N that simsopt writes and LIBSTELL assigns to mgrid files without a mode\n\n* Keep the mgrid mode docstrings to what the code does\n\n* Write the mode N test's mgrid file from the coils response table\n\n* Read the mgrid mode N as unset\n\n* Keep the mgrid mode length limit the first annotation, where the wout writer reads it\n\n* Re-run CI",
+          "timestamp": "2026-09-29T23:12:32+02:00",
+          "tree_id": "412ac189dc1f3e08fab1fd3c5cc8153235eec259",
+          "url": "https://github.com/proximafusion/vmecpp/commit/84c099666cc066ba30ea993c1eefd9a6158d6b7d"
+        },
+        "date": 1790716741622,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.536101234399996,
+            "range": "stddev: 0.0039769199364652445",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.659881051333324,
+            "range": "stddev: 0.8541234390962346",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.9071274733333136,
+            "range": "stddev: 0.004394176786448841",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7666149506666595,
+            "range": "stddev: 0.6879460112649942",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2895636810000042,
+            "range": "stddev: 0.006989525383937651",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.722987230000001,
+            "range": "stddev: 0.014759611255581956",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.079724283999951,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3219479819999833,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
