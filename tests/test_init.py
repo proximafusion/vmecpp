@@ -117,7 +117,7 @@ def test_hot_restart_matches_ns_against_the_wout_of_the_state():
     assert restarted.wout.niter <= 3
 
     finer = vmec_input.model_copy(update={"ns_array": np.array([2 * ns - 1])})
-    with pytest.raises((RuntimeError, AttributeError), match="ns_array"):
+    with pytest.raises(ValueError, match="ns_array"):
         vmecpp.run(finer, verbose=False, restart_from=vmec_output)
 
 
@@ -422,6 +422,40 @@ def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
             )
 
 
+def test_vmecwout_holds_jax_arrays(cma_output: vmecpp.VmecOutput):
+    jnp = pytest.importorskip("jax.numpy")
+    wout = cma_output.wout
+    array_fields = {
+        name: jnp.asarray(value)
+        for name, value in wout.model_dump().items()
+        if isinstance(value, np.ndarray)
+    }
+    jax_wout = vmecpp.VmecWOut.model_validate({**wout.model_dump(), **array_fields})
+    assert isinstance(jax_wout.rmnc, type(array_fields["rmnc"]))
+
+    with (
+        tempfile.NamedTemporaryFile() as np_file,
+        tempfile.NamedTemporaryFile() as jax_file,
+    ):
+        wout.save(np_file.name)
+        jax_wout.save(jax_file.name)
+        with (
+            netCDF4.Dataset(np_file.name, "r") as expected,
+            netCDF4.Dataset(jax_file.name, "r") as actual,
+        ):
+            assert actual.variables.keys() == expected.variables.keys()
+            for varname, expected_value in expected.variables.items():
+                assert actual[varname].dimensions == expected_value.dimensions
+                actual_value = actual[varname][:]
+                np.testing.assert_array_equal(
+                    np.ma.getmaskarray(actual_value),
+                    np.ma.getmaskarray(expected_value[:]),
+                )
+                np.testing.assert_array_equal(
+                    np.ma.getdata(actual_value), np.ma.getdata(expected_value[:])
+                )
+
+
 def test_jxbout_bindings(cma_output: vmecpp.VmecOutput):
     for varname in [
         "itheta",
@@ -463,12 +497,12 @@ def test_mercier_bindings(cma_output: vmecpp.VmecOutput):
         "toroidal_flux",
         "iota",
         "shear",
-        "d_volume_d_s",
+        "d_volume_d_phi",
         "well",
         "toroidal_current",
-        "d_toroidal_current_d_s",
+        "d_toroidal_current_d_volume",
         "pressure",
-        "d_pressure_d_s",
+        "d_pressure_d_volume",
         "DMerc",
         "Dshear",
         "Dwell",
@@ -934,6 +968,8 @@ def test_wout_recovers_full_grid_lambda_for_asymmetric_equilibrium(tmp_path):
         (loaded.lmns_full, computed.lmns_full),
         (loaded.lmnc_full, computed.lmnc_full),
     ):
+        assert recovered is not None
+        assert reference is not None
         peak = np.abs(reference).max()
         assert peak > 0.0
         np.testing.assert_allclose(recovered, reference, atol=1.0e-10 * peak)

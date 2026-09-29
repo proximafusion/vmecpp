@@ -7,6 +7,7 @@
 #include <H5File.h>
 
 #include <filesystem>
+#include <initializer_list>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -309,6 +310,201 @@ TEST(TestVmecINDATA, CheckSumCossqProfilesNeedAValidHumpLayout) {
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
   // a hump of zero amplitude may have zero width
   indata.ac << 0.0, 0.5, 0.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// Below its knot count a spline evaluator returns zero for every s, so the run
+// converges to an equilibrium without the requested profile. The cubic and
+// Akima families need four knots, the line segments two.
+TEST(TestVmecINDATA, CheckSplineProfilesNeedEnoughKnots) {
+  struct Case {
+    std::string name;
+    int minimum;
+  };
+  for (const Case& c : {Case{"akima_spline", 4}, Case{"cubic_spline", 4},
+                        Case{"line_segment", 2}}) {
+    VmecINDATA indata;
+    indata.pmass_type = c.name;
+
+    indata.am_aux_s = Eigen::VectorXd::LinSpaced(c.minimum - 1, 0.0, 1.0);
+    indata.am_aux_f = Eigen::VectorXd::Zero(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+
+    indata.am_aux_s = Eigen::VectorXd::LinSpaced(c.minimum, 0.0, 1.0);
+    indata.am_aux_f = Eigen::VectorXd::Zero(c.minimum);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  // the current and iota profiles are held to the same counts
+  for (const Case& c :
+       {Case{"akima_spline_ip", 4}, Case{"line_segment_i", 2}}) {
+    VmecINDATA indata;
+    indata.ncurr = 1;
+    indata.pcurr_type = c.name;
+    indata.ac_aux_s = Eigen::VectorXd::LinSpaced(c.minimum - 1, 0.0, 1.0);
+    indata.ac_aux_f = Eigen::VectorXd::Zero(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  VmecINDATA iota_indata;
+  iota_indata.piota_type = "cubic_spline";
+  iota_indata.ai_aux_s = Eigen::VectorXd::LinSpaced(3, 0.0, 1.0);
+  iota_indata.ai_aux_f = Eigen::VectorXd::Zero(3);
+  EXPECT_FALSE(IsConsistent(iota_indata, /*enable_info_messages=*/false).ok());
+}
+
+// Below its coefficient count a closed-form evaluator returns zero for every
+// s, so the run converges to an equilibrium without the requested profile.
+// gauss_trunc needs 2 coefficients, two_power and two_power_gs 3 and
+// two_lorentz 8; the zero-padded power series accept any count.
+TEST(TestVmecINDATA, CheckClosedFormProfilesNeedEnoughCoefficients) {
+  struct Case {
+    std::string name;
+    int minimum;
+  };
+  for (const Case& c : {Case{"gauss_trunc", 2}, Case{"two_power", 3},
+                        Case{"two_power_gs", 3}, Case{"two_lorentz", 8}}) {
+    VmecINDATA indata;
+    indata.pmass_type = c.name;
+    indata.am = Eigen::VectorXd::Ones(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+    indata.am = Eigen::VectorXd::Ones(c.minimum);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  // the current profile is held to the same counts
+  VmecINDATA current_indata;
+  current_indata.ncurr = 1;
+  current_indata.pcurr_type = "two_power";
+  current_indata.ac = Eigen::VectorXd::Ones(2);
+  EXPECT_FALSE(
+      IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+  current_indata.ac = Eigen::VectorXd::Ones(3);
+  EXPECT_TRUE(
+      IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+}
+
+// The spline evaluators walk the knots in order and, for the Akima and cubic
+// families, return zero outside them where Fortran VMEC stops; the line
+// segments continue their end segments and may stop short of the radius.
+TEST(TestVmecINDATA, CheckSplineKnotsIncreaseAndSpanTheRadius) {
+  const auto knots = [](std::initializer_list<double> values) {
+    Eigen::VectorXd v(static_cast<Eigen::Index>(values.size()));
+    Eigen::Index i = 0;
+    for (double value : values) v[i++] = value;
+    return v;
+  };
+  VmecINDATA indata;
+  indata.pmass_type = "cubic_spline";
+  indata.am_aux_f = Eigen::VectorXd::Zero(5);
+  indata.am_aux_s = knots({0.0, 0.25, 0.5, 0.75, 1.0});
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.5, 0.25, 0.75, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.25, 0.25, 0.75, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.2, 0.4, 0.6, 0.9});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.1, 0.3, 0.5, 0.7, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pmass_type = "line_segment";
+  indata.am_aux_f = Eigen::VectorXd::Zero(3);
+  indata.am_aux_s = knots({0.1, 0.5, 0.9});
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.1, 0.9, 0.5});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// The vacuum potential's cutoffs default to the plasma's, may only exceed
+// them, and the toroidal grid has to carry the toroidal one.
+TEST(TestVmecINDATA, VacuumCutoffsStayAboveThePlasmaResolution) {
+  const absl::StatusOr<std::string> json =
+      file_io::ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(json.ok());
+  absl::StatusOr<VmecINDATA> maybe = VmecINDATA::FromJson(*json);
+  ASSERT_TRUE(maybe.ok());
+  VmecINDATA indata = *maybe;  // mpol 5, ntor 4, nzeta 36
+  EXPECT_EQ(indata.vacuum_mpol, 0);
+  EXPECT_EQ(indata.vacuum_ntor, 0);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.vacuum_mpol = 4;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.vacuum_mpol = 8;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.vacuum_ntor = 3;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  // 2 * 16 + 4 = 36 planes fit, 2 * 17 + 4 = 38 do not
+  indata.vacuum_ntor = 16;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.vacuum_ntor = 17;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.vacuum_ntor = 8;
+  const absl::StatusOr<std::string> round_trip_json = indata.ToJson();
+  ASSERT_TRUE(round_trip_json.ok());
+  const absl::StatusOr<VmecINDATA> round_trip =
+      VmecINDATA::FromJson(*round_trip_json);
+  ASSERT_TRUE(round_trip.ok());
+  EXPECT_EQ(round_trip->vacuum_mpol, 8);
+  EXPECT_EQ(round_trip->vacuum_ntor, 8);
+}
+
+TEST(TestVmecINDATA, CheckRationalProfilesNeedADenominator) {
+  // evalRational reads coefficients 0 to 9 as the numerator and 10 and above as
+  // the denominator, so the profile is only evaluable from eleven coefficients
+  // on, with a non-zero one past index 9.
+  VmecINDATA indata;
+  indata.pmass_type = "rational";
+
+  indata.am = Eigen::VectorXd::Zero(10);
+  indata.am[0] = 0.125;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.am = Eigen::VectorXd::Zero(11);
+  indata.am[0] = 0.125;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.am[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // the same for the iota and current profiles
+  indata.pmass_type = "power_series";
+  indata.piota_type = "rational";
+  indata.ai = Eigen::VectorXd::Zero(10);
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ai = Eigen::VectorXd::Zero(11);
+  indata.ai[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pcurr_type = "rational";
+  indata.ac = Eigen::VectorXd::Zero(10);
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ac = Eigen::VectorXd::Zero(11);
+  indata.ac[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // the other parameterizations keep accepting a short coefficient array
+  indata.pmass_type = "power_series";
+  indata.piota_type = "power_series";
+  indata.pcurr_type = "power_series";
+  indata.am = Eigen::VectorXd::Zero(2);
+  indata.ai = Eigen::VectorXd::Zero(2);
+  indata.ac = Eigen::VectorXd::Zero(2);
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
