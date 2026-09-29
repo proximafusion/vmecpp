@@ -1,0 +1,93 @@
+name: V&V against exact equilibria
+
+# Runs examples/exact_equilibria.py, which compares VMEC++ with Landreman's exact
+# three-dimensional equilibria (arXiv:2609.26742) over radial and angular resolutions
+# and plots the deviations and their observed orders.
+#
+# - On every pull request and push to main: the quick suite, up to ns = 100.
+# - On release and on manual request: the full suite, up to ns = 1000, one job per
+#   member of the families.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+# CI-only dependency workaround, see .github/constraints.txt
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  MPLBACKEND: Agg
+
+jobs:
+  quick:
+    name: Exact equilibria up to ns = 100
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install required packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
+      - name: Install package
+        run: python -m pip install .[test]
+      - name: Run the quick suite
+        run: |
+          python examples/exact_equilibria.py --suite quick --out exact_equilibria_out
+          cat exact_equilibria_out/quick.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the plots and data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-equilibria-quick
+          path: exact_equilibria_out/
+          retention-days: 30
+
+  full:
+    name: Exact equilibria up to ns = 1000, ${{ matrix.member }}
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        member: [sheared, sheared-near-3.5, sheared-A, iota2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install required packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
+      - name: Install package
+        run: python -m pip install .[test]
+      - name: Run the full suite
+        run: |
+          python examples/exact_equilibria.py --suite full --member ${{ matrix.member }} \
+            --out exact_equilibria_out
+          cat exact_equilibria_out/full.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the plots and data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-equilibria-full-${{ matrix.member }}
+          path: exact_equilibria_out/
+          retention-days: 30
