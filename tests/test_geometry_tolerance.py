@@ -104,7 +104,7 @@ def test_a_tighter_tolerance_gets_closer():
 
 def test_a_negative_tolerance_is_rejected():
     vmec_input = _single_grid().model_copy(update={"geometry_tolerance": -1.0})
-    with pytest.raises(AttributeError, match="geometry_tolerance"):
+    with pytest.raises(ValueError, match="geometry_tolerance"):
         vmecpp.run(vmec_input, verbose=False, max_threads=1)
 
 
