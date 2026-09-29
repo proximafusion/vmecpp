@@ -14,6 +14,10 @@
 
 namespace json_io {
 
+// Parse a JSON document. Text that is not valid JSON is reported through the
+// status, with the position the parser stopped at.
+absl::StatusOr<nlohmann::json> JsonParse(const std::string& json_text);
+
 // Try to read a bool from the given JSON data.
 // If the variable is not present in the given JSON object, status will be ok
 // and optional will be not populated. If the variable was found, but was not

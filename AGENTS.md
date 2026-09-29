@@ -71,7 +71,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - **Free Boundary Support**: External magnetic field handling
 
 **Python-C++ Bridge** (`src/vmecpp/cpp/vmecpp/vmec/pybind11/`):
-- Automatic NumPy ↔ Eigen conversion
+- Automatic NumPy <-> Eigen conversion
 - Exception translation from C++ to Python
 - In-Memory data sharing
 
@@ -82,9 +82,9 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 ### Data Flow
 
-1. **Input**: JSON (VMEC++) or INDATA (Fortran) formats → VmecInput validation → C++ VmecINDATA
-2. **Computation**: Multigrid setup → Fourier decomposition → Force balance iteration → Convergence
-3. **Output**: C++ results → Python data structures → Multiple formats (HDF5, NetCDF, JSON)
+1. **Input**: JSON (VMEC++) or INDATA (Fortran) formats -> VmecInput validation -> C++ VmecINDATA
+2. **Computation**: Multigrid setup -> Fourier decomposition -> Force balance iteration -> Convergence
+3. **Output**: C++ results -> Python data structures -> Multiple formats (HDF5, NetCDF, JSON)
 
 ### Key Features
 
@@ -117,9 +117,11 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 **Pre-commit Validation**:
 - All C++ code must pass `clang-format` (Google style)
+- Files must end with newline (`end-of-file-fixer`)
+
+**clang-tidy Review** (pull requests that change `.h` or `.cc` files under `src/vmecpp/cpp/vmecpp/`, tests and benchmarks excluded; any finding fails the check):
 - Must pass `readability-identifier-naming` checks
 - Must pass `modernize-avoid-c-arrays` checks
-- Files must end with newline (`end-of-file-fixer`)
 
 **Incremental development**: Make small, focused changes that can be validated independently
 
