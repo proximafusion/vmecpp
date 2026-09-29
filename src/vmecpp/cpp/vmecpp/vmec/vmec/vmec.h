@@ -157,6 +157,9 @@ class Vmec {
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
+  // Evaluate the model at the current state as the next iteration would,
+  // without advancing the state.
+  absl::Status EvaluateFinalState();
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
@@ -255,6 +258,13 @@ class Vmec {
   absl::StatusOr<SolveEqLoopStatus> SolveEquilibriumLoop(
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& m_lreset_internal, bool& m_liter_flag);
+
+  // Returns the errors the threads reported, or sets status_ to
+  // UNRECOVERABLE_ERROR and returns ok when every error is a physical
+  // inconsistency and outputs were requested even if not converged.
+  absl::Status RecoverFromThreadErrors(
+      const absl::Status& status_of_all_threads,
+      bool all_errors_are_recoverable);
 
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;

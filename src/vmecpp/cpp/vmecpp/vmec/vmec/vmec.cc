@@ -492,6 +492,15 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     return absl::InternalError(msg);
   }
 
+  // A run that ran out of iterations advanced its state after the last force
+  // evaluation, so the model is evaluated once more at the state it returns.
+  if (status_ == VmecStatus::NORMAL_TERMINATION) {
+    absl::Status evaluated = EvaluateFinalState();
+    if (!evaluated.ok()) {
+      return evaluated;
+    }
+  }
+
   // A converged free-boundary result must not rest on a vacuum field that was
   // clamped to the grid edge. h_.vacuum_status holds the last vacuum solve, so
   // a boundary that only left the grid transiently has already cleared it.
@@ -945,26 +954,12 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   }
 
   if (!status_of_all_threads.ok()) {
-    if (indata_.return_outputs_even_if_not_converged &&
-        all_errors_are_recoverable) {
-      // A physical inconsistency (not a code bug) was detected deep in the
-      // MHD model, with no retry strategy available. Since outputs were
-      // requested even if not converged, don't hard-error here: record it as
-      // an unrecoverable status and let run() fall through to
-      // ComputeOutputQuantities() with best-effort (likely unphysical)
-      // state, for debugging purposes.
-      if (verbose_) {
-        std::cout << absl::StrFormat(
-            "WARNING: %s\n"
-            "return_outputs_even_if_not_converged is set, so returning "
-            "best-effort (likely unphysical) output for debugging "
-            "purposes.\n",
-            status_of_all_threads.message());
-      }
-      status_ = VmecStatus::UNRECOVERABLE_ERROR;
-      return false;
+    absl::Status unrecovered = RecoverFromThreadErrors(
+        status_of_all_threads, all_errors_are_recoverable);
+    if (!unrecovered.ok()) {
+      return unrecovered;
     }
-    return status_of_all_threads;
+    return false;
   }
 
   if (!any_checkpoint_reached) {
@@ -974,6 +969,31 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
   return any_checkpoint_reached;
 }  // SolveEquilibrium
+
+absl::Status Vmec::RecoverFromThreadErrors(
+    const absl::Status& status_of_all_threads,
+    bool all_errors_are_recoverable) {
+  if (!indata_.return_outputs_even_if_not_converged ||
+      !all_errors_are_recoverable) {
+    return status_of_all_threads;
+  }
+  // A physical inconsistency (not a code bug) was detected deep in the
+  // MHD model, with no retry strategy available. Since outputs were
+  // requested even if not converged, don't hard-error here: record it as
+  // an unrecoverable status and let run() fall through to
+  // ComputeOutputQuantities() with best-effort (likely unphysical)
+  // state, for debugging purposes.
+  if (verbose_) {
+    std::cout << absl::StrFormat(
+        "WARNING: %s\n"
+        "return_outputs_even_if_not_converged is set, so returning "
+        "best-effort (likely unphysical) output for debugging "
+        "purposes.\n",
+        status_of_all_threads.message());
+  }
+  status_ = VmecStatus::UNRECOVERABLE_ERROR;
+  return absl::OkStatus();
+}
 
 absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     int thread_id, int iterations_before_checkpointing,
@@ -1608,6 +1628,58 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
 #endif  // _OPENMP
 
   return reached_checkpoint;
+}
+
+absl::Status Vmec::EvaluateFinalState() {
+  // as Evolve does before each evaluation; computeJacobian sets BAD_JACOBIAN
+  fc_.restart_reason = RestartReason::NO_RESTART;
+
+  absl::Status status_of_all_threads = absl::OkStatus();
+  bool all_errors_are_recoverable = true;
+  // Switching on the vacuum pressure also sets BAD_JACOBIAN, to restart the
+  // iterations that would follow.
+  bool vacuum_pressure_switched_on = false;
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(num_threads_)
+#endif  // _OPENMP
+  {
+#ifdef _OPENMP
+    const int thread_id = omp_get_thread_num();
+#else
+    const int thread_id = 0;
+#endif  // _OPENMP
+
+    bool need_restart = false;
+    const absl::StatusOr<bool> evaluated = m_[thread_id]->update(
+        *decomposed_x_[thread_id], *physical_x_[thread_id],
+        *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
+        last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+        iter2_, VmecCheckpoint::NONE, INT_MAX, verbose_);
+
+#ifdef _OPENMP
+#pragma omp critical
+#endif  // _OPENMP
+    {
+      vacuum_pressure_switched_on = vacuum_pressure_switched_on || need_restart;
+      if (!evaluated.ok()) {
+        all_errors_are_recoverable &= (evaluated.status().code() ==
+                                       absl::StatusCode::kFailedPrecondition);
+        UpdateStatusForThread(status_of_all_threads, thread_id,
+                              evaluated.status());
+      }
+    }
+  }  // omp parallel
+
+  if (!status_of_all_threads.ok()) {
+    return RecoverFromThreadErrors(status_of_all_threads,
+                                   all_errors_are_recoverable);
+  }
+  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN &&
+      !vacuum_pressure_switched_on) {
+    status_ = VmecStatus::BAD_JACOBIAN;
+  }
+  return absl::OkStatus();
 }
 
 void Vmec::PerformTimeStep(double fac, double b1, double time_step,
