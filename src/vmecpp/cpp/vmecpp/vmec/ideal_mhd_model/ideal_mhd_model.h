@@ -66,7 +66,7 @@ class IdealMhdModel {
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
-                     bool lforbal);
+                     bool lforbal, double lambda_preconditioner_scale);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -266,6 +266,24 @@ class IdealMhdModel {
   void chipStateVjp(const double* geomP, int geom_stride,
                     const double* chip_bar, FourierGeometry& m_physical_scratch,
                     FourierGeometry& m_decomposed_out);
+
+  // C^T of applyExactForceJacobianTranspose: a decomposed-force cotangent to
+  // the flat force-density cotangent of local_force_composition.h (block 20
+  // zero). Overwrites m_decomposed_in and m_physical_f.
+  std::vector<double> forceDensityCotangentFromDecomposed(
+      FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+      bool fix_m1_gauge);
+
+  // Cotangents of the half-grid profiles presH, chipH and currH (index
+  // jH-nsMinH, zeroed by the caller) at fixed geometry, from a
+  // decomposed-force cotangent m_decomposed_in and a cotangent chip_bar of
+  // the half-grid chi'. With ncurr==1 chip_bar seeds the chi' output of the
+  // composition, which depends on currH; otherwise chi' is chipH itself and
+  // chip_bar adds to m_chipH_bar.
+  void profileVjp(const double* geomP, int geom_stride,
+                  FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+                  const double* chip_bar, double* m_presH_bar,
+                  double* m_chipH_bar, double* m_currH_bar);
 
   // Transposes of the spectral transforms, for the transposed exact Hessian.
   // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
@@ -511,6 +529,7 @@ class IdealMhdModel {
   Eigen::VectorXd dLambda;
   Eigen::VectorXd cLambda;
   Eigen::VectorXd lambdaPreconditioner;
+  double lambda_preconditioner_scale_ = 0.5;
 
   // R,Z preconditioner
   Eigen::VectorXd ax;

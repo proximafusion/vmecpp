@@ -119,11 +119,16 @@ class Vmec {
       OutputMode verbose = OutputMode::kLegacy,
       InterruptCallback interrupt_callback = nullptr);
 
+  // checkpoint_multi_grid_step selects which entry of ns_array the checkpoints
+  // taken in InitializeRadial fire on, counting from 1. Without it those
+  // checkpoints always stop the run in the first multi-grid step, which leaves
+  // the setup of every later step unreachable.
   absl::StatusOr<bool> run(
       const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       int iterations_before_checkpointing = INT_MAX,
       int maximum_multi_grid_step = 500,
-      std::optional<HotRestartState> initial_state = std::nullopt);
+      std::optional<HotRestartState> initial_state = std::nullopt,
+      int checkpoint_multi_grid_step = 1);
 
   // -------------------
 
@@ -133,12 +138,15 @@ class Vmec {
   // multigrid steps.
   void SetupVacuumSolvers();
 
+  // is_checkpoint_step says whether the multi-grid step being initialized is
+  // the one the caller asked to checkpoint in.
   absl::StatusOr<bool> InitializeRadial(
       VmecCheckpoint checkpoint, int maximum_iterations, int nsval, int ns_old,
       double& m_delt0,
       const std::optional<HotRestartState>& initial_state = std::nullopt,
       std::optional<MultigridInterpolationScheme> interpolation_scheme =
-          std::nullopt);
+          std::nullopt,
+      bool is_checkpoint_step = true);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
   void RestartIteration(double& m_delt0r, int thread_id);
@@ -149,6 +157,9 @@ class Vmec {
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
+  // Evaluate the model at the current state as the next iteration would,
+  // without advancing the state.
+  absl::Status EvaluateFinalState();
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
@@ -195,6 +206,8 @@ class Vmec {
 
   VmecINDATA indata_;
   Sizes s_;
+  // Fourier cutoffs of the vacuum potential on the plasma's tangential grid
+  Sizes vacuum_s_;
   FourierBasisFastPoloidal t_;
   Boundaries b_;
   VmecConstants constants_;
@@ -253,6 +266,13 @@ class Vmec {
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& m_lreset_internal, bool& m_liter_flag);
 
+  // Returns the errors the threads reported, or sets status_ to
+  // UNRECOVERABLE_ERROR and returns ok when every error is a physical
+  // inconsistency and outputs were requested even if not converged.
+  absl::Status RecoverFromThreadErrors(
+      const absl::Status& status_of_all_threads,
+      bool all_errors_are_recoverable);
+
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
 
@@ -264,6 +284,10 @@ class Vmec {
 
   // set to true when the interrupt callback signals an interrupt
   bool interrupted_ = false;
+
+  // set when SolveEquilibriumLoop hands a bad Jacobian that the axis guess did
+  // not fix back to run(), which then retries from a three-surface mesh
+  bool retry_from_three_surfaces_ = false;
 
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;

@@ -21,6 +21,19 @@ void ExactForceDensityVjp(const double* geom, double* geom_bar, double* work,
                           double* work_bar, double* force, double* force_bar,
                           const LocalForceComposition* c);
 
+// Reverse-mode product of ComputeLocalForceDensity with respect to the
+// half-grid profiles c->presH, c->chipH and c->currH at fixed geometry: given
+// a force-density cotangent in force_bar, accumulates the profile cotangents
+// into presH_bar, chipH_bar and currH_bar (index jH-nsMinH, zeroed by the
+// caller). work/work_bar/force are caller-owned scratch as in
+// ExactForceDensityVjp.
+void ExactForceDensityProfileVjp(const double* geom, double* work,
+                                 double* work_bar, double* force,
+                                 double* force_bar,
+                                 const LocalForceComposition* c,
+                                 double* presH_bar, double* chipH_bar,
+                                 double* currH_bar);
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_EXACT_FORCE_VJP_H_

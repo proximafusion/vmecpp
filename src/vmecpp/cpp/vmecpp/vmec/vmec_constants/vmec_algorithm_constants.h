@@ -62,15 +62,8 @@ static constexpr double kIonLarmorRadiusCoefficient = 3.2e-3;
 // several undocumented scalings. These scalings are the natural tuning
 // hyperparameters for the tail convergence rate (see
 // docs/convergence_study.md); they are collected here to make them visible
-// and adjustable in one place.
-
-/**
- * Overall lambda preconditioner scale: the assembled diagonal is multiplied
- * by kLambdaPreconditionerDampingFactor / (4 lamscale^2). The 1/lamscale^2
- * converts between the internally rescaled lambda coefficients and the
- * physical ones; the remaining factor 0.5 is inherited and unexplained.
- */
-static constexpr double kLambdaPreconditionerDampingFactor = 2.0;
+// and adjustable in one place. The overall scale of the inverse, 0.5 in VMEC,
+// is the input VmecINDATA::lambda_preconditioner_scale.
 
 /**
  * Guard value substituted when an assembled lambda stiffness element is

@@ -29,7 +29,8 @@ struct BoundaryCoefficient {
   // Try to read a VMEC boundary description from the given JSON data.
   // If the variable is not present in the given JSON object, status will be ok
   // and optional will be not populated. If the variable was found, but was not
-  // the correct type, the status will be not ok.
+  // the correct type, or an entry lacks "m", "n" or "value" or has a negative
+  // "m", the status will be not ok.
   static absl::StatusOr<std::optional<std::vector<BoundaryCoefficient> > >
   FromJson(const nlohmann::json& j, const std::string& name);
 };  // BoundaryCoefficient
