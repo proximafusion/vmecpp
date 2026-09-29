@@ -876,7 +876,7 @@ TEST(TestVmec, ToroidalFluxFollowsTheAphiPolynomial) {
 
 // The lambda preconditioner scale multiplies an already assembled force, so it
 // cannot move the invariant residual of the first step.
-TEST(TestVmec, UndampedLambdaPreconditionerLeavesTheFirstForceResidual) {
+TEST(TestVmec, LambdaPreconditionerScaleLeavesTheFirstForceResidual) {
   for (const std::string& case_name :
        {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
     const absl::StatusOr<std::string> indata_json =
@@ -889,12 +889,12 @@ TEST(TestVmec, UndampedLambdaPreconditionerLeavesTheFirstForceResidual) {
         base_indata->ftol_array(base_indata->ftol_array.size() - 1);
 
     VmecINDATA damped = *base_indata;
-    damped.undamped_lambda_preconditioner = false;
+    damped.lambda_preconditioner_scale = 0.5;
     const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
     ASSERT_TRUE(damped_output.ok()) << case_name;
 
     VmecINDATA undamped = *base_indata;
-    undamped.undamped_lambda_preconditioner = true;
+    undamped.lambda_preconditioner_scale = 1.0;
     const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
     ASSERT_TRUE(undamped_output.ok()) << case_name;
 
@@ -908,13 +908,13 @@ TEST(TestVmec, UndampedLambdaPreconditionerLeavesTheFirstForceResidual) {
     EXPECT_LT(a.fsqt(a.itfsq - 1), 3.0 * ftol) << case_name;
     EXPECT_LT(b.fsqt(b.itfsq - 1), 3.0 * ftol) << case_name;
   }
-}  // UndampedLambdaPreconditionerLeavesTheFirstForceResidual
+}  // LambdaPreconditionerScaleLeavesTheFirstForceResidual
 
 // Both runs are held to ftol 1e-12 because the residual fixes how closely they
 // agree; what remains there is the spectral-condensation angle gauge, which
 // moves the poloidal spectrum without moving the flux surfaces. The bounds are
 // five times the measured deviation.
-TEST(TestVmec, UndampedLambdaPreconditionerConvergesToTheSameEquilibrium) {
+TEST(TestVmec, LambdaPreconditionerScaleConvergesToTheSameEquilibrium) {
   for (const std::string& case_name :
        {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
     const absl::StatusOr<std::string> indata_json =
@@ -926,12 +926,12 @@ TEST(TestVmec, UndampedLambdaPreconditionerConvergesToTheSameEquilibrium) {
         Eigen::VectorXd::Constant(base_indata->ftol_array.size(), 1.0e-12);
 
     VmecINDATA damped = *base_indata;
-    damped.undamped_lambda_preconditioner = false;
+    damped.lambda_preconditioner_scale = 0.5;
     const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
     ASSERT_TRUE(damped_output.ok()) << case_name;
 
     VmecINDATA undamped = *base_indata;
-    undamped.undamped_lambda_preconditioner = true;
+    undamped.lambda_preconditioner_scale = 1.0;
     const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
     ASSERT_TRUE(undamped_output.ok()) << case_name;
 

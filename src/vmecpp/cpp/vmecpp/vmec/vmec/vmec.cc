@@ -675,7 +675,7 @@ bool Vmec::InitializeRadial(
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal,
-                                   indata_.undamped_lambda_preconditioner);
+                                   indata_.lambda_preconditioner_scale);
     }  // thread_id
 
     if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
