@@ -26,6 +26,7 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #ifdef VMECPP_USE_FFTX
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 #endif
@@ -44,6 +45,15 @@ void deAliasConstraintForce(const RadialPartitioning& rp,
                             const Eigen::VectorXd& gConEff,
                             Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
                             Eigen::VectorXd& m_gCon);
+void deAliasConstraintForce(const RadialPartitioning& rp,
+                            const FourierBasisFastPoloidal& fb, const Sizes& s_,
+                            const Eigen::VectorXd& faccon,
+                            const Eigen::VectorXd& tcon,
+                            const Eigen::VectorXd& gConEff,
+                            Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
+                            Eigen::VectorXd& m_gcc, Eigen::VectorXd& m_gss,
+                            Eigen::VectorXd& m_gConAsym,
+                            Eigen::VectorXd& m_refl, Eigen::VectorXd& m_gCon);
 
 class IdealMhdModel {
  public:
@@ -55,7 +65,8 @@ class IdealMhdModel {
                 int vac_num_threads, int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
-  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0);
+  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
+                     bool lforbal);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -75,7 +86,6 @@ class IdealMhdModel {
       const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
       const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
       bool always_fix_m1_gauge = false);
-
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
 
@@ -159,6 +169,9 @@ class IdealMhdModel {
   // Current working hypothesis: This is used to make the constraint force "look
   // similar" to the MHD forces for improved numerical stability.
   absl::Status constraintForceMultiplier();
+  // The ns-dependent scale of the constraint force multiplier, shared with the
+  // local force composition that recomputes tcon from the geometry.
+  double constraintMultiplierScale() const;
 
   // Computes the effective constraint force that actually enters the iterative
   // scheme.
@@ -175,6 +188,112 @@ class IdealMhdModel {
   // Coordinates the forward-DFT to transform the total force in realspace into
   // Fourier space.
   void forcesToFourier(FourierForces& m_physical_f);
+
+  // Exact Hessian-vector product of the local force chain. Given the packed
+  // real-space geometry primal geomP and a geometry tangent dgeom (each
+  // geom_stride doubles per block, see local_force_composition.h),
+  // differentiate the force density (MHD, hybrid lambda, and spectral-
+  // condensation constraint force) by one Enzyme forward pass, then apply the
+  // linear forward transform and preconditioner decomposition to obtain the
+  // decomposed force tangent in m_decomposed_hv. The constraint multiplier tcon
+  // is recomputed from the geometry inside the composition, as the raw force
+  // recomputes it from the state, so the product is the derivative of the
+  // force the iteration drives to zero. Used by the exact internal
+  // Newton-Krylov Hessian-vector product. This low-level
+  // kernel does not differentiate the state-dependent LFORBAL replacement;
+  // public callers must reject lforbal=true.
+  void applyExactForceJacobian(const double* geomP, const double* dgeom,
+                               int geom_stride, FourierForces& m_physical_f,
+                               FourierForces& m_decomposed_hv,
+                               bool fix_m1_gauge);
+
+  // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
+  // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
+  // layout of local_force_composition.h, with the computeBContra lambda
+  // normalization. Applied to a state (primal=true, adds phipF on lu_e) it
+  // gives the geometry; applied to a tangent (primal=false) it gives the exact
+  // geometry tangent, no finite difference. Uses m_physical_scratch as scratch.
+  void packGeometry(FourierGeometry& m_decomposed,
+                    FourierGeometry& m_physical_scratch, double* out, int gS,
+                    bool primal);
+
+  // Diagnostic: max |composed force density - production force density| at the
+  // current state, to isolate composition bugs from the transform/tangent path.
+  double composedForceResidual(const double* geomP, int geom_stride);
+
+  // Raw force-density tangent (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is chi' for ncurr==1, see
+  // local_force_composition.h) from one Enzyme forward pass, no transform. For
+  // isolating the JVP from the spectral-transform wrapping.
+  void exactForceDensityTangent(const double* geomP, const double* dgeom,
+                                int geom_stride, double* dforce_out);
+
+  // Reverse-mode force-density cotangent: J_g^T applied to the force-density
+  // cotangent force_bar (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is the chi' cotangent),
+  // accumulated into geom_bar_out (20 blocks of geom_stride, zeroed by caller),
+  // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
+  void exactForceDensityCotangent(const double* geomP, const double* force_bar,
+                                  int geom_stride, double* geom_bar_out);
+
+  // Fill the local force-density composition descriptor shared by the exact
+  // forward/reverse force-density passes (geom_stride sized blocks).
+  LocalForceComposition makeLocalForceComposition(int geom_stride);
+
+  // Transpose of applyExactForceJacobian: H^T w. Given a decomposed-force
+  // cotangent (the space applyExactForceJacobian writes), apply C^T (transpose
+  // of the output transform), the reverse-mode force-density kernel J_g^T, and
+  // B^T (transpose of packGeometry's pre-chain), yielding the state cotangent
+  // in m_decomposed_out. The two spectral transforms are reused as each other's
+  // adjoint with the poloidal integration weight; the rest of the linear chain
+  // (decomposeInto, m1Constraint, zeroZForceForM1, extrapolateTowardsAxis,
+  // ruFull/zuFull, lamscale) is transposed analytically. This low-level kernel
+  // does not transpose the state-dependent LFORBAL replacement; public callers
+  // must reject lforbal=true.
+  void applyExactForceJacobianTranspose(const double* geomP, int geom_stride,
+                                        FourierForces& m_decomposed_in,
+                                        FourierForces& m_physical_f,
+                                        FourierGeometry& m_physical_scratch,
+                                        FourierGeometry& m_decomposed_out,
+                                        bool fix_m1_gauge);
+
+  // (dchi'/dx)^T chip_bar for ncurr==1, in the decomposed internal basis.
+  // chip_bar holds one entry per half surface (index jH-nsMinH, the space
+  // chipH occupies). Reuses the reverse-mode force-density kernel seeded on
+  // its chi' output block alone, and the geometry-side (B^T) half of
+  // applyExactForceJacobianTranspose, since chi' depends on the same geometry
+  // blocks (r1, ru, zu, lu, lv) the force densities do.
+  void chipStateVjp(const double* geomP, int geom_stride,
+                    const double* chip_bar, FourierGeometry& m_physical_scratch,
+                    FourierGeometry& m_decomposed_out);
+
+  // C^T of applyExactForceJacobianTranspose: a decomposed-force cotangent to
+  // the flat force-density cotangent of local_force_composition.h (block 20
+  // zero). Overwrites m_decomposed_in and m_physical_f.
+  std::vector<double> forceDensityCotangentFromDecomposed(
+      FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+      bool fix_m1_gauge);
+
+  // Cotangents of the half-grid profiles presH, chipH and currH (index
+  // jH-nsMinH, zeroed by the caller) at fixed geometry, from a
+  // decomposed-force cotangent m_decomposed_in and a cotangent chip_bar of
+  // the half-grid chi'. With ncurr==1 chip_bar seeds the chi' output of the
+  // composition, which depends on currH; otherwise chi' is chipH itself and
+  // chip_bar adds to m_chipH_bar.
+  void profileVjp(const double* geomP, int geom_stride,
+                  FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+                  const double* chip_bar, double* m_presH_bar,
+                  double* m_chipH_bar, double* m_currH_bar);
+
+  // Transposes of the spectral transforms, for the transposed exact Hessian.
+  // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
+  // cotangent -> real-space force-density member cotangents (armn_e ..
+  // fzcon_o). dft_FourierToRealTranspose: (geometryFromFourier)^T, real-space
+  // geometry member cotangents (r1_e .. zCon) -> Fourier coeff cotangent.
+  void dft_ForcesToFourierTranspose_2d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_2d_symm(FourierGeometry& m_coeff_bar_out);
+  void dft_ForcesToFourierTranspose_3d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_3d_symm(FourierGeometry& m_coeff_bar_out);
 
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
@@ -215,7 +334,8 @@ class IdealMhdModel {
       const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
       const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm,
       Eigen::VectorXd& m_axd, Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd,
-      Eigen::VectorXd& m_cxd);
+      Eigen::VectorXd& m_cxd, const Eigen::VectorXd& trigmult,
+      Eigen::VectorXd& m_eqfactor);
 
   // Applies the radial preconditioner for the m=1 Fourier coefficients of R and
   // Z.
@@ -426,6 +546,18 @@ class IdealMhdModel {
   // crd == czd --> cxd
   Eigen::VectorXd cxd;
 
+  // lforbal: when set, the flux-averaged radial force balance evolves the
+  // m=1,n=0 R,Z components (non-variational). cos01/sin01 are the m=1 trig
+  // weights; rzu_fac/rru_fac/frcc_fac/fzsc_fac are the force-balance factors
+  // derived from the R,Z preconditioner diagonals. All unused when lforbal off.
+  bool lforbal = false;
+  Eigen::VectorXd cos01;
+  Eigen::VectorXd sin01;
+  Eigen::VectorXd rzu_fac;
+  Eigen::VectorXd rru_fac;
+  Eigen::VectorXd frcc_fac;
+  Eigen::VectorXd fzsc_fac;
+
   Eigen::VectorXd ar;
   Eigen::VectorXd dr;
   Eigen::VectorXd br;
@@ -448,6 +580,10 @@ class IdealMhdModel {
   // Fourier coefficients of constraint force - used during de-aliasing
   Eigen::VectorXd gsc;
   Eigen::VectorXd gcs;
+  Eigen::VectorXd gcc;
+  Eigen::VectorXd gss;
+  Eigen::VectorXd gConAsym;
+  Eigen::VectorXd refl;
 
   // de-aliased constraint force - what enters the Fourier coefficients of the
   // forces

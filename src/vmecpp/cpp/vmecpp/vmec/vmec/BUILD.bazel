@@ -43,12 +43,31 @@ cc_test(
         "//vmecpp/test_data:cth_like_free_bdy",
         "//vmecpp/test_data:cth_like_free_bdy_asym",
         "//vmecpp/test_data:cth_like_free_bdy_multigrid",
+        "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
+        "//vmecpp/vmec/output_quantities:test_helpers",
         "//vmecpp/vmec/vmec",
         "@googletest//:gtest_main",
         "//util/file_io:file_io",
         "//util/testing:numerical_comparison_lib",
+    ],
+    # The four fixed-boundary flag-combination cases roughly double what this
+    # target solves, which puts it over the 300s a medium test gets under tsan.
+    size = "large",
+)
+
+cc_test(
+    name = "energy_gradient_test",
+    srcs = ["energy_gradient_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
     ],
     size = "medium",
 )
@@ -72,13 +91,35 @@ cc_test(
     srcs = ["vmec_in_memory_mgrid_test.cc"],
     data = [
         "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp/test_data:cth_like_free_bdy_asym",
         "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
+        "//vmecpp/vmec/output_quantities:test_helpers",
         "@googletest//:gtest_main",
         "//util/file_io:file_io",
+        "//util/netcdf_io:netcdf_io",
         "//util/testing:numerical_comparison_lib",
         "//vmecpp/vmec/vmec",
     ],
     size = "medium",
+)
+
+cc_test(
+    name = "energy_hessian_test",
+    srcs = ["energy_hessian_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:li383_low_res",
+        "//vmecpp/test_data:up_down_asym",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "large",
 )

@@ -21,6 +21,7 @@
 #include "util/json_io/json_io.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/boundary_from_json.h"
+#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
 
 namespace {
 [[noreturn]] void ErrorToException(const absl::Status& status,
@@ -29,12 +30,104 @@ namespace {
       "There was an error " + context + ":\n" + std::string(status.message());
   throw std::runtime_error(msg);
 }
+
+std::string ProfileTypeName(vmecpp::ProfileType profile_type) {
+  switch (profile_type) {
+    case vmecpp::ProfileType::PRESSURE:
+      return "mass/pressure";
+    case vmecpp::ProfileType::CURRENT:
+      return "current";
+    case vmecpp::ProfileType::IOTA:
+      return "iota";
+  }
+  return "unknown";
+}
+
+// Checks that `type_name` names a profile parameterization that may be used for
+// `profile_type`, and that a spline parameterization was given its knots. An
+// unrecognized name otherwise reaches the solver as a zero profile, which
+// converges to a silently wrong equilibrium.
+//
+// The polynomial coefficient arrays are deliberately not required to be
+// non-empty: they are zero-padded on read, so an empty array is a valid way to
+// specify a zero profile.
+absl::Status CheckProfile(const std::string& type_key,
+                          const std::string& type_name,
+                          vmecpp::ProfileType profile_type,
+                          const std::string& aux_key,
+                          const Eigen::VectorXd& aux_s,
+                          const Eigen::VectorXd& aux_f) {
+  const vmecpp::ProfileParameterizationData* const parameterization =
+      vmecpp::FindProfileParameterization(type_name);
+  if (parameterization == nullptr) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable '%s' is '%s', which is not a known profile "
+        "parameterization\n",
+        type_key, type_name));
+  }
+
+  if (!vmecpp::IsProfileParameterizationAllowedFor(type_name, profile_type)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable '%s' is '%s', which cannot be used for the %s "
+        "profile\n",
+        type_key, type_name, ProfileTypeName(profile_type)));
+  }
+
+  if (parameterization->NeedsSplineData()) {
+    if (aux_s.size() == 0 || aux_f.size() == 0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'%s' is '%s', which is a spline profile, so '%s_aux_s' and "
+          "'%s_aux_f' must be given\n",
+          type_key, type_name, aux_key, aux_key));
+    }
+    if (aux_s.size() != aux_f.size()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "'%s_aux_s' and '%s_aux_f' must have the same number of entries, "
+          "but have %d and %d\n",
+          aux_key, aux_key, aux_s.size(), aux_f.size()));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// First coefficient of the 'rational' denominator, matching evalRational.
+static constexpr Eigen::VectorXd::Index kRationalDenominatorStart = 10;
+
+// Checks that a 'rational' profile carries a denominator. evalRational reads
+// coefficients 0 to 9 as the numerator and 10 and above as the denominator, and
+// returns DBL_MAX at every s when the denominator evaluates to zero, so an
+// array of ten or fewer coefficients reaches the solver as an unbounded
+// profile.
+absl::Status CheckRationalProfile(const std::string& type_key,
+                                  const std::string& type_name,
+                                  const std::string& coefficient_key,
+                                  const Eigen::VectorXd& coefficients) {
+  if (type_name != "rational") {
+    return absl::OkStatus();
+  }
+
+  for (Eigen::VectorXd::Index i = kRationalDenominatorStart;
+       i < coefficients.size(); ++i) {
+    if (coefficients[i] != 0.0) {
+      return absl::OkStatus();
+    }
+  }
+
+  return absl::InvalidArgumentError(absl::StrFormat(
+      "input variable '%s' is 'rational', whose denominator is '%s' from index "
+      "%d on, but '%s' has %d coefficients and none past index %d is "
+      "non-zero\n",
+      type_key, coefficient_key, kRationalDenominatorStart, coefficient_key,
+      coefficients.size(), kRationalDenominatorStart - 1));
+}
 }  // namespace
 
 namespace vmecpp {
 
 using nlohmann::json;
 
+using json_io::JsonParse;
 using json_io::JsonReadBool;
 using json_io::JsonReadDouble;
 using json_io::JsonReadInt;
@@ -157,6 +250,7 @@ VmecINDATA::VmecINDATA() {
   mgrid_file = "NONE";  // default from Fortran VMEC via indata2json
   // extcur is left empty
   nvacskip = 1;
+  signgs = -1;
   free_boundary_method = FreeBoundaryMethod::NESTOR;
 
   // tweaking parameters
@@ -164,7 +258,7 @@ VmecINDATA::VmecINDATA() {
   aphi.resize(1);
   aphi[0] = 1.0;
   delt = 1.0;
-  tcon0 = 1.0;
+  tcon0 = 0.5;
   lforbal = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
@@ -281,6 +375,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lfreeb, "/indata/lfreeb", file);
   WriteH5Dataset(mgrid_file, "/indata/mgrid_file", file);
   WriteH5Dataset(nvacskip, "/indata/nvacskip", file);
+  WriteH5Dataset(signgs, "/indata/signgs", file);
 
   // special treatment for enums
   WriteH5Dataset(ToString(free_boundary_method), "/indata/free_boundary_method",
@@ -312,8 +407,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(raxis_c, "/indata/raxis_c", file);
   WriteH5Dataset(zaxis_s, "/indata/zaxis_s", file);
   if (lasym) {
-    WriteH5Dataset(raxis_s->value(), "/indata/raxis_s", file);
-    WriteH5Dataset(zaxis_c->value(), "/indata/zaxis_c", file);
+    WriteH5Dataset(*raxis_s, "/indata/raxis_s", file);
+    WriteH5Dataset(*zaxis_c, "/indata/zaxis_c", file);
   }
 
   // 2D matrices
@@ -321,8 +416,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(rbc, "/indata/rbc", file);
   WriteH5Dataset(zbs, "/indata/zbs", file);
   if (lasym) {
-    WriteH5Dataset(rbs->value(), "/indata/rbs", file);
-    WriteH5Dataset(zbc->value(), "/indata/zbc", file);
+    WriteH5Dataset(*rbs, "/indata/rbs", file);
+    WriteH5Dataset(*zbc, "/indata/zbc", file);
   }
 
   return absl::OkStatus();
@@ -362,6 +457,9 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.lfreeb, "/indata/lfreeb", from_file);
   ReadH5Dataset(m_indata.mgrid_file, "/indata/mgrid_file", from_file);
   ReadH5Dataset(m_indata.nvacskip, "/indata/nvacskip", from_file);
+  if (from_file.nameExists("/indata/signgs")) {
+    ReadH5Dataset(m_indata.signgs, "/indata/signgs", from_file);
+  }
 
   // special treatment for enums
   std::string fbdy_method_str;
@@ -487,7 +585,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
 
 absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     const std::string& indata_json) {
-  json j = json::parse(indata_json);
+  absl::StatusOr<json> maybe_json = JsonParse(indata_json);
+  if (!maybe_json.ok()) {
+    return maybe_json.status();
+  }
+  const json& j = *maybe_json;
 
   if (!j.is_object()) {
     return absl::InvalidArgumentError("root JSON element is not an object");
@@ -813,6 +915,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.nvacskip = maybe_nvacskip->value();
   }
 
+  auto maybe_signgs = JsonReadInt(j, "signgs");
+  if (!maybe_signgs.ok()) {
+    return maybe_signgs.status();
+  }
+  if (maybe_signgs->has_value()) {
+    vmec_indata.signgs = maybe_signgs->value();
+  }
+
   auto maybe_free_boundary_method = JsonReadString(j, "free_boundary_method");
   if (!maybe_free_boundary_method.ok()) {
     return maybe_free_boundary_method.status();
@@ -943,6 +1053,10 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
 
   if (vmec_indata.lasym) {
+    // an absent raxis_s or zaxis_c is a zero one, as for raxis_c and zaxis_s
+    vmec_indata.raxis_s.emplace().setZero(expected_axis_size);
+    vmec_indata.zaxis_c.emplace().setZero(expected_axis_size);
+
     auto maybe_raxis_s = JsonReadVectorDouble(j, "raxis_s");
     if (!maybe_raxis_s.ok()) {
       return maybe_raxis_s.status();
@@ -1184,6 +1298,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["mgrid_file"] = mgrid_file;
   output["extcur"] = extcur;
   output["nvacskip"] = nvacskip;
+  output["signgs"] = signgs;
   output["free_boundary_method"] = ToString(free_boundary_method);
 
   // Tweaking Parameters
@@ -1200,8 +1315,8 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["raxis_c"] = raxis_c;
   output["zaxis_s"] = zaxis_s;
   if (lasym) {
-    output["raxis_s"] = raxis_s->value();
-    output["zaxis_c"] = zaxis_c->value();
+    output["raxis_s"] = *raxis_s;
+    output["zaxis_c"] = *zaxis_c;
   }
 
   // (Initial Guess for) Boundary Geometry
@@ -1280,6 +1395,19 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
                         vmec_indata.nzeta));
   }
 
+  if (vmec_indata.signgs != -1 && vmec_indata.signgs != 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'signgs' needs to be -1 or +1, but is %d\n",
+        vmec_indata.signgs));
+  }
+
+  // the free-boundary case additionally requires nvacskip >= 1; see below
+  if (vmec_indata.nvacskip < 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'nvacskip' needs to be >= 0, but is %d\n",
+        vmec_indata.nvacskip));
+  }
+
   /* --------------------------------- */
 
   const int NS_MIN = 3;
@@ -1318,6 +1446,19 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         absl::StrFormat("input variable 'ns_array' needs to have at least one "
                         "entry, but size is %ld\n",
                         vmec_indata.ns_array.size()));
+  }
+
+  if (vmec_indata.ftol_array.size() < vmec_indata.ns_array.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'ftol_array' needs an entry for every 'ns_array' "
+        "entry, but has %ld against %ld\n",
+        vmec_indata.ftol_array.size(), vmec_indata.ns_array.size()));
+  }
+  if (vmec_indata.niter_array.size() < vmec_indata.ns_array.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'niter_array' needs an entry for every 'ns_array' "
+        "entry, but has %ld against %ld\n",
+        vmec_indata.niter_array.size(), vmec_indata.ns_array.size()));
   }
 
   // ftol_array
@@ -1361,15 +1502,19 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   /* --------------------------------- */
 
-  // pmass_type
-  // TODO(jons): check for allowed value
+  // pmass_type, am_aux_s, am_aux_f
+  if (absl::Status status = CheckProfile(
+          "pmass_type", vmec_indata.pmass_type, ProfileType::PRESSURE, "am",
+          vmec_indata.am_aux_s, vmec_indata.am_aux_f);
+      !status.ok()) {
+    return status;
+  }
 
-  // am
-  // TODO(jons): must be given for parameterized profiles
-
-  // am_aux_s
-  // am_aux_f
-  // TODO(jons): must be given for spline data profiles
+  if (absl::Status status = CheckRationalProfile(
+          "pmass_type", vmec_indata.pmass_type, "am", vmec_indata.am);
+      !status.ok()) {
+    return status;
+  }
 
   // pres_scale
   if (vmec_indata.pres_scale < 0) {
@@ -1378,10 +1523,10 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.pres_scale));
   }
 
-  // adiabatic_index
+  // gamma
   if (vmec_indata.gamma == 1.0) {
     return absl::InvalidArgumentError(
-        absl::StrFormat("input variable 'adiabatic_index' must not be 1.0\n"));
+        absl::StrFormat("input variable 'gamma' must not be 1.0\n"));
   }
 
   // spres_ped
@@ -1394,17 +1539,36 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   /* --------------------------------- */
 
+  // piota_type, ai_aux_s, ai_aux_f. Checked for either ncurr: piota is the
+  // initial guess for the iota profile even in a current-constrained run.
+  if (absl::Status status =
+          CheckProfile("piota_type", vmec_indata.piota_type, ProfileType::IOTA,
+                       "ai", vmec_indata.ai_aux_s, vmec_indata.ai_aux_f);
+      !status.ok()) {
+    return status;
+  }
+
+  if (absl::Status status = CheckRationalProfile(
+          "piota_type", vmec_indata.piota_type, "ai", vmec_indata.ai);
+      !status.ok()) {
+    return status;
+  }
+
+  // pcurr_type, ac_aux_s, ac_aux_f. Ignored for ncurr == 0, still checked.
+  if (absl::Status status = CheckProfile(
+          "pcurr_type", vmec_indata.pcurr_type, ProfileType::CURRENT, "ac",
+          vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
+      !status.ok()) {
+    return status;
+  }
+
+  if (absl::Status status = CheckRationalProfile(
+          "pcurr_type", vmec_indata.pcurr_type, "ac", vmec_indata.ac);
+      !status.ok()) {
+    return status;
+  }
+
   if (vmec_indata.ncurr == 0) {
-    // piota_type
-    // TODO(jons): check for allowed value
-
-    // ai
-    // TODO(jons): must be given for parameterized profiles
-
-    // ai_aux_s
-    // ai_aux_f
-    // TODO(jons): must be given for spline data profiles
-
     if (vmec_indata.bloat != 1.0) {
       // bloat != 1 is only allowed when ncurr == 1 (constrained toroidal
       // current)
@@ -1413,35 +1577,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
           "'bloat' must be 1.0 for ncurr == 0 (constrained-iota), but is %g\n",
           vmec_indata.bloat));
     }
-
-  } else if (vmec_indata.ncurr == 1) {
-    // pcurr_type
-    // TODO(jons): check for allowed value
-
-    // ac
-    // TODO(jons): must be given for parameterized profiles
-
-    // ac_aux_s
-    // ac_aux_f
-    // TODO(jons): must be given for spline data profiles
-
-    // curtor --> any value is ok
-
-    // bloat --> any value is ok
   }
+  // ncurr == 1: curtor and bloat may take any value.
 
   /* --------------------------------- */
 
   // lfreeb
   // nothing to check here: lfreeb can be true or false and both are valid...
   if (vmec_indata.lfreeb) {
-    // mgrid_file
-    // TODO(jons): if mgrid read, check for consistent nzeta
-
-    // extcur
-    // TODO(jons): check that number of coil currents matches number of response
-    // tables in mgrid file
-
     // nvacskip
     if (vmec_indata.nvacskip < 1) {
       return absl::InvalidArgumentError(absl::StrFormat(
@@ -1459,6 +1602,16 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
           absl::StrFormat("input variable 'free_boundary_method' must be "
                           "'nestor' or 'only_coils', but is %s\n",
                           ToString(vmec_indata.free_boundary_method)));
+    }
+
+    // 'only_coils' takes the field from the coils alone, so the plasma must
+    // carry neither current nor pressure.
+    if (vmec_indata.free_boundary_method == FreeBoundaryMethod::ONLY_COILS &&
+        (vmec_indata.curtor != 0.0 || vmec_indata.pres_scale != 0.0)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variables 'curtor' and 'pres_scale' must be zero when "
+          "'free_boundary_method' is 'only_coils', but are %g and %g\n",
+          vmec_indata.curtor, vmec_indata.pres_scale));
     }
   }
 
@@ -1523,6 +1676,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.raxis_s.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'raxis_s' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zaxis_c.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zaxis_c' has to be set when 'lasym' is true.");
+    }
     // raxis_s
     if (vmec_indata.raxis_s->size() != expected_axis_size) {
       return absl::InvalidArgumentError(
@@ -1581,6 +1743,15 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   }
 
   if (vmec_indata.lasym) {
+    // when lasym == true, these arrays have to be set
+    if (!vmec_indata.rbs.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'rbs' has to be set when 'lasym' is true.");
+    }
+    if (!vmec_indata.zbc.has_value()) {
+      return absl::InvalidArgumentError(
+          "input variable 'zbc' has to be set when 'lasym' is true.");
+    }
     // rbs
     if (vmec_indata.rbs->rows() != vmec_indata.mpol) {
       return absl::InvalidArgumentError(

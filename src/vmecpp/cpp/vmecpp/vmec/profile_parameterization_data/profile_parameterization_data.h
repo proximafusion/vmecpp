@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 namespace vmecpp {
 
@@ -28,9 +29,9 @@ class ProfileParameterizationData {
                               bool allowedForCurr, bool allowedForIota,
                               bool needsSplineData);
 
-  const std::string& Name();
+  const std::string& Name() const;
   bool NeedsSplineData() const;
-  AllowedFor IsAllowedFor();
+  AllowedFor IsAllowedFor() const;
 
  private:
   const std::string name_;
@@ -63,6 +64,17 @@ enum class ProfileParameterization : std::uint8_t {
   SUM_COSSQ_SQRTS = 21,
   SUM_COSSQ_S_FREE = 22
 };
+
+// All known parameterizations, indexed by ProfileParameterization.
+const std::vector<ProfileParameterizationData>& AllProfileParameterizations();
+
+// The entry carrying `name`, or nullptr if no parameterization has that name.
+const ProfileParameterizationData* FindProfileParameterization(
+    const std::string& name);
+
+// Whether `name` is a known parameterization that may be used for `type`.
+bool IsProfileParameterizationAllowedFor(const std::string& name,
+                                         ProfileType type);
 
 }  // namespace vmecpp
 

@@ -6,6 +6,7 @@ cc_library(
     hdrs = ["free_boundary_base.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@abseil-cpp//absl/status:statusor",
         "//vmecpp/common/fourier_basis_fast_toroidal:fourier_basis_fast_toroidal",
         "//vmecpp/common/sizes:sizes",
         "//vmecpp/common/util:util",

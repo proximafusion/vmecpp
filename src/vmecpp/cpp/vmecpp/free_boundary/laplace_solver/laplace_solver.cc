@@ -4,35 +4,29 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/laplace_solver/laplace_solver.h"
 
+#include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-
-///  LU factorization of a general M-by-N matrix A
-extern "C" void dgetrf_(int* m, int* n, double* a, int* lda, int* ipiv,
-                        int* info);
-///  Solves a system of linear equations using the LU factorization.
-extern "C" void dgetrs_(char* transpose, int* num_rows, int* num_columns,
-                        double* matrix, int* leading_dim, int* pivot, double* y,
-                        int* y_leading_dim, int* info);
 
 namespace vmecpp {
 
-LaplaceSolver::LaplaceSolver(const Sizes* s, const FourierBasisFastToroidal* fb,
-                             const TangentialPartitioning* tp, int nf, int mf,
-                             std::span<double> matrixShare, std::span<int> iPiv,
-                             std::span<double> bvecShare)
+LaplaceSolver::LaplaceSolver(
+    const Sizes* s, const FourierBasisFastToroidal* fb,
+    const TangentialPartitioning* tp, int nf, int mf,
+    std::span<double> matrixShare,
+    Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
+    std::span<double> bvecShare, std::span<double> reduce_slots)
     : s_(*s),
       fb_(*fb),
       tp_(*tp),
       nf(nf),
       mf(mf),
       matrixShare(matrixShare),
-      iPiv(iPiv),
-      bvecShare(bvecShare) {
+      lu_decomposition_(lu_decomposition),
+      bvecShare(bvecShare),
+      reduce_slots_(reduce_slots) {
   // thread-local tangential grid point range
   numLocal = tp_.ztMax - tp_.ztMin;
 
@@ -429,19 +423,40 @@ void LaplaceSolver::PerformPoloidalFourierTransforms() {
         astemp_l[l] = astemp[base_idx + l];
       }
 
-      Eigen::VectorXd result_ss = sinmui_scaled.transpose() * actemp_l -
-                                  cosmui_scaled.transpose() * astemp_l;
-
-      for (int m = 0; m < mf + 1; ++m) {
-        const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
-        amat_sin_sin[idx_amat] = result_ss[m];
-      }
-
-      if (s_.lasym) {
-        Eigen::VectorXd result_sc = cosmui_scaled.transpose() * actemp_l +
-                                    sinmui_scaled.transpose() * astemp_l;
+      if (!s_.lasym) {
+        Eigen::VectorXd result_ss = sinmui_scaled.transpose() * actemp_l -
+                                    cosmui_scaled.transpose() * astemp_l;
         for (int m = 0; m < mf + 1; ++m) {
           const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
+          amat_sin_sin[idx_amat] = result_ss[m];
+        }
+      } else {
+        // The sin-source kernel grpmn_sin is evaluated on the full theta range
+        // as well, so its poloidal projection folds about theta -> -theta the
+        // same way as the cos-source kernel below: the sin-projection takes
+        // the part of actemp that is odd under the reflection and the part of
+        // astemp that is even, the cos-projection the other two parts.
+        Eigen::VectorXd ac_odd(s_.nThetaReduced), as_even(s_.nThetaReduced);
+        Eigen::VectorXd ac_even(s_.nThetaReduced), as_odd(s_.nThetaReduced);
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int rl = (s_.nThetaEven - l) % s_.nThetaEven;
+          const double a = actemp[base_idx + l];
+          const double ar = actemp[base_idx + rl];
+          const double b = astemp[base_idx + l];
+          const double br = astemp[base_idx + rl];
+          ac_odd[l] = 0.5 * (a - ar);
+          as_even[l] = 0.5 * (b + br);
+          ac_even[l] = 0.5 * (a + ar);
+          as_odd[l] = 0.5 * (b - br);
+        }
+
+        Eigen::VectorXd result_ss = sinmui_scaled.transpose() * ac_odd -
+                                    cosmui_scaled.transpose() * as_even;
+        Eigen::VectorXd result_sc = cosmui_scaled.transpose() * ac_even +
+                                    sinmui_scaled.transpose() * as_odd;
+        for (int m = 0; m < mf + 1; ++m) {
+          const int idx_amat = (all_n * (mf + 1) + m) * mnpd + mn;
+          amat_sin_sin[idx_amat] = result_ss[m];
           amat_sin_cos[idx_amat] = result_sc[m];
         }
 
@@ -483,45 +498,35 @@ void LaplaceSolver::BuildMatrix() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
   const int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  absl::c_fill_n(matrixShare, mnpd_dim * mnpd_dim, 0);
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-  // Each thread accumulates its contribution to amatrix into matrixShare. For
-  // lasym = false this is a flat add; for lasym = true the four blocks
-  // (sin-sin, sin-cos, cos-sin, cos-cos) are placed into the four quadrants
-  // of the column-major 2 * mnpd matrix (Fortran NESTOR/fouri.f90 amatsq).
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    if (!s_.lasym) {
-      Eigen::Map<Eigen::VectorXd> matrix_map(matrixShare.data(), mnpd * mnpd);
-      matrix_map += amat_sin_sin;
-    } else {
-      const int stride = mnpd_dim;  // column-major leading dim
-      for (int j = 0; j < mnpd; ++j) {
-        for (int i = 0; i < mnpd; ++i) {
-          const int src = j * mnpd + i;
-          // top-left: sin-sin'
-          matrixShare[i + j * stride] += amat_sin_sin[src];
-          // top-right: sin-cos' (Fortran amatrix(:,:,2))
-          matrixShare[i + (j + mnpd) * stride] += amat_sin_cos[src];
-          // bottom-left: cos-sin' (Fortran amatrix(:,:,3))
-          matrixShare[(i + mnpd) + j * stride] += amat_cos_sin[src];
-          // bottom-right: cos-cos'
-          matrixShare[(i + mnpd) + (j + mnpd) * stride] += amat_cos_cos[src];
-        }
+  // Each thread lays its contribution to amatrix into its own row of
+  // reduce_slots, which the fold below sums in thread order. For lasym = false
+  // this is a flat copy; for lasym = true the four blocks (sin-sin, sin-cos,
+  // cos-sin, cos-cos) go into the four quadrants of the column-major 2 * mnpd
+  // matrix (Fortran NESTOR/fouri.f90 amatsq).
+  const int matrix_size = mnpd_dim * mnpd_dim;
+  double* const slot = reduce_slots_.data() + tp_.get_thread_id() * matrix_size;
+  std::fill_n(slot, matrix_size, 0.0);
+  if (!s_.lasym) {
+    Eigen::Map<Eigen::VectorXd> slot_map(slot, mnpd * mnpd);
+    slot_map = amat_sin_sin;
+  } else {
+    const int stride = mnpd_dim;  // column-major leading dim
+    for (int j = 0; j < mnpd; ++j) {
+      for (int i = 0; i < mnpd; ++i) {
+        const int src = j * mnpd + i;
+        // top-left: sin-sin'
+        slot[i + j * stride] = amat_sin_sin[src];
+        // top-right: sin-cos' (Fortran amatrix(:,:,2))
+        slot[i + (j + mnpd) * stride] = amat_sin_cos[src];
+        // bottom-left: cos-sin' (Fortran amatrix(:,:,3))
+        slot[(i + mnpd) + j * stride] = amat_cos_sin[src];
+        // bottom-right: cos-cos'
+        slot[(i + mnpd) + (j + mnpd) * stride] = amat_cos_cos[src];
       }
     }
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(slot, matrix_size, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), matrixShare.data());
 
 #ifdef _OPENMP
 #pragma omp single
@@ -578,28 +583,17 @@ void LaplaceSolver::BuildMatrix() {
 
 void LaplaceSolver::DecomposeMatrix() {
   const int mnpd = (mf + 1) * (2 * nf + 1);
-  int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
-
-  // NOTE:
-  // As soon as LAPACK starts working on `matrixShare`,
-  // it is not consistent with the value on entry anymore
-  // and thus cannot be used for testing anymore.
+  const int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
 
   // perform LU factorization of the matrix
   // (only needed when matrix is updated --> every nvacskip iterations)
-  int info;
-  dgetrf_(&mnpd_dim, &mnpd_dim, matrixShare.data(), &mnpd_dim, iPiv.data(),
-          &info);
+  Eigen::Map<const Eigen::MatrixXd> matrix_map(matrixShare.data(), mnpd_dim,
+                                               mnpd_dim);
+  lu_decomposition_->compute(matrix_map);
 
-  if (info < 0) {
-    std::cout << -info << "-th argument to dgetrf is wrong\n";
-  } else if (info > 0) {
-    std::cout << absl::StrFormat(
-        "U(%d,%d) is exactly zero in dgetrf --> singular matrix!\n", info,
-        info);
-  }
-
-  CHECK_EQ(info, 0) << "dgetrf error";
+  // A zero diagonal entry in the U factor means an exactly singular matrix.
+  CHECK((lu_decomposition_->matrixLU().diagonal().array() != 0.0).all())
+      << "singular matrix in LaplaceSolver::DecomposeMatrix";
 }  // DecomposeMatrix
 
 void LaplaceSolver::SolveForPotential(
@@ -609,33 +603,24 @@ void LaplaceSolver::SolveForPotential(
   const int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
   const double inv_nfp = 1.0 / s_.nfp;
 
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  absl::c_fill_n(bvecShare, mnpd_dim, 0);
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
+  // each thread lays its contribution into its own row of reduce_slots
+  double* const slot = reduce_slots_.data() + tp_.get_thread_id() * mnpd_dim;
+  std::fill_n(slot, mnpd_dim, 0.0);
   {
-    Eigen::Map<Eigen::VectorXd> bvec_sin_share(bvecShare.data(), mnpd);
+    Eigen::Map<Eigen::VectorXd> slot_sin(slot, mnpd);
     Eigen::Map<const Eigen::VectorXd> singular_sin(bvec_sin_singular.data(),
                                                    mnpd);
-    bvec_sin_share += bvec_sin + singular_sin * inv_nfp;
+    slot_sin = bvec_sin + singular_sin * inv_nfp;
 
     if (s_.lasym) {
-      Eigen::Map<Eigen::VectorXd> bvec_cos_share(bvecShare.data() + mnpd, mnpd);
+      Eigen::Map<Eigen::VectorXd> slot_cos(slot + mnpd, mnpd);
       Eigen::Map<const Eigen::VectorXd> singular_cos(bvec_cos_singular.data(),
                                                      mnpd);
-      bvec_cos_share += bvec_cos + singular_cos * inv_nfp;
+      slot_cos = bvec_cos + singular_cos * inv_nfp;
     }
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(slot, mnpd_dim, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bvecShare.data());
 
 #ifdef _OPENMP
 #pragma omp single
@@ -653,19 +638,13 @@ void LaplaceSolver::SolveForPotential(
       }
     }
 
-    // solve for given RHS
-    int one = 1;
-    int info;
-    char no_transpose = 'N';
-    int n = mnpd_dim;
-    dgetrs_(&no_transpose, &n, &one, matrixShare.data(), &n, iPiv.data(),
-            bvecShare.data(), &n, &info);
-
-    if (info < 0) {
-      std::cout << -info << "-th argument to dgetrs wrong\n";
-    }
-
-    CHECK_EQ(info, 0) << "dgetrs error";
+    // solve for given RHS using the factorization computed in
+    // DecomposeMatrix(). Use a temporary for the result: bvecShare is both
+    // the right-hand side and the destination, and aliasing it directly
+    // against the input of PartialPivLU::solve() is not guaranteed safe.
+    Eigen::Map<const Eigen::VectorXd> rhs(bvecShare.data(), mnpd_dim);
+    const Eigen::VectorXd solution = lu_decomposition_->solve(rhs);
+    Eigen::Map<Eigen::VectorXd>(bvecShare.data(), mnpd_dim) = solution;
   }
 #ifdef _OPENMP
 #pragma omp barrier

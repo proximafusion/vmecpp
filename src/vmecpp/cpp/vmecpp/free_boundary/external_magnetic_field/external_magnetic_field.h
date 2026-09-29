@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include <span>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
@@ -21,8 +22,10 @@ class ExternalMagneticField {
   ExternalMagneticField(const Sizes* s, const TangentialPartitioning* tp,
                         const SurfaceGeometry* sg, const MGridProvider* mgrid);
 
-  void update(const std::span<const double> rAxis,
-              const std::span<const double> zAxis, double netToroidalCurrent);
+  // Returns kFailedPrecondition if this thread's slice left the vacuum grid.
+  [[nodiscard]] absl::Status update(const std::span<const double> rAxis,
+                                    const std::span<const double> zAxis,
+                                    double netToroidalCurrent);
 
   // axis geometry around whole machine
   Eigen::VectorXd axisXYZ;

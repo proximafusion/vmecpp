@@ -7,7 +7,10 @@
 
 #include <Eigen/Dense>
 #include <filesystem>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/sizes/sizes.h"
 
@@ -30,10 +33,13 @@ class MGridProvider {
                              const Eigen::VectorXd& fixed_bp,
                              const Eigen::VectorXd& fixed_bz);
 
-  void interpolate(int ztMin, int ztMax, int nZeta, const Eigen::VectorXd& r,
-                   const Eigen::VectorXd& z, Eigen::VectorXd& m_interpBr,
-                   Eigen::VectorXd& m_interpBp,
-                   Eigen::VectorXd& m_interpBz) const;
+  // Interpolate [ztMin, ztMax) of nZnT points; error if outside the grid.
+  [[nodiscard]] absl::Status interpolate(int ztMin, int ztMax, int nZeta,
+                                         int nZnT, const Eigen::VectorXd& r,
+                                         const Eigen::VectorXd& z,
+                                         Eigen::VectorXd& m_interpBr,
+                                         Eigen::VectorXd& m_interpBp,
+                                         Eigen::VectorXd& m_interpBz) const;
 
   // mgrid internals below
 
@@ -59,9 +65,32 @@ class MGridProvider {
 
   std::string mgrid_mode;
 
+  // Names of the coil groups, one per response table, as written by MAKEGRID
+  // into the mgrid file's coil_group variable. Empty when the field came from
+  // an in-memory response table, which carries no names.
+  std::vector<std::string> coil_group_names;
+
   bool IsLoaded() const { return has_mgrid_loaded_; }
 
  private:
+  // Size the accumulation arrays to the current grid and clear them.
+  void ResetAccumulatedField();
+
+  // Add one circuit's contribution, weighted by its current.
+  // `contribution_at(linear_index)` returns that circuit's {b_r, b_p, b_z} at
+  // one grid point. LoadFile and LoadFields differ only in where the
+  // contribution comes from, so the weighting lives here once.
+  template <typename ContributionAt>
+  void AccumulateCircuit(double coil_current, ContributionAt contribution_at) {
+    const int num_grid_points = numPhi * numZ * numR;
+    for (int linear_index = 0; linear_index < num_grid_points; ++linear_index) {
+      const auto [b_r, b_p, b_z] = contribution_at(linear_index);
+      bR[linear_index] += b_r * coil_current;
+      bP[linear_index] += b_p * coil_current;
+      bZ[linear_index] += b_z * coil_current;
+    }  // linear_index
+  }
+
   bool has_mgrid_loaded_;
   bool has_fixed_field_;
 

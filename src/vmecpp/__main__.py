@@ -43,7 +43,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "-t",
         "--max-threads",
-        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower that this in case there are too few flux surfaces to keep these many threads busy.",
+        help="Maximum number of threads that VMEC++ should spawn. The actual number might still be lower than this in case there are too few flux surfaces to keep these many threads busy.",
         type=int,
     )
     p.add_argument(
@@ -92,6 +92,9 @@ def main() -> None:
         vmecpp._progress_tip_shown = True
 
     vmec_input = vmecpp.VmecInput.from_file(args.input_file)
+    # The wout of a CLI run comes straight from the C++ output stage, sparing
+    # every invocation the JAX compilation of vmecpp.autodiff_wout.
+    vmecpp._use_jax_output_stage.set(False)
     output = vmecpp.run(vmec_input, max_threads=args.max_threads, verbose=verbose)
 
     configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)

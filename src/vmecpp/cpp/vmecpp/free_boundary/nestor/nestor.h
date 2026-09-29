@@ -26,11 +26,12 @@ class Nestor : public FreeBoundaryBase {
   Nestor(const Sizes* s, const TangentialPartitioning* tp,
          const MGridProvider* mgrid, std::span<double> matrixShare,
          std::span<double> bvecShare, std::span<double> bSqVacShare,
-         std::span<int> iPiv, std::span<double> vacuum_b_r_share,
+         Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
+         std::span<double> vacuum_b_r_share,
          std::span<double> vacuum_b_phi_share,
-         std::span<double> vacuum_b_z_share);
+         std::span<double> vacuum_b_z_share, std::span<double> reduce_slots);
 
-  bool update(
+  absl::StatusOr<bool> update(
       const std::span<const double> rCC, const std::span<const double> rSS,
       const std::span<const double> rSC, const std::span<const double> rCS,
       const std::span<const double> zSC, const std::span<const double> zCS,
@@ -65,6 +66,9 @@ class Nestor : public FreeBoundaryBase {
   LaplaceSolver ls_;
 
   std::span<double> bvecShare;
+
+  // one row per thread for SumOverThreads
+  std::span<double> reduce_slots_;
 };
 
 }  // namespace vmecpp

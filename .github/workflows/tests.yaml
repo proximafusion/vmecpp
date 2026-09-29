@@ -49,12 +49,14 @@ jobs:
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
-          brew install ninja libomp netcdf-cxx eigen lapack git
+          brew install ninja libomp eigen git
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
-          # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test)
-          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
+          # install VMEC++ deps as well as VMEC2000 deps (we need to import VMEC2000 in a test).
+          # VMEC2000 itself gets libopenblas-dev/libscalapack-mpi-dev below, which cover its
+          # LAPACK needs; VMEC++ no longer links LAPACK at all.
+          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
       - name: Cache the VMEC2000 wheel
         if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.10' }}
         uses: actions/cache@v4
@@ -116,7 +118,7 @@ jobs:
           cache: 'pip'
       - name: Install required packages for Ubuntu
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake libnetcdf-dev liblapack-dev libomp-dev
+          sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
       - name: Install package
         run: python -m pip install .[test]
       - name: Test example scripts

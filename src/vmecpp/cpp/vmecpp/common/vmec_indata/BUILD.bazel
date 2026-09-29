@@ -23,6 +23,7 @@ cc_library(
     deps = [
         ":boundary_from_json",
         "//vmecpp/common/util:util",
+        "//vmecpp/vmec/profile_parameterization_data",
         "//util/hdf5_io",
         "//util/file_io",
         "@abseil-cpp//absl/algorithm:container",
@@ -46,6 +47,7 @@ cc_test(
         "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
         "//vmecpp/test_data:cma",
         "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp/test_data:up_down_asym",
     ],
     deps = [
         ":vmec_indata",

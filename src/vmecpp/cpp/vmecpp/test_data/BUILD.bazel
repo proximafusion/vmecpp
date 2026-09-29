@@ -12,10 +12,20 @@ filegroup(
 )
 
 filegroup(
+    name = "circular_tokamak",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "circular_tokamak.json",
+    ],
+)
+
+filegroup(
     name = "up_down_asym",
     visibility = ["//visibility:public"],
     srcs = [
+        "input.up_down_asym_current",
         "up_down_asym.json",
+        "up_down_asym_current.json",
     ],
 )
 
@@ -44,8 +54,16 @@ filegroup(
     visibility = ["//visibility:public"],
     srcs = [
         "cth_like_fixed_bdy.json",
+        "cth_like_fixed_bdy_asym.json",
+        "cth_like_fixed_bdy_asym_iota.json",
+        "cth_like_fixed_bdy_iota.json",
         "cth_like_fixed_bdy_spline_pressure.json",
+        "input.cth_like_fixed_bdy_spline_pressure",
+        "wout_cth_like_fixed_bdy_spline_pressure.nc",
         "input.cth_like_fixed_bdy",
+        "input.cth_like_fixed_bdy_asym",
+        "input.cth_like_fixed_bdy_asym_iota",
+        "input.cth_like_fixed_bdy_iota",
         "wout_cth_like_fixed_bdy.nc",
     ],
 )
@@ -107,10 +125,28 @@ filegroup(
 )
 
 filegroup(
+    name = "solovev_free_bdy_lforbal",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev_free_bdy_lforbal.json",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy_T.nc",
+    ],
+)
+
+filegroup(
     name = "cth_like_free_bdy_multigrid",
     visibility = ["//visibility:public"],
     srcs = [
         "mgrid_cth_like.nc",
         "cth_like_free_bdy_multigrid.json",
+    ],
+)
+
+filegroup(
+    name = "li383_low_res",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "li383_low_res.json",
     ],
 )

@@ -7,7 +7,6 @@ RUN apt-get -q update && \
     build-essential \
     cmake \
     libnetcdf-dev \
-    liblapack-dev \
     libomp-dev \
     libhdf5-dev \
     python3-pip \

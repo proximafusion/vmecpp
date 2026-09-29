@@ -8,6 +8,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:status",
         "@abseil-cpp//absl/strings:str_format",
         "//util/netcdf_io:netcdf_io",
         "//vmecpp/common/util:util",

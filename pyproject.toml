@@ -31,6 +31,7 @@ classifiers = [
 dependencies = [
   "netCDF4",
   "numpy",
+  "scipy",
   "pydantic>=2.11", # Introduced support for by_alias validation
   "jaxtyping>=0.2.6",
   "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
@@ -104,17 +105,24 @@ version_file = "src/vmecpp/__about__.py"
 
 [tool.cibuildwheel]
 archs = ["native"]
-skip = ["*-musllinux*"]
-test-skip = ["cp314-*", "cp314t-*"] # Skip tests on Python 3.14 until all our dependencies start supporting it. The wheels are still valid, and become installable the moment simsopt releases 3.14 support.
+# jaxlib, a transitive dependency of simsopt, publishes no macOS x86_64 wheels
+# for CPython 3.14, so installing the built wheel to test it cannot resolve
+# there. Skip both the GIL and free-threaded variants. Intel macOS still builds
+# and tests CPython 3.10-3.13.
+skip = ["*-musllinux*", "cp314*-macosx_x86_64"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
+before-build = "yum install -y zlib-devel"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc lapack netcdf hdf5 libomp"
+before-build = "brew install gcc libomp"
+# simsopt builds from source in the test environment where it has no wheel
+# (CPython 3.14). Without OpenMP_ROOT it builds without OpenMP, as its wheels
+# are, and the test process loads one libomp, the one in the vmecpp wheel.
+test-environment = { OpenMP_ROOT = "" }
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]

@@ -5,11 +5,20 @@
 #include "vmecpp/vmec/boundaries/boundaries.h"
 
 #include <iostream>
+#include <span>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "vmecpp/vmec/boundaries/guess_magnetic_axis.h"
 
 namespace vmecpp {
+
+namespace {
+std::span<const double> AsSpan(const Eigen::VectorXd& coefficients) {
+  return {coefficients.data(), static_cast<size_t>(coefficients.size())};
+}
+}  // namespace
 
 Boundaries::Boundaries(const Sizes* s, const FourierBasisFastPoloidal* t,
                        const int sign_of_jacobian)
@@ -51,8 +60,43 @@ bool Boundaries::setupFromIndata(const VmecINDATA& id, bool verbose) {
   // activate m=1-constraint
   ensureM1Constrained(0.5);
 
+  // A boundary carrying a lot of high-poloidal-mode content is still a valid
+  // input, so this is a warning rather than an error. A free-boundary run
+  // relaxes the initial boundary, so only fixed-boundary inputs are flagged.
+  if (verbose && !id.lfreeb) {
+    const double spectral_width = ComputeSpectralWidth();
+    if (spectral_width > kSpectrallyDenseBoundaryThreshold) {
+      LOG(WARNING) << absl::StrFormat(
+          "Input boundary is spectrally dense (spectral width <M> = %.1f). "
+          "Runs with high spectral content may converge poorly or incorrectly "
+          "resolve the physics. Consider spectral condensation of the boundary "
+          "first, e.g. using simsopt.geo.surfacerzfourier.condense_spectrum",
+          spectral_width);
+    }
+  }
+
   return haveToFlipTheta;
 }
+
+double Boundaries::ComputeSpectralWidth(const int p, const int q) const {
+  // The boundary coefficients are plain Fourier amplitudes, whereas
+  // FourierGeometry holds them divided by mscale * nscale; unit scales make
+  // SpectralWidth weight both representations the same way.
+  const Eigen::VectorXd unit_mscale = Eigen::VectorXd::Ones(s_.mpol);
+  const Eigen::VectorXd unit_nscale = Eigen::VectorXd::Ones(s_.ntor + 1);
+
+  const SurfaceFourierGeometry boundary = {.rmncc = AsSpan(rbcc),
+                                           .rmnss = AsSpan(rbss),
+                                           .rmnsc = AsSpan(rbsc),
+                                           .rmncs = AsSpan(rbcs),
+                                           .zmnsc = AsSpan(zbsc),
+                                           .zmncs = AsSpan(zbcs),
+                                           .zmncc = AsSpan(zbcc),
+                                           .zmnss = AsSpan(zbss)};
+
+  return SpectralWidth(boundary, s_, AsSpan(unit_mscale), AsSpan(unit_nscale),
+                       p, q);
+}  // ComputeSpectralWidth
 
 void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
   // copy over axis from INDATA to this class
@@ -80,8 +124,28 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
     int m = 1;
     int n = 0;
 
-    delta = atan2((*id.rbs)(m, s_.ntor + n) - (*id.zbc)(m, s_.ntor + n),
-                  id.rbc(m, s_.ntor + n) + id.zbs(m, s_.ntor + n));
+    // The shift puts the boundary into the gauge rbs(m=1, n=0) = sigma *
+    // zbc(m=1, n=0), the frozen combination of ensureM1Constrained, with
+    // sigma = -sign_of_jacobian. flipTheta, applied afterwards when the input
+    // runs in the other poloidal direction, negates zbc relative to rbs, so
+    // the shift targets the opposite sign in that case. The poloidal direction
+    // is read from the signed area of the m = 1 ellipse, which the shift does
+    // not change (see checkSignOfJacobian).
+    double r_test = 0.0;
+    double z_test = 0.0;
+    double r_test_asym = 0.0;
+    double z_test_asym = 0.0;
+    for (int nn = -s_.ntor; nn <= s_.ntor; ++nn) {
+      r_test += id.rbc(m, s_.ntor + nn);
+      z_test += id.zbs(m, s_.ntor + nn);
+      r_test_asym += (*id.rbs)(m, s_.ntor + nn);
+      z_test_asym += (*id.zbc)(m, s_.ntor + nn);
+    }
+    const double handedness = r_test * z_test - r_test_asym * z_test_asym;
+    const bool will_flip_theta = (handedness * sign_of_jacobian_ > 0.0);
+    const double sigma = -sign_of_jacobian_ * (will_flip_theta ? -1.0 : 1.0);
+    delta = atan2((*id.rbs)(m, s_.ntor + n) - sigma * (*id.zbc)(m, s_.ntor + n),
+                  id.rbc(m, s_.ntor + n) + sigma * id.zbs(m, s_.ntor + n));
 
     if (verbose && delta != 0.0) {
       std::cout << "need to shift theta by delta = " << delta << "\n";
@@ -184,22 +248,31 @@ bool Boundaries::checkSignOfJacobian() {
 
   double rTest = 0.0;
   double zTest = 0.0;
+  double rTestAsym = 0.0;
+  double zTestAsym = 0.0;
   for (int n = 0; n < s_.ntor + 1; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     rTest += rbcc[idx_mn];
     zTest += zbsc[idx_mn];
+    if (s_.lasym) {
+      rTestAsym += rbsc[idx_mn];
+      zTestAsym += zbcc[idx_mn];
+    }
   }
 
-  // TODO(jons): potentially more robust version of this
-  // - eval boundary in a given poloidal plane at equal theta intervals, enough
-  // to satisfy Nyquist requirement
-  // - compute signed polygon area
-  // --> handedness of polygon is given by sign of polygon area
+  // An asymmetric boundary has been rotated in the poloidal angle by
+  // parseToInternalArrays, to put it into the representation with
+  // RBS(m=1) = ZBC(m=1). The product rTest*zTest is not invariant under that
+  // rotation, which can leave it at zero for a boundary that does need
+  // flipping. This determinant is the signed area of the m=1 ellipse, so it is
+  // invariant under the rotation and changes sign with the poloidal direction.
+  // It reduces to rTest*zTest for a stellarator-symmetric boundary.
+  const double handedness = rTest * zTest - rTestAsym * zTestAsym;
 
-  // for signOfJacobian == -1, need to flip when rTest*zTest < 0
+  // for signOfJacobian == -1, need to flip when the handedness is negative
   // ---> this is true when the total sign is positive
-  return (rTest * zTest * sign_of_jacobian_ > 0.0);
+  return (handedness * sign_of_jacobian_ > 0.0);
 }
 
 void Boundaries::flipTheta() {
@@ -237,18 +310,21 @@ void Boundaries::flipTheta() {
  * origin.
  */
 void Boundaries::ensureM1Constrained(const double scaling_factor) {
+  // same map as FourierCoeffs::m1Constraint: the frozen combination is
+  // rss = sigma zcs with sigma = -sign_of_jacobian
+  const double sigma = -sign_of_jacobian_;
   for (int n = 0; n <= s_.ntor; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
     if (s_.lthreed) {
       double backup_rss = rbss[idx_mn];
-      rbss[idx_mn] = (backup_rss + zbcs[idx_mn]) * scaling_factor;
-      zbcs[idx_mn] = (backup_rss - zbcs[idx_mn]) * scaling_factor;
+      rbss[idx_mn] = (backup_rss + sigma * zbcs[idx_mn]) * scaling_factor;
+      zbcs[idx_mn] = (sigma * backup_rss - zbcs[idx_mn]) * scaling_factor;
     }
     if (s_.lasym) {
       double backup_rsc = rbsc[idx_mn];
-      rbsc[idx_mn] = (backup_rsc + zbcc[idx_mn]) * scaling_factor;
-      zbcc[idx_mn] = (backup_rsc - zbcc[idx_mn]) * scaling_factor;
+      rbsc[idx_mn] = (backup_rsc + sigma * zbcc[idx_mn]) * scaling_factor;
+      zbcc[idx_mn] = (sigma * backup_rsc - zbcc[idx_mn]) * scaling_factor;
     }
   }  // n
 }

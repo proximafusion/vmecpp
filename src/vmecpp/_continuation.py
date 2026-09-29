@@ -34,18 +34,20 @@ if typing.TYPE_CHECKING:
     from vmecpp import OutputMode, VmecInput, VmecOutput
     from vmecpp._free_boundary import MagneticFieldResponseTable
 
-# State-vector geometry arrays, shape [mn_mode, n_surfaces]. These are the only
-# quantities VMEC++ reads back when hot-restarting, so they must be interpolated.
+# State-vector geometry arrays on the full grid, shape [mn_mode, n_surfaces]. These
+# are the only quantities VMEC++ reads back when hot-restarting, so they must be
+# interpolated.
 _STATE_GEOMETRY_FIELDS = (
     "rmnc",
     "zmns",
-    "lmns",
     "lmns_full",
     "rmns",
     "zmnc",
-    "lmnc",
     "lmnc_full",
 )
+
+# Lambda on the half grid, recomputed from the interpolated full-grid lambda.
+_HALF_GRID_LAMBDA_FIELDS = {"lmns": "lmns_full", "lmnc": "lmnc_full"}
 
 # Axis Fourier arrays, shape [ntor + 1]. The wout and the input use different field
 # names for the magnetic axis (e.g. wout ``raxis_cc`` vs input ``raxis_c``).
@@ -55,7 +57,10 @@ _INPUT_AXIS_FIELDS = ("raxis_c", "zaxis_s", "raxis_s", "zaxis_c")
 # Handled explicitly below or regenerated for the target; excluded from the generic
 # radial pass.
 _FIELDS_HANDLED_EXPLICITLY = frozenset(
-    _STATE_GEOMETRY_FIELDS + _WOUT_AXIS_FIELDS + ("xm", "xn", "xm_nyq", "xn_nyq")
+    _STATE_GEOMETRY_FIELDS
+    + tuple(_HALF_GRID_LAMBDA_FIELDS)
+    + _WOUT_AXIS_FIELDS
+    + ("xm", "xn", "xm_nyq", "xn_nyq")
 )
 
 
@@ -197,6 +202,7 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
         :func:`vmecpp.run` with ``target_input``.
     """
     import vmecpp  # noqa: PLC0415  (lazy import avoids a circular import)
+    from vmecpp import autodiff_wout  # noqa: PLC0415
 
     wout = source.wout
     nfp = int(wout.nfp)
@@ -217,6 +223,15 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
             continue
         remapped = _remap_modes(val, src_xm, src_xn, dst_xm, dst_xn)
         setattr(new_wout, name, _radial_interpolate_geometry(remapped, dst_xm, ns_new))
+
+    for half, full in _HALF_GRID_LAMBDA_FIELDS.items():
+        if getattr(wout, half) is None:
+            continue
+        with vmecpp.enable_x64(True):
+            lambda_half = autodiff_wout._lambda_to_half_grid(
+                getattr(new_wout, full), dst_xm
+            )
+            setattr(new_wout, half, np.asarray(lambda_half))
 
     # Magnetic axis: truncate or zero-pad in n.
     for name in _WOUT_AXIS_FIELDS:

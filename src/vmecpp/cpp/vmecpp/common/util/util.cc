@@ -174,9 +174,11 @@ void TridiagonalSolveOpenMP(
 
   for (int j = nsMinF; j < std::min(jMax, nsMaxF); ++j) {
     for (int mn = 0; mn < mnmax; ++mn) {
+      // forward elimination reaches back one surface, so it can only start
+      // one past jMin
       if (j < jMin[mn] + 1) {
         continue;
-      }  // TODO(jons)
+      }
 
       int idx_mn_0 = (j - nsMinF) * mnmax + mn;      //  0
       int idx_mn_m = (j - 1 - nsMinF) * mnmax + mn;  // -1
@@ -259,9 +261,11 @@ void TridiagonalSolveOpenMP(
 
   for (int j = std::min(jMax - 2, nsMaxF - 1); j >= nsMinF; --j) {
     for (int mn = 0; mn < mnmax; ++mn) {
+      // back substitution reaches forward instead, so it runs down to jMin
+      // itself
       if (j < jMin[mn]) {
         continue;
-      }  // TODO(jons)
+      }
 
       int idx_mn_p = (j + 1 - nsMinF) * mnmax + mn;  // +1
       int idx_mn_0 = (j - nsMinF) * mnmax + mn;      //  0
@@ -325,10 +329,8 @@ int vmec_adjust_num_threads(const int max_threads,
   int num_threads = std::min(max_threads, num_surfaces_to_distribute / 2);
 
 #ifdef _OPENMP
-  // This must be done _before_ the '#pragma omp parallel' is entered.
-  omp_set_num_threads(num_threads);
-
-  // Explicitly turn off dynamic threads.
+  // The parallel regions request their team size with a num_threads clause;
+  // without dynamic adjustment the runtime grants exactly that many threads.
   omp_set_dynamic(0);
 #endif
 
@@ -340,9 +342,7 @@ int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
   // (see TangentialPartitioning). There is no minimum-points-per-thread
   // constraint like the radial solve's shared half-grid point, so we can use up
   // to nZnT threads. In practice nZnT >> max_threads, so this returns
-  // max_threads. Deliberately does NOT call omp_set_num_threads: the vacuum
-  // solve runs in a nested parallel region with an explicit num_threads()
-  // clause.
+  // max_threads.
   return std::min(max_threads, n_znt);
 }
 

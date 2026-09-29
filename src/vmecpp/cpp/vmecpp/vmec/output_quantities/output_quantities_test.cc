@@ -6,6 +6,8 @@
 
 #include <netcdf.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -44,6 +46,12 @@ namespace fs = std::filesystem;
 namespace vmecpp {
 
 // used to specify case-specific tolerances
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -81,6 +89,17 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   const OutputQuantities& output_quantities = vmec.output_quantities_;
   const WOutFileContents& wout = output_quantities.wout;
 
+  ASSERT_EQ(wout.wdot.size(), fc.mhd_energy.size());
+  ASSERT_FALSE(fc.mhd_energy.empty());
+  EXPECT_DOUBLE_EQ(wout.wdot(0), fc.mhd_energy[0]);
+  for (size_t i = 1; i < fc.mhd_energy.size(); ++i) {
+    const double expected_decay_rate =
+        (fc.mhd_energy[i] - fc.mhd_energy[i - 1]) / fc.mhd_energy[i];
+    EXPECT_DOUBLE_EQ(wout.wdot(static_cast<Eigen::Index>(i)),
+                     expected_decay_rate)
+        << "i = " << i;
+  }
+
   // Note that the actual `wout` file itself is taken as reference here.
   filename =
       absl::StrFormat("vmecpp/test_data/wout_%s.nc", data_source_.identifier);
@@ -100,25 +119,40 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   // remove zero-padding at end
   reference_am.resize(wout.am.size());
   EXPECT_THAT(wout.am, ElementsAreArray(reference_am));
-  // TODO(jons): check for spline profiles -> need to check am_aux_*
+
+  // The spline knots and values are written for every profile whether or not
+  // the corresponding profile is a spline; the unused ones are filled with -1
+  // knots and zero values. The reference is trimmed the same way the profile
+  // coefficients above are, because the array length is the ndatafmax the
+  // reference was built with rather than anything about the equilibrium.
+  for (const auto& [name, aux] :
+       {std::pair<const char*, const Eigen::VectorXd&>{"am_aux_s",
+                                                       wout.am_aux_s},
+        {"am_aux_f", wout.am_aux_f},
+        {"ai_aux_s", wout.ai_aux_s},
+        {"ai_aux_f", wout.ai_aux_f},
+        {"ac_aux_s", wout.ac_aux_s},
+        {"ac_aux_f", wout.ac_aux_f}}) {
+    std::vector<double> reference = NetcdfReadArray1D(ncid, name).value();
+    ASSERT_GE(reference.size(), static_cast<size_t>(aux.size())) << name;
+    reference.resize(aux.size());
+    EXPECT_THAT(aux, ElementsAreArray(reference)) << name;
+  }
 
   if (vmec_indata->ncurr == 0) {
     // constrained-iota; ignore current profile coefficients
-    // TODO(jons): check for spline profiles -> need to check ai_aux_*
     std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
     // remove zero-padding at end
     reference_ai.resize(wout.ai.size());
     EXPECT_THAT(wout.ai, ElementsAreArray(reference_ai));
   } else {
     // constrained-current
-    // TODO(jons): check for spline profiles -> need to check ac_aux_*
     std::vector<double> reference_ac = NetcdfReadArray1D(ncid, "ac").value();
     reference_ac.resize(wout.ac.size());
     EXPECT_THAT(wout.ac, ElementsAreArray(reference_ac));
 
     if (wout.ai.size() > 0) {
       // iota profile (if present) taken as initial guess for first iteration
-      // TODO(jons): check for spline profiles -> need to check ai_aux_*
       std::vector<double> reference_ai = NetcdfReadArray1D(ncid, "ai").value();
       // remove zero-padding at end
       reference_ai.resize(wout.ai.size());
@@ -252,7 +286,12 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     EXPECT_TRUE(
         IsCloseRelAbs(reference_poloidal_flux[jF], wout.chi[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_phipf[jF], wout.phipf[jF], tolerance));
-    EXPECT_TRUE(IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
+    if (jF > 0 && jF < fc.ns - 1) {
+      // The axis and the boundary entries of chipf follow PARVMEC rather than
+      // the 8.52 lineage the references come from; see computeBContra.
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_chipf[jF], wout.chipf[jF], tolerance));
+    }
     EXPECT_TRUE(IsCloseRelAbs(reference_jcuru[jF], wout.jcuru[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(reference_jcurv[jF], wout.jcurv[jF], tolerance));
     EXPECT_TRUE(
@@ -498,11 +537,14 @@ INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, WOutFileContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-7},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-6},
-           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_fixed_bdy_spline_pressure",
                       .tolerance = 1.0e-6},
-           DataSource{.identifier = "cma", .tolerance = 1.0e-6},
-           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-6}));
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 5.0e-06},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-06}));
 
 // End-to-end exercise of the spline profile path through a full equilibrium.
 // cth_like_fixed_bdy_spline_pressure.json is the cth_like_fixed_bdy case with
@@ -515,6 +557,76 @@ INSTANTIATE_TEST_SUITE_P(
 // This is the seam the leaf and dispatch tests cannot reach: a spline profile
 // driving a real solve to the Fortran-referenced equilibrium. Input-echo fields
 // (pmass_type, am) legitimately differ for a spline input and are not compared.
+// The cross-section height reported in the threed1 geometric table is twice
+// the largest |Z| on the boundary contour of the reported plane. Z is
+// reconstructed here from the wout spectrum at the stored poloidal points, so
+// the check needs no reference file; the asymmetric cases have no
+// educational_VMEC threed1 dump to compare against.
+class Threed1HeightTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1HeightTest, HeightIsTwiceTheLargestAbsoluteZ) {
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+  const Threed1GeometricAndMagneticQuantities& geomag =
+      vmec.output_quantities_.threed1_geometric_magnetic;
+
+  // The reported planes are zeta = 0 and, on a toroidal grid, the plane at
+  // toroidal index nZeta / 2.
+  std::vector<int> plane_indices = {0};
+  if (s.nZeta > 1) {
+    plane_indices.push_back(s.nZeta / 2);
+  }
+  ASSERT_EQ(geomag.height.size(), static_cast<int>(plane_indices.size()));
+
+  const int j_boundary = wout.ns - 1;
+  for (size_t plane = 0; plane < plane_indices.size(); ++plane) {
+    const double zeta = 2.0 * M_PI * plane_indices[plane] / (s.nfp * s.nZeta);
+
+    double largest_absolute_z = 0.0;
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const double theta = 2.0 * M_PI * l / s.nThetaEven;
+      double z = 0.0;
+      for (int mn = 0; mn < wout.mnmax; ++mn) {
+        const double kernel = wout.xm[mn] * theta - wout.xn[mn] * zeta;
+        z += wout.zmns(mn, j_boundary) * std::sin(kernel);
+        if (s.lasym) {
+          z += wout.zmnc(mn, j_boundary) * std::cos(kernel);
+        }
+      }
+      largest_absolute_z = std::max(largest_absolute_z, std::abs(z));
+    }
+
+    EXPECT_TRUE(IsCloseRelAbs(2.0 * largest_absolute_z, geomag.height[plane],
+                              data_source_.tolerance))
+        << "plane index " << plane_indices[plane];
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1HeightTest,
+    Values(DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-10},
+           DataSource{.identifier = "cth_like_fixed_bdy_asym",
+                      .tolerance = 1.0e-10}));
+
 TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/cth_like_fixed_bdy_spline_pressure.json");
@@ -532,6 +644,21 @@ TEST(SplineProfileEquilibrium, CthLikeCubicSplinePressureMatchesFortranGolden) {
 
   const bool reached_checkpoint = vmec.run().value();
   ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  // The spline knots are an input echo: the pressure spline the run was given
+  // has to come back out in the wout, since nothing else records it. This is
+  // the am_aux_* check the parameterized wout comparison cannot make, there
+  // being no Fortran reference that carries spline knots.
+  const WOutFileContents& spline_wout = vmec.output_quantities_.wout;
+  ASSERT_GT(vmec_indata->am_aux_s.size(), 0);
+  ASSERT_EQ(spline_wout.am_aux_s.size(), vmec_indata->am_aux_s.size());
+  ASSERT_EQ(spline_wout.am_aux_f.size(), vmec_indata->am_aux_f.size());
+  for (int i = 0; i < vmec_indata->am_aux_s.size(); ++i) {
+    EXPECT_EQ(spline_wout.am_aux_s[i], vmec_indata->am_aux_s[i])
+        << "knot " << i;
+    EXPECT_EQ(spline_wout.am_aux_f[i], vmec_indata->am_aux_f[i])
+        << "knot " << i;
+  }
 
   const WOutFileContents& wout = vmec.output_quantities_.wout;
 
@@ -803,6 +930,137 @@ TEST(SolovevFreeBoundary, MatchesEducationalVmecGolden) {
   std::cout << "[solovev-free-bdy-vs-golden] worst_abs=" << worst_abs
             << " worst_norm=" << worst_norm << " (" << worst_norm_field << ")"
             << std::endl;
+}
+
+// lforbal free-boundary regression. With lforbal = true the flux-averaged
+// radial force balance evolves the m=1, n=0 R,Z components, so the converged
+// equilibrium differs from the variational one; this checks the converged wout
+// against an educational_VMEC lforbal = true golden for the solovev
+// free-boundary case (axisymmetric, ntor = 0).
+TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy_lforbal.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  ASSERT_TRUE(vmec_indata->lfreeb);
+  ASSERT_TRUE(vmec_indata->lforbal);
+  ASSERT_EQ(vmec_indata->ntor, 0);
+
+  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);  // ran to convergence
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid;
+  ASSERT_EQ(
+      nc_open("vmecpp/test_data/wout_solovev_free_bdy_T.nc", NC_NOWRITE, &ncid),
+      NC_NOERR);
+
+  // The flux-surface geometry, magnetic field, and integrated scalars agree
+  // with the VMEC 8.52 lforbal reference to within kTight. The current-density
+  // profiles are the most edge-sensitive derived quantity and are held to the
+  // looser kCurrent.
+  const double kTight = 5.0e-5;
+  const double kCurrent = 2.0e-3;
+  double tolerance = kTight;  // mutated below; captured by reference
+  double worst_abs = 0.0;
+  double worst_norm = 0.0;
+  std::string worst_norm_field;
+
+  auto compare = [&](const std::string& name, const std::vector<double>& ref,
+                     const std::vector<double>& val) {
+    double peak = 1e-300;
+    for (double r : ref) {
+      peak = std::max(peak, std::abs(r));
+    }
+    for (size_t i = 0; i < ref.size(); ++i) {
+      EXPECT_TRUE(IsCloseRelAbs(ref[i], val[i], tolerance))
+          << name << "[" << i << "]: ref=" << ref[i] << " val=" << val[i];
+      const double abs_dev = std::abs(ref[i] - val[i]);
+      worst_abs = std::max(worst_abs, abs_dev);
+      if (abs_dev / peak > worst_norm) {
+        worst_norm = abs_dev / peak;
+        worst_norm_field = name;
+      }
+    }
+  };
+  auto scalar = [&](const std::string& name, double ref, double val) {
+    compare(name, {ref}, {val});
+  };
+  auto flatten = [&](const std::vector<std::vector<double>>& ref2d, int rows,
+                     int cols, auto getter) {
+    std::vector<double> ref;
+    std::vector<double> val;
+    ref.reserve(static_cast<size_t>(rows) * cols);
+    val.reserve(static_cast<size_t>(rows) * cols);
+    for (int jF = 0; jF < rows; ++jF) {
+      for (int mn = 0; mn < cols; ++mn) {
+        ref.push_back(ref2d[jF][mn]);
+        val.push_back(getter(mn, jF));
+      }
+    }
+    return std::make_pair(ref, val);
+  };
+
+  scalar("volume_p", NetcdfReadDouble(ncid, "volume_p").value(), wout.volume);
+  scalar("betatotal", NetcdfReadDouble(ncid, "betatotal").value(),
+         wout.betatotal);
+  scalar("aspect", NetcdfReadDouble(ncid, "aspect").value(), wout.aspect);
+  scalar("b0", NetcdfReadDouble(ncid, "b0").value(), wout.b0);
+  scalar("rbtor", NetcdfReadDouble(ncid, "rbtor").value(), wout.rbtor);
+  scalar("ctor", NetcdfReadDouble(ncid, "ctor").value(), wout.ctor);
+  scalar("Aminor_p", NetcdfReadDouble(ncid, "Aminor_p").value(), wout.Aminor_p);
+  scalar("Rmajor_p", NetcdfReadDouble(ncid, "Rmajor_p").value(), wout.Rmajor_p);
+  scalar("volavgB", NetcdfReadDouble(ncid, "volavgB").value(), wout.volavgB);
+
+  std::vector<double> wpresf(fc.ns), wiotaf(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wpresf[jF] = wout.presf[jF];
+    wiotaf[jF] = wout.iotaf[jF];
+  }
+  compare("presf", NetcdfReadArray1D(ncid, "presf").value(), wpresf);
+  compare("iotaf", NetcdfReadArray1D(ncid, "iotaf").value(), wiotaf);
+
+  auto [r_ref, r_val] =
+      flatten(NetcdfReadArray2D(ncid, "rmnc").value(), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.rmnc(mn, jF); });
+  compare("rmnc", r_ref, r_val);
+  auto [z_ref, z_val] =
+      flatten(NetcdfReadArray2D(ncid, "zmns").value(), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.zmns(mn, jF); });
+  compare("zmns", z_ref, z_val);
+  auto [l_ref, l_val] =
+      flatten(NetcdfReadArray2D(ncid, "lmns").value(), fc.ns, s.mnmax,
+              [&](int mn, int jF) { return wout.lmns(mn, jF); });
+  compare("lmns", l_ref, l_val);
+
+  auto [b_ref, b_val] =
+      flatten(NetcdfReadArray2D(ncid, "bmnc").value(), fc.ns, s.mnmax_nyq,
+              [&](int mn, int jF) { return wout.bmnc(mn, jF); });
+  compare("bmnc", b_ref, b_val);
+
+  tolerance = kCurrent;
+  std::vector<double> wjcuru(fc.ns), wjcurv(fc.ns);
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    wjcuru[jF] = wout.jcuru[jF];
+    wjcurv[jF] = wout.jcurv[jF];
+  }
+  compare("jcuru", NetcdfReadArray1D(ncid, "jcuru").value(), wjcuru);
+  compare("jcurv", NetcdfReadArray1D(ncid, "jcurv").value(), wjcurv);
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  std::cout << "[lforbal-vs-Fortran-golden] worst abs dev = " << worst_abs
+            << ", worst dev normalized by field peak = " << worst_norm << " ("
+            << worst_norm_field << ")" << std::endl;
 }
 
 }  // namespace vmecpp

@@ -4,7 +4,9 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
 
-#include <algorithm>  // max
+#include <algorithm>  // fill, max
+#include <cstddef>
+#include <span>
 #include <sstream>
 #include <vector>
 
@@ -23,24 +25,79 @@ using composed_types::FourierCoefficient1D;
 using composed_types::Normalize;
 using composed_types::Vector3d;
 
-absl::Status MagneticField(
-    const InfiniteStraightFilament& infinite_straight_filament, double current,
-    const std::vector<std::vector<double>>& evaluation_positions,
-    std::vector<std::vector<double>>& m_magnetic_field,
-    bool check_current_carrier) {
-  if (check_current_carrier) {
-    absl::Status status =
-        IsInfiniteStraightFilamentFullyPopulated(infinite_straight_filament);
-    if (!status.ok()) {
-      // Do not modify m_magnetic_field if the current carrier is not
-      // well-defined.
-      return status;
-    }
-  }
+namespace {
 
+// ABSCAB takes point sets as flat arrays in array-of-structs order
+// (x0, y0, z0, x1, y1, z1, ...), and declares its input pointers non-const
+// without writing through them, hence the mutable spans below. Converting into
+// and out of that order is done once per MagneticConfiguration rather than once
+// per current carrier.
+
+std::vector<double> ToAbscabOrder(
+    const std::vector<std::vector<double>>& positions) {
+  const std::size_t number_of_positions = positions.size();
+  std::vector<double> flat(number_of_positions * 3);
+  for (std::size_t i = 0; i < number_of_positions; ++i) {
+    flat[i * 3 + 0] = positions[i][0];
+    flat[i * 3 + 1] = positions[i][1];
+    flat[i * 3 + 2] = positions[i][2];
+  }
+  return flat;
+}
+
+std::vector<double> ToAbscabOrder(const RowMatrix3Xd& positions) {
+  const auto number_of_positions = static_cast<std::size_t>(positions.cols());
+  std::vector<double> flat(number_of_positions * 3);
+  for (std::size_t i = 0; i < number_of_positions; ++i) {
+    const auto column = static_cast<Eigen::Index>(i);
+    flat[i * 3 + 0] = positions(0, column);
+    flat[i * 3 + 1] = positions(1, column);
+    flat[i * 3 + 2] = positions(2, column);
+  }
+  return flat;
+}
+
+std::vector<double> VerticesInAbscabOrder(
+    const PolygonFilament& polygon_filament) {
+  const int number_of_vertices = polygon_filament.vertices_size();
+  std::vector<double> flat(static_cast<std::size_t>(number_of_vertices) * 3);
+  for (int i = 0; i < number_of_vertices; ++i) {
+    const Vector3d& vertex = polygon_filament.vertices(i);
+    flat[i * 3 + 0] = vertex.x();
+    flat[i * 3 + 1] = vertex.y();
+    flat[i * 3 + 2] = vertex.z();
+  }
+  return flat;
+}
+
+void AddFromAbscabOrder(const std::vector<double>& contribution,
+                        std::vector<std::vector<double>>& m_target) {
+  for (std::size_t i = 0; i < m_target.size(); ++i) {
+    m_target[i][0] += contribution[i * 3 + 0];
+    m_target[i][1] += contribution[i * 3 + 1];
+    m_target[i][2] += contribution[i * 3 + 2];
+  }
+}
+
+void AddFromAbscabOrder(const std::vector<double>& contribution,
+                        RowMatrix3Xd& m_target) {
+  for (Eigen::Index column = 0; column < m_target.cols(); ++column) {
+    const auto i = static_cast<std::size_t>(column);
+    m_target(0, column) += contribution[i * 3 + 0];
+    m_target(1, column) += contribution[i * 3 + 1];
+    m_target(2, column) += contribution[i * 3 + 2];
+  }
+}
+
+// The contribution of a single current carrier, added into m_contribution in
+// ABSCAB order. The current carrier is taken to have been checked already.
+
+void AddMagneticField(
+    const InfiniteStraightFilament& infinite_straight_filament, double current,
+    std::span<double> evaluation_positions, std::span<double> m_contribution) {
   if (current == 0.0) {
-    // no current -> no modification
-    return absl::OkStatus();
+    // no current -> no contribution
+    return;
   }
   const double magnetic_field_scale = abscab::MU_0 * current / (2.0 * M_PI);
 
@@ -64,11 +121,11 @@ absl::Status MagneticField(
   const double origin_y = origin.y();
   const double origin_z = origin.z();
 
-  const std::size_t num_evaluation_locations = evaluation_positions.size();
+  const std::size_t num_evaluation_locations = evaluation_positions.size() / 3;
   for (std::size_t i = 0; i < num_evaluation_locations; ++i) {
-    const double evaluation_position_x = evaluation_positions[i][0];
-    const double evaluation_position_y = evaluation_positions[i][1];
-    const double evaluation_position_z = evaluation_positions[i][2];
+    const double evaluation_position_x = evaluation_positions[i * 3 + 0];
+    const double evaluation_position_y = evaluation_positions[i * 3 + 1];
+    const double evaluation_position_z = evaluation_positions[i * 3 + 2];
 
     // connection vector from evaluation position to origin on filament
     const double delta_eval_origin_x = origin_x - evaluation_position_x;
@@ -139,10 +196,251 @@ absl::Status MagneticField(
         toroidal_unit_vector_z * magnetic_field_strength;
 
     // add to target storage
-    m_magnetic_field[i][0] += magnetic_field_vector_x;
-    m_magnetic_field[i][1] += magnetic_field_vector_y;
-    m_magnetic_field[i][2] += magnetic_field_vector_z;
+    m_contribution[i * 3 + 0] += magnetic_field_vector_x;
+    m_contribution[i * 3 + 1] += magnetic_field_vector_y;
+    m_contribution[i * 3 + 2] += magnetic_field_vector_z;
   }
+}  // AddMagneticField for InfiniteStraightFilament
+
+void AddMagneticField(const CircularFilament& circular_filament, double current,
+                      std::span<double> evaluation_positions,
+                      std::span<double> m_contribution) {
+  const Vector3d& center_vector = circular_filament.center();
+  std::vector<double> center = {
+      center_vector.x(),
+      center_vector.y(),
+      center_vector.z(),
+  };
+
+  const Vector3d& normal_vector = circular_filament.normal();
+  std::vector<double> normal = {
+      normal_vector.x(),
+      normal_vector.y(),
+      normal_vector.z(),
+  };
+
+  const double radius = circular_filament.radius();
+
+  abscab::magneticFieldCircularFilament(
+      center.data(), normal.data(), radius, current,
+      static_cast<int>(evaluation_positions.size() / 3),
+      evaluation_positions.data(), m_contribution.data());
+}  // AddMagneticField for CircularFilament
+
+void AddMagneticField(const PolygonFilament& polygon_filament, double current,
+                      std::span<double> evaluation_positions,
+                      std::span<double> m_contribution) {
+  std::vector<double> vertices = VerticesInAbscabOrder(polygon_filament);
+
+  abscab::magneticFieldPolygonFilament(
+      polygon_filament.vertices_size(), vertices.data(), current,
+      static_cast<int>(evaluation_positions.size() / 3),
+      evaluation_positions.data(), m_contribution.data());
+}  // AddMagneticField for PolygonFilament
+
+void AddVectorPotential(const CircularFilament& circular_filament,
+                        double current, std::span<double> evaluation_positions,
+                        std::span<double> m_contribution) {
+  const Vector3d& center_vector = circular_filament.center();
+  std::vector<double> center = {
+      center_vector.x(),
+      center_vector.y(),
+      center_vector.z(),
+  };
+
+  const Vector3d& normal_vector = circular_filament.normal();
+  std::vector<double> normal = {
+      normal_vector.x(),
+      normal_vector.y(),
+      normal_vector.z(),
+  };
+
+  const double radius = circular_filament.radius();
+
+  // Negated because abscab's circular-filament vector potential has the
+  // opposite sign convention to its polygon-filament one and to both of its
+  // magnetic-field routines. With the negation, A is parallel to the current
+  // that produces it, which agrees with MAKEGRID and with the closed form
+  // checked in VectorPotential.CheckCircularFilament.
+  abscab::vectorPotentialCircularFilament(
+      center.data(), normal.data(), radius, -current,
+      static_cast<int>(evaluation_positions.size() / 3),
+      evaluation_positions.data(), m_contribution.data());
+}  // AddVectorPotential for CircularFilament
+
+void AddVectorPotential(const PolygonFilament& polygon_filament, double current,
+                        std::span<double> evaluation_positions,
+                        std::span<double> m_contribution) {
+  std::vector<double> vertices = VerticesInAbscabOrder(polygon_filament);
+
+  abscab::vectorPotentialPolygonFilament(
+      polygon_filament.vertices_size(), vertices.data(), current,
+      static_cast<int>(evaluation_positions.size() / 3),
+      evaluation_positions.data(), m_contribution.data());
+}  // AddVectorPotential for PolygonFilament
+
+// The current of a coil within a serial circuit.
+// NOTE: Re-compute the circuit current "from scratch" in every iteration.
+// Otherwise, the number of winding of the different coils
+// all get multiplied on top of each other for each successive coil!
+double CoilCurrent(const SerialCircuit& serial_circuit, const Coil& coil) {
+  if (coil.has_num_windings()) {
+    return serial_circuit.current() * coil.num_windings();
+  }
+  // assume num_windings = 1, if not provided
+  return serial_circuit.current();
+}
+
+absl::Status UnsupportedCurrentCarrier(const CurrentCarrier& current_carrier) {
+  std::stringstream error_message;
+  error_message << "current carrier type ";
+  error_message << current_carrier.type_case();
+  error_message << " not implemented yet.";
+  return absl::InvalidArgumentError(error_message.str());
+}
+
+// Walk the current carriers of a MagneticConfiguration and add each
+// contribution into m_target. Every carrier gets a freshly zeroed scratch
+// buffer that is added on afterwards, so contributions are summed in the same
+// order and with the same rounding as when each carrier is evaluated on its
+// own.
+template <typename Target>
+absl::Status AccumulateMagneticField(
+    const MagneticConfiguration& magnetic_configuration,
+    std::span<double> evaluation_positions, Target& m_target) {
+  std::vector<double> contribution(evaluation_positions.size(), 0.0);
+
+  for (const SerialCircuit& serial_circuit :
+       magnetic_configuration.serial_circuits()) {
+    if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
+      // skip contributions with assumed zero current
+      continue;
+    }
+
+    for (const Coil& coil : serial_circuit.coils()) {
+      const double current = CoilCurrent(serial_circuit, coil);
+
+      for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
+        std::fill(contribution.begin(), contribution.end(), 0.0);
+        switch (current_carrier.type_case()) {
+          case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
+            AddMagneticField(current_carrier.infinite_straight_filament(),
+                             current, evaluation_positions, contribution);
+            break;
+          case CurrentCarrier::TypeCase::kCircularFilament:
+            AddMagneticField(current_carrier.circular_filament(), current,
+                             evaluation_positions, contribution);
+            break;
+          case CurrentCarrier::TypeCase::kPolygonFilament:
+            AddMagneticField(current_carrier.polygon_filament(), current,
+                             evaluation_positions, contribution);
+            break;
+          case CurrentCarrier::TypeCase::kTypeNotSet:
+            // consider as empty CurrentCarrier -> ignore
+            continue;
+          default:
+            return UnsupportedCurrentCarrier(current_carrier);
+        }
+        AddFromAbscabOrder(contribution, m_target);
+      }  // CurrentCarrier
+    }  // Coil
+  }  // SerialCircuit
+
+  return absl::OkStatus();
+}  // AccumulateMagneticField
+
+template <typename Target>
+absl::Status AccumulateVectorPotential(
+    const MagneticConfiguration& magnetic_configuration,
+    std::span<double> evaluation_positions, Target& m_target) {
+  std::vector<double> contribution(evaluation_positions.size(), 0.0);
+
+  for (const SerialCircuit& serial_circuit :
+       magnetic_configuration.serial_circuits()) {
+    if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
+      // skip contributions with assumed zero current
+      continue;
+    }
+
+    for (const Coil& coil : serial_circuit.coils()) {
+      const double current = CoilCurrent(serial_circuit, coil);
+
+      for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
+        std::fill(contribution.begin(), contribution.end(), 0.0);
+        switch (current_carrier.type_case()) {
+          case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
+            // The magnetic vector potential diverges for an infinite straight
+            // filament, so do not compute a contribution from it here. This
+            // should have been checked for alreay above, but programmers look
+            // both ways in a one-way street...
+            LOG(FATAL) << "Cannot compute the magnetic vector potential of an "
+                          "infinite straight filament.";
+            break;
+          case CurrentCarrier::TypeCase::kCircularFilament:
+            AddVectorPotential(current_carrier.circular_filament(), current,
+                               evaluation_positions, contribution);
+            break;
+          case CurrentCarrier::TypeCase::kPolygonFilament:
+            AddVectorPotential(current_carrier.polygon_filament(), current,
+                               evaluation_positions, contribution);
+            break;
+          case CurrentCarrier::TypeCase::kTypeNotSet:
+            // consider as empty CurrentCarrier -> ignore
+            continue;
+          default:
+            return UnsupportedCurrentCarrier(current_carrier);
+        }
+        AddFromAbscabOrder(contribution, m_target);
+      }  // CurrentCarrier
+    }  // Coil
+  }  // SerialCircuit
+
+  return absl::OkStatus();
+}  // AccumulateVectorPotential
+
+// The magnetic vector potential diverges for an infinite straight filament, so
+// a MagneticConfiguration carrying one has no vector potential to report.
+absl::Status CheckFreeOfInfiniteStraightFilaments(
+    const MagneticConfiguration& magnetic_configuration) {
+  for (const SerialCircuit& serial_circuit :
+       magnetic_configuration.serial_circuits()) {
+    for (const Coil& coil : serial_circuit.coils()) {
+      for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
+        if (current_carrier.has_infinite_straight_filament()) {
+          return absl::InvalidArgumentError(
+              "Cannot compute the magnetic vector potential of an infinite "
+              "straight filament.");
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::Status MagneticField(
+    const InfiniteStraightFilament& infinite_straight_filament, double current,
+    const std::vector<std::vector<double>>& evaluation_positions,
+    std::vector<std::vector<double>>& m_magnetic_field,
+    bool check_current_carrier) {
+  if (check_current_carrier) {
+    absl::Status status =
+        IsInfiniteStraightFilamentFullyPopulated(infinite_straight_filament);
+    if (!status.ok()) {
+      // Do not modify m_magnetic_field if the current carrier is not
+      // well-defined.
+      return status;
+    }
+  }
+
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
+
+  AddMagneticField(infinite_straight_filament, current,
+                   evaluation_positions_flat, contribution);
+  AddFromAbscabOrder(contribution, m_magnetic_field);
 
   return absl::OkStatus();
 }  // MagneticField for InfiniteStraightFilament
@@ -161,50 +459,13 @@ absl::Status MagneticField(
     }
   }
 
-  const Vector3d& center_vector = circular_filament.center();
-  std::vector<double> center = {
-      center_vector.x(),
-      center_vector.y(),
-      center_vector.z(),
-  };
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
 
-  const Vector3d& normal_vector = circular_filament.normal();
-  std::vector<double> normal = {
-      normal_vector.x(),
-      normal_vector.y(),
-      normal_vector.z(),
-  };
-
-  const double radius = circular_filament.radius();
-
-  const int number_evaluation_positions =
-      static_cast<int>(evaluation_positions.size());
-
-  std::vector<double> evaluation_positions_1d(number_evaluation_positions * 3);
-
-  // convert evaluation_positions into double[] array for abscab
-  // in array-of-structs order (x0, y0, z0, x1, y1, z1, x2, y2, z2, ...)
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    evaluation_positions_1d[i * 3 + 0] = evaluation_positions[i][0];
-    evaluation_positions_1d[i * 3 + 1] = evaluation_positions[i][1];
-    evaluation_positions_1d[i * 3 + 2] = evaluation_positions[i][2];
-  }
-
-  // target storage for magnetic field needs to be initialized to zero,
-  // as abscab methods only add and do not initialize
-  std::vector<double> magnetic_field_1d(number_evaluation_positions * 3, 0.0);
-
-  abscab::magneticFieldCircularFilament(center.data(), normal.data(), radius,
-                                        current, number_evaluation_positions,
-                                        evaluation_positions_1d.data(),
-                                        magnetic_field_1d.data());
-
-  // convert magneticField from abscab format and add to provided vectors
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    m_magnetic_field[i][0] += magnetic_field_1d[i * 3 + 0];
-    m_magnetic_field[i][1] += magnetic_field_1d[i * 3 + 1];
-    m_magnetic_field[i][2] += magnetic_field_1d[i * 3 + 2];
-  }
+  AddMagneticField(circular_filament, current, evaluation_positions_flat,
+                   contribution);
+  AddFromAbscabOrder(contribution, m_magnetic_field);
 
   return absl::OkStatus();
 }  // MagneticField for CircularFilament
@@ -223,44 +484,13 @@ absl::Status MagneticField(
     }
   }
 
-  const int number_evaluation_positions =
-      static_cast<int>(evaluation_positions.size());
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
 
-  std::vector<double> evaluation_positions_1d(number_evaluation_positions * 3);
-
-  // convert evaluation_positions into double[] array for abscab
-  // in array-of-structs order (x0, y0, z0, x1, y1, z1, x2, y2, z2, ...)
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    evaluation_positions_1d[i * 3 + 0] = evaluation_positions[i][0];
-    evaluation_positions_1d[i * 3 + 1] = evaluation_positions[i][1];
-    evaluation_positions_1d[i * 3 + 2] = evaluation_positions[i][2];
-  }
-
-  // target storage for magnetic field needs to be initialized to zero,
-  // as abscab methods only add and not initialize
-  std::vector<double> magnetic_field_1d(number_evaluation_positions * 3, 0.0);
-
-  std::vector<double> vertices_1d(polygon_filament.vertices_size() * 3);
-
-  // copy filament geometry into one-dimensional array for ABSCAB
-  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
-    const Vector3d& vertex = polygon_filament.vertices(i);
-    vertices_1d[i * 3 + 0] = vertex.x();
-    vertices_1d[i * 3 + 1] = vertex.y();
-    vertices_1d[i * 3 + 2] = vertex.z();
-  }
-
-  abscab::magneticFieldPolygonFilament(
-      polygon_filament.vertices_size(), vertices_1d.data(), current,
-      number_evaluation_positions, evaluation_positions_1d.data(),
-      magnetic_field_1d.data());
-
-  // convert magneticField from abscab format and add to provided vectors
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    m_magnetic_field[i][0] += magnetic_field_1d[i * 3 + 0];
-    m_magnetic_field[i][1] += magnetic_field_1d[i * 3 + 1];
-    m_magnetic_field[i][2] += magnetic_field_1d[i * 3 + 2];
-  }
+  AddMagneticField(polygon_filament, current, evaluation_positions_flat,
+                   contribution);
+  AddFromAbscabOrder(contribution, m_magnetic_field);
 
   return absl::OkStatus();
 }  // MagneticField for PolygonFilament
@@ -280,63 +510,36 @@ absl::Status MagneticField(
     }
   }
 
-  for (const SerialCircuit& serial_circuit :
-       magnetic_configuration.serial_circuits()) {
-    if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
-      // skip contributions with assumed zero current
-      continue;
-    }
-
-    for (const Coil& coil : serial_circuit.coils()) {
-      // NOTE: Re-compute the circuit current "from scratch" in every iteration.
-      // Otherwise, the number of winding of the different coils
-      // all get multiplied on top of each other for each successive coil!
-      double current = 0.0;
-      if (coil.has_num_windings()) {
-        current = serial_circuit.current() * coil.num_windings();
-      } else {
-        // assume num_windings = 1, if not provided
-        current = serial_circuit.current();
-      }
-
-      for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
-        switch (current_carrier.type_case()) {
-          case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
-            CHECK_OK(MagneticField(current_carrier.infinite_straight_filament(),
-                                   current, evaluation_positions,
-                                   m_magnetic_field, false));
-            break;
-          case CurrentCarrier::TypeCase::kCircularFilament:
-            CHECK_OK(MagneticField(current_carrier.circular_filament(), current,
-                                   evaluation_positions, m_magnetic_field,
-                                   false));
-            break;
-          case CurrentCarrier::TypeCase::kPolygonFilament:
-            CHECK_OK(MagneticField(current_carrier.polygon_filament(), current,
-                                   evaluation_positions, m_magnetic_field,
-                                   false));
-            break;
-          case CurrentCarrier::TypeCase::kTypeNotSet:
-            // consider as empty CurrentCarrier -> ignore
-            break;
-          default:
-            std::stringstream error_message;
-            error_message << "current carrier type ";
-            error_message << current_carrier.type_case();
-            error_message << " not implemented yet.";
-            return absl::InvalidArgumentError(error_message.str());
-        }
-      }  // CurrentCarrier
-    }  // Coil
-  }  // SerialCircuit
-
-  return absl::OkStatus();
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  return AccumulateMagneticField(magnetic_configuration,
+                                 evaluation_positions_flat, m_magnetic_field);
 }  // MagneticField for MagneticConfiguration
 
-// ----------------
+absl::Status MagneticField(const MagneticConfiguration& magnetic_configuration,
+                           const RowMatrix3Xd& evaluation_positions,
+                           RowMatrix3Xd& m_magnetic_field,
+                           bool check_current_carrier) {
+  CHECK_EQ(m_magnetic_field.cols(), evaluation_positions.cols())
+      << "one magnetic field vector per evaluation position is required";
 
-// The magnetic vector potential diverges for an infinite straight filament,
-// so there is no method to compute a contribution from it here.
+  if (check_current_carrier) {
+    absl::Status status =
+        IsMagneticConfigurationFullyPopulated(magnetic_configuration);
+    if (!status.ok()) {
+      // Do not modify m_magnetic_field if the current carrier is not
+      // well-defined.
+      return status;
+    }
+  }
+
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  return AccumulateMagneticField(magnetic_configuration,
+                                 evaluation_positions_flat, m_magnetic_field);
+}  // MagneticField for MagneticConfiguration, Eigen layout
+
+// ----------------
 
 absl::Status VectorPotential(
     const CircularFilament& circular_filament, double current,
@@ -352,52 +555,13 @@ absl::Status VectorPotential(
     }
   }
 
-  const Vector3d& center_vector = circular_filament.center();
-  std::vector<double> center = {
-      center_vector.x(),
-      center_vector.y(),
-      center_vector.z(),
-  };
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
 
-  const Vector3d& normal_vector = circular_filament.normal();
-  std::vector<double> normal = {
-      normal_vector.x(),
-      normal_vector.y(),
-      normal_vector.z(),
-  };
-
-  const double radius = circular_filament.radius();
-
-  const int number_evaluation_positions =
-      static_cast<int>(evaluation_positions.size());
-
-  std::vector<double> evaluation_positions_1d(number_evaluation_positions * 3);
-
-  // convert evaluation_positions into double[] array for abscab
-  // in array-of-structs order (x0, y0, z0, x1, y1, z1, x2, y2, z2, ...)
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    evaluation_positions_1d[i * 3 + 0] = evaluation_positions[i][0];
-    evaluation_positions_1d[i * 3 + 1] = evaluation_positions[i][1];
-    evaluation_positions_1d[i * 3 + 2] = evaluation_positions[i][2];
-  }
-
-  // target storage for magnetic field needs to be initialized to zero,
-  // as abscab methods only add and do not initialize
-  std::vector<double> vector_potential_1d(number_evaluation_positions * 3, 0.0);
-
-  // FIXME(jons): Figure out what the actual sign definition must be.
-  // For now, adjusted to agree with MAKEGRID.
-  abscab::vectorPotentialCircularFilament(center.data(), normal.data(), radius,
-                                          -current, number_evaluation_positions,
-                                          evaluation_positions_1d.data(),
-                                          vector_potential_1d.data());
-
-  // convert magneticField from abscab format and add to provided vectors
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    m_vector_potential[i][0] += vector_potential_1d[i * 3 + 0];
-    m_vector_potential[i][1] += vector_potential_1d[i * 3 + 1];
-    m_vector_potential[i][2] += vector_potential_1d[i * 3 + 2];
-  }
+  AddVectorPotential(circular_filament, current, evaluation_positions_flat,
+                     contribution);
+  AddFromAbscabOrder(contribution, m_vector_potential);
 
   return absl::OkStatus();
 }  // VectorPotential for CircularFilament
@@ -410,50 +574,19 @@ absl::Status VectorPotential(
   if (check_current_carrier) {
     absl::Status status = IsPolygonFilamentFullyPopulated(polygon_filament);
     if (!status.ok()) {
-      // Do not modify m_magnetic_field if the current carrier is not
+      // Do not modify m_vector_potential if the current carrier is not
       // well-defined.
       return status;
     }
   }
 
-  const int number_evaluation_positions =
-      static_cast<int>(evaluation_positions.size());
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
 
-  std::vector<double> evaluation_positions_1d(number_evaluation_positions * 3);
-
-  // convert evaluation_positions into double[] array for abscab
-  // in array-of-structs order (x0, y0, z0, x1, y1, z1, x2, y2, z2, ...)
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    evaluation_positions_1d[i * 3 + 0] = evaluation_positions[i][0];
-    evaluation_positions_1d[i * 3 + 1] = evaluation_positions[i][1];
-    evaluation_positions_1d[i * 3 + 2] = evaluation_positions[i][2];
-  }
-
-  // target storage for magnetic field needs to be initialized to zero,
-  // as abscab methods only add and not initialize
-  std::vector<double> vector_potential_1d(number_evaluation_positions * 3, 0.0);
-
-  std::vector<double> vertices_1d(polygon_filament.vertices_size() * 3);
-
-  // copy filament geometry into one-dimensional array for ABSCAB
-  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
-    const Vector3d& vertex = polygon_filament.vertices(i);
-    vertices_1d[i * 3 + 0] = vertex.x();
-    vertices_1d[i * 3 + 1] = vertex.y();
-    vertices_1d[i * 3 + 2] = vertex.z();
-  }
-
-  abscab::vectorPotentialPolygonFilament(
-      polygon_filament.vertices_size(), vertices_1d.data(), current,
-      number_evaluation_positions, evaluation_positions_1d.data(),
-      vector_potential_1d.data());
-
-  // convert magneticField from abscab format and add to provided vectors
-  for (int i = 0; i < number_evaluation_positions; ++i) {
-    m_vector_potential[i][0] += vector_potential_1d[i * 3 + 0];
-    m_vector_potential[i][1] += vector_potential_1d[i * 3 + 1];
-    m_vector_potential[i][2] += vector_potential_1d[i * 3 + 2];
-  }
+  AddVectorPotential(polygon_filament, current, evaluation_positions_flat,
+                     contribution);
+  AddFromAbscabOrder(contribution, m_vector_potential);
 
   return absl::OkStatus();
 }  // VectorPotential for PolygonFilament
@@ -472,78 +605,45 @@ absl::Status VectorPotential(
       return status;
     }
 
-    // Check that no InfiniteStraightFilament is present in the
-    // MagneticConfiguration, as the magnetic vector potential diverges for this
-    // type of current carrier.
-    for (const SerialCircuit& serial_circuit :
-         magnetic_configuration.serial_circuits()) {
-      for (const Coil& coil : serial_circuit.coils()) {
-        for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
-          if (current_carrier.has_infinite_straight_filament()) {
-            return absl::InvalidArgumentError(
-                "Cannot compute the magnetic vector potential of an infinite "
-                "straight filament.");
-          }
-        }
-      }
+    status = CheckFreeOfInfiniteStraightFilaments(magnetic_configuration);
+    if (!status.ok()) {
+      return status;
     }
   }
 
-  for (const SerialCircuit& serial_circuit :
-       magnetic_configuration.serial_circuits()) {
-    if (!serial_circuit.has_current() || serial_circuit.current() == 0.0) {
-      // skip contributions with assumed zero current
-      continue;
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  return AccumulateVectorPotential(
+      magnetic_configuration, evaluation_positions_flat, m_vector_potential);
+}  // VectorPotential for MagneticConfiguration
+
+absl::Status VectorPotential(
+    const MagneticConfiguration& magnetic_configuration,
+    const RowMatrix3Xd& evaluation_positions, RowMatrix3Xd& m_vector_potential,
+    bool check_current_carrier) {
+  CHECK_EQ(m_vector_potential.cols(), evaluation_positions.cols())
+      << "one vector potential per evaluation position is required";
+
+  if (check_current_carrier) {
+    absl::Status status =
+        IsMagneticConfigurationFullyPopulated(magnetic_configuration);
+    if (!status.ok()) {
+      // Do not modify m_vector_potential if the current carrier is not
+      // well-defined.
+      return status;
     }
 
-    for (const Coil& coil : serial_circuit.coils()) {
-      // NOTE: Re-compute the circuit current "from scratch" in every iteration.
-      // Otherwise, the number of winding of the different coils
-      // all get multiplied on top of each other for each successive coil!
-      double current = 0.0;
-      if (coil.has_num_windings()) {
-        current = serial_circuit.current() * coil.num_windings();
-      } else {
-        // assume num_windings = 1, if not provided
-        current = serial_circuit.current();
-      }
+    status = CheckFreeOfInfiniteStraightFilaments(magnetic_configuration);
+    if (!status.ok()) {
+      return status;
+    }
+  }
 
-      for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
-        switch (current_carrier.type_case()) {
-          case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
-            // The magnetic vector potential diverges for an infinite straight
-            // filament, so do not compute a contribution from it here. This
-            // should have been checked for alreay above, but programmers look
-            // both ways in a one-way street...
-            LOG(FATAL) << "Cannot compute the magnetic vector potential of an "
-                          "infinite straight filament.";
-            break;
-          case CurrentCarrier::TypeCase::kCircularFilament:
-            CHECK_OK(VectorPotential(current_carrier.circular_filament(),
-                                     current, evaluation_positions,
-                                     m_vector_potential, false));
-            break;
-          case CurrentCarrier::TypeCase::kPolygonFilament:
-            CHECK_OK(VectorPotential(current_carrier.polygon_filament(),
-                                     current, evaluation_positions,
-                                     m_vector_potential, false));
-            break;
-          case CurrentCarrier::TypeCase::kTypeNotSet:
-            // consider as empty CurrentCarrier -> ignore
-            break;
-          default:
-            std::stringstream error_message;
-            error_message << "current carrier type ";
-            error_message << current_carrier.type_case();
-            error_message << " not implemented yet.";
-            return absl::InvalidArgumentError(error_message.str());
-        }
-      }  // CurrentCarrier
-    }  // Coil
-  }  // SerialCircuit
-
-  return absl::OkStatus();
-}  // VectorPotential for MagneticConfiguration
+  std::vector<double> evaluation_positions_flat =
+      ToAbscabOrder(evaluation_positions);
+  return AccumulateVectorPotential(
+      magnetic_configuration, evaluation_positions_flat, m_vector_potential);
+}  // VectorPotential for MagneticConfiguration, Eigen layout
 
 absl::StatusOr<double> LinkingCurrent(
     const MagneticConfiguration& magnetic_configuration,

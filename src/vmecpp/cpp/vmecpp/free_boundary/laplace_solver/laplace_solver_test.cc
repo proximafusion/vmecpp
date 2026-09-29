@@ -58,11 +58,13 @@ TEST_P(TransformGreensFunctionDerivativeTest, SingleModeRoundTrip) {
 
   // Dummy shared arrays (single-threaded, no cross-thread accumulation needed)
   std::vector<double> matrixShare(mnpd * mnpd, 0.0);
-  std::vector<int> iPiv(mnpd, 0);
   std::vector<double> bvecShare(mnpd, 0.0);
+  std::vector<double> reduce_slots(mnpd * mnpd, 0.0);
+  Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
 
   LaplaceSolver ls(&s, &fb, &tp, nf, mf, std::span<double>(matrixShare),
-                   std::span<int>(iPiv), std::span<double>(bvecShare));
+                   &lu_decomposition, std::span<double>(bvecShare),
+                   std::span<double>(reduce_slots));
 
   // Build greenp[klpRel * nThetaEven * nZeta + l * nZeta + k].
   // For each klp, inject exactly one mode:
@@ -219,11 +221,13 @@ TEST(LaplaceSolverTest, ZeroKernelSolveGivesHalfInverse) {
   const int numLocal = tp.ztMax - tp.ztMin;
 
   std::vector<double> matrixShare(mnpd * mnpd, 0.0);
-  std::vector<int> iPiv(mnpd, 0);
   std::vector<double> bvecShare(mnpd, 0.0);
+  std::vector<double> reduce_slots(mnpd * mnpd, 0.0);
+  Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
 
   LaplaceSolver ls(&s, &fb, &tp, nf, mf, std::span<double>(matrixShare),
-                   std::span<int>(iPiv), std::span<double>(bvecShare));
+                   &lu_decomposition, std::span<double>(bvecShare),
+                   std::span<double>(reduce_slots));
 
   // Zero greenp: no double-layer kernel contribution.
   Eigen::VectorXd greenp =

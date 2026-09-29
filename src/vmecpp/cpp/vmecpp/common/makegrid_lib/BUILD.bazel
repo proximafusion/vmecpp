@@ -29,6 +29,7 @@ cc_test(
     ],
     deps = [
         ":makegrid_lib",
+        "@abseil-cpp//absl/status:status",
         "@googletest//:gtest_main",
         "//util/file_io",
         "//util/netcdf_io",

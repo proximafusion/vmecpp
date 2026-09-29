@@ -10,6 +10,7 @@
 #include <cmath>
 #include <string>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
@@ -49,6 +50,11 @@ class RadialProfiles {
   double evalIotaProfile(double x);
   double evalCurrProfile(double x);
 
+  // With ncurr = 1 the enclosed current profile is a shape scaled to curtor by
+  // its value at the boundary, so a profile that encloses no net current there
+  // while carrying current inside cannot be imposed.
+  absl::Status CheckCurrentProfileEnclosesEdgeCurrent();
+
   // Evaluate the radial profile function specified by the given
   // parameterization, which can be either an analytical function (in which case
   // it is parameterized by `coeffs`) or a spline interpolation (in which case
@@ -62,7 +68,7 @@ class RadialProfiles {
   // some parameterizations of the current profile need to be radially
   // integrated and some not, which is what `shouldIntegrate` is then used for.
   // Which profile parameterization is integrated and which not is documented in
-  // the body of `RadialProfiles::setupProfileParameterizations`, where `I`
+  // the body of `BuildProfileParameterizations`, where `I`
   // refers to the profile parameterization specifying the enclosed toroidal
   // current profile already (hence no integration is needed), and `I-prime`
   // indicating that the given profile parameterization needs to be integrated.
@@ -192,10 +198,7 @@ class RadialProfiles {
   const int signOfJacobian;
   const double pDamp;
 
-  std::vector<ProfileParameterizationData> ALL_PARAMS;
-
   /** one entry for every value of ProfileParameterization */
-  void setupProfileParameterizations();
 };
 
 }  // namespace vmecpp

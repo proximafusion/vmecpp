@@ -4,3 +4,10 @@
 # wout_solovev.nc is ignored at the repo root (it's a common dev output),
 # but the test_data copy is reference data that must be tracked.
 !wout_solovev.nc
+
+/cma.json
+/cth_like_fixed_bdy.json
+/cth_like_fixed_bdy_nzeta_37.json
+/solovev.json
+/solovev_analytical.json
+/solovev_no_axis.json

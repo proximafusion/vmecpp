@@ -32,16 +32,16 @@ def distribution_root() -> Path:
     package_root, but doesn't have to be.
 
     The two differ in editable installations, where package_root() will point to the
-    source files, and distribution will point the /site-packages/vmecpp folder of your
-    python environment. It is the correct path to use for accessing shared libraries and
-    executables that come with vmecpp.
+    source files, and distribution will point to the /site-packages/vmecpp folder of
+    your python environment. It is the correct path to use for accessing shared
+    libraries and executables that come with vmecpp.
     """
     return Path(importlib.metadata.distribution("vmecpp").locate_file("vmecpp"))  # type: ignore
 
 
 @contextlib.contextmanager
 def change_working_directory_to(path: Path) -> Generator[None, None, None]:
-    """Changes the working director within a context manager.
+    """Changes the working directory within a context manager.
 
     Args:
         path: The path to change the working directory to.
@@ -170,7 +170,7 @@ def indata_to_json(
 # adapted from https://github.com/jonathanschilling/indata2json/blob/4274976/json2indata
 def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     """Convert a dictionary with the contents of a VMEC++ JSON input file to the
-    corresponding conents of a VMEC2000 INDATA file."""
+    corresponding contents of a VMEC2000 INDATA file."""
 
     indata: str = "&INDATA\n"
 
@@ -229,10 +229,10 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     indata += _int_to_namelist("nvacskip", vmecpp_json)
 
     indata += "\n  ! initial guess for magnetic axis\n"
-    indata += _float_array_to_namelist("raxis_cc", vmecpp_json)
-    indata += _float_array_to_namelist("zaxis_cs", vmecpp_json)
-    indata += _float_array_to_namelist("raxis_cs", vmecpp_json)
-    indata += _float_array_to_namelist("zaxis_cc", vmecpp_json)
+    indata += _float_array_to_namelist("raxis_c", vmecpp_json, namelist_name="raxis_cc")
+    indata += _float_array_to_namelist("zaxis_s", vmecpp_json, namelist_name="zaxis_cs")
+    indata += _float_array_to_namelist("raxis_s", vmecpp_json, namelist_name="raxis_cs")
+    indata += _float_array_to_namelist("zaxis_c", vmecpp_json, namelist_name="zaxis_cc")
 
     indata += "\n  ! (initial guess for) boundary shape\n"
     indata += _fourier_coefficients_to_namelist("rbc", vmecpp_json)
@@ -284,14 +284,16 @@ def _int_array_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
     return ""
 
 
-def _float_array_to_namelist(varname: str, vmecpp_json: dict[str, Any]) -> str:
+def _float_array_to_namelist(
+    varname: str, vmecpp_json: dict[str, Any], namelist_name: str | None = None
+) -> str:
     if (
         varname in vmecpp_json
         and vmecpp_json[varname] is not None
         and len(vmecpp_json[varname]) > 0
     ):
         elements = ", ".join([f"{x:.20e}" for x in vmecpp_json[varname]])
-        return f"  {varname} = {elements}\n"
+        return f"  {namelist_name or varname} = {elements}\n"
     return ""
 
 

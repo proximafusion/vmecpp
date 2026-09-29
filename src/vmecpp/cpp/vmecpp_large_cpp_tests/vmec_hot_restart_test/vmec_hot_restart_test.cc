@@ -2,6 +2,8 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -16,6 +18,7 @@
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using ::testing::ElementsAreArray;
@@ -32,6 +35,33 @@ using vmecpp::Vmec;
 using vmecpp::VmecCheckpoint;
 using vmecpp::VmecINDATA;
 namespace fs = std::filesystem;
+
+// Largest relative difference over a few representative wout quantities.
+// CompareWOut cannot serve here: it aborts on a mismatch instead of reporting
+// one, so it can assert agreement but never difference.
+double MaxRelativeDifference(const vmecpp::WOutFileContents& a,
+                             const vmecpp::WOutFileContents& b) {
+  double worst = 0.0;
+  const auto consider = [&worst](double x, double y) {
+    const double scale = std::max(std::abs(x), std::abs(y));
+    if (scale > 0.0) {
+      worst = std::max(worst, std::abs(x - y) / scale);
+    }
+  };
+  consider(a.volume, b.volume);
+  consider(a.aspect, b.aspect);
+  consider(a.betatotal, b.betatotal);
+  consider(a.rbtor, b.rbtor);
+  consider(a.volavgB, b.volavgB);
+  consider(a.Rmajor_p, b.Rmajor_p);
+  consider(a.Aminor_p, b.Aminor_p);
+  if (a.rmnc.size() == b.rmnc.size()) {
+    for (int i = 0; i < a.rmnc.size(); ++i) {
+      consider(a.rmnc.data()[i], b.rmnc.data()[i]);
+    }
+  }
+  return worst;
+}
 
 // used to specify case-specific tolerances
 // and which iterations to test
@@ -101,10 +131,11 @@ TEST_P(GeometryInitializationTest, CheckGeometryInitialization) {
 
     // use another FourierGeometry to represent the WOutFileContents
     vmecpp::FourierGeometry ref_fg(&s, &rp, ns);
-    ref_fg.InitFromState(vmec.t_, output_quantities.wout.rmnc,
-                         output_quantities.wout.zmns,
-                         output_quantities.wout.lmns_full, *vmec.p_[thread_id],
-                         vmec.constants_, &(vmec.b_));
+    ref_fg.InitFromState(
+        vmec.t_, output_quantities.wout.rmnc, output_quantities.wout.zmns,
+        output_quantities.wout.lmns_full, output_quantities.wout.rmns,
+        output_quantities.wout.zmnc, output_quantities.wout.lmnc_full,
+        *vmec.p_[thread_id], vmec.constants_, vmec.indata_.signgs, &(vmec.b_));
 
     for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
       for (int m = 0; m < s.mpol; ++m) {
@@ -621,6 +652,58 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy",
                       .tolerance = 1.0e-4}));
 
+class HotRestartOntoChangedBoundary : public TestWithParam<DataSource> {};
+
+TEST_P(HotRestartOntoChangedBoundary, KeepsTheFluxSurfacesNested) {
+  // A fixed-boundary hot restart onto a boundary whose R_{1,0} is 2 percent
+  // larger than in the restart state.
+  const auto& ds = GetParam();
+
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", ds.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  const auto original_output = vmecpp::run(indata);
+  ASSERT_TRUE(original_output.ok());
+
+  // a hot restart runs the last multigrid step only
+  VmecINDATA changed_indata = indata;
+  const int last_multigrid_step = static_cast<int>(indata.ns_array.size()) - 1;
+  changed_indata.ns_array.resize(1);
+  changed_indata.ns_array[0] = indata.ns_array[last_multigrid_step];
+  changed_indata.ftol_array.resize(1);
+  changed_indata.ftol_array[0] = indata.ftol_array[last_multigrid_step];
+  changed_indata.niter_array.resize(1);
+  changed_indata.niter_array[0] = indata.niter_array[last_multigrid_step];
+  changed_indata.rbc(1, changed_indata.ntor) *= 1.02;
+
+  const auto cold_output = vmecpp::run(changed_indata);
+  ASSERT_TRUE(cold_output.ok());
+
+  const auto hot_output =
+      vmecpp::run(changed_indata, vmecpp::HotRestartState(*original_output));
+  ASSERT_TRUE(hot_output.ok());
+
+  const Eigen::VectorXi& restart_reasons =
+      hot_output->wout.restart_reason_timetrace;
+  const int bad_jacobian_restarts =
+      static_cast<int>((restart_reasons.array() ==
+                        static_cast<int>(vmecpp::RestartReason::BAD_JACOBIAN))
+                           .count());
+  EXPECT_EQ(bad_jacobian_restarts, 0);
+  EXPECT_LT(hot_output->wout.niter, cold_output->wout.niter);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TestHotRestart, HotRestartOntoChangedBoundary,
+    Values(DataSource{.identifier = "solovev"}, DataSource{.identifier = "cma"},
+           DataSource{.identifier = "cth_like_fixed_bdy"}));
+
 TEST(HotRestartIntegration, MultigridContinuation) {
   // Test that a hot restart seeded at the first (coarse) grid and then
   // continued through all remaining multigrid steps produces the same
@@ -659,8 +742,8 @@ TEST(HotRestartIntegration, MultigridContinuation) {
   // Results at the finest grid should agree to high tolerance.
   const double tolerance = 1.0e-4;
   const bool check_equal_maximum_iterations = false;
-  vmecpp::CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
-                      check_equal_maximum_iterations);
+  CompareWOut(multigrid_output->wout, cold_output->wout, tolerance,
+              check_equal_maximum_iterations);
 }
 
 TEST(HotRestartIntegration, FreeBoundary) {
@@ -725,18 +808,34 @@ TEST(HotRestartIntegration, FreeBoundary) {
   ASSERT_TRUE(displaced_fromscratch_output.ok());
 
   // COMPARE RUN FROM SCRATCH AND HOT-RESTARTED RUN
-  // FIXME(jons): How realistic are these tolerances?
+  //
+  // 0.1 is close to the floor: DCurr differs by 5.9e-2 between the two runs,
+  // jdotb by 2.8e-2 and jcuru by 1.6e-2, while the geometry and field
+  // coefficients sit at 1e-5. Those are derivative diagnostics of two
+  // convergence paths into the same shallow minimum, not of one state.
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
-  vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
-                      displaced_fromscratch_output->wout, tolerance,
-                      check_equal_maximum_iterations);
+  CompareWOut(displaced_hotrestarted_output->wout,
+              displaced_fromscratch_output->wout, tolerance,
+              check_equal_maximum_iterations);
 
-  // TODO(eguiraud): we'd like to use these to test that the displaced output
-  // _is_ different, but the current CompareWOut implementation simply aborts in
-  // that case. vmecpp::CompareWOut(displaced_fromscratch_output->wout,
-  //                     original_output->wout, tolerance);
+  // The comparison above only says the two runs agree with each other. It says
+  // nothing about whether displacing the coils did anything: a hot restart that
+  // silently ignored the new field would agree with a from-scratch run that did
+  // the same. CompareWOut cannot be used the other way round, since it aborts
+  // on a mismatch rather than reporting one, so measure the difference here.
+  const double displacement_effect = MaxRelativeDifference(
+      original_output->wout, displaced_fromscratch_output->wout);
+  EXPECT_GT(displacement_effect, 1.0e-6)
+      << "displacing the coils by " << radial_coil_displacement
+      << " changed the equilibrium by only " << displacement_effect
+      << " relative; the comparison above would not notice a run that ignored "
+         "the displaced field";
 
-  // vmecpp::CompareWOut(displaced_hotrestarted_output->wout,
-  //                     original_output->wout, tolerance);
+  const double hot_restart_effect = MaxRelativeDifference(
+      original_output->wout, displaced_hotrestarted_output->wout);
+  EXPECT_GT(hot_restart_effect, 1.0e-6)
+      << "the hot-restarted run reproduced the original equilibrium to "
+      << hot_restart_effect
+      << " relative, so it may not have picked up the displaced field";
 }

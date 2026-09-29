@@ -11,3 +11,13 @@ cc_library(
         "//third_party/hdf5",
     ],
 )
+
+cc_test(
+    name = "hdf5_io_test",
+    srcs = ["hdf5_io_test.cc"],
+    deps = [
+        ":hdf5_io",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

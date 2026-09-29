@@ -13,9 +13,6 @@ cc_library(
         "//vmecpp/common/fourier_basis_fast_toroidal",
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
     ],
-    linkopts = [
-        "-llapack",
-    ],
 )
 
 cc_test(
@@ -41,5 +38,4 @@ cc_binary(
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
         "@google_benchmark//:benchmark_main",
     ],
-    linkopts = ["-llapack"],
 )

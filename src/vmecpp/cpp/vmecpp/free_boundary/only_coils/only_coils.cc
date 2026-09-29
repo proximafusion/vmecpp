@@ -10,11 +10,13 @@ OnlyCoils::OnlyCoils(const Sizes* s, const TangentialPartitioning* tp,
                      const MGridProvider* mgrid, std::span<double> bSqVacShare,
                      std::span<double> vacuum_b_r_share,
                      std::span<double> vacuum_b_phi_share,
-                     std::span<double> vacuum_b_z_share)
+                     std::span<double> vacuum_b_z_share,
+                     std::span<double> reduce_slots)
     : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
-                       vacuum_b_phi_share, vacuum_b_z_share) {}  // OnlyCoils
+                       vacuum_b_phi_share, vacuum_b_z_share),
+      reduce_slots_(reduce_slots) {}  // OnlyCoils
 
-bool OnlyCoils::update(
+absl::StatusOr<bool> OnlyCoils::update(
     const std::span<const double> rCC, const std::span<const double> rSS,
     const std::span<const double> rSC, const std::span<const double> rCS,
     const std::span<const double> zSC, const std::span<const double> zCS,
@@ -31,7 +33,8 @@ bool OnlyCoils::update(
 
   // blindly assume netToroidalCurrent == 0.0,
   // since checked for that during initialization
-  ef_.update(rAxis, zAxis, 0.0);
+  // Carried to the end for the same reason as in Nestor::update.
+  const absl::Status external_field_status = ef_.update(rAxis, zAxis, 0.0);
 
   // compute net covariant magnetic field components on surface
   double local_bsubuvac = 0.0;
@@ -50,20 +53,11 @@ bool OnlyCoils::update(
     *bSubUVac = 0.0;
     *bSubVVac = 0.0;
   }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
 
-#ifdef _OPENMP
-#pragma omp critical
-#endif  // _OPENMP
-  {
-    *bSubUVac += local_bsubuvac;
-    *bSubVVac += local_bsubvvac;
-  }
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+  SumOverThreads(&local_bsubuvac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubUVac);
+  SumOverThreads(&local_bsubvvac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubVVac);
 
   // compute magnetic pressure from only coils: |B|^2/2
   for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
@@ -86,6 +80,10 @@ bool OnlyCoils::update(
 
   // TODO(jons): could move bSubUVac, bSubVVac collection here to spare on
   // barrier
+
+  if (!external_field_status.ok()) {
+    return external_field_status;
+  }
 
   return false;
 }  // update

@@ -2,34 +2,360 @@
 // <info@proximafusion.com>
 //
 // SPDX-License-Identifier: MIT
+#include <netcdf.h>
+
 #include <filesystem>
 #include <string>
 #include <vector>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "gmock/gmock.h"  // ElementsAreArray
 #include "gtest/gtest.h"
 #include "util/file_io/file_io.h"
+#include "util/netcdf_io/netcdf_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
 #include "vmecpp/vmec/vmec/vmec.h"
 
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
 using ::testing::TestWithParam;
 using ::testing::Values;
 
 using file_io::ReadFile;
 using magnetics::ImportMagneticConfigurationFromCoilsFile;
 using makegrid::ImportMakegridParametersFromFile;
+using testing::IsCloseRelAbs;
 using vmecpp::RadialPartitioning;
 using vmecpp::Sizes;
 using vmecpp::Vmec;
 using vmecpp::VmecCheckpoint;
 using vmecpp::VmecINDATA;
 namespace fs = std::filesystem;
+
+// The toroidal resolution of the vacuum field and of the solver have to agree.
+// VmecINDATA::IsConsistent cannot check this, because it never sees the mgrid,
+// so Vmec::run does it once the provider is loaded.
+TEST(TestVmec, InMemoryMgridWithMismatchedNzetaIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+
+  // Half the toroidal resolution the input asks for, on a coarse R-Z grid so
+  // that building the table stays cheap. Still even, which the symmetric grid
+  // requires.
+  ASSERT_EQ(makegrid_params.number_of_phi_grid_points, indata.nzeta);
+  makegrid_params.number_of_phi_grid_points = indata.nzeta / 2;
+  makegrid_params.number_of_r_grid_points = 5;
+  makegrid_params.number_of_z_grid_points = 5;
+
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("phi grid points"));
+}
+
+// Sizes raises nzeta to 2 * ntor + 4 when the input asks for less, so the
+// vacuum field has to carry the toroidal resolution of the run, not the one in
+// the input.
+TEST(TestVmec, InMemoryMgridIsHeldToTheRaisedNzeta) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = maybe_indata.value();
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+
+  // A coarse R-Z grid so that building the tables stays cheap.
+  makegrid_params.number_of_r_grid_points = 5;
+  makegrid_params.number_of_z_grid_points = 5;
+
+  // The input and the table agree on a toroidal resolution below the one the
+  // run is raised to. Still even, which the symmetric grid requires.
+  ASSERT_EQ(indata.ntor, 4);
+  const int raised_nzeta = 2 * indata.ntor + 4;
+  indata.nzeta = raised_nzeta - 4;
+  makegrid_params.number_of_phi_grid_points = indata.nzeta;
+
+  const auto maybe_table_below = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_table_below.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_table_below);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              HasSubstr("12 toroidal grid points"));
+
+  // A table at the raised resolution is the one the run matches.
+  makegrid_params.number_of_phi_grid_points = raised_nzeta;
+
+  const auto maybe_table_raised = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_table_raised.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(indata, &*maybe_table_raised);
+  ASSERT_TRUE(maybe_vmec.ok()) << maybe_vmec.status();
+  const absl::StatusOr<bool> reached_checkpoint =
+      (*maybe_vmec)
+          ->run(VmecCheckpoint::SPECTRAL_CONSTRAINT,
+                /*iterations_before_checkpointing=*/1);
+  ASSERT_TRUE(reached_checkpoint.ok()) << reached_checkpoint.status();
+  EXPECT_TRUE(*reached_checkpoint);
+}
+
+// The number of field periods of the vacuum field sets the toroidal extent of
+// its planes, so it has to be the one the solver runs with.
+TEST(TestVmec, InMemoryMgridWithMismatchedNfpIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+
+  // One field period more than the input, with the toroidal resolution the
+  // input asks for, on a coarse R-Z grid so that building the table stays
+  // cheap.
+  ASSERT_EQ(makegrid_params.number_of_field_periods, indata.nfp);
+  ASSERT_EQ(makegrid_params.number_of_phi_grid_points, indata.nzeta);
+  makegrid_params.number_of_field_periods = indata.nfp + 1;
+  makegrid_params.number_of_r_grid_points = 5;
+  makegrid_params.number_of_z_grid_points = 5;
+
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("field periods"));
+}
+
+// The vacuum solve sizes a nested parallel region of its own, on a thread
+// count decoupled from the radial one. Like the radial solve it has to request
+// that team with a num_threads clause: narrowing the process-wide count
+// instead would outlive the run. Seven surfaces admit three radial threads,
+// fewer than most machines have, while the vacuum team takes the full budget.
+TEST(TestVmec, FreeBoundaryRunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.ns_array.setConstant(7);
+  indata.niter_array.setConstant(60);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      *maybe_makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const int process_thread_count = omp_get_max_threads();
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
+}
+
+// The stellarator-symmetry operation maps toroidal plane k onto (kp - k) % kp
+// and Z onto -Z, negates B_R and leaves B_phi and B_Z unchanged; the
+// stellarator-symmetric mgrid_cth_like.nc satisfies that relation to 2e-15.
+// Applied to the non-stellarator-symmetric mgrid_cth_like_asym.nc it gives the
+// mirror image of that coil field, and the equilibrium it produces has to be
+// the mirror image of the original: every gauge-invariant scalar unchanged,
+// every antisymmetric Fourier array negated. That holds the sin/cos coupling
+// blocks of the vacuum solver to account.
+TEST(TestVmec, LasymFreeBoundaryIsMirrorCovariant) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> maybe_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = *maybe_indata;
+  ASSERT_TRUE(indata.lasym);
+
+  // Read the response table of the asymmetric mgrid file.
+  int ncid = 0;
+  ASSERT_EQ(
+      nc_open("vmecpp/test_data/mgrid_cth_like_asym.nc", NC_NOWRITE, &ncid),
+      NC_NOERR);
+  const auto read_int = [&](const char* name) {
+    const absl::StatusOr<int> value = netcdf_io::NetcdfReadInt(ncid, name);
+    CHECK_OK(value);
+    return *value;
+  };
+  const auto read_double = [&](const char* name) {
+    const absl::StatusOr<double> value =
+        netcdf_io::NetcdfReadDouble(ncid, name);
+    CHECK_OK(value);
+    return *value;
+  };
+  const int num_r = read_int("ir");
+  const int num_z = read_int("jz");
+  const int num_phi = read_int("kp");
+  const int nextcur = read_int("nextcur");
+  ASSERT_EQ(nextcur, static_cast<int>(indata.extcur.size()));
+
+  makegrid::MagneticFieldResponseTable table;
+  table.parameters = {.normalize_by_currents = false,
+                      .assume_stellarator_symmetry = false,
+                      .number_of_field_periods = read_int("nfp"),
+                      .r_grid_minimum = read_double("rmin"),
+                      .r_grid_maximum = read_double("rmax"),
+                      .number_of_r_grid_points = num_r,
+                      .z_grid_minimum = read_double("zmin"),
+                      .z_grid_maximum = read_double("zmax"),
+                      .number_of_z_grid_points = num_z,
+                      .number_of_phi_grid_points = num_phi};
+  const int num_grid_points = num_phi * num_z * num_r;
+  table.b_r = vmecpp::RowMatrixXd::Zero(nextcur, num_grid_points);
+  table.b_p = vmecpp::RowMatrixXd::Zero(nextcur, num_grid_points);
+  table.b_z = vmecpp::RowMatrixXd::Zero(nextcur, num_grid_points);
+  for (int i = 0; i < nextcur; ++i) {
+    const auto b_r =
+        netcdf_io::NetcdfReadArray3D(ncid, absl::StrFormat("br_%03d", i + 1));
+    const auto b_p =
+        netcdf_io::NetcdfReadArray3D(ncid, absl::StrFormat("bp_%03d", i + 1));
+    const auto b_z =
+        netcdf_io::NetcdfReadArray3D(ncid, absl::StrFormat("bz_%03d", i + 1));
+    ASSERT_TRUE(b_r.ok() && b_p.ok() && b_z.ok());
+    for (int k = 0; k < num_phi; ++k) {
+      for (int z = 0; z < num_z; ++z) {
+        for (int r = 0; r < num_r; ++r) {
+          const int index = (k * num_z + z) * num_r + r;
+          table.b_r(i, index) = (*b_r)[k][z][r];
+          table.b_p(i, index) = (*b_p)[k][z][r];
+          table.b_z(i, index) = (*b_z)[k][z][r];
+        }
+      }
+    }
+  }
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  // Its mirror image.
+  makegrid::MagneticFieldResponseTable mirror = table;
+  for (int i = 0; i < nextcur; ++i) {
+    for (int k = 0; k < num_phi; ++k) {
+      const int k_source = (num_phi - k) % num_phi;
+      for (int z = 0; z < num_z; ++z) {
+        const int z_source = num_z - 1 - z;
+        for (int r = 0; r < num_r; ++r) {
+          const int index = (k * num_z + z) * num_r + r;
+          const int source = (k_source * num_z + z_source) * num_r + r;
+          mirror.b_r(i, index) = -table.b_r(i, source);
+          mirror.b_p(i, index) = table.b_p(i, source);
+          mirror.b_z(i, index) = table.b_z(i, source);
+        }
+      }
+    }
+  }
+
+  const auto original = vmecpp::run(indata, table);
+  ASSERT_TRUE(original.ok()) << original.status();
+  const auto mirrored = vmecpp::run(indata, mirror);
+  ASSERT_TRUE(mirrored.ok()) << mirrored.status();
+  const vmecpp::WOutFileContents& a = original->wout;
+  const vmecpp::WOutFileContents& b = mirrored->wout;
+
+  // The coil field is asymmetric enough to give the equilibrium a measurable
+  // antisymmetric part; otherwise the sign checks below would be empty.
+  ASSERT_GT(a.rmns.cwiseAbs().maxCoeff(), 5.0e-4);
+  ASSERT_GT(a.zmnc.cwiseAbs().maxCoeff(), 5.0e-4);
+
+  const double scalar_tolerance = 1.0e-10;
+  EXPECT_TRUE(IsCloseRelAbs(a.volume, b.volume, scalar_tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(a.aspect, b.aspect, scalar_tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(a.wb, b.wb, scalar_tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(a.rmax_surf, b.rmax_surf, scalar_tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(a.rmin_surf, b.rmin_surf, scalar_tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(a.zmax_surf, b.zmax_surf, scalar_tolerance));
+
+  // Symmetric arrays are unchanged, antisymmetric arrays change sign.
+  const double array_tolerance = 1.0e-9;
+  const auto same = [&](const vmecpp::RowMatrixXd& x,
+                        const vmecpp::RowMatrixXd& y, const char* name) {
+    EXPECT_LE((x - y).cwiseAbs().maxCoeff(),
+              array_tolerance * x.cwiseAbs().maxCoeff())
+        << name;
+  };
+  const auto negated = [&](const vmecpp::RowMatrixXd& x,
+                           const vmecpp::RowMatrixXd& y, const char* name) {
+    EXPECT_LE((x + y).cwiseAbs().maxCoeff(),
+              array_tolerance * x.cwiseAbs().maxCoeff())
+        << name;
+  };
+  same(a.rmnc, b.rmnc, "rmnc");
+  same(a.zmns, b.zmns, "zmns");
+  same(a.lmns, b.lmns, "lmns");
+  same(a.bmnc, b.bmnc, "bmnc");
+  negated(a.rmns, b.rmns, "rmns");
+  negated(a.zmnc, b.zmnc, "zmnc");
+  negated(a.lmnc, b.lmnc, "lmnc");
+  negated(a.bmns, b.bmns, "bmns");
+}
 
 TEST(TestVmec, CheckInMemoryMgrid) {
   // test the constructor that takes an in-memory mgrid
@@ -79,9 +405,9 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   // compare wout contents. jcuru/jcurv are curl(B) currents whose two solve
   // paths diverge by ~1.03e-7 across optimized/vectorized builds; keep every
   // other quantity at 1e-7 and compare those two at 2e-7.
-  vmecpp::CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
-                      /*tolerance=*/1e-7, /*check_equal_niter=*/true,
-                      /*current_density_tolerance=*/2e-7);
+  CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
+              /*tolerance=*/1e-7, /*check_equal_niter=*/true,
+              /*current_density_tolerance=*/2e-7);
 }
 
 // Axisymmetric (ntor = 0, nzeta = 1) free-boundary tokamak (solovev_free_bdy).
@@ -127,7 +453,73 @@ TEST(TestVmec, SolovevFreeBoundaryAxisymmetric) {
   // jcuru/jcurv are curl(B) currents whose two solve paths diverge by ~1.03e-7
   // across optimized/vectorized builds; keep every other quantity at 1e-7 and
   // compare those two at 2e-7.
-  vmecpp::CompareWOut(inmemory_output->wout, disk_output->wout,
-                      /*tolerance=*/1e-7, /*check_equal_niter=*/true,
-                      /*current_density_tolerance=*/2e-7);
+  CompareWOut(inmemory_output->wout, disk_output->wout,
+              /*tolerance=*/1e-7, /*check_equal_niter=*/true,
+              /*current_density_tolerance=*/2e-7);
+}
+
+// A finite edge pressure is balanced by a jump of the magnetic pressure across
+// the plasma boundary: B_vac^2/2 = p_edge + B_in^2/2 at the converged state.
+TEST(TestVmec, EdgePressureIsBalancedByTheMagneticPressureJump) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA& indata = maybe_indata.value();
+
+  // p = 2000 (1 - s / 2) Pa, so 1 kPa at the boundary, 0.7% of B^2 / 2 mu0
+  indata.pmass_type = "power_series";
+  indata.am = Eigen::VectorXd(2);
+  indata.am << 1.0, -0.5;
+  indata.pres_scale = 2000.0;
+  const double mu0_edge_pressure = vmecpp::MU_0 * 1000.0;
+
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(
+          "vmecpp/test_data/coils.cth_like");
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  makegrid::MakegridParameters makegrid_params = *maybe_makegrid_params;
+  // The plasma expands beyond the shipped box once the edge pressure is
+  // balanced by the field, so widen the grid.
+  makegrid_params.r_grid_minimum = 0.35;
+  makegrid_params.r_grid_maximum = 1.25;
+  makegrid_params.number_of_r_grid_points = 61;
+  makegrid_params.z_grid_minimum = -0.4;
+  makegrid_params.z_grid_maximum = 0.4;
+  makegrid_params.number_of_z_grid_points = 61;
+  const auto maybe_response_table = makegrid::ComputeMagneticFieldResponseTable(
+      makegrid_params, *maybe_magnetic_configuration);
+  ASSERT_TRUE(maybe_response_table.ok());
+
+  const auto output = vmecpp::run(indata, *maybe_response_table);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  const vmecpp::Threed1FreeBoundary& fb = output->threed1_free_boundary;
+  double magnetic_pressure_jump = 0.0;
+  double total_pressure_jump = 0.0;
+  for (int k = 0; k < fb.brv.rows(); ++k) {
+    for (int l = 0; l < fb.brv.cols(); ++l) {
+      const double vacuum =
+          0.5 * (fb.brv(k, l) * fb.brv(k, l) + fb.bphiv(k, l) * fb.bphiv(k, l) +
+                 fb.bzv(k, l) * fb.bzv(k, l));
+      const double plasma = 0.5 * (fb.bredge(k, l) * fb.bredge(k, l) +
+                                   fb.bpedge(k, l) * fb.bpedge(k, l) +
+                                   fb.bzedge(k, l) * fb.bzedge(k, l));
+      magnetic_pressure_jump += vacuum - plasma;
+      total_pressure_jump += fb.bsqvacf(k, l) - fb.bsqmhdf(k, l);
+    }
+  }
+  const double num_points = static_cast<double>(fb.brv.size());
+  magnetic_pressure_jump /= num_points;
+  total_pressure_jump /= num_points;
+
+  // the field carries the kinetic pressure jump, and the total pressure is
+  // continuous; the remainder is the O(delta s) slope of the profile
+  EXPECT_NEAR(magnetic_pressure_jump, mu0_edge_pressure,
+              0.05 * mu0_edge_pressure);
+  EXPECT_LT(std::abs(total_pressure_jump), 0.02 * mu0_edge_pressure);
 }

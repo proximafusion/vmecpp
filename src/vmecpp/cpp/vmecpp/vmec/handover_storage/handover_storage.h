@@ -10,6 +10,7 @@
 #include <span>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
@@ -45,6 +46,9 @@ class HandoverStorage {
   void ResetSpectralWidthAccumulators();
   void RegisterSpectralWidthContribution(
       const SpectralWidthContribution& spectral_width_contribution);
+  // Destination of the cross-thread fold of the two sums.
+  double* SpectralWidthNumerator() { return &spectral_width_numerator_; }
+  double* SpectralWidthDenominator() { return &spectral_width_denominator_; }
   double VolumeAveragedSpectralWidth() const;
 
   void SetRadialExtent(const RadialExtent& radial_extent);
@@ -95,6 +99,10 @@ class HandoverStorage {
   // TODO(jurasic) this should have a smaller scope.
   Eigen::VectorXd rCon_LCFS;
   Eigen::VectorXd zCon_LCFS;
+
+  // One row per thread for SumOverThreads, wide enough for the widest sum of
+  // the radial team.
+  RowMatrixXd thread_reduce_slots;
 
   // Inter-thread handover storage: RowMatrixXd [num_threads, mnsize]
   // _i arrays: inside boundary, _o arrays: outside boundary
@@ -167,6 +175,19 @@ class HandoverStorage {
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   Eigen::VectorXd vacuum_magnetic_pressure;
 
+  // [nZnT] total pressure of the plasma at the boundary at the moment the
+  // vacuum solution was first established, bsqsav(:,1) in Fortran VMEC.
+  // Fast-poloidal layout, like totalPressure.
+  Eigen::VectorXd initial_plasma_pressure_at_boundary;
+
+  // [nZnT] Nestor's vacuum magnetic pressure at that same moment,
+  // bsqsav(:,2). Fast-toroidal layout, like vacuum_magnetic_pressure.
+  Eigen::VectorXd initial_vacuum_pressure_at_boundary;
+
+  // [nZnT] total pressure extrapolated from inside onto the boundary,
+  // bsqsav(:,3). Fast-poloidal layout.
+  Eigen::VectorXd edge_total_pressure;
+
   // [nZnT] cylindrical B^R of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_r;
 
@@ -176,6 +197,10 @@ class HandoverStorage {
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_z;
 
+  // Fourier coefficients of Nestor's scalar magnetic potential; empty unless
+  // this is a free-boundary run. Reported as `potvac` in the wout file.
+  Eigen::VectorXd vacuum_potential;
+
   // Whether the free-boundary vacuum solve requested an early exit at a
   // debug checkpoint (VmecCheckpoint). The vacuum solve now runs in a nested
   // parallel region driven by a single radial thread, so this shared flag
@@ -183,6 +208,9 @@ class HandoverStorage {
   // reads it after the enclosing 'omp single' barrier). Always false during
   // normal runs (checkpoint == NONE).
   bool vacuum_reached_checkpoint = false;
+
+  // First error from the nested vacuum team; reset to OK before each solve.
+  absl::Status vacuum_status = absl::OkStatus();
 
  private:
   const Sizes& s_;

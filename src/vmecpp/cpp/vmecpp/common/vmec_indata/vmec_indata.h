@@ -90,8 +90,8 @@ class VmecINDATA {
   // number
   int ntheta;
 
-  // number of toroidal grid points; must match nzeta of mgrid file if using
-  // free-boundary
+  // number of toroidal grid points, raised to 2 * ntor + 4 when smaller; the
+  // mgrid file must carry the resulting number if using free-boundary
   int nzeta;
 
   // ---------------------------------
@@ -190,6 +190,11 @@ class VmecINDATA {
 
   // number of iterations between full vacuum calculations
   int nvacskip;
+
+  // sign of the Jacobian of the (s, theta, zeta) coordinates: -1 for the
+  // left-handed system of Fortran VMEC, +1 for a right-handed one; the input
+  // boundary is flipped in theta to match it
+  int signgs;
 
   // indicates which method to use
   // for the free-boundary force contribution
