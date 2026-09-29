@@ -21,10 +21,12 @@ points, quantities that do not depend on its poloidal angle:
 - the toroidal current enclosed by each half-grid surface (buco), and its radial
   derivative on the full grid (jcurv),
 
-with their observed orders of convergence, and plots them.
+with their observed orders of convergence, and plots them. Each run starts from the
+coarser grids of MULTIGRID below its ns and takes every grid to the residual ftol_for
+gives it.
 
     python examples/exact_equilibria.py [--suite demo|quick|full] [--member NAME]
-                                        [--out DIR] [--threads N]
+                                        [--out DIR] [--threads N] [--check]
 
 The members are:
 
@@ -42,7 +44,10 @@ The demo suite runs "sheared" at two radial resolutions; the quick suite runs ev
 member up to ns = 100, with an angular scan of "sheared" at ns = 100; the full suite
 runs them up to ns = 1000, with an angular scan at ns = 400. With --out the results go
 to DIR as JSON, markdown tables and plots of the deviations against h and mpol and of
-the enclosed current over s.
+the enclosed current over s. The summary ends with checks on the scans of "sheared":
+convergence in ns at O(h) and in mpol and ntor, the magnetic axis, B against its
+derivative jcurv, and the enclosed current at O(h^2) with its limit at the axis; with
+--check a failed check fails the run.
 
 The paper's units have mu0 = 1: B is in tesla and lengths in metres, so the pressure
 is p / mu0 in pascals. The paper's poloidal angles turn clockwise in an (R, Z)
@@ -54,6 +59,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import functools
+import itertools
 import json
 import math
 import time
@@ -399,17 +405,20 @@ IOTA2 = Iota2("iota2", eps=0.25, delta=1.0 / 64.0)
 MEMBERS = {m.name: m for m in (SHEARED, SHEARED_72, SHEARED_A, IOTA2)}
 
 
-def run(
-    member, ns, mpol, ntor, ftol=1e-16, niter=20000, delt=0.9, max_threads=1, grids=()
-):
+def ftol_for(ns):
+    """The residual a run at ns is taken to: 1e-18 up to ns = 200, 1e-16 above."""
+    return 1e-18 if ns <= 200 else 1e-16
+
+
+def run(member, ns, mpol, ntor, niter=20000, delt=0.9, max_threads=1, grids=()):
     """VMEC++ on a member at one resolution, after the coarser radial grids given, if
-    any, each run to 1e-12; the output is returned whether or not the residual reached
-    ftol."""
+    any, each grid run to ftol_for its ns; the output is returned whether or not the
+    residual reached it."""
     ns_array = [*grids, ns]
     vmec_input = member.vmec_input(ns, mpol, ntor).model_copy(
         update={
             "ns_array": np.array(ns_array, dtype=np.int64),
-            "ftol_array": np.array([1e-12] * len(grids) + [ftol]),
+            "ftol_array": np.array([ftol_for(n) for n in ns_array]),
             "niter_array": np.array([niter] * len(ns_array), dtype=np.int64),
             "delt": delt,
             "return_outputs_even_if_not_converged": True,
@@ -569,12 +578,103 @@ def orders(ns_list, values):
     return list(np.log(e[:-1] / e[1:]) / np.log(h[:-1] / h[1:]))
 
 
+def fitted_order(ns_list, values):
+    """The observed order over all resolutions, the slope of log e against log h."""
+    h = 1.0 / (np.asarray(ns_list, float) - 1.0)
+    return float(np.polyfit(np.log(h), np.log(np.asarray(values, float)), 1)[0])
+
+
+def checks(results):
+    """The checks on the scans of "sheared", as (check, criterion, measured, passed).
+
+    They are empty when the results hold no radial and angular scan of "sheared".
+    """
+    entry = results.get("sheared")
+    if entry is None or not entry["angular"]:
+        return []
+    radial, angular = entry["radial"], entry["angular"]
+    ns = [r["ns"] for r in radial]
+    fit = {k: fitted_order(ns, [r[k] for r in radial]) for k in MEASURES}
+    out = []
+
+    keys = ("psi", "axis", "B", "current")
+    out.append(
+        (
+            "ns convergence at O(h)",
+            "psi, the axis, B and the current converge at fitted order >= 0.9",
+            ", ".join(f"{k} {fit[k]:.2f}" for k in keys),
+            all(fit[k] >= 0.9 for k in keys),
+        )
+    )
+
+    bulk = [r["B, s >= 1/4"] for r in angular]
+    falls = {k: angular[0][k] / angular[2][k] for k in ("psi", "axis", "B, s >= 1/4")}
+    out.append(
+        (
+            "mpol, ntor convergence",
+            "B for s >= 1/4 falls at every step of the angular scan, and psi, the axis "
+            "and B for s >= 1/4 fall at least 100-fold over its first two steps",
+            "B, s >= 1/4 "
+            + ", ".join(f"{v:.1e}" for v in bulk)
+            + "; falls "
+            + ", ".join(f"{k} {v:.0f}" for k, v in falls.items()),
+            all(b < a for a, b in itertools.pairwise(bulk))
+            and all(v >= 100.0 for v in falls.values()),
+        )
+    )
+
+    h = 1.0 / (radial[-1]["ns"] - 1)
+    out.append(
+        (
+            "magnetic axis",
+            "the axis converges at fitted order >= 0.9 and lies within 2e-4 h metres "
+            "of the exact axis at the finest ns",
+            f"order {fit['axis']:.2f}, {radial[-1]['axis']:.1e} m at ns "
+            f"{radial[-1]['ns']}, where 2e-4 h is {2e-4 * h:.1e} m",
+            fit["axis"] >= 0.9 and radial[-1]["axis"] <= 2e-4 * h,
+        )
+    )
+
+    out.append(
+        (
+            "B and its derivatives",
+            "B for s >= 1/4 converges at fitted order >= 1.5, and jcurv, the radial "
+            "derivative of the current, at a lower order than the current, over the "
+            "whole profile and for s >= 1/4",
+            f"B, s >= 1/4 {fit['B, s >= 1/4']:.2f}; jcurv {fit['jcurv']:.2f} against "
+            f"the current's {fit['current']:.2f}, for s >= 1/4 "
+            f"{fit['jcurv, s >= 1/4']:.2f} against {fit['current, s >= 1/4']:.2f}",
+            fit["B, s >= 1/4"] >= 1.5
+            and fit["jcurv"] < fit["current"]
+            and fit["jcurv, s >= 1/4"] < fit["current, s >= 1/4"],
+        )
+    )
+
+    pairs = entry["orders"]["current, s >= 1/4"]
+    near = [r["current near axis"] for r in radial]
+    out.append(
+        (
+            "enclosed current",
+            "the current for s >= 1/4 converges at order >= 1.8 between every pair of "
+            "resolutions, and buco / s at the innermost half-grid point approaches the "
+            "exact limit at every step",
+            "orders "
+            + ", ".join(f"{o:.2f}" for o in pairs)
+            + "; buco / s off by "
+            + ", ".join(f"{v:.1e}" for v in near),
+            all(o >= 1.8 for o in pairs)
+            and all(b < a for a, b in itertools.pairwise(near)),
+        )
+    )
+    return out
+
+
 @dataclasses.dataclass(frozen=True)
 class Scan:
     """A radial scan of a member at fixed mpol, ntor and an angular scan at fixed ns.
 
-    The runs of a member that converges start above ns = 100 from the coarser grids of
-    MULTIGRID; the others run each grid to niter on its own.
+    The runs of a member that converges start from the coarser grids of MULTIGRID below
+    their ns; the others run each grid to niter on its own.
     """
 
     member: str
@@ -588,9 +688,7 @@ class Scan:
 
 
 MULTIGRID = (25, 100, 400)
-# With ntor <= 10 the toroidal mode numbers stay at or below 20, so near the iota of
-# "sheared" only m <= 4 can resonate, and none does within 0.3 of it.
-MODES = ((4, 2), (6, 4), (8, 6), (10, 8), (12, 10))
+MODES = ((4, 2), (6, 4), (8, 6), (10, 8), (12, 10), (14, 12), (16, 14))
 QUICK, FULL = (13, 25, 50, 100), (25, 50, 100, 200, 400, 1000)
 
 SUITES = {
@@ -611,7 +709,7 @@ SUITES = {
 
 
 def _row(member, scan, ns, mpol, ntor, max_threads):
-    grids = tuple(n for n in MULTIGRID if n < ns) if scan.multigrid and ns > 100 else ()
+    grids = tuple(n for n in MULTIGRID if n < ns) if scan.multigrid else ()
     t0 = time.time()
     wout = run(
         member, ns, mpol, ntor, niter=scan.niter, max_threads=max_threads, grids=grids
@@ -705,6 +803,19 @@ def summary(results, suite):
                 for r in rows
             ]
             lines.append("")
+    found = checks(results)
+    if found:
+        lines += [
+            "### Checks on sheared",
+            "",
+            "| check | criterion | measured | result |",
+            "|---|---|---|---|",
+        ]
+        lines += [
+            f"| {name} | {criterion} | {measured} | {'pass' if ok else 'FAIL'} |"
+            for name, criterion, measured, ok in found
+        ]
+        lines.append("")
     return "\n".join(lines) + "\n"
 
 
@@ -781,8 +892,16 @@ def main():
         default=None,
         help="VMEC++ threads per run, all available by default",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit with an error when a check on sheared fails",
+    )
     args = parser.parse_args()
-    run_suite(args.suite, args.member, args.out, args.threads)
+    results = run_suite(args.suite, args.member, args.out, args.threads)
+    failed = [name for name, _, _, ok in checks(results) if not ok]
+    if args.check and failed:
+        raise SystemExit("failed checks: " + ", ".join(failed))
 
 
 if __name__ == "__main__":

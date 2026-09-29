@@ -25,9 +25,9 @@ NS_COARSE, NS, MPOL, NTOR = 13, 25, 12, 10
 # Largest deviations from the exact solution at NS: psi relative to its boundary
 # value, the axis in metres, the field relative to |B| at the point, and the enclosed
 # current and its radial derivative jcurv relative to their largest values. VMEC++
-# reaches 1.1e-4, 1.1e-5, 4.8e-5, 4.2e-6 and 3.4e-6, each within ten per cent of that
+# reaches 5.2e-5, 4.1e-6, 4.9e-5, 4.2e-6 and 3.3e-6, each within 15 per cent of that
 # for delt from 0.7 to 1.
-TOL = {"psi": 2.5e-4, "axis": 2.5e-5, "B": 1e-4, "current": 8e-6, "jcurv": 7e-6}
+TOL = {"psi": 1.2e-4, "axis": 9e-6, "B": 1e-4, "current": 8e-6, "jcurv": 7e-6}
 
 
 @pytest.fixture(scope="module")
@@ -36,8 +36,8 @@ def runs():
 
 
 def test_converges(runs):
-    for wout in runs.values():
-        assert max(wout.fsqr, wout.fsqz, wout.fsql) <= 1e-16
+    for ns, wout in runs.items():
+        assert max(wout.fsqr, wout.fsqz, wout.fsql) <= ee.ftol_for(ns)
 
 
 def test_flux_surfaces(runs):
