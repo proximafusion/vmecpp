@@ -12,63 +12,29 @@
 
 namespace vmecpp {
 
-// Enumerated values for FlowControl::restart_reason, which controls the
-// disposition of the iteration loop's recovery logic at the end of each
-// time step. The integer values are preserved from the upstream Fortran
-// VMEC implementation (variable `irst`) to simplify cross-reference between
-// the C++ port and the Fortran reference source.
+// enumerates values of `restart_reason`
+// was `irst` = 1, 2, 3, 4 in Fortran VMEC
 enum class RestartReason : std::uint8_t {
-  // No restart is required for the current iteration. RestartIteration
-  // creates a backup of the current state vector in preparation for the
-  // next time step, allowing subsequent failure modes to revert cleanly
-  // to a known-good configuration. Fortran equivalent: irst == 1.
+  // irst == 1, no restart required, instead make backup of current state vector
+  // when calling Vmec::RestartIteration
   NO_RESTART = 1,
 
-  // The Jacobian of the radial coordinate transform has changed sign,
-  // indicating that adjacent flux surfaces have begun to overlap and the
-  // current geometry is no longer well-posed. On the first occurrence
-  // within a given multigrid stage, the iteration controller invokes
-  // magnetic-axis recomputation; on subsequent occurrences it reduces the
-  // time step delt and retries from the most recent backup. Fortran
-  // equivalent: irst == 2.
+  // irst == 2, bad Jacobian, flux surfaces are overlapping
   BAD_JACOBIAN = 2,
 
-  // Residual norms are not decaying at the expected rate over the
-  // preceding interval, signaling that the present time step is too large
-  // to support stable progress. The controller treats this as a soft
-  // failure, reduces delt, and retries from the most recent backup.
-  // Fortran equivalent: irst == 3.
+  // irst == 3, bad progress, residuals not decaying as expected
   BAD_PROGRESS = 3,
 
-  // Initial forces evaluated at the start of an iteration exceeded a
-  // safety threshold, indicating that the flux surfaces are spaced too
-  // closely though not yet overlapping in the BAD_JACOBIAN sense. The
-  // controller resets to the initial guess with a reduced time step,
-  // treating the condition as an early-stage instability. Fortran
-  // equivalent: irst == 4.
+  // irst == 4, huge initial forces, flux surfaces are too close to each other
+  // (but not overlapping yet)
   HUGE_INITIAL_FORCES = 4
 };
 
-// Maps a raw integer restart-reason code, as produced by legacy code paths
-// reading from the Fortran reference, into the corresponding RestartReason
-// enumerator. Used at conversion boundaries between integer-typed state
-// fields and the typed C++ representation.
 RestartReason RestartReasonFromInt(int restart_reason);
 
-// Aggregate of the iteration controller's mutable state for a single
-// invocation of Vmec::run. Holds the current multigrid stage parameters,
-// residual histories, restart bookkeeping, and the per-config parallel
-// state vectors used by the batched CUDA execution mode. Instances are
-// constructed once per Vmec object and persist across multigrid stage
-// transitions; ResizeForBatch sizes the per-config vectors when the CUDA
-// path is active.
 class FlowControl {
  public:
-  // Number of iterations between successive updates of the radial
-  // preconditioner matrix. The interval balances the cost of preconditioner
-  // factorization against the rate at which the preconditioner approximation
-  // becomes stale relative to the evolving geometry. Corresponds to the
-  // ns4 parameter in the Fortran reference.
+  // ns4: number of iterations between update of radial preconditioner matrix
   static constexpr int kPreconditionerUpdateInterval = 25;
 
   FlowControl(bool lfreeb, double delt, int num_grids,
@@ -76,126 +42,69 @@ class FlowControl {
 
   int max_threads() const;
 
-  // Whether the equilibrium is computed in free-boundary mode (the plasma
-  // boundary is determined consistently with an external magnetic field) or
-  // fixed-boundary mode (the boundary is supplied as input and held rigid).
   const bool lfreeb;
 
-  // Current disposition of the iteration controller. Read at the start of
-  // each iteration to determine whether a restart is in progress and which
-  // recovery action to apply. Corresponds to the Fortran variable `irst`.
+  // was called `irst` in Fortran VMEC
   RestartReason restart_reason;
 
-  // Current number of radial flux surfaces in the discretization. Set at
-  // the start of each multigrid stage and held constant within the stage.
+  // current ns in algorithm
   int ns;
 
-  // Number of unknown coefficients in the current discretization. Equal to
-  // the spectral coefficient count multiplied by the number of independent
-  // poloidal and toroidal modes for the current ns value.
   int neqs;
-  // The value of neqs from the previous multigrid stage, retained to drive
-  // interpolation from the coarser representation to the present grid.
   int neqs_old;
 
-  // Indicates whether the input boundary required a poloidal-angle flip
-  // during setup to satisfy the sign-of-Jacobian convention. Used by
-  // diagnostic and output paths to record the equivalence with the input.
   bool haveToFlipTheta;
 
-  // Cumulative count of Jacobian-sign-induced restarts within the current
-  // multigrid stage. Used by the iteration controller to escalate from
-  // axis recomputation on the first occurrence to time-step reduction on
-  // subsequent occurrences, and to detect pathological cases where the
-  // count exceeds the runaway threshold.
   int ijacob;
 
-  // Number of multigrid stages remaining to be executed, decremented as the
-  // controller advances through the ns_array sequence supplied by the input.
   int multi_ns_grid;
 
-  // -----------------------------------------------------------------------
-  // Current multigrid stage parameters. These four fields are updated at
-  // each stage transition and held constant throughout the iterations of a
-  // single stage. They derive directly from the indata arrays ns_array,
-  // ftol_array, and niter_array at the current multigrid index.
-  // -----------------------------------------------------------------------
+  // ------ current multi-grid step settings
 
-  // Radial resolution of the current multigrid stage. Identical to ns
-  // during iteration but logically distinct: nsval is the planned stage
-  // value, while ns reflects the in-progress discretization.
+  // radial resolution of current multi-grid step
   int nsval;
 
-  // Radial grid spacing of the flux surfaces, given by 1.0 / (ns - 1.0).
-  // Required by every per-iteration force evaluation and metric calculation.
+  // radial grid spacing of flux surfaces: 1.0 / (ns - 1.0)
   double deltaS;
 
-  // Force-residual tolerance for the current stage. The iteration is
-  // considered converged when each of fsqr, fsqz, and fsql falls below
-  // this threshold.
+  // current force tolerance
   double ftolv;
 
-  // Maximum number of iterations permitted within the current stage.
-  // Exceeding this value without convergence terminates the run.
+  // current maximum number of iterations
   int niterv;
 
-  // -----------------------------------------------------------------------
-  // End of current multigrid stage parameters.
-  // -----------------------------------------------------------------------
+  // --------- end: current multi-grid step settings
 
-  // Number of radial surfaces distributed across the parallel worker pool
-  // for the current stage. Equal to ns under single-rank execution; under
-  // multi-rank execution this is the per-rank share.
   int num_surfaces_to_distribute;
 
-  // Lower bound of the radial index range processed during InitializeRadial
-  // and the multigrid interpolation step.
+  // for initialize_radial and interp
   int ns_min;
-  // Value of ns from the previous multigrid stage, retained to drive the
-  // interpolation from the coarser grid into the present finer grid.
   int ns_old;
 
-  // Working copy of the initial time step delt at the start of an iteration
-  // sequence, used by the time-step reduction logic on bad_jacobian events
-  // to derive the reduced step from the original input value.
   double delt0r;
 
-  // Cumulative invariant force residuals for the radial (R), vertical (Z),
-  // and lambda equations respectively. Populated by IdealMhdModel's
-  // evalFResInvar at the end of each force evaluation. The iteration is
-  // considered converged when each of these falls below ftolv.
+  // Cumulative force residuals (radial, vertical and lambda)
+  // Populated by `evalFResInvar`
   double fsqr, fsqz, fsql;
 
-  // Per-iteration history of the invariant residuals, retained for
-  // post-run diagnostics and convergence-rate analysis. The total force
-  // residual at iteration k is given by force_residual_r[k] +
-  // force_residual_z[k] + force_residual_lambda[k].
+  // Time-trace of the invariant force residuals during convergence
+  // fsqt = (force_residual_r + force_residual_z + force_residual_lambda)
   std::vector<double> force_residual_r;
   std::vector<double> force_residual_z;
   std::vector<double> force_residual_lambda;
 
-  // Cumulative preconditioned force residuals, computed in the same units
-  // and ordering as the invariant residuals above but after application of
-  // the radial preconditioner. Drive the time-step controller's evolution
-  // of delt and the tau-acceleration logic in performTimeStep. Populated
-  // by IdealMhdModel's evalFResPrecd.
+  // Preconditioned cumulative force residuals (radial, vertical and lambda)
+  // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;
-  // Sum of the three preconditioned residuals fsqr1 + fsqz1 + fsql1.
-  // Cached at each force evaluation for the time-step controller's
-  // convenience.
   double fsq;
 
-  // Per-iteration history of the MHD energy functional, retained for
-  // post-run diagnostics and convergence-rate analysis.
   std::vector<double> mhd_energy;
 
-  // Per-iteration history of the integrated magnetic-field jump at the
-  // plasma-vacuum interface. Populated only when lfreeb is true; otherwise
-  // remains empty.
+  // Time-trace of the force at the vacuum boundary (only for free-boundary)
   std::vector<double> delbsq;
-  // Per-iteration log of the restart-reason transitions encountered during
-  // the run, retained for diagnostic purposes. Permits post-run inspection
-  // of how often each recovery path was invoked and at which iterations.
+  // Time-trace of the restart reasons, for debugging purposes. Each restart is
+  // a pair of <iteration, reason> (e.g. to see how many jacobian resets
+  // occurred)
   std::vector<RestartReason> restart_reasons;
 
   // Running minimum of the preconditioned residual sum (fsq).
@@ -204,12 +113,7 @@ class FlowControl {
   // only by the PARVMEC time-step control.
   double res1;
 
-  // Component-wise vector form of the invariant residuals fsqr, fsqz, fsql,
-  // packaged for callers that consume the three components together
-  // (notably the per-cfg state vectors below for the batched CUDA path).
   Eigen::Vector3d fResInvar;
-  // Component-wise vector form of the preconditioned residuals fsqr1,
-  // fsqz1, fsql1, packaged for the same callers as fResInvar.
   Eigen::Vector3d fResPrecd;
 
   // ---------------------------------------------------------------------------

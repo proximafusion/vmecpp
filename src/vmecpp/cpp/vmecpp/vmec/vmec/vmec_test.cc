@@ -86,6 +86,34 @@ TEST(TestVmec, CheckErrorOnNonConvergence) {
       absl::StrContains(status.status().message(), "VMEC++ did not converge"));
 }  // CheckErrorOnNonConvergence
 
+// The thread count a run uses is a property of that run: a coarse run must
+// not cap the thread budget that a later run, or another OpenMP user in the
+// process, reads from the runtime.
+TEST(TestVmec, RunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // five surfaces admit two radial threads, fewer than most machines have
+  indata.ns_array.setConstant(5);
+  indata.niter_array.setConstant(3);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const int process_thread_count = omp_get_max_threads();
+
+  ASSERT_TRUE(vmecpp::run(indata).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+
+  ASSERT_TRUE(vmecpp::run(indata, std::nullopt, /*max_threads=*/1).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
+}  // RunLeavesTheProcessThreadCountUnchanged
+
 TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   // make sure VMEC++ returns the outputs without an error
   // if explicitly instructed to do so
@@ -1027,6 +1055,41 @@ TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
   ASSERT_FALSE(reached.ok());
   EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
 }  // ZeroMaximumMultiGridStepIsRejected
+
+// At ns == 3 the axis entry is also the third-from-last entry, so both ends of
+// the current density come from the single interior surface.
+TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array = Eigen::VectorXi::Constant(1, 3);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-12);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 2000);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  const auto& wout = output->wout;
+  ASSERT_EQ(wout.ns, 3);
+  for (int mn = 0; mn < wout.mnmax_nyq; ++mn) {
+    const double interior_u = wout.currumnc(mn, 1);
+    const double interior_v = wout.currvmnc(mn, 1);
+
+    if (wout.xm_nyq[mn] <= 1) {
+      EXPECT_EQ(wout.currumnc(mn, 0), interior_u) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), interior_v) << "mn = " << mn;
+    } else {
+      EXPECT_EQ(wout.currumnc(mn, 0), 0.0) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), 0.0) << "mn = " << mn;
+    }
+
+    EXPECT_EQ(wout.currumnc(mn, 2), interior_u) << "mn = " << mn;
+    EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
+  }
+}  // CurrentDensityEndsAtTheSmallestRadialResolution
 
 // nThetaReduced > 32 (here 44, from ntheta = 86) exercises the multi-warp
 // poloidal scatter in the CUDA build: one x-block per 32 poloidal points. A

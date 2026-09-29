@@ -87,11 +87,13 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
     return absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end));
   }
 
-  // check for matching `ns`
-  if (initial_state.indata.ns_array[initial_state.indata.ns_array.size() - 1] !=
-      indata.ns_array[0]) {
-    return absl::InvalidArgumentError(
-        absl::StrCat(msg_start, "ns_array", msg_end));
+  // check for matching `ns`: the state is read from the wout, one column per
+  // flux surface
+  if (initial_state.wout.ns != indata.ns_array[0]) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%sns_array%s The wout of the initial state has ns = %d, but "
+        "ns_array[0] = %d.",
+        msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0]));
   }
 
   return absl::OkStatus();
@@ -190,10 +192,23 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
 Vmec::~Vmec() { m_.clear(); }
 
 // initialize based on input file contents
+namespace {
+// Fourier cutoffs of the vacuum potential: the plasma's unless raised.
+int VacuumMpol(const vmecpp::VmecINDATA& indata) {
+  return std::max(indata.vacuum_mpol, indata.mpol);
+}
+int VacuumNtor(const vmecpp::VmecINDATA& indata) {
+  return std::max(indata.vacuum_ntor, indata.ntor);
+}
+}  // namespace
+
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            OutputMode verbose, InterruptCallback interrupt_callback)
     : indata_(indata),
       s_(indata_),
+      vacuum_s_(indata_.lasym, indata_.nfp, VacuumMpol(indata_),
+                VacuumNtor(indata_), s_.ntheta, s_.nZeta, VacuumMpol(indata_),
+                VacuumNtor(indata_)),
       t_(&s_),
       b_(&s_, &t_, indata_.signgs),
       h_(&s_),
@@ -213,11 +228,11 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
   if (fc_.lfreeb) {
-    // tangential Fourier resolution
+    // tangential Fourier resolution of the vacuum potential
     // 0 : ntor
-    int nf = s_.ntor;
+    int nf = vacuum_s_.ntor;
     // 0 : (mpol + 1)
-    int mf = s_.mpol + 1;
+    int mf = vacuum_s_.mpol + 1;
     int mnpd = (2 * nf + 1) * (mf + 1);
     // For lasym = true the scalar potential carries both sin(mu-nv) and
     // cos(mu-nv) coefficients, doubling the Nestor linear system to
@@ -226,6 +241,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     matrixShare.setZero(mnpd_dim * mnpd_dim);
     bvecShare.setZero(mnpd_dim);
 
+    h_.SetVacuumCutoffs(vacuum_s_.mpol, vacuum_s_.ntor);
     h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
     h_.initial_plasma_pressure_at_boundary.setZero(s_.nZnT);
     h_.initial_vacuum_pressure_at_boundary.setZero(s_.nZnT);
@@ -241,7 +257,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
 absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                                const int iterations_before_checkpointing,
                                const int maximum_multi_grid_step,
-                               std::optional<HotRestartState> initial_state) {
+                               std::optional<HotRestartState> initial_state,
+                               const int checkpoint_multi_grid_step) {
   if (maximum_multi_grid_step < 1) {
     return absl::InvalidArgumentError(
         absl::StrFormat("maximum_multi_grid_step must be at least 1, but is %d",
@@ -321,12 +338,20 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return status;
       }
     }
-    if (mgrid_.numPhi != indata_.nzeta) {
+    // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
+    // toroidal resolution of the run.
+    if (mgrid_.numPhi != s_.nZeta) {
+      const std::string raised_from =
+          s_.nZeta == indata_.nzeta
+              ? ""
+              : absl::StrFormat(
+                    " (nzeta = %d in VmecINDATA, raised to the "
+                    "minimum for ntor = %d)",
+                    indata_.nzeta, indata_.ntor);
       return absl::InvalidArgumentError(absl::StrFormat(
-          "MGridProvider has %d phi grid points, but VmecINDATA "
-          "has %d nzeta grid points. Please ensure that the two "
-          "are consistent.",
-          mgrid_.numPhi, indata_.nzeta));
+          "MGridProvider has %d phi grid points, but the run has %d toroidal "
+          "grid points%s. Please ensure that the two are consistent.",
+          mgrid_.numPhi, s_.nZeta, raised_from));
     }
     if (mgrid_.nfp != indata_.nfp) {
       return absl::InvalidArgumentError(absl::StrFormat(
@@ -470,9 +495,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
       // value
-      const absl::StatusOr<bool> initialized =
-          InitializeRadial(checkpoint, iterations_before_checkpointing,
-                           fc_.nsval, fc_.ns_old, fc_.delt0r, initial_state);
+      // igrid is the index into ns_array; the inserted ns=3 stage runs at
+      // igrid = -1 and is never a checkpoint step.
+      const bool is_checkpoint_step = igrid == checkpoint_multi_grid_step - 1;
+      const absl::StatusOr<bool> initialized = InitializeRadial(
+          checkpoint, iterations_before_checkpointing, fc_.nsval, fc_.ns_old,
+          fc_.delt0r, initial_state, std::nullopt, is_checkpoint_step);
       if (!initialized.ok()) {
         return initialized.status();
       }
@@ -665,7 +693,7 @@ void Vmec::SetupVacuumSolvers() {
 
     if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
       fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
-          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
           std::span<double>(matrixShare.data(), matrixShare.size()),
           std::span<double>(bvecShare.data(), bvecShare.size()),
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
@@ -678,7 +706,7 @@ void Vmec::SetupVacuumSolvers() {
                             vacuum_reduce_slots_.size()));
     } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
       fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
-          &s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
                             h_.vacuum_magnetic_pressure.size()),
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
@@ -778,7 +806,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
     int ns_old, double& m_delt0,
     const std::optional<HotRestartState>& initial_state,
-    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
+    std::optional<MultigridInterpolationScheme> interpolation_scheme,
+    bool is_checkpoint_step) {
   // Stage info output is now handled by logger_.BeginStage() in run().
 
   // Set timestep control parameters
@@ -972,7 +1001,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       return current_profile_status;
     }
 
-    if (checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
         iterations_before_checkpointing <= 1) {
       // break the loop over thread_id here to check spectral constraint static
       // data; need to have all "threads" initialized before being able to test
@@ -1055,7 +1085,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     // VmecConstants::rmsPhiP, can update lamscale.
     constants_.lamscale = sqrt(constants_.rmsPhiP * fc_.deltaS);
 
-    if (checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
         iterations_before_checkpointing <= 1) {
       return true;
     }
@@ -1090,7 +1121,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
                                                             *p_[thread_id]);
       }
     }
-    if (checkpoint == VmecCheckpoint::SETUP_INITIAL_STATE &&
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::SETUP_INITIAL_STATE &&
         iterations_before_checkpointing <= 1) {
       return true;
     }
@@ -1105,7 +1137,10 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       //
       // No iteration guard here, unlike the checkpoints inside the solver
       // loop: this one sits between multigrid steps and fires once per step,
-      // so a condition on the iteration counter would not mean anything.
+      // so a condition on the iteration counter would not mean anything. It
+      // is not gated on the checkpoint step either: INTERP is only reached
+      // when interpolating from a coarser grid, so it cannot occur in the
+      // first multi-grid step at all.
       if (checkpoint == VmecCheckpoint::INTERP) {
         return true;
       }
@@ -1155,7 +1190,7 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(num_threads_)
 #endif  // _OPENMP
   {
 #ifdef _OPENMP
