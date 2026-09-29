@@ -218,13 +218,12 @@ def test_run_returns_the_output_stage_wout() -> None:
         np.testing.assert_array_equal(value, getattr(reference, name), err_msg=name)
 
 
-def test_output_stage_accepts_the_output_of_a_coarser_step() -> None:
-    """The output stage sizes itself from the geometry it receives, which after an
-    early stop belongs to a coarser step than the last of ns_array: here the output
-    of a run of cma's first step alone, with the two-step input.
+def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
+    """One iteration per step stops cma in its ns = 25 step with a bad Jacobian;
+    return_outputs_even_if_not_converged then returns that step's wout.
 
-    One iteration leaves a state whose field is not meaningful, so only the geometry
-    is compared.
+    The field of a bad-Jacobian state is not meaningful, so only the geometry is
+    compared.
     """
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json").model_copy(
         update={
@@ -232,14 +231,7 @@ def test_output_stage_accepts_the_output_of_a_coarser_step() -> None:
             "return_outputs_even_if_not_converged": True,
         }
     )
-    first_step = indata.model_copy(
-        update={
-            "ns_array": indata.ns_array[:1],
-            "niter_array": indata.niter_array[:1],
-            "ftol_array": indata.ftol_array[:1],
-        }
-    )
-    output = _run_cpp(first_step)
+    output = _run_cpp(indata)
     expected = vmecpp.VmecWOut._from_cpp_wout(output.wout)
     assert expected.ns < indata.ns_array[-1]
     actual = vmecpp._wout_from_output_stage(indata, output)
