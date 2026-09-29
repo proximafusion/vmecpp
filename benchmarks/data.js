@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790586424698,
+  "lastUpdate": 1790671760560,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -20951,6 +20951,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.19513001300003907,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b0b67f8f98fcefca2e1aecb74ab0c6e61c42087b",
+          "message": "Test that the energy Hessian is symmetric and DGeod is never positive (#904)\n\n* Test that the energy Hessian is symmetric and DGeod is never positive\n\n* Move the energy Hessian and DGeod tests to a Bazel test",
+          "timestamp": "2026-09-29T10:41:15+02:00",
+          "tree_id": "0b79f8022e9030929007b58b17ed95d9d5d45246",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b0b67f8f98fcefca2e1aecb74ab0c6e61c42087b"
+        },
+        "date": 1790671749348,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6535584173999837,
+            "range": "stddev: 0.0029522116200146067",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.1829823153333527,
+            "range": "stddev: 1.1343135814180956",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1074014593333459,
+            "range": "stddev: 0.0025788939877132563",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.2309872910000004,
+            "range": "stddev: 0.9950462660090456",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4756857646666692,
+            "range": "stddev: 0.013728064577250749",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.7630839463333245,
+            "range": "stddev: 0.023395840251086906",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.469029717000012,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5037146920000168,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
