@@ -12,6 +12,14 @@ filegroup(
 )
 
 filegroup(
+    name = "circular_tokamak",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "circular_tokamak.json",
+    ],
+)
+
+filegroup(
     name = "up_down_asym",
     visibility = ["//visibility:public"],
     srcs = [
@@ -132,5 +140,13 @@ filegroup(
     srcs = [
         "mgrid_cth_like.nc",
         "cth_like_free_bdy_multigrid.json",
+    ],
+)
+
+filegroup(
+    name = "li383_low_res",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "li383_low_res.json",
     ],
 )

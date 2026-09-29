@@ -160,6 +160,46 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
     return with_context(read_status);
   }
 
+  // the grid and the coil count size everything below, so they are held to
+  // what IsValidMakegridParameters requires of a grid
+  absl::Status header_status;
+  if (*nfp_or < 1) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("nfp must be > 0, but is %d", *nfp_or)));
+  }
+  if (*nextcur_or < 1) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("nextcur must be > 0, but is %d", *nextcur_or)));
+  }
+  if (*num_r_or < 2) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("ir must be > 1, but is %d", *num_r_or)));
+  }
+  if (*num_z_or < 2) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("jz must be > 1, but is %d", *num_z_or)));
+  }
+  if (*num_phi_or < 1) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("kp must be > 0, but is %d", *num_phi_or)));
+  }
+  if (*max_r_or <= *min_r_or) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("R grid extent must be positive, but is from rmin = "
+                        "% .3e to rmax = % .3e",
+                        *min_r_or, *max_r_or)));
+  }
+  if (*max_z_or <= *min_z_or) {
+    header_status.Update(absl::InvalidArgumentError(
+        absl::StrFormat("Z grid extent must be positive, but is from zmin = "
+                        "% .3e to zmax = % .3e",
+                        *min_z_or, *max_z_or)));
+  }
+  if (!header_status.ok()) {
+    nc_close(ncid);
+    return with_context(header_status);
+  }
+
   nfp = *nfp_or;
 
   numR = *num_r_or;
@@ -176,21 +216,30 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
 
   nextcur = *nextcur_or;
 
-  // coil_group is a [nextcur][string width] character array, each name padded
-  // on the right. The width is whatever the file declares, so a writer that
+  // coil_group is a [groups][string width] character array, each name padded
+  // on the right. Both lengths are whatever the file declares, so a writer that
   // does not use MAKEGRID's 30 still reads correctly.
   coil_group_names.clear();
   {
     int id_coil_group = 0;
+    int num_dimensions = 0;
     std::array<int, 2> coil_group_dimensions = {0, 0};
+    size_t num_groups = 0;
     size_t string_width = 0;
     if (nc_inq_varid(ncid, "coil_group", &id_coil_group) == NC_NOERR &&
+        nc_inq_varndims(ncid, id_coil_group, &num_dimensions) == NC_NOERR &&
+        num_dimensions == 2 &&
         nc_inq_vardimid(ncid, id_coil_group, coil_group_dimensions.data()) ==
+            NC_NOERR &&
+        nc_inq_dimlen(ncid, coil_group_dimensions[0], &num_groups) ==
             NC_NOERR &&
         nc_inq_dimlen(ncid, coil_group_dimensions[1], &string_width) ==
             NC_NOERR &&
         string_width > 0) {
-      std::vector<char> raw(static_cast<size_t>(nextcur) * string_width);
+      // nc_get_var_text writes all the groups the file declares; the names of
+      // groups it lacks up to nextcur stay empty
+      std::vector<char> raw(std::max(num_groups, static_cast<size_t>(nextcur)) *
+                            string_width);
       if (nc_get_var_text(ncid, id_coil_group, raw.data()) == NC_NOERR) {
         coil_group_names.reserve(nextcur);
         for (int i = 0; i < nextcur; ++i) {
