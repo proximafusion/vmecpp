@@ -116,6 +116,91 @@ class FlowControl {
   Eigen::Vector3d fResInvar;
   Eigen::Vector3d fResPrecd;
 
+  // ---------------------------------------------------------------------------
+  // Per-configuration state vectors used by the batched CUDA execution mode.
+  // ---------------------------------------------------------------------------
+  // Under the batched CUDA path (active when VMECPP_N_CONFIG_MAX exceeds one)
+  // the device-resident kernels write per-configuration outputs into buffers
+  // sized n_config_max. The host-side device-to-host accessors declared in
+  // fft_toroidal_cuda.h (ComputeJacobianCudaPerCfgD2H,
+  // ComputeForceNormsCudaPerCfgD2H, ResidualsCudaPerCfgD2H, and the
+  // associated cache accessors) populate the vectors below from those
+  // device buffers. The iteration controller in Vmec::run consults these
+  // per-configuration values to drive convergence gating and per-cfg
+  // kernel masking. Under single-configuration execution the per-cfg
+  // vectors are populated for completeness but the equivalent scalar
+  // fields above remain authoritative; the convergence gate at the
+  // multigrid termination check coincides with the legacy single-cfg
+  // condition by construction.
+  //
+  // Logical role of active_per_cfg: a nonzero entry indicates that the
+  // corresponding configuration is still iterating; a zero entry indicates
+  // that the configuration has converged or been terminated. The
+  // convergence test for successful termination becomes the conjunction
+  // over all configurations rather than the single scalar comparison
+  // against fsqr.
+  std::vector<RestartReason> restart_reason_per_cfg;
+  // The active mask is stored as a vector of unsigned 8-bit integers
+  // rather than std::vector<bool> so that the data can be copied directly
+  // to a device byte buffer without the bitset packing transformation that
+  // std::vector<bool> would impose. Nonzero values denote configurations
+  // that should continue iterating; zero values denote configurations
+  // that the per-cfg kernel skip-mask treats as inactive.
+  std::vector<std::uint8_t> active_per_cfg;
+  // Per-configuration scalar invariant residuals corresponding to the
+  // single-configuration fsqr, fsqz, fsql values above.
+  std::vector<double> fsqr_per_cfg, fsqz_per_cfg, fsql_per_cfg;
+  // Per-configuration scalar preconditioned residuals corresponding to the
+  // single-configuration fsqr1, fsqz1, fsql1 values above.
+  std::vector<double> fsqr1_per_cfg, fsqz1_per_cfg, fsql1_per_cfg;
+  // Per-configuration component-wise residual vectors. Eigen::Vector3d is
+  // a fixed-size POD-like type; std::vector contiguity is preserved.
+  std::vector<Eigen::Vector3d> fResInvar_per_cfg;
+  std::vector<Eigen::Vector3d> fResPrecd_per_cfg;
+  // Per-configuration counter of bad-Jacobian-induced restarts within the
+  // current multigrid stage, used for per-configuration restart-rate
+  // diagnostics and for the per-cfg recovery escalation logic.
+  std::vector<int> ijacob_per_cfg;
+
+  // Per-configuration iteration counter. Incremented at the convergence
+  // gate each iteration the configuration is still active. Used by the
+  // per-cfg niter cap to mark slow cfgs as timed out so that faster cfgs
+  // in the batch can return without waiting for the slow cfg to converge
+  // or for the shared niterv to be hit. Reset to zero at each multigrid
+  // stage transition via ResetActivePerCfgForNextStage.
+  std::vector<int> iter2_per_cfg;
+
+  // Per-configuration convergence outcome. Set when active_per_cfg[c]
+  // transitions to zero: 1 when the cfg met ftolv, 0 when it timed out
+  // against the per-cfg niter cap. Used by the batch-output pipeline to
+  // mark per-cfg results as converged or not converged. Reset at each
+  // multigrid stage transition.
+  std::vector<std::uint8_t> converged_per_cfg;
+
+  // Per-configuration iteration ceiling. When VMECPP_PER_CFG_NITER_CAP is
+  // set, the convergence gate marks any cfg whose iter2_per_cfg has
+  // reached this value as timed out (active_per_cfg[c]=0,
+  // converged_per_cfg[c]=0). Default value INT_MAX disables the cap and
+  // preserves legacy behaviour. The cap is per-stage; iter2_per_cfg
+  // resets at each multigrid stage transition.
+  int niter_max_per_cfg;
+
+  // Allocates each of the per-configuration vectors above to a length of
+  // n_cfg, default-initializing the contents. The operation is idempotent:
+  // calling with a value matching the present size has no effect. Intended
+  // to be invoked once at the start of Vmec::run when the CUDA path is
+  // active, but safe to invoke at any multigrid stage transition.
+  void ResizeForBatch(int n_cfg);
+
+  // Re-activates every configuration for the next multigrid stage and
+  // resets the per-cfg iteration counter. Configurations that converged
+  // against the coarser-stage tolerance must continue iterating at the
+  // finer stage's tighter tolerance, so active_per_cfg is restored to
+  // all-ones. iter2_per_cfg and converged_per_cfg are zeroed so the per-
+  // cfg niter cap applies fresh to each stage. Has no effect when the
+  // per-cfg vectors are empty (i.e. single-cfg or pre-ResizeForBatch).
+  void ResetActivePerCfgForNextStage();
+
  private:
   const int max_threads_;
 };

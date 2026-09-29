@@ -1450,7 +1450,8 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::ReadFrom(
 absl::Status vmecpp::OutputQuantities::Save(
     const std::filesystem::path& path) const {
   try {
-    H5::H5File file(path, H5F_ACC_TRUNC);
+    // path on Windows is wchar_t-based; the H5File ctor takes a narrow string.
+    H5::H5File file(path.string(), H5F_ACC_TRUNC);
     return WriteTo(file);
   } catch (const H5::Exception& exception) {
     return absl::InternalError(
@@ -1462,7 +1463,7 @@ absl::Status vmecpp::OutputQuantities::Save(
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
     const std::filesystem::path& path) {
   try {
-    H5::H5File file(path, H5F_ACC_RDONLY);
+    H5::H5File file(path.string(), H5F_ACC_RDONLY);
     return ReadFrom(file);
   } catch (const H5::Exception& exception) {
     return absl::InternalError(
@@ -1562,6 +1563,21 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
   output_quantities.vmec_internal_results = GatherDataFromThreads(
       sign_of_jacobian, s, fc, constants, radial_partitioning, decomposed_x,
       models_from_threads, radial_profiles);
+
+  return DeriveOutputQuantities(
+      std::move(output_quantities), indata, s, fc, constants, t, h, mgrid_mode,
+      coil_group_names, checkpoint, vacuum_pressure_state, vmec_status, iter2);
+}  // ComputeOutputQuantities
+
+vmecpp::OutputQuantities vmecpp::DeriveOutputQuantities(
+    OutputQuantities&& output_quantities_in, const VmecINDATA& indata,
+    const Sizes& s, const FlowControl& fc, const VmecConstants& constants,
+    const FourierBasisFastPoloidal& t, const HandoverStorage& h,
+    const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
+    const VmecCheckpoint& checkpoint, VacuumPressureState vacuum_pressure_state,
+    VmecStatus vmec_status, int iter2) {
+  OutputQuantities output_quantities = std::move(output_quantities_in);
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
       vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
@@ -1740,7 +1756,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
   output_quantities.indata = indata;
 
   return output_quantities;
-}  // ComputeOutputQuantities
+}  // DeriveOutputQuantities
 
 vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
