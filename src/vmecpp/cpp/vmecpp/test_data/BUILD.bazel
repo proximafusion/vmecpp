@@ -142,3 +142,11 @@ filegroup(
         "cth_like_free_bdy_multigrid.json",
     ],
 )
+
+filegroup(
+    name = "li383_low_res",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "li383_low_res.json",
+    ],
+)

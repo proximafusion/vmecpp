@@ -911,7 +911,9 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def_readwrite("ntheta", &VmecINDATA::ntheta)
           .def_readwrite("nzeta", &VmecINDATA::nzeta)
           .def_readwrite("mpol_geometry", &VmecINDATA::mpol_geometry)
-          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry);
+          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry)
+          .def_readwrite("vacuum_mpol", &VmecINDATA::vacuum_mpol)
+          .def_readwrite("vacuum_ntor", &VmecINDATA::vacuum_ntor);
 
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
@@ -1063,15 +1065,16 @@ PYBIND11_MODULE(_vmecpp, m) {
                     &vmecpp::MercierFileContents::toroidal_flux)
       .def_readonly("iota", &vmecpp::MercierFileContents::iota)
       .def_readonly("shear", &vmecpp::MercierFileContents::shear)
-      .def_readonly("d_volume_d_s", &vmecpp::MercierFileContents::d_volume_d_s)
+      .def_readonly("d_volume_d_phi",
+                    &vmecpp::MercierFileContents::d_volume_d_phi)
       .def_readonly("well", &vmecpp::MercierFileContents::well)
       .def_readonly("toroidal_current",
                     &vmecpp::MercierFileContents::toroidal_current)
-      .def_readonly("d_toroidal_current_d_s",
-                    &vmecpp::MercierFileContents::d_toroidal_current_d_s)
+      .def_readonly("d_toroidal_current_d_volume",
+                    &vmecpp::MercierFileContents::d_toroidal_current_d_volume)
       .def_readonly("pressure", &vmecpp::MercierFileContents::pressure)
-      .def_readonly("d_pressure_d_s",
-                    &vmecpp::MercierFileContents::d_pressure_d_s)
+      .def_readonly("d_pressure_d_volume",
+                    &vmecpp::MercierFileContents::d_pressure_d_volume)
       //
       .def_readonly("DMerc", &vmecpp::MercierFileContents::DMerc)
       .def_readonly("Dshear", &vmecpp::MercierFileContents::Dshear)

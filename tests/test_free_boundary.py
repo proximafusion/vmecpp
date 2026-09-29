@@ -68,6 +68,31 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+def test_vacuum_potential_cutoffs():
+    """The vacuum potential's cutoffs default to the plasma's, must not fall below them,
+    and a run with larger ones converges on the same grid."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    response_table = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    assert vmec_input.vacuum_mpol == 0
+    assert vmec_input.vacuum_ntor == 0
+
+    below = vmec_input.model_copy(deep=True)
+    below.vacuum_ntor = vmec_input.ntor - 1
+    with pytest.raises(Exception, match="vacuum_ntor"):
+        vmecpp.run(below, response_table, verbose=False)
+
+    expanded = vmec_input.model_copy(deep=True)
+    expanded.vacuum_mpol = 8
+    expanded.vacuum_ntor = 8
+    output = vmecpp.run(expanded, response_table, verbose=False)
+    assert output.wout.potvac.shape == (2 * (8 + 2) * (2 * 8 + 1),)
+
+
 def test_raise_invalid_nzeta():
     makegrid_params = vmecpp.MakegridParameters.from_file(
         TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
