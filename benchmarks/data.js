@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790718939378,
+  "lastUpdate": 1790719707802,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21511,6 +21511,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.22301190700000006,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "62630674fa84ebfe5bb77fc1a6328d4a2a9630f5",
+          "message": "Add an opt-in undamped lambda preconditioner (#820)\n\n* Add an opt-in undamped lambda preconditioner\n\n* Expose the lambda preconditioner damping as a scale, 1.0 undamped\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-30T00:01:05+02:00",
+          "tree_id": "44ef0e12c933526f2101f9b05f31d5e5b012de6d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/62630674fa84ebfe5bb77fc1a6328d4a2a9630f5"
+        },
+        "date": 1790719702716,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6386926168000173,
+            "range": "stddev: 0.012460436692347424",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.1849658436666837,
+            "range": "stddev: 1.0367209432304512",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0890641476667042,
+            "range": "stddev: 0.0075378465959329765",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.0795570566666584,
+            "range": "stddev: 0.8170139287652155",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.5625927873333392,
+            "range": "stddev: 0.019464459684582217",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.851371959333278,
+            "range": "stddev: 0.08510994760892603",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.907896064000056,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.393115828999953,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
