@@ -27,6 +27,7 @@ gives it.
 
     python examples/exact_equilibria.py [--suite demo|quick|full] [--member NAME]
                                         [--out DIR] [--threads N] [--check]
+                                        [--reference DIR]
 
 The members are:
 
@@ -47,7 +48,9 @@ to DIR as JSON, markdown tables and plots of the deviations against h and mpol a
 the enclosed current over s. The summary ends with checks on the scans of "sheared":
 convergence in ns at O(h) and in mpol and ntor, the magnetic axis, B against its
 derivative jcurv, and the enclosed current at O(h^2) with its limit at the axis; with
---check a failed check fails the run.
+--check a failed check fails the run. With --reference DIR, a checkout of the
+repository at REFERENCE_COMMIT, a further check compares the formulas here with the
+repository's own functions.
 
 The paper's units have mu0 = 1: B is in tesla and lengths in metres, so the pressure
 is p / mu0 in pascals. The paper's poloidal angles turn clockwise in an (R, Z)
@@ -59,9 +62,11 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import functools
+import importlib.util
 import itertools
 import json
 import math
+import sys
 import time
 from pathlib import Path
 
@@ -404,6 +409,102 @@ SHEARED_A = Sheared("sheared-A", eps=1.08, S=3.0, lam=3.5, k_b=0.7)
 IOTA2 = Iota2("iota2", eps=0.25, delta=1.0 / 64.0)
 MEMBERS = {m.name: m for m in (SHEARED, SHEARED_72, SHEARED_A, IOTA2)}
 
+REFERENCE_COMMIT = "c97fbcdd879206e0cfee6ad6e885ae0b13e215e8"
+REFERENCE_TOLERANCE = 1.0e-13
+
+
+def _load_reference(repository, relative_path, name):
+    """A script of the reference repository as a module, with the matplotlib settings it
+    makes on import undone."""
+    import matplotlib as mpl  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location(
+        name, Path(repository) / relative_path
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    with mpl.rc_context():
+        spec.loader.exec_module(module)
+    return module
+
+
+def reference_deviations(repository):
+    """The largest deviations of the formulas here from the functions of
+    landreman/analytic_3d_equilibria at REFERENCE_COMMIT, checked out in repository.
+
+    For "iota2" they cover the field and psi, the surfaces the boundary is taken from
+    and the axis; for the sheared members, whose field the repository evaluates only
+    within its DESC script, the confocal semiaxes, the cross-sections the boundary is
+    taken from and the axis.
+    """
+    iota_2 = _load_reference(
+        repository, "iota_2/analytic_3d_equilibrium_iota_2.py", "reference_iota_2"
+    )
+    sheared = _load_reference(
+        repository,
+        "sheared_iota/20260913-02_analytic_3D_equilibrium_sheared_iota_figures.py",
+        "reference_sheared_iota",
+    )
+    rng = np.random.default_rng(0)
+    phi = 2.0 * np.pi * rng.random(64)
+    deviations = {}
+
+    eps = IOTA2.eps
+    psi = IOTA2.delta * rng.uniform(0.01, 1.0, 64)
+    beta, t = 2.0 * np.pi * rng.random((2, 64))
+    xyz = iota_2.embedding(
+        -eps / 2.0 + np.sqrt(psi) * np.cos(beta), np.sqrt(psi) * np.sin(beta), t, eps
+    )
+    ours = np.stack(IOTA2.field(*np.moveaxis(xyz, -1, 0)), axis=-1)
+    theirs = np.concatenate(
+        (iota_2.field(xyz, eps), iota_2.flux(xyz, eps)[..., None]), axis=-1
+    )
+    deviations["iota2 field and psi"] = float(np.max(np.abs(ours - theirs)))
+    r, z = IOTA2.section(psi, beta - 2.0 * phi, phi)
+    u, v, _ = np.moveaxis(
+        iota_2.inverse_embedding(
+            np.stack((r * np.cos(phi), r * np.sin(phi), z), axis=-1), eps
+        ),
+        -1,
+        0,
+    )
+    deviations["iota2 surfaces"] = float(
+        np.max(np.abs(u + eps / 2.0 + 1j * v - np.sqrt(psi) * np.exp(1j * beta)))
+    )
+    x, y, z_axis = np.moveaxis(iota_2.axis(phi, eps), -1, 0)
+    r_axis, z_ours = IOTA2.axis(phi)
+    deviations["iota2 axis"] = float(
+        max(np.max(np.abs(np.hypot(x, y) - r_axis)), np.max(np.abs(z_axis - z_ours)))
+    )
+
+    chi = 2.0 * np.pi * np.arange(32) / 32
+    for member in (SHEARED, SHEARED_72, SHEARED_A):
+        case = sheared.Case(member.name, member.eps, member.S, member.k_b, member.lam)
+        case.validate()
+        sigma = member.S + np.arcsin(member.k_b) * np.linspace(-1.0, 1.0, 33)
+        largest = float(
+            np.max(
+                np.abs(
+                    np.subtract(member.semiaxes(sigma), sheared.semiaxes(sigma, case))
+                )
+            )
+        )
+        for angle in phi[:8]:
+            largest = max(
+                largest, abs(member.axis(angle)[0] - sheared.axis_radius(angle, case))
+            )
+            for k in member.k_b * np.array([1.0 / 3.0, 2.0 / 3.0, 1.0]):
+                r, z = member.section(k, angle, chi)
+                reference = sheared.cross_section(k, angle, chi, case)
+                largest = max(
+                    largest,
+                    float(np.max(np.abs(np.stack((r, z), axis=-1) - reference))),
+                )
+        deviations[f"{member.name} geometry"] = largest
+    return deviations
+
 
 def ftol_for(ns):
     """The residual a run at ns is taken to: 1e-18 up to ns = 200, 1e-16 above."""
@@ -584,18 +685,27 @@ def fitted_order(ns_list, values):
     return float(np.polyfit(np.log(h), np.log(np.asarray(values, float)), 1)[0])
 
 
-def checks(results):
-    """The checks on the scans of "sheared", as (check, criterion, measured, passed).
-
-    They are empty when the results hold no radial and angular scan of "sheared".
-    """
+def checks(results, reference=None):
+    """The checks, as (check, criterion, measured, passed): the agreement with the
+    reference implementation when its deviations are given, and those on the scans of
+    "sheared", which need a radial and an angular scan of it."""
+    out = []
+    if reference is not None:
+        out.append(
+            (
+                "reference implementation",
+                "the formulas deviate from those of landreman/analytic_3d_equilibria at "
+                f"{REFERENCE_COMMIT[:7]} by less than {REFERENCE_TOLERANCE:.0e}",
+                ", ".join(f"{k} {v:.1e}" for k, v in reference.items()),
+                all(v < REFERENCE_TOLERANCE for v in reference.values()),
+            )
+        )
     entry = results.get("sheared")
     if entry is None or not entry["angular"]:
-        return []
+        return out
     radial, angular = entry["radial"], entry["angular"]
     ns = [r["ns"] for r in radial]
     fit = {k: fitted_order(ns, [r[k] for r in radial]) for k in MEASURES}
-    out = []
 
     keys = ("psi", "axis", "B", "current")
     out.append(
@@ -729,9 +839,9 @@ def _row(member, scan, ns, mpol, ntor, max_threads):
     return row
 
 
-def run_suite(suite, members=None, out_dir=None, max_threads=None):
+def run_suite(suite, members=None, out_dir=None, max_threads=None, reference=None):
     """Every scan of the suite, or of the members named; the results, their observed
-    orders and plots go to out_dir when it is given."""
+    orders, the checks and plots go to out_dir when it is given."""
     results = {}
     for scan in SUITES[suite]:
         if members and scan.member not in members:
@@ -758,14 +868,14 @@ def run_suite(suite, members=None, out_dir=None, max_threads=None):
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / f"{suite}.json").write_text(json.dumps(results, indent=1))
-        (out_dir / f"{suite}.md").write_text(summary(results, suite))
+        (out_dir / f"{suite}.md").write_text(summary(results, suite, reference))
         plot(results, out_dir, suite)
-    print(summary(results, suite))
+    print(summary(results, suite, reference))
     return results
 
 
-def summary(results, suite):
-    """The errors and observed orders as markdown tables."""
+def summary(results, suite, reference=None):
+    """The errors, observed orders and checks as markdown tables."""
     lines = [f"## Exact equilibria, {suite} suite", ""]
     keys = [*MEASURES, "fsq"]
     for name, entry in results.items():
@@ -803,10 +913,10 @@ def summary(results, suite):
                 for r in rows
             ]
             lines.append("")
-    found = checks(results)
+    found = checks(results, reference)
     if found:
         lines += [
-            "### Checks on sheared",
+            "### Checks",
             "",
             "| check | criterion | measured | result |",
             "|---|---|---|---|",
@@ -895,11 +1005,20 @@ def main():
     parser.add_argument(
         "--check",
         action="store_true",
-        help="exit with an error when a check on sheared fails",
+        help="exit with an error when a check fails",
+    )
+    parser.add_argument(
+        "--reference",
+        default=None,
+        help="checkout of landreman/analytic_3d_equilibria at REFERENCE_COMMIT to "
+        "compare the formulas with",
     )
     args = parser.parse_args()
-    results = run_suite(args.suite, args.member, args.out, args.threads)
-    failed = [name for name, _, _, ok in checks(results) if not ok]
+    reference = None
+    if args.reference is not None:
+        reference = reference_deviations(args.reference)
+    results = run_suite(args.suite, args.member, args.out, args.threads, reference)
+    failed = [name for name, _, _, ok in checks(results, reference) if not ok]
     if args.check and failed:
         raise SystemExit("failed checks: " + ", ".join(failed))
 

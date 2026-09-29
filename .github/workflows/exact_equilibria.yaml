@@ -2,7 +2,9 @@ name: V&V against exact equilibria
 
 # Runs examples/exact_equilibria.py, which compares VMEC++ with Landreman's exact
 # three-dimensional equilibria (arXiv:2609.26742) over radial and angular resolutions
-# and plots the deviations and their observed orders.
+# and plots the deviations and their observed orders, and compares its formulas with
+# the functions of landreman/analytic_3d_equilibria at the commit REFERENCE_COMMIT of
+# the script names.
 #
 # - On every pull request and push to main: the quick suite, up to ns = 100, which
 #   fails when one of its checks on the member "sheared" fails.
@@ -46,10 +48,17 @@ jobs:
           sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
       - name: Install package
         run: python -m pip install .[test]
+      - name: Check out the reference equilibria
+        uses: actions/checkout@v4
+        with:
+          repository: landreman/analytic_3d_equilibria
+          ref: c97fbcdd879206e0cfee6ad6e885ae0b13e215e8
+          path: analytic_3d_equilibria
       - name: Run the quick suite and its checks
         run: |
           status=0
-          python examples/exact_equilibria.py --suite quick --out exact_equilibria_out --check || status=$?
+          python examples/exact_equilibria.py --suite quick --out exact_equilibria_out --check \
+            --reference analytic_3d_equilibria || status=$?
           cat exact_equilibria_out/quick.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
       - name: Upload the plots and data
@@ -82,10 +91,16 @@ jobs:
           sudo apt-get update && sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
       - name: Install package
         run: python -m pip install .[test]
+      - name: Check out the reference equilibria
+        uses: actions/checkout@v4
+        with:
+          repository: landreman/analytic_3d_equilibria
+          ref: c97fbcdd879206e0cfee6ad6e885ae0b13e215e8
+          path: analytic_3d_equilibria
       - name: Run the full suite
         run: |
           python examples/exact_equilibria.py --suite full --member ${{ matrix.member }} \
-            --out exact_equilibria_out
+            --out exact_equilibria_out --reference analytic_3d_equilibria
           cat exact_equilibria_out/full.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the plots and data
         if: always()
