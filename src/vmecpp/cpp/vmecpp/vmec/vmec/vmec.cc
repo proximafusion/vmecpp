@@ -157,6 +157,14 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     return is_indata_consistent;
   }
 
+  // the constructor sizes the thread pool from max_threads
+  if (max_threads.has_value() && *max_threads < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "The number of threads must be >= 1, but is %d. To use all available "
+        "threads, leave max_threads unset.",
+        *max_threads));
+  }
+
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
                                   std::move(interrupt_callback));
 
