@@ -117,7 +117,7 @@ def test_hot_restart_matches_ns_against_the_wout_of_the_state():
     assert restarted.wout.niter <= 3
 
     finer = vmec_input.model_copy(update={"ns_array": np.array([2 * ns - 1])})
-    with pytest.raises((RuntimeError, AttributeError), match="ns_array"):
+    with pytest.raises(ValueError, match="ns_array"):
         vmecpp.run(finer, verbose=False, restart_from=vmec_output)
 
 
@@ -550,12 +550,12 @@ def test_mercier_bindings(cma_output: vmecpp.VmecOutput):
         "toroidal_flux",
         "iota",
         "shear",
-        "d_volume_d_s",
+        "d_volume_d_phi",
         "well",
         "toroidal_current",
-        "d_toroidal_current_d_s",
+        "d_toroidal_current_d_volume",
         "pressure",
-        "d_pressure_d_s",
+        "d_pressure_d_volume",
         "DMerc",
         "Dshear",
         "Dwell",

@@ -25,8 +25,10 @@ class OutputQuantitiesIO : public testing::Test {
     const absl::StatusOr<std::string> indata_json = file_io::ReadFile(filename);
     EXPECT_TRUE(indata_json.ok());
 
-    const auto indata = vmecpp::VmecINDATA::FromJson(*indata_json);
+    auto indata = vmecpp::VmecINDATA::FromJson(*indata_json);
     EXPECT_TRUE(indata.ok());
+    // A fixed-boundary input may carry coil currents, which the wout records.
+    indata->extcur = Eigen::VectorXd::LinSpaced(3, 1.0, 3.0);
 
     auto maybe_oq = vmecpp::run(*indata);
     EXPECT_TRUE(maybe_oq.ok());

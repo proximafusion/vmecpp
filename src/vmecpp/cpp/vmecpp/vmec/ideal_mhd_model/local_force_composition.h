@@ -106,10 +106,15 @@ inline int LocalForceWorkSize(const LocalForceComposition& c) {
   return n;
 }
 
-// work must hold LocalForceWorkSize(*c) doubles.
-inline void ComputeLocalForceDensity(const double* geom, double* work,
-                                     double* force,
-                                     const LocalForceComposition* c) {
+// ComputeLocalForceDensity with the half-grid profiles passed explicitly
+// instead of read from c->presH, c->chipH and c->currH, so that a reverse pass
+// can mark them active.
+inline void ComputeLocalForceDensityWithProfiles(const double* geom,
+                                                 double* work, double* force,
+                                                 const LocalForceComposition* c,
+                                                 const double* presH,
+                                                 const double* chipH,
+                                                 const double* currH) {
   const int nZnT = c->nZnT;
   const int gS = c->geom_stride;
   const int fS = c->force_stride;
@@ -177,8 +182,8 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
     // For a prescribed-current profile (ncurr==1), chi' is recomputed from the
     // geometry each step (constrained toroidal current), so differentiate it
     // here rather than freezing it. For ncurr==0 chi' = iota*phi' is a fixed
-    // profile, so use the frozen c->chipH.
-    double chip = c->chipH[jH - c->nsMinH];
+    // profile, so use the frozen chipH.
+    double chip = chipH[jH - c->nsMinH];
     if (c->ncurr == 1) {
       double jvPlasma = 0.0;
       double avg_guu_gsqrt = 0.0;
@@ -193,7 +198,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
         avg_guu_gsqrt += guu[ih] / gsqrt[ih] * c->wInt[l];
       }
       if (avg_guu_gsqrt != 0.0) {
-        chip = (c->currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
+        chip = (currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
       }
       // Expose chi' as its own output block so a cotangent seeded there alone
       // yields (dchi'/dx)^T through the same reverse pass as the force
@@ -209,7 +214,7 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
   ComputeMagneticPressure(bsupu, bsubu, bsupv, bsubv, nH, tp);
   for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
     for (int kl = 0; kl < nZnT; ++kl)
-      tp[(jH - c->nsMinH) * nZnT + kl] += c->presH[jH - c->nsMinH];
+      tp[(jH - c->nsMinH) * nZnT + kl] += presH[jH - c->nsMinH];
   }
 
   double* P_i = s;
@@ -415,6 +420,14 @@ inline void ComputeLocalForceDensity(const double* geom, double* work,
                         brmn_e, brmn_o, bzmn_e, bzmn_o, frcon_e, frcon_o,
                         fzcon_e, fzcon_o);
   }
+}
+
+// work must hold LocalForceWorkSize(*c) doubles.
+inline void ComputeLocalForceDensity(const double* geom, double* work,
+                                     double* force,
+                                     const LocalForceComposition* c) {
+  ComputeLocalForceDensityWithProfiles(geom, work, force, c, c->presH, c->chipH,
+                                       c->currH);
 }
 
 }  // namespace vmecpp

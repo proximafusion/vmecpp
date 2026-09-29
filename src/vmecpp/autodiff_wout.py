@@ -510,7 +510,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
             / phip_f[0]
         )
         lmns_full = lmns_full.at[np.flatnonzero(m0), 0].set(axis)
-    lmns = _lambda_to_half_grid(setup, lmns_full)
+    lmns = _lambda_to_half_grid(lmns_full, setup.xm)
     raxis_cc = jnp.asarray(geometry.r_cc)[0, 0, :]
     zaxis_cs = (
         -jnp.asarray(geometry.z_cs)[0, 0, :]
@@ -539,7 +539,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
             rmns=_to_combined(setup, geometry.r_sc, geometry.r_cs, cosine=False),
             zmnc=_to_combined(setup, geometry.z_cc, geometry.z_ss, cosine=True),
             lmnc_full=lmnc_full,
-            lmnc=_lambda_to_half_grid(setup, lmnc_full),
+            lmnc=_lambda_to_half_grid(lmnc_full, setup.xm),
             gmns=gmns,
             bmns=bmns,
             bsubumns=bsubumns,
@@ -639,7 +639,11 @@ def static_fields(vmec_input: Any) -> dict[str, Any]:
     xm, xn = _mode_table(sizes.mpol, sizes.ntor, sizes.nfp)
     xm_nyq, xn_nyq = _mode_table(sizes.mnyq + 1, sizes.nnyq, sizes.nfp)
 
-    def padded(values, size: int, fill: float) -> np.ndarray:
+    def padded(values, size: int, fill: float) -> Any:
+        if isinstance(values, jax.Array):  # a traced profile coefficient
+            return jnp.pad(
+                values, (0, max(0, size - values.size)), constant_values=fill
+            )
         values = np.asarray(values, dtype=np.float64).ravel()
         if values.size == 0:
             values = np.asarray([fill])
@@ -744,6 +748,57 @@ def mass_profile(vmec_input: Any, s_half: np.ndarray) -> np.ndarray:
         phip_half = toroidal_flux_derivative(vmec_input, s_half)
         mass = mass * (np.abs(phip_half) * r00) ** vmec_input.gamma
     return mass
+
+
+PROFILE_PARAMETERS = {
+    "am": "pmass_type",
+    "pres_scale": "pmass_type",
+    "ai": "piota_type",
+    "ac": "pcurr_type",
+    "curtor": "pcurr_type",
+}
+"""The differentiable profile fields and the profile type each belongs to."""
+
+
+def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
+    """The C++ half-grid ``(mu_0 p, iota, currH)`` as a JAX function of power-series
+    ``parameters``, stacked to shape ``(3, ns - 1)``; iota is before the theta flip."""
+    for name in parameters:
+        kind = getattr(vmec_input, PROFILE_PARAMETERS[name])
+        if kind != "power_series" or vmec_input.gamma != 0.0:
+            msg = f"differentiating {name} needs power_series profiles and gamma = 0"
+            raise NotImplementedError(msg)
+
+    def value(name):
+        return jnp.asarray(parameters.get(name, getattr(vmec_input, name)), float)
+
+    def series(c, x, integrate=False) -> Any:
+        if integrate:  # I(s) from the power series of I'(s)
+            return x * jnp.polyval((c / jnp.arange(1, c.size + 1))[::-1], x)
+        return jnp.polyval(c[::-1], x) if c.size else jnp.zeros_like(x)
+
+    aphi = np.asarray(vmec_input.aphi, dtype=np.float64)
+    aphi = aphi if aphi.size else np.ones(1)
+    s = (np.arange(ns - 1) + 0.5) / (ns - 1.0)
+
+    def torflux(x):
+        return np.minimum(np.polyval(np.concatenate([aphi[::-1], [0.0]]), x), 1.0)
+
+    bloat = vmec_input.bloat
+    x_mass = np.minimum(np.abs(torflux(np.minimum(s, vmec_input.spres_ped)) * bloat), 1)
+    mass = MU_0 * value("pres_scale") * series(value("am"), jnp.asarray(x_mass))
+    iota = series(value("ai"), jnp.asarray(torflux(s)))
+    current = jnp.zeros(ns - 1)
+    if vmec_input.ncurr == 1 and value("ac").size:
+        ac, curtor = value("ac"), value("curtor")
+        edge = series(ac, jnp.asarray(min(abs(bloat), 1.0)), integrate=True)
+        # RadialProfiles scales to curtor only for a sufficiently nonzero edge
+        scaled = jnp.abs(edge) > jnp.abs(np.finfo(float).eps * curtor)
+        edge = edge + jnp.logical_not(scaled)  # finite where not scaled
+        itor = scaled * vmec_input.signgs * MU_0 * curtor / (2 * np.pi * edge)
+        x_current = jnp.asarray(np.minimum(np.abs(torflux(s) * bloat), 1.0))
+        current = itor * series(ac, x_current, integrate=True)
+    return jnp.stack([mass, iota, current])
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1429,18 +1484,22 @@ def _to_combined(setup: _Setup, first, second, *, cosine: bool) -> jax.Array:
     return jnp.where(axis_mask, 0.0, combined)
 
 
-def _lambda_to_half_grid(setup: _Setup, lambda_full: jax.Array) -> jax.Array:
+def _lambda_to_half_grid(
+    lambda_full: jax.Array | np.ndarray, xm: np.ndarray
+) -> jax.Array:
     """Radial interpolation of lambda onto the half grid (classic ``lmns``)."""
-    ns = setup.ns
-    sm = setup.sqrt_s_half / setup.sqrt_s_full[1:]
+    ns = lambda_full.shape[1]
+    sqrt_s_full = np.sqrt(np.arange(ns) / (ns - 1.0))
+    sqrt_s_half = np.sqrt((np.arange(ns - 1) + 0.5) / (ns - 1.0))
+    sm = sqrt_s_half / sqrt_s_full[1:]
     sp = np.empty_like(sm)
-    sp[1:] = setup.sqrt_s_half[1:] / setup.sqrt_s_full[1:-1]
+    sp[1:] = sqrt_s_half[1:] / sqrt_s_full[1:-1]
     sp[0] = sm[0]
     outside = lambda_full[:, 1:]
     inside = lambda_full[:, :-1]
-    low_m = (setup.xm <= 1)[:, None] & (np.arange(ns - 1) == 0)[None, :]
+    low_m = (xm <= 1)[:, None] & (np.arange(ns - 1) == 0)[None, :]
     inside = jnp.where(low_m, outside, inside)
-    odd = (setup.xm % 2 == 1)[:, None]
+    odd = (xm % 2 == 1)[:, None]
     half = jnp.where(
         odd,
         0.5 * (sm[None, :] * outside + sp[None, :] * inside),
@@ -1485,8 +1544,10 @@ def _extrapolate_axis_column(coefficients: jax.Array) -> jax.Array:
 
 __all__ = [
     "MU_0",
+    "PROFILE_PARAMETERS",
     "UNKNOWN_DIAGNOSTICS",
     "WOUT_QUANTITIES",
+    "half_grid_profiles",
     "mass_profile",
     "static_fields",
     "toroidal_flux_derivative",

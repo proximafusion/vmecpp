@@ -277,6 +277,20 @@ class VmecInput(BaseModelWithNumpy):
     the full ntor. < 0 (default) means geometry uses ntor.
     """
 
+    vacuum_mpol: int = 0
+    """Poloidal Fourier cutoff of the vacuum potential in a free-boundary run.
+
+    NESTOR expands the vacuum potential to mpol like the plasma; a value above mpol
+    raises the potential's cutoff alone. 0 (default) means the potential uses mpol.
+    """
+
+    vacuum_ntor: int = 0
+    """Toroidal Fourier cutoff of the vacuum potential in a free-boundary run.
+
+    A value above ntor raises the potential's cutoff alone; nzeta must then be at least
+    2 * vacuum_ntor + 4. 0 (default) means the potential uses ntor.
+    """
+
     ntheta: int = 0
     """Number of poloidal grid points (ntheta >= 0).
 
@@ -690,6 +704,56 @@ class VmecInput(BaseModelWithNumpy):
                 resized_coeff[m, n + ntor_new] = coeff[m, n + ntor]
 
         return resized_coeff
+
+    def resize(self, mpol_new: int, ntor_new: int) -> VmecInput:
+        """Return a copy of this input resampled to a new (mpol, ntor) Fourier
+        resolution.
+
+        Boundary coefficients are zero-padded or truncated to match, discarding
+        higher modes with a warning; see :meth:`resize_2d_coeff`. Axis
+        coefficients are zero-padded or, when shrinking ntor, truncated with a
+        warning.
+        """
+
+        def resize_axis(
+            coeff: jt.Float[np.ndarray, "ntor_plus_1"],
+        ) -> jt.Float[np.ndarray, "ntor_new_plus_1"]:
+            new_len = ntor_new + 1
+            if coeff.size > new_len:
+                logger.warning(
+                    f"Discarding axis coefficients because ntor={coeff.size - 1} "
+                    f"is larger than ntor_new={ntor_new}"
+                )
+                coeff = coeff[:new_len]
+            return self.resize_1d_axis_coeff(coeff, ntor_new)
+
+        updated_fields: dict[str, typing.Any] = {}
+        updated_fields["mpol"] = mpol_new
+        updated_fields["ntor"] = ntor_new
+        updated_fields["rbc"] = self.resize_2d_coeff(
+            np.asarray(self.rbc), mpol_new, ntor_new
+        )
+        updated_fields["zbs"] = self.resize_2d_coeff(
+            np.asarray(self.zbs), mpol_new, ntor_new
+        )
+        updated_fields["raxis_c"] = resize_axis(self.raxis_c)
+        updated_fields["zaxis_s"] = resize_axis(self.zaxis_s)
+
+        if self.lasym:
+            assert self.rbs is not None
+            assert self.zbc is not None
+            assert self.raxis_s is not None
+            assert self.zaxis_c is not None
+            updated_fields["rbs"] = self.resize_2d_coeff(
+                np.asarray(self.rbs), mpol_new, ntor_new
+            )
+            updated_fields["zbc"] = self.resize_2d_coeff(
+                np.asarray(self.zbc), mpol_new, ntor_new
+            )
+            updated_fields["raxis_s"] = resize_axis(self.raxis_s)
+            updated_fields["zaxis_c"] = resize_axis(self.zaxis_c)
+
+        return self.model_copy(update=updated_fields)
 
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
@@ -1203,7 +1267,13 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
-    :math:`B_{s}` on the full- grid."""
+    :math:`B_{s}` on the half-grid, as written by VMEC 8.52.
+
+    Unlike the other half-grid quantities, the first column is not zero but
+    ``2 * bsubsmns[:, 1] - bsubsmns[:, 2]``. Fortran VMEC 9.0 and later write the
+    full-grid :math:`B_{s}` here instead; a wout file from those versions, loaded with
+    ``from_wout_file``, carries that full-grid array.
+    """
 
     bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
@@ -2367,8 +2437,8 @@ class Mercier(BaseModelWithNumpy):
     shear: jt.Float[np.ndarray, "n_surfaces"]
     """Magnetic shear profile."""
 
-    d_volume_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of plasma volume with respect to `s`."""
+    d_volume_d_phi: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of plasma volume with respect to the enclosed toroidal flux `phi`."""
 
     well: jt.Float[np.ndarray, "n_surfaces"]
     """Magnetic well profile."""
@@ -2376,14 +2446,14 @@ class Mercier(BaseModelWithNumpy):
     toroidal_current: jt.Float[np.ndarray, "n_surfaces"]
     """Enclosed toroidal current profile."""
 
-    d_toroidal_current_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of enclosed toroidal current."""
+    d_toroidal_current_d_volume: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of enclosed toroidal current with respect to plasma volume."""
 
     pressure: jt.Float[np.ndarray, "n_surfaces"]
     """Pressure profile `p`."""
 
-    d_pressure_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of pressure profile."""
+    d_pressure_d_volume: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of pressure profile with respect to plasma volume."""
 
     DMerc: jt.Float[np.ndarray, "n_surfaces"]
     """Full Mercier stability criterion."""
@@ -2695,8 +2765,15 @@ def _run_traced(
             stacklevel=3,
         )
     shape = np.shape(vmec_input.rbc)
+    profiles = {
+        name: getattr(vmec_input, name)
+        for name in autodiff_wout.PROFILE_PARAMETERS
+        if isinstance(getattr(vmec_input, name), jax.core.Tracer)
+    }
+    # concrete placeholders; the forward solve receives the traced values
+    placeholders = {name: np.zeros(np.shape(value)) for name, value in profiles.items()}
     template = vmec_input.model_copy(
-        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape)}
+        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
     )
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
@@ -2708,8 +2785,17 @@ def _run_traced(
                 jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
             ]
         )
-        geometry, extra = solver._solve(boundary)
-        mass_half, iotas, buco = jax.numpy.split(jax.lax.stop_gradient(extra), 3)
+        geometry, extra = solver._solve(boundary, profiles)
+        extra = jax.lax.stop_gradient(extra)
+        mass_half, iotas, buco = jax.numpy.split(extra[:-1], 3)
+        # the solver's profiles, with the derivative of their parameterization
+        half = autodiff_wout.half_grid_profiles(template, solver.ns, profiles)
+        half = half - jax.lax.stop_gradient(half)
+        mass_half, iotas, buco = (
+            mass_half + half[0],
+            iotas + extra[-1] * half[1],
+            buco + half[2],
+        )
         # With ncurr = 1, iota follows from the geometry through the current
         # constraint, and so does its derivative; otherwise it is prescribed.
         if vmec_input.ncurr == 1:
@@ -2721,7 +2807,7 @@ def _run_traced(
         forward = solver.forward_outputs()
         if forward is None:
             fields = {
-                **autodiff_wout.static_fields(template),
+                **autodiff_wout.static_fields(vmec_input),
                 **autodiff_wout.UNKNOWN_DIAGNOSTICS,
             }
             others = dict.fromkeys(
@@ -2737,7 +2823,12 @@ def _run_traced(
                 )
             )
         else:
-            fields = forward["wout_fields"]
+            # the C++ echoes of traced profile coefficients carry no derivative
+            echoes = autodiff_wout.static_fields(vmec_input)
+            echoes = {
+                name: echoes[name] for name in ("am", "ac", "ai") if name in profiles
+            }
+            fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
         quantities = autodiff_wout.wout_quantities(
             geometry, template, mass_half=mass_half, **profile
@@ -2803,7 +2894,8 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    if isinstance(input.rbc, jax.core.Tracer) or isinstance(input.zbs, jax.core.Tracer):
+    traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
+    if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
         return _run_traced(
             input,
             magnetic_field,
