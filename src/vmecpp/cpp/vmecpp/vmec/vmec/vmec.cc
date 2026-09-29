@@ -413,7 +413,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
-        if (status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0) {
+        if (retry_from_three_surfaces_) {
           // retried below from a three-surface mesh
           break;
         }
@@ -866,6 +866,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   // of the main iteration loop.
   bool liter_flag = true;
 
+  retry_from_three_surfaces_ = false;
+
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
 #ifdef _OPENMP
 #pragma omp parallel num_threads(num_threads_)
@@ -1075,6 +1077,13 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
             "shaped or if it isn't spectrally condensed enough.",
             thread_id);
         return absl::UnknownError(msg);
+      }
+
+      if (retry_from_three_surfaces) {
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif  // _OPENMP
+        retry_from_three_surfaces_ = true;
       }
 
       // return_outputs_even_if_not_converged: stop iterating on this thread
