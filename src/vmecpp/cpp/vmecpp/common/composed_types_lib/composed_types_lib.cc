@@ -128,7 +128,8 @@ std::array<Vector3d, 3> OrthonormalFrameAroundAxis(const Vector3d& axis) {
   orthonormal_frame[0] = ScaleTo(axis, 1.0);
 
   // Obtain second axis, fully perpendicular to `axis`,
-  // by subtracting the projection onto `axis` from the most perpendicular axis.
+  // by subtracting the projection onto `axis` from the most perpendicular axis
+  // and scaling the difference to unit length.
   // The reasoning is that by using the most perpendicular axis,
   // the least amount of catastrophic cancellation will happen.
 
@@ -138,8 +139,8 @@ std::array<Vector3d, 3> OrthonormalFrameAroundAxis(const Vector3d& axis) {
   const double axis_dot_most_perp =
       DotProduct(orthonormal_frame[0], most_perpendicular_axis);
   orthonormal_frame[1] =
-      Add(most_perpendicular_axis,
-          ScaleTo(orthonormal_frame[0], -axis_dot_most_perp));
+      Normalize(Add(most_perpendicular_axis,
+                    ScaleTo(orthonormal_frame[0], -axis_dot_most_perp)));
 
   // third axis is found from cross product of other two axes
   orthonormal_frame[2] =
