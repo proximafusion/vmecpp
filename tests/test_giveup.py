@@ -76,7 +76,7 @@ def test_a_non_positive_fgiveup_is_rejected():
     vmec_input = vmecpp.VmecInput.from_file(CASE)
     vmec_input.lgiveup = True
     vmec_input.fgiveup = 0.0
-    with pytest.raises(AttributeError, match="fgiveup"):
+    with pytest.raises(ValueError, match="fgiveup"):
         vmecpp.run(vmec_input, verbose=False, max_threads=1)
 
 

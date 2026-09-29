@@ -98,13 +98,14 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback) {
+    InterruptCallback interrupt_callback, bool always_fix_m1_gauge) {
   auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
                                      std::move(interrupt_callback));
   if (!maybe_vmec.ok()) {
     return maybe_vmec.status();
   }
   Vmec& v = **maybe_vmec;
+  v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -847,6 +848,17 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       // first multi-grid step at all.
       if (checkpoint == VmecCheckpoint::INTERP) {
         return true;
+      }
+    }
+
+    // With the m=1 gauge force zeroed throughout, the gauge stays at its
+    // initial value. Set it from the boundary here so that it does not
+    // carry the hot-restart state or the coarse-grid interpolation (whose
+    // odd-m axis extrapolation does not reproduce the sqrt(s) profile).
+    if (always_fix_m1_gauge_) {
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_,
+                                                         *p_[thread_id]);
       }
     }
 
@@ -1605,7 +1617,8 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
       *decomposed_x_[thread_id], *physical_x_[thread_id],
       *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
       last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
-      iter2_, checkpoint, iterations_before_checkpointing, verbose_);
+      iter2_, checkpoint, iterations_before_checkpointing, verbose_,
+      always_fix_m1_gauge_);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }

@@ -170,7 +170,8 @@ class VmecModel {
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state) {
+      const std::optional<vmecpp::HotRestartState> &initial_state,
+      bool always_fix_m1_gauge) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -179,6 +180,7 @@ class VmecModel {
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
     vmecpp::Vmec &v = *model->vmec_;
+    v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -228,9 +230,12 @@ class VmecModel {
   // lambda-constraint components. That raw gradient is what gradient-based
   // optimizers minimizing the MHD energy functional need; mhd_energy is already
   // set earlier in update(), so it is valid at the checkpoint too.
-  // The native iteration leaves the m=1 gauge free until the previous Z
-  // residual crosses its threshold. External evaluations fix it immediately so
-  // F(x) does not depend on the previously evaluated state.
+  // always_fix_m1_gauge selects the force system: with true the m=1 gauge
+  // force is zeroed (the system solve() iterates when the model's
+  // always_fix_m1_gauge property is set), with false the gauge force is
+  // kept until fsqz < 1e-6 as in the native iteration, so F(x) then also
+  // depends on the previously evaluated residual. The exact Hessian-vector
+  // products take the same flag and differentiate the same system.
   void Evaluate(int iter1, int iter2, bool precondition = true,
                 bool always_fix_m1_gauge = true) {
     bool need_restart = false;
@@ -388,6 +393,11 @@ class VmecModel {
                        delt0, std::nullopt, interpolation);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
+  }
+
+  bool always_fix_m1_gauge() const { return vmec_->always_fix_m1_gauge_; }
+  void set_always_fix_m1_gauge(bool value) const {
+    vmec_->always_fix_m1_gauge_ = value;
   }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
@@ -625,8 +635,11 @@ class VmecModel {
   // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
   // step enters. The constraint multiplier tcon is recomputed from the geometry
   // inside the composition, as the raw force recomputes it from the state. The
-  // model state is restored to x on return.
-  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
+  // model state is restored to x on return. always_fix_m1_gauge has the
+  // meaning it has in Evaluate: H is the Jacobian of the force that
+  // Evaluate returns for the same flag.
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v,
+                                            bool always_fix_m1_gauge = true) {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
@@ -649,7 +662,7 @@ class VmecModel {
                        dgeom.data(), gS, /*primal=*/false);
     model.applyExactForceJacobian(
         exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
-        *vmec_->decomposed_f_[0], /*fix_m1_gauge=*/true);
+        *vmec_->decomposed_f_[0], always_fix_m1_gauge);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
@@ -657,7 +670,8 @@ class VmecModel {
   // internal basis. The force Jacobian is non-symmetric (VMEC's force is a
   // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
   // the same cached primal geometry as ExactHessianVectorProduct.
-  Eigen::VectorXd ExactHessianVectorProductTranspose(const Eigen::VectorXd &w) {
+  Eigen::VectorXd ExactHessianVectorProductTranspose(
+      const Eigen::VectorXd &w, bool always_fix_m1_gauge = true) {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
@@ -674,7 +688,7 @@ class VmecModel {
     model.applyExactForceJacobianTranspose(
         exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
         *vmec_->physical_f_[0], *vmec_->physical_x_[0],
-        *vmec_->physical_x_backup_[0], /*fix_m1_gauge=*/true);
+        *vmec_->physical_x_backup_[0], always_fix_m1_gauge);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
   }
 
@@ -789,6 +803,8 @@ class VmecModel {
   int ns() const { return vmec_->fc_.ns; }
   int mpol() const { return vmec_->s_.mpol; }
   int ntor() const { return vmec_->s_.ntor; }
+  int mpol_geometry() const { return vmec_->s_.mpolGeometry; }
+  int ntor_geometry() const { return vmec_->s_.ntorGeometry; }
   bool lthreed() const { return vmec_->s_.lthreed; }
   bool lasym() const { return vmec_->s_.lasym; }
   bool have_to_flip_theta() const { return vmec_->fc_.haveToFlipTheta; }
@@ -1524,8 +1540,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads,
-         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         bool always_fix_m1_gauge) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) {
@@ -1542,7 +1558,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, std::move(initial_state), max_threads,
-                            verbose, interrupt_check);
+                            verbose, interrupt_check, always_fix_m1_gauge);
         }
         if (was_interrupted) {
           throw py::error_already_set();
@@ -1551,7 +1567,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("always_fix_m1_gauge") = false);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
@@ -1664,7 +1681,10 @@ PYBIND11_MODULE(_vmecpp, m) {
   // from Python (see vmecpp._iteration).
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
-                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt,
+                  py::arg("always_fix_m1_gauge") = false,
+                  "Create a model; set always_fix_m1_gauge here to pin the "
+                  "gauge during hot-restart initialization.")
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
            py::arg("always_fix_m1_gauge") = true)
@@ -1683,6 +1703,17 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
+      .def_property("always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
+                    &VmecModel::set_always_fix_m1_gauge,
+                    "Zero the m=1 gauge force from the first iteration of "
+                    "solve() and set the gauge from the boundary in "
+                    "refine_to(). For a hot restart, pass the flag to create() "
+                    "so initialization pins the gauge. The converged gauge "
+                    "then equals the "
+                    "boundary gauge scaled by sqrt(s), independent of the "
+                    "iteration and multigrid history, and the exact "
+                    "Hessian-vector products with always_fix_m1_gauge=True "
+                    "are the Jacobian of the iterated system.")
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
@@ -1699,9 +1730,11 @@ PYBIND11_MODULE(_vmecpp, m) {
       // deflating the augmented Hessian's structural null space needs both a
       // row and a column probe.
       .def("exact_hessian_vector_product",
-           &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+           &VmecModel::ExactHessianVectorProduct, py::arg("v"),
+           py::arg("always_fix_m1_gauge") = true)
       .def("exact_hessian_vector_product_transpose",
-           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
+           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"),
+           py::arg("always_fix_m1_gauge") = true)
       .def("chip_state_vjp", &VmecModel::ChipStateVjp, py::arg("chip_bar"))
       .def("profile_vjp", &VmecModel::ProfileVjp, py::arg("force_bar"),
            py::arg("poloidal_flux_bar"))
@@ -1725,6 +1758,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ns", &VmecModel::ns)
       .def_property_readonly("mpol", &VmecModel::mpol)
       .def_property_readonly("ntor", &VmecModel::ntor)
+      .def_property_readonly("mpol_geometry", &VmecModel::mpol_geometry)
+      .def_property_readonly("ntor_geometry", &VmecModel::ntor_geometry)
       .def_property_readonly("lthreed", &VmecModel::lthreed)
       .def_property_readonly("lasym", &VmecModel::lasym)
       .def_property_readonly("has_exact_force_jacobian",
