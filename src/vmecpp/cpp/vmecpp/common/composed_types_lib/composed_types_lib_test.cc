@@ -361,6 +361,7 @@ TEST(ComposedTypesLibTest, CheckOrthonormalFrameAroundAxis) {
 
   // test around an arbitrary vector
   // and test that projections among each other vanish
+  // and that each axis has unit length
   Vector3d vector_4;
   vector_4.set_x(3.14);
   vector_4.set_y(2.71);
@@ -373,6 +374,9 @@ TEST(ComposedTypesLibTest, CheckOrthonormalFrameAroundAxis) {
                             kTolerance));
   EXPECT_TRUE(IsCloseRelAbs(0.0, DotProduct(axes_around_4[1], axes_around_4[2]),
                             kTolerance));
+  for (const Vector3d& unit_axis : axes_around_4) {
+    EXPECT_TRUE(IsCloseRelAbs(1.0, Length(unit_axis), kTolerance));
+  }
 }  // CheckOrthonormalFrameAroundAxis
 
 TEST(TestReadCoefficientsFromCsv, CheckReadAxisCoefficientsFromCsv) {
@@ -509,6 +513,30 @@ TEST(TestReadCoefficientsFromCsv, CheckReadBoundaryCoefficientsFromCsv) {
   ASSERT_TRUE(z_cos.ok()) << z_cos.status();
   EXPECT_THAT(*z_cos, ElementsAre(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
 }  // CheckReadBoundaryCoefficientsFromCsv
+
+// a file with CRLF line endings reads like one with LF line endings
+TEST(TestReadCoefficientsFromCsv, CheckReadCoefficientsFromCsvWithCrlf) {
+  absl::StatusOr<CurveRZFourier> axis_coefficients = CurveRZFourierFromCsv(
+      "n,raxis_c,zaxis_s,raxis_s,zaxis_c\r\n"
+      "0,3.999,0,0,0\r\n"
+      "1,1.026,1.58,0,0\r\n");
+  ASSERT_TRUE(axis_coefficients.ok()) << axis_coefficients.status();
+  absl::StatusOr<std::vector<double>> axis_r_cos =
+      CoefficientsRCos(*axis_coefficients);
+  ASSERT_TRUE(axis_r_cos.ok()) << axis_r_cos.status();
+  EXPECT_THAT(*axis_r_cos, ElementsAre(3.999, 1.026));
+
+  absl::StatusOr<SurfaceRZFourier> boundary_coefficients =
+      SurfaceRZFourierFromCsv(
+          "n,m,rbc,zbs,rbs,zbc\r\n"
+          "0,0,3.999,0,0,0\r\n"
+          "0,1,1.026,1.58,0,0\r\n");
+  ASSERT_TRUE(boundary_coefficients.ok()) << boundary_coefficients.status();
+  absl::StatusOr<std::vector<double>> boundary_z_sin =
+      CoefficientsZSin(*boundary_coefficients);
+  ASSERT_TRUE(boundary_z_sin.ok()) << boundary_z_sin.status();
+  EXPECT_THAT(*boundary_z_sin, ElementsAre(0.0, 1.58));
+}  // CheckReadCoefficientsFromCsvWithCrlf
 
 // check round-trip serialization/deserialization
 // rely on CheckReadBoundaryCoefficientsFromCsv for de-serialization
