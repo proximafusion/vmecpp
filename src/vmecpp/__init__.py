@@ -3005,9 +3005,12 @@ def run(
 
     cpp_iteration_callback = None
     if iteration_callback is not None:
+        user_callback = iteration_callback
 
-        def cpp_iteration_callback(cpp_state: _vmecpp.SolverState) -> bool | None:
-            return iteration_callback(SolverState._from_cpp(cpp_state))
+        def forward(cpp_state: _vmecpp.SolverState) -> bool | None:
+            return user_callback(SolverState._from_cpp(cpp_state))
+
+        cpp_iteration_callback = forward
 
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
