@@ -101,12 +101,9 @@ vmec_output.wout.save("wout_w7x.nc")
 
 All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
-### Following a solve
-
-`vmecpp.run` hands every force iteration to an optional `iteration_callback`, with the
-force residuals, the flow-control state and the geometry of the state reached; returning
-`False` stops the run. [`examples/watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py)
-uses it to draw the flux surfaces and the residuals while VMEC++ converges.
+An optional `iteration_callback` is available to investigate the progress of the solver. It can be used to interactively debug
+and interact with `vmecpp`'s state from a Python repl, or generate animations of the convergence progress like in
+[`examples/watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py).
 
 ### With SIMSOPT
 
