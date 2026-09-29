@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790722311050,
+  "lastUpdate": 1790723128809,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21831,6 +21831,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3223626639999111,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "934480e72fa539c9787b747874da1cbaf1b374d1",
+          "message": "Check VMEC++ against exact three-dimensional MHD equilibria in CI (#912)\n\n* Test against an exact three-dimensional MHD equilibrium\n\n* Wrap a test docstring as the pinned docformatter does\n\n* Measure VMEC++ against both families of exact equilibria over radial and angular resolutions, with a quick suite on every pull request and a full one to ns = 1000 on release\n\n* Check convergence in ns, mpol and ntor, the axis, B against jcurv and the enclosed current in the quick suite, with every grid run to 1e-18 up to ns = 200\n\n* Check the exact equilibria against the functions of landreman/analytic_3d_equilibria in CI\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-30T00:53:23+02:00",
+          "tree_id": "7f92565e98ba0a5d7471c5828e4ec12d4126a8d3",
+          "url": "https://github.com/proximafusion/vmecpp/commit/934480e72fa539c9787b747874da1cbaf1b374d1"
+        },
+        "date": 1790723123436,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6502574326000741,
+            "range": "stddev: 0.0066743271472870635",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.2447680240000714,
+            "range": "stddev: 1.0874630741885785",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.141427125333318,
+            "range": "stddev: 0.004401838788064471",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.323090379333356,
+            "range": "stddev: 0.9152778576599186",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.5913858466667534,
+            "range": "stddev: 0.012476272488951458",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.125419240333258,
+            "range": "stddev: 0.06911717323068135",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.6513875319999443,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.41280491699990307,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
