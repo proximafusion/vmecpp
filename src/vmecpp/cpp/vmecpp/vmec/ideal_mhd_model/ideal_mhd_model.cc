@@ -47,7 +47,8 @@ namespace {
 
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
-// data layout what Nestor expects.
+// data layout what Nestor expects: n * vacuum_mpol + m, where the vacuum
+// potential's cutoffs may exceed the plasma's, leaving the higher modes zero.
 void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
                               const vmecpp::FourierGeometry& physical_x,
                               const vmecpp::Sizes& sizes, int offset) {
@@ -55,7 +56,7 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
   for (int m = 0; m < sizes.mpol; ++m) {
     for (int n = 0; n < ntorp1; ++n) {
       const int idx_mn = m * ntorp1 + n;
-      const int idx_nm = n * sizes.mpol + m;
+      const int idx_nm = n * m_h.vacuum_mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
       m_h.zSC_LCFS[idx_nm] = physical_x.zmnsc[offset + idx_mn];
 
@@ -424,7 +425,9 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #endif  // _OPENMP
   {
     // set new values
-    // TODO(jons): what is `r1scale`?
+    // 1 / (2 * r0scale)^2 with r0scale = mscale[0] * nscale[0] = 1: the
+    // reciprocal of the squared basis normalization a mode with both indices
+    // non-zero carries. Lambda is normalized by lamscale^2 instead.
     constexpr double r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
@@ -964,6 +967,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
   // compatibility, ideally vacuum-pressure should always part of the
   // force-balance
+  // iter1 is set at the start of a multigrid stage and at every bad-Jacobian
+  // restart, so the window counts iterations since whichever came last.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2411,8 +2416,7 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Note that this needs to have the radial preconditioner updated.
  */
 double IdealMhdModel::constraintMultiplierScale() const {
-  // TODO(jons): some parabola in ns,
-  // but why these specific values of the parameters ?
+  // An empirically determined scaling.
   const double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
