@@ -251,8 +251,8 @@ def grid():
 
 
 def test_flux_surfaces(run, grid):
-    """On every surface of the run the analytic psi equals the surface's own flux
-    label, psi = k(s)^2 / 2."""
+    """On every surface of the run the analytic psi equals the surface's own flux label,
+    psi = k(s)^2 / 2."""
     _, k2, _, _ = _profiles()
     th, ph = grid
     xm, xn = np.asarray(run.xm, float), np.asarray(run.xn, float)
