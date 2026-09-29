@@ -644,7 +644,7 @@ VACUUM_CURRENT_FIELDS = {
         for name in ("buco_full", "avg_jsupu", "avg_jsupv", "j_dot_b")
     ),
     "mercier.toroidal_current",
-    "mercier.d_toroidal_current_d_s",
+    "mercier.d_toroidal_current_d_volume",
     *CURRENT_DENSITY_FIELDS,
 }
 

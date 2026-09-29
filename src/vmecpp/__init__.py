@@ -2434,8 +2434,8 @@ class Mercier(BaseModelWithNumpy):
     shear: jt.Float[np.ndarray, "n_surfaces"]
     """Magnetic shear profile."""
 
-    d_volume_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of plasma volume with respect to `s`."""
+    d_volume_d_phi: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of plasma volume with respect to the enclosed toroidal flux `phi`."""
 
     well: jt.Float[np.ndarray, "n_surfaces"]
     """Magnetic well profile."""
@@ -2443,14 +2443,14 @@ class Mercier(BaseModelWithNumpy):
     toroidal_current: jt.Float[np.ndarray, "n_surfaces"]
     """Enclosed toroidal current profile."""
 
-    d_toroidal_current_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of enclosed toroidal current."""
+    d_toroidal_current_d_volume: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of enclosed toroidal current with respect to plasma volume."""
 
     pressure: jt.Float[np.ndarray, "n_surfaces"]
     """Pressure profile `p`."""
 
-    d_pressure_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of pressure profile."""
+    d_pressure_d_volume: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of pressure profile with respect to plasma volume."""
 
     DMerc: jt.Float[np.ndarray, "n_surfaces"]
     """Full Mercier stability criterion."""
