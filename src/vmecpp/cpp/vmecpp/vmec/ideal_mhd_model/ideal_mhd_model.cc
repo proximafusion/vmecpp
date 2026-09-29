@@ -47,7 +47,8 @@ namespace {
 
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
-// data layout what Nestor expects.
+// data layout what Nestor expects: n * vacuum_mpol + m, where the vacuum
+// potential's cutoffs may exceed the plasma's, leaving the higher modes zero.
 void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
                               const vmecpp::FourierGeometry& physical_x,
                               const vmecpp::Sizes& sizes, int offset) {
@@ -55,7 +56,7 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
   for (int m = 0; m < sizes.mpol; ++m) {
     for (int n = 0; n < ntorp1; ++n) {
       const int idx_mn = m * ntorp1 + n;
-      const int idx_nm = n * sizes.mpol + m;
+      const int idx_nm = n * m_h.vacuum_mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
       m_h.zSC_LCFS[idx_nm] = physical_x.zmnsc[offset + idx_mn];
 
