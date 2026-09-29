@@ -2799,7 +2799,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
   // B_theta on full-grid
   std::vector<double> bsubu1(s.nZnT, 0.0);
-  
+
   // B_phi on full-grid
   std::vector<double> bsubv1(s.nZnT, 0.0);
 
@@ -3272,9 +3272,11 @@ vmecpp::ComputeIntermediateMercierQuantities(
       // g_uu
       const double gtt = rtf * rtf + ztf * ztf;
 
-      // |grad s|^2 = [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta Z_phi)^2] / (sqrt(g))^2
-      // --> 1/|grad s|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta Z_phi)^2]
-      
+      // |grad s|^2 = [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta
+      // Z_phi)^2] / (sqrt(g))^2
+      // --> 1/|grad s|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 +
+      // (Z_theta R_phi - R_theta Z_phi)^2]
+
       // flux-based (sqrt(g))^2
       const double gpp_numerator = mercier_intermediate.gsqrt_full(index_full) *
                                    mercier_intermediate.gsqrt_full(index_full);
@@ -3282,12 +3284,14 @@ vmecpp::ComputeIntermediateMercierQuantities(
       // negative toroidal component of grad s:
       // -(Z_theta R_phi - R_theta Z_phi)
       const double grad_s_phi = rtf * zzf - rzf * ztf;
-      
+
       // The denominator is |e_theta x e_zeta|^2
-      // (R_theta R)^2 + (Z_theta R)^2 = (R_theta^2 + Z_theta^2) * R^2 == g_uu * R^2
+      // (R_theta R)^2 + (Z_theta R)^2 = (R_theta^2 + Z_theta^2) * R^2 == g_uu *
+      // R^2
       const double gpp_denominator = gtt * r1f * r1f + grad_s_phi * grad_s_phi;
 
-      // 1/|grad Phi|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta Z_phi)^2]
+      // 1/|grad Phi|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 +
+      // (Z_theta R_phi - R_theta Z_phi)^2]
       mercier_intermediate.gpp(index_full) = gpp_numerator / gpp_denominator;
     }  // kl
   }  // jF
@@ -3459,7 +3463,8 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
                          mercier_intermediate.d_pressure_d_phi[jF] * tpp) *
                         tbb;
 
-    // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 * |grad-phi|^2)>
+    // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 *
+    // |grad-phi|^2)>
     mercier.Dgeod[jF] = tjb * tjb - tbb * tjj;
 
     mercier.DMerc[jF] = mercier.Dshear[jF] + mercier.Dcurr[jF] +

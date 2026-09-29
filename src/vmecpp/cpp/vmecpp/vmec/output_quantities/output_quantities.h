@@ -548,7 +548,8 @@ struct MercierFileContents {
   Eigen::VectorXd Dwell;
 
   // geodesic curvature contribution to Mercier criterion
-  // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 * |grad-phi|^2)> on full grid
+  // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 *
+  // |grad-phi|^2)> on full grid
   Eigen::VectorXd Dgeod;
 
   // Mercier criterion on full grid

@@ -1063,7 +1063,8 @@ PYBIND11_MODULE(_vmecpp, m) {
                     &vmecpp::MercierFileContents::toroidal_flux)
       .def_readonly("iota", &vmecpp::MercierFileContents::iota)
       .def_readonly("shear", &vmecpp::MercierFileContents::shear)
-      .def_readonly("d_volume_d_phi", &vmecpp::MercierFileContents::d_volume_d_phi)
+      .def_readonly("d_volume_d_phi",
+                    &vmecpp::MercierFileContents::d_volume_d_phi)
       .def_readonly("well", &vmecpp::MercierFileContents::well)
       .def_readonly("toroidal_current",
                     &vmecpp::MercierFileContents::toroidal_current)
