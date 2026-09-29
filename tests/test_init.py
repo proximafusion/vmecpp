@@ -85,6 +85,35 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
+def test_bad_initial_jacobian_is_retried_from_three_surfaces():
+    # ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ: its initial Jacobian stays
+    # bad at ns = 25 after the axis guess, and it converges from a solve at ns = 3
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_bad_initial_jacobian.json"
+    )
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+    # the non-stellarator-symmetric path retries the same way and reproduces the
+    # symmetric result
+    zeros = np.zeros_like(np.asarray(vmec_input.rbc))
+    axis_zeros = np.zeros(vmec_input.ntor + 1)
+    lasym_input = vmec_input.model_copy(
+        update={
+            "lasym": True,
+            "rbs": zeros.copy(),
+            "zbc": zeros.copy(),
+            "raxis_s": axis_zeros.copy(),
+            "zaxis_c": axis_zeros.copy(),
+        }
+    )
+    lasym_wout = vmecpp.run(lasym_input, verbose=False).wout
+    assert lasym_wout.ier_flag == 0
+    np.testing.assert_allclose(lasym_wout.rmnc, wout.rmnc, rtol=0.0, atol=2e-11)
+    np.testing.assert_allclose(lasym_wout.zmns, wout.zmns, rtol=0.0, atol=2e-11)
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
@@ -155,6 +184,59 @@ def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
     assert loaded_wout is not None
     assert loaded_wout.mgrid_file == ""
     assert "mgrid_file" in caplog.text
+
+
+def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
+    """An mgrid file whose mode is "N" runs, and the mode reads as unset, also after a
+    round trip through a wout file."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    # the response table written as an mgrid file whose mode is "N"
+    grid = {
+        "phi": makegrid_params.number_of_phi_grid_points,
+        "zee": makegrid_params.number_of_z_grid_points,
+        "rad": makegrid_params.number_of_r_grid_points,
+    }
+    header = {
+        "ir": grid["rad"],
+        "jz": grid["zee"],
+        "kp": grid["phi"],
+        "nfp": makegrid_params.number_of_field_periods,
+        "nextcur": len(response.b_r),
+        "rmin": makegrid_params.r_grid_minimum,
+        "rmax": makegrid_params.r_grid_maximum,
+        "zmin": makegrid_params.z_grid_minimum,
+        "zmax": makegrid_params.z_grid_maximum,
+    }
+    mgrid_file = tmp_path / "mgrid_mode_none.nc"
+    with netCDF4.Dataset(mgrid_file, "w") as fnc:
+        for name, size in {**grid, "dim_00001": 1}.items():
+            fnc.createDimension(name, size)
+        for name, value in header.items():
+            fnc.createVariable(name, "i4" if isinstance(value, int) else "f8")
+            fnc.variables[name].assignValue(value)
+        fnc.createVariable("mgrid_mode", "S1", ("dim_00001",))[:] = np.array([b"N"])
+        fields = {"br": response.b_r, "bp": response.b_p, "bz": response.b_z}
+        for i in range(len(response.b_r)):
+            for name, b in fields.items():
+                variable = fnc.createVariable(f"{name}_{i + 1:03d}", "f8", tuple(grid))
+                variable[:] = b[i].reshape(tuple(grid.values()))
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.mgrid_file = str(mgrid_file)
+
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.mgrid_mode == ""
+
+    wout_filename = tmp_path / "wout_mgrid_mode_none.nc"
+    wout.save(wout_filename)
+    assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == ""
 
 
 def test_vmecinput_io():
