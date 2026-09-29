@@ -41,13 +41,19 @@ def cth_like(ns: int, ftol: float = 1.0e-14):
     """The CTH-like free-boundary case at radial resolution ns, ramped through coarser
     grids, with NESTOR's boundary vacuum field returned."""
     vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / Path(vi.mgrid_file).name)
     vi.return_vacuum_field = True
     steps = [x for x in (9, 17, 25, 33, 49, 65, 97, 129, 193) if x < ns] + [ns]
     vi.ns_array = np.array(steps)
     vi.ftol_array = np.full(len(steps), ftol)
     vi.niter_array = np.full(len(steps), 20000)
-    return vmecpp.run(vi, verbose=False)
+    # the coils' field on the grid of mgrid_cth_like.nc, which it reproduces
+    params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", params
+    )
+    return vmecpp.run(vi, response, verbose=False)
 
 
 def _half_coefs(c_in, c_out, s_a, s_b, s_h, odd):
