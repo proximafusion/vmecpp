@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790679975531,
+  "lastUpdate": 1790681925466,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21191,6 +21191,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.503755649000027,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2b46babcb60bcd865af85319ce27753b89406c32",
+          "message": "Reject a profile that its evaluator cannot evaluate (#816)\n\n* Reject a spline profile with too few knots to evaluate\n\n* Reject a closed-form profile short of coefficients and a spline with unordered or short knots",
+          "timestamp": "2026-09-29T11:31:36Z",
+          "tree_id": "e5af3c816265f23888ab78d1b5724d823ce7f85c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/2b46babcb60bcd865af85319ce27753b89406c32"
+        },
+        "date": 1790681916874,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6069157028000063,
+            "range": "stddev: 0.007374461186286855",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.643291813666641,
+            "range": "stddev: 1.0296958862391603",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1317538533333316,
+            "range": "stddev: 0.0033472949986043327",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.5517505700000433,
+            "range": "stddev: 0.8732003582541112",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.312194316999997,
+            "range": "stddev: 0.0019100846473920497",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.431504972000046,
+            "range": "stddev: 0.002094480842455434",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.4832440330000054,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.37827136199996403,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
