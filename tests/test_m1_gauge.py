@@ -132,6 +132,73 @@ def test_pinned_gauge_stays_at_the_boundary_interpolation() -> None:
     assert np.abs(initial[gauge]).max() < 1.0e-3
 
 
+@pytest.mark.parametrize(
+    ("mpol_geometry", "ntor_geometry", "expected_modes"),
+    [(1, -1, 0), (-1, 1, 1), (-1, 0, 0)],
+)
+def test_capped_geometry_excludes_pinned_gauge_modes(
+    mpol_geometry: int, ntor_geometry: int, expected_modes: int
+) -> None:
+    indata = _cth_like_input([5]).model_copy(
+        update={"mpol_geometry": mpol_geometry, "ntor_geometry": ntor_geometry}
+    )
+    model = _vmecpp.VmecModel.create(indata._to_cpp_vmecindata(), 5)
+    gauge = autodiff._gauge_entries(model)
+    assert gauge.size == (model.ns - 2) * expected_modes
+    state_bar = np.ones_like(np.asarray(model.get_state()))
+    gradient = autodiff._boundary_from_state_vjp(model, state_bar)
+    if mpol_geometry == 1:
+        np.testing.assert_array_equal(gradient[:, 1:], 0.0)
+    if ntor_geometry >= 0:
+        np.testing.assert_array_equal(gradient[:, :, : model.ntor - ntor_geometry], 0.0)
+        np.testing.assert_array_equal(
+            gradient[:, :, model.ntor + ntor_geometry + 1 :], 0.0
+        )
+
+
+def test_pinned_hot_restart_uses_the_new_boundary_gauge() -> None:
+    indata = _cth_like_input([13], ftol=1.0e-14)
+    cpp_indata = indata._to_cpp_vmecindata()
+    output = _vmecpp.run(cpp_indata, max_threads=1, verbose=_vmecpp.OutputMode.SILENT)
+    modified = indata.model_copy(update={"rbc": np.asarray(indata.rbc).copy()})
+    modified.rbc[1, modified.ntor + 1] += 0.01
+    restart = _vmecpp.HotRestartState(wout=output.wout, indata=cpp_indata)
+    model = _vmecpp.VmecModel.create(
+        modified._to_cpp_vmecindata(),
+        13,
+        initial_state=restart,
+        always_fix_m1_gauge=True,
+    )
+    gauge = autodiff._gauge_entries(model)
+    unpinned = _vmecpp.VmecModel.create(
+        modified._to_cpp_vmecindata(), 13, initial_state=restart
+    )
+    assert (
+        np.max(
+            np.abs(
+                np.asarray(unpinned.get_state())[gauge]
+                - np.asarray(model.get_state())[gauge]
+            )
+        )
+        > 1.0e-6
+    )
+    span = autodiff._span_slices(model)["z_cs"]
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    edge = span.start + (model.ns - 1) * modes_per_surface
+    state = np.asarray(model.get_state())
+    boundary_gauge = state[edge + (gauge - span.start) % modes_per_surface]
+    np.testing.assert_allclose(
+        state[gauge],
+        autodiff._gauge_radial_weight(model, gauge) * boundary_gauge,
+        rtol=0.0,
+        atol=1.0e-14,
+    )
+    model.solve()
+    np.testing.assert_allclose(
+        np.asarray(model.get_state())[gauge], state[gauge], rtol=0.0, atol=1.0e-12
+    )
+
+
 def test_pinned_gauge_solve_is_independent_of_the_multigrid_history() -> None:
     direct = _solve(_cth_like_input([25]), always_fix_m1_gauge=True)
     staged = _solve(_cth_like_input([13, 25]), always_fix_m1_gauge=True)

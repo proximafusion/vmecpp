@@ -170,7 +170,8 @@ class VmecModel {
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state) {
+      const std::optional<vmecpp::HotRestartState> &initial_state,
+      bool always_fix_m1_gauge) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -179,6 +180,7 @@ class VmecModel {
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
     vmecpp::Vmec &v = *model->vmec_;
+    v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -801,6 +803,8 @@ class VmecModel {
   int ns() const { return vmec_->fc_.ns; }
   int mpol() const { return vmec_->s_.mpol; }
   int ntor() const { return vmec_->s_.ntor; }
+  int mpol_geometry() const { return vmec_->s_.mpolGeometry; }
+  int ntor_geometry() const { return vmec_->s_.ntorGeometry; }
   bool lthreed() const { return vmec_->s_.lthreed; }
   bool lasym() const { return vmec_->s_.lasym; }
   bool have_to_flip_theta() const { return vmec_->fc_.haveToFlipTheta; }
@@ -1677,7 +1681,10 @@ PYBIND11_MODULE(_vmecpp, m) {
   // from Python (see vmecpp._iteration).
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
-                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt,
+                  py::arg("always_fix_m1_gauge") = false,
+                  "Create a model; set always_fix_m1_gauge here to pin the "
+                  "gauge during hot-restart initialization.")
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
            py::arg("always_fix_m1_gauge") = true)
@@ -1700,7 +1707,9 @@ PYBIND11_MODULE(_vmecpp, m) {
                     &VmecModel::set_always_fix_m1_gauge,
                     "Zero the m=1 gauge force from the first iteration of "
                     "solve() and set the gauge from the boundary in "
-                    "refine_to(). The converged gauge then equals the "
+                    "refine_to(). For a hot restart, pass the flag to create() "
+                    "so initialization pins the gauge. The converged gauge "
+                    "then equals the "
                     "boundary gauge scaled by sqrt(s), independent of the "
                     "iteration and multigrid history, and the exact "
                     "Hessian-vector products with always_fix_m1_gauge=True "
@@ -1749,6 +1758,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ns", &VmecModel::ns)
       .def_property_readonly("mpol", &VmecModel::mpol)
       .def_property_readonly("ntor", &VmecModel::ntor)
+      .def_property_readonly("mpol_geometry", &VmecModel::mpol_geometry)
+      .def_property_readonly("ntor_geometry", &VmecModel::ntor_geometry)
       .def_property_readonly("lthreed", &VmecModel::lthreed)
       .def_property_readonly("lasym", &VmecModel::lasym)
       .def_property_readonly("has_exact_force_jacobian",

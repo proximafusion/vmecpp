@@ -124,8 +124,7 @@ def _solve_model(template, boundary: np.ndarray, profiles=None):
         if ns < 3:
             continue
         if model is None:
-            model = _vmecpp.VmecModel.create(indata, ns)
-            model.always_fix_m1_gauge = True
+            model = _vmecpp.VmecModel.create(indata, ns, always_fix_m1_gauge=True)
         else:
             model.refine_to(ns)
         model.solve()
@@ -205,9 +204,10 @@ def _gauge_entries(model) -> np.ndarray:
     in the ``z_cs`` slot. Its force is zeroed when the gauge is fixed, so with
     ``always_fix_m1_gauge`` the solve leaves these entries at the initial guess:
     the boundary value scaled by ``sqrt(s)`` on every surface. The ``n = 0``
-    entry is identically zero and is left to the structural deflation.
+    entry is identically zero and is left to the structural deflation. Modes
+    excluded by the geometry resolution are zeroed during force evaluation.
     """
-    if not model.lthreed:
+    if not model.lthreed or model.mpol_geometry <= 1:
         return np.zeros(0, dtype=np.int64)
     slices = _span_slices(model)
     modes_per_surface = model.mpol * (model.ntor + 1)
@@ -215,7 +215,7 @@ def _gauge_entries(model) -> np.ndarray:
     entries = [
         span.start + j * modes_per_surface + 1 * (model.ntor + 1) + n
         for j in range(1, model.ns - 1)
-        for n in range(1, model.ntor + 1)
+        for n in range(1, model.ntor_geometry + 1)
     ]
     return np.asarray(entries, dtype=np.int64)
 
@@ -273,6 +273,8 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     zbcs_bar = np.zeros((mpol, ntor + 1))
     for m in range(mpol):
         for n in range(ntor + 1):
+            if m >= model.mpol_geometry or n > model.ntor_geometry:
+                continue
             scale = (1.0 if m == 0 else np.sqrt(2.0)) * (
                 1.0 if n == 0 else np.sqrt(2.0)
             )
