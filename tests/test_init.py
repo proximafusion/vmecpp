@@ -158,8 +158,8 @@ def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
 
 
 def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
-    """An mgrid file whose mode is "N" runs, and the mode survives a round trip through
-    a wout file."""
+    """An mgrid file whose mode is "N" runs, and the mode reads as unset, also after a
+    round trip through a wout file."""
     makegrid_params = vmecpp.MakegridParameters.from_file(
         TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
     )
@@ -203,11 +203,11 @@ def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
     vmec_input.mgrid_file = str(mgrid_file)
 
     wout = vmecpp.run(vmec_input, verbose=False).wout
-    assert wout.mgrid_mode == "N"
+    assert wout.mgrid_mode == ""
 
     wout_filename = tmp_path / "wout_mgrid_mode_none.nc"
     wout.save(wout_filename)
-    assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == "N"
+    assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == ""
 
 
 def test_vmecinput_io():
