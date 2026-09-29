@@ -43,15 +43,22 @@ HandoverStorage::HandoverStorage(const Sizes* s) : s_(*s) {
   rAxis.setZero(s_.nZeta);
   zAxis.setZero(s_.nZeta);
 
-  rCC_LCFS.setZero(mnsize);
-  rSS_LCFS.setZero(mnsize);
-  zSC_LCFS.setZero(mnsize);
-  zCS_LCFS.setZero(mnsize);
+  SetVacuumCutoffs(s_.mpol, s_.ntor);
+}
+
+void HandoverStorage::SetVacuumCutoffs(int vacuum_mpol_in, int vacuum_ntor_in) {
+  vacuum_mpol = vacuum_mpol_in;
+  vacuum_ntor = vacuum_ntor_in;
+  const int vacuum_mnsize = vacuum_mpol * (vacuum_ntor + 1);
+  rCC_LCFS.setZero(vacuum_mnsize);
+  rSS_LCFS.setZero(vacuum_mnsize);
+  zSC_LCFS.setZero(vacuum_mnsize);
+  zCS_LCFS.setZero(vacuum_mnsize);
   if (s_.lasym) {
-    rSC_LCFS.setZero(mnsize);
-    rCS_LCFS.setZero(mnsize);
-    zCC_LCFS.setZero(mnsize);
-    zSS_LCFS.setZero(mnsize);
+    rSC_LCFS.setZero(vacuum_mnsize);
+    rCS_LCFS.setZero(vacuum_mnsize);
+    zCC_LCFS.setZero(vacuum_mnsize);
+    zSS_LCFS.setZero(vacuum_mnsize);
   }
 }
 

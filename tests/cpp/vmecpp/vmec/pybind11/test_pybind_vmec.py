@@ -123,7 +123,7 @@ def test_indata_from_json():
     assert json.loads(indata.to_json()) == json.loads(indata_from_file.to_json())
 
     # an inconsistent input is reported as an exception
-    with pytest.raises(AttributeError, match="ncurr"):
+    with pytest.raises(ValueError, match="ncurr"):
         vmec.VmecINDATA.from_json('{"ncurr": 2}')
 
 
