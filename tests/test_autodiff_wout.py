@@ -374,7 +374,14 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
     """A traced boundary solves through the differentiable path; under jax.jit the
     forward solve is not observable, so only the wout physics fields are set."""
     indata = _cth_like_input()
-    reference = vmecpp.run(indata, max_threads=1, verbose=False)
+    reference = vmecpp.VmecWOut._from_cpp_wout(
+        _vmecpp.run(
+            indata._to_cpp_vmecindata(),
+            max_threads=1,
+            verbose=_vmecpp.OutputMode.SILENT,
+            always_fix_m1_gauge=True,
+        ).wout
+    )
 
     @jax.jit
     def solve(boundary):
@@ -390,11 +397,11 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
         _assert_field_close(
             name,
             getattr(output.wout, name),
-            getattr(reference.wout, name),
-            reference.wout,
+            getattr(reference, name),
+            reference,
         )
     for name, value in autodiff_wout.static_fields(indata).items():
-        _assert_field_close(name, getattr(output.wout, name), value, reference.wout)
+        _assert_field_close(name, getattr(output.wout, name), value, reference)
 
 
 @pytest.mark.parametrize(
@@ -481,7 +488,12 @@ def test_run_with_a_traced_boundary_fills_the_cpp_outputs() -> None:
     """Under jax.grad the forward solve runs eagerly, so the non-differentiable members
     of the output come from its C++ output stage."""
     indata = _cth_like_input()
-    reference = vmecpp.run(indata, max_threads=1, verbose=False)
+    reference = _vmecpp.run(
+        indata._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+        always_fix_m1_gauge=True,
+    )
     captured = {}
 
     def aspect(boundary):
@@ -546,8 +558,20 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
     assert np.all(np.isfinite(gradient))
 
     direction = _low_mode_direction(indata, seed)
-    plus = float(objective(boundary + direction))
-    minus = float(objective(boundary - direction))
+
+    def pinned_objective(value):
+        cpp_input = _with_boundary(indata, value)._to_cpp_vmecindata()
+        wout = vmecpp.VmecWOut._from_cpp_wout(
+            _vmecpp.run(
+                cpp_input,
+                verbose=_vmecpp.OutputMode.SILENT,
+                always_fix_m1_gauge=True,
+            ).wout
+        )
+        return wout.aspect if objective_name == "aspect" else _quasisymmetry_proxy(wout)
+
+    plus = float(pinned_objective(boundary + direction))
+    minus = float(pinned_objective(boundary - direction))
     finite_difference = 0.5 * (plus - minus)
     directional = float(np.sum(gradient * direction))
     print(

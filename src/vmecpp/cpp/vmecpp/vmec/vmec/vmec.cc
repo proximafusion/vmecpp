@@ -98,13 +98,14 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback) {
+    InterruptCallback interrupt_callback, bool always_fix_m1_gauge) {
   auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
                                      std::move(interrupt_callback));
   if (!maybe_vmec.ok()) {
     return maybe_vmec.status();
   }
   Vmec& v = **maybe_vmec;
+  v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =

@@ -542,6 +542,7 @@ class DifferentiableVmec:
         )
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
         model = _vmecpp.VmecModel.create(indata, self.ns)
+        model.always_fix_m1_gauge = True
         model.set_state(np.ascontiguousarray(state))
         return model
 
@@ -658,7 +659,7 @@ def make_solver(vmec_input) -> DifferentiableVmec:
 
 @dataclass(frozen=True)
 class _RunSolver(DifferentiableVmec):
-    """:class:`DifferentiableVmec` whose forward solve is a full ``vmecpp.run``.
+    """:class:`DifferentiableVmec` whose forward solve is a pinned-gauge C++ run.
 
     The C++ output of the forward solve supplies what the JAX output stage does
     not compute (jxbout, mercier, threed1, the solver diagnostics) and, as the
@@ -681,6 +682,7 @@ class _RunSolver(DifferentiableVmec):
             indata,
             max_threads=self.max_threads,
             verbose=_vmecpp.OutputMode(self.verbose),
+            always_fix_m1_gauge=True,
         )
         initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
         model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)

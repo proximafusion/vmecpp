@@ -1536,8 +1536,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads,
-         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         bool always_fix_m1_gauge) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) {
@@ -1554,7 +1554,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, std::move(initial_state), max_threads,
-                            verbose, interrupt_check);
+                            verbose, interrupt_check, always_fix_m1_gauge);
         }
         if (was_interrupted) {
           throw py::error_already_set();
@@ -1563,7 +1563,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("always_fix_m1_gauge") = false);
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
