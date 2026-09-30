@@ -75,9 +75,11 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
 }
 
 // Adapts a Python iteration callback to vmecpp::IterationCallback: the hook
-// acquires the GIL, treats a None return as "keep going", and stops the run
-// on an exception, which Rethrow raises once the run has returned. A return
-// value that does not convert to a bool stops the run with a TypeError.
+// acquires the GIL, hands the callback a copy of the state that Python owns,
+// takes curr_h back from that copy, treats a None return as "keep going", and
+// stops the run on an exception, which Rethrow raises once the run has
+// returned. A return value that does not convert to a bool stops the run with
+// a TypeError.
 struct PythonIterationCallback {
   py::object callable;
   std::optional<py::error_already_set> error;
@@ -86,10 +88,12 @@ struct PythonIterationCallback {
     if (callable.is_none()) {
       return nullptr;
     }
-    return [this](const vmecpp::SolverState &state) -> bool {
+    return [this](vmecpp::SolverState &m_state) -> bool {
       py::gil_scoped_acquire acquire;
       try {
+        py::object state = py::cast(m_state, py::return_value_policy::copy);
         py::object keep_going = callable(state);
+        m_state.curr_h = state.cast<const vmecpp::SolverState &>().curr_h;
         if (keep_going.is_none()) {
           return true;
         }
@@ -1572,6 +1576,23 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("coefficients", &vmecpp::Geometry::coefficients)
       .def("evaluate", &vmecpp::EvaluateGeometry, py::arg("s"),
            py::arg("theta"), py::arg("zeta"));
+  py::class_<vmecpp::HalfGridFields>(m, "HalfGridFields")
+      .def_readonly("gsqrt", &vmecpp::HalfGridFields::gsqrt)
+      .def_readonly("bsupu", &vmecpp::HalfGridFields::bsupu)
+      .def_readonly("bsupv", &vmecpp::HalfGridFields::bsupv)
+      .def_readonly("bsubu", &vmecpp::HalfGridFields::bsubu)
+      .def_readonly("bsubv", &vmecpp::HalfGridFields::bsubv)
+      .def_readonly("weight", &vmecpp::HalfGridFields::weight)
+      .def_readonly("buco", &vmecpp::HalfGridFields::buco)
+      .def_readonly("bvco", &vmecpp::HalfGridFields::bvco)
+      .def_readonly("iota", &vmecpp::HalfGridFields::iota)
+      .def_readonly("phip", &vmecpp::HalfGridFields::phip)
+      .def_readonly("vp", &vmecpp::HalfGridFields::vp)
+      .def_readonly("ntheta_even", &vmecpp::HalfGridFields::ntheta_even)
+      .def_readonly("ntheta_eff", &vmecpp::HalfGridFields::ntheta_eff)
+      .def_readonly("nzeta", &vmecpp::HalfGridFields::nzeta)
+      .def_readonly("nfp", &vmecpp::HalfGridFields::nfp)
+      .def_readonly("signgs", &vmecpp::HalfGridFields::signgs);
   py::class_<vmecpp::SolverState>(m, "SolverState")
       .def_readonly("iteration", &vmecpp::SolverState::iteration)
       .def_readonly("multigrid_step", &vmecpp::SolverState::multigrid_step)
@@ -1589,7 +1610,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("vacuum_pressure_active",
                     &vmecpp::SolverState::vacuum_pressure_active)
       .def_readonly("mhd_energy", &vmecpp::SolverState::mhd_energy)
-      .def_readonly("geometry", &vmecpp::SolverState::geometry);
+      .def_readonly("geometry", &vmecpp::SolverState::geometry)
+      .def_readonly("half_grid", &vmecpp::SolverState::half_grid)
+      .def_readwrite("curr_h", &vmecpp::SolverState::curr_h);
   m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
     return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
                                 vmecpp::GeometryCoefficientState::kPhysical);
