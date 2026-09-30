@@ -207,11 +207,13 @@ int VacuumNtor(const vmecpp::VmecINDATA& indata) {
 // The coupled block of axis_block_preconditioner: the sum of the invariant
 // residuals below which it takes the step, the iterations between probes,
 // the fraction of its Newton step taken, and the radial reach of the force
-// stencil, in surfaces, that the probes resolve.
+// stencil, in surfaces, that the probes resolve: the forces on a surface
+// depend on its neighbours alone, and the axis copies the odd-m coefficients
+// of the first surface.
 constexpr double kAxisBlockThreshold = 1.0e-4;
 constexpr int kAxisBlockRefresh = 500;
 constexpr double kAxisBlockStepFraction = 0.5;
-constexpr int kAxisBlockStencil = 2;
+constexpr int kAxisBlockStencil = 1;
 constexpr int kAxisBlockColors = 2 * kAxisBlockStencil + 1;
 }  // namespace
 
