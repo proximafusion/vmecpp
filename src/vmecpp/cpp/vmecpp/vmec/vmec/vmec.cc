@@ -6,11 +6,11 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <numbers>
 #include <string>
 #include <utility>
@@ -1363,22 +1363,17 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // thread hands the state to the callback while the others sleep until
       // it returns.
       if (thread_id == 0) {
-        const std::lock_guard<std::mutex> lock(callback_mutex_);
-        callback_running_ = true;
+        callback_running_.store(true, std::memory_order_relaxed);
       }
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
       if (thread_id == 0) {
         NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
-        {
-          const std::lock_guard<std::mutex> lock(callback_mutex_);
-          callback_running_ = false;
-        }
-        callback_returned_.notify_all();
+        callback_running_.store(false, std::memory_order_release);
+        callback_running_.notify_all();
       } else {
-        std::unique_lock<std::mutex> lock(callback_mutex_);
-        callback_returned_.wait(lock, [this] { return !callback_running_; });
+        callback_running_.wait(true, std::memory_order_acquire);
       }
     }
 
