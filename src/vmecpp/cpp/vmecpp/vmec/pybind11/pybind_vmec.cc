@@ -76,7 +76,8 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
 
 // Adapts a Python iteration callback to vmecpp::IterationCallback: the hook
 // acquires the GIL, treats a None return as "keep going", and stops the run
-// on an exception, which Rethrow raises once the run has returned.
+// on an exception, which Rethrow raises once the run has returned. A return
+// value that does not convert to a bool stops the run with a TypeError.
 struct PythonIterationCallback {
   py::object callable;
   std::optional<py::error_already_set> error;
@@ -89,7 +90,18 @@ struct PythonIterationCallback {
       py::gil_scoped_acquire acquire;
       try {
         py::object keep_going = callable(state);
-        return keep_going.is_none() || py::cast<bool>(keep_going);
+        if (keep_going.is_none()) {
+          return true;
+        }
+        try {
+          return py::cast<bool>(keep_going);
+        } catch (const py::cast_error &) {
+          PyErr_Format(PyExc_TypeError,
+                       "iteration_callback must return None or a bool, but "
+                       "returned an object of type %s",
+                       Py_TYPE(keep_going.ptr())->tp_name);
+          throw py::error_already_set();
+        }
       } catch (py::error_already_set &e) {
         error.emplace(std::move(e));
         return false;
