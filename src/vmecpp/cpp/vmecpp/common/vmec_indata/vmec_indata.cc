@@ -333,6 +333,7 @@ VmecINDATA::VmecINDATA() {
   tcon0 = 0.5;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
+  lbsubs = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
@@ -465,6 +466,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
+  WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
@@ -585,6 +587,14 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/lambda_preconditioner_scale", from_file);
   } else {
     m_indata.lambda_preconditioner_scale = 0.5;
+  }
+
+  // Legacy way of checking for dataset existence
+  // Older HDF5 files predate this field; fall back to the default if absent.
+  if (H5Lexists(from_file.getId(), "/indata/lbsubs", 0) == 1) {
+    ReadH5Dataset(m_indata.lbsubs, "/indata/lbsubs", from_file);
+  } else {
+    m_indata.lbsubs = false;
   }
 
   // Legacy way of checking for dataset existence
@@ -1104,6 +1114,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         maybe_lambda_preconditioner_scale->value();
   }
 
+  auto maybe_lbsubs = JsonReadBool(j, "lbsubs");
+  if (!maybe_lbsubs.ok()) {
+    return maybe_lbsubs.status();
+  }
+  if (maybe_lbsubs->has_value()) {
+    vmec_indata.lbsubs = maybe_lbsubs->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1451,6 +1469,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
+  output["lbsubs"] = lbsubs;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
@@ -1834,6 +1853,9 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   // lforbal
   // nothing to check here: lforbal can be true or false and both are valid...
+
+  // lbsubs
+  // nothing to check here: lbsubs can be true or false and both are valid...
 
   // iteration_style
   // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.
