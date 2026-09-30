@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790773197102,
+  "lastUpdate": 1790775763786,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -22551,6 +22551,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.31906075999995664,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1587f45f356453f60fac38b42d0720c0c2975210",
+          "message": "Plot the exact-equilibria V&V as one dashboard per member (#925)\n\nPlot the exact-equilibria V&V as one dashboard per member and shorten the job summary\n\nReplace the three plots per member with a 2x2 figure: the headline errors\nagainst h with their expected orders, the observed order between consecutive\nns, the error in the enclosed current over s, and the angular convergence with\nthe radial floor. Runs that did not reach ftol are drawn hollow.\n\nStart the summary with a five-row table per member (error at the finest ns,\nlast observed order, expected order) and the checks; fold the complete tables\nand criteria into a details block.\n\nUpload the plots as their own artifact in both jobs, run the full suite with\n--check, and write its summary even when a check fails.\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+          "timestamp": "2026-09-30T13:35:37Z",
+          "tree_id": "71f51fe862eb7433c2afa7db08134f5a979c782b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/1587f45f356453f60fac38b42d0720c0c2975210"
+        },
+        "date": 1790775759211,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6459844194000197,
+            "range": "stddev: 0.0030341447944850445",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.1266362873333264,
+            "range": "stddev: 1.0799818913655475",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0999856919999995,
+            "range": "stddev: 0.001465549745042468",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.2091546313333197,
+            "range": "stddev: 0.9920469015110909",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.483696923000006,
+            "range": "stddev: 0.011229070714173298",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.691025466666683,
+            "range": "stddev: 0.00684387126826212",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.301676707000013,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.49955960599999116,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
