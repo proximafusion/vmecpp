@@ -215,6 +215,22 @@ def _validate_iteration_style(
     return IterationStyle(str(value))
 
 
+# SIMSOPT (wout-style) names for the magnetic axis coefficients.
+AXIS_ALIASES = {
+    "raxis_cc": "raxis_c",
+    "raxis_cs": "raxis_s",
+    "zaxis_cc": "zaxis_c",
+    "zaxis_cs": "zaxis_s",
+}
+
+
+def _alias_property(target: str) -> property:
+    return property(
+        lambda self: getattr(self, target),
+        lambda self, value: setattr(self, target, value),
+    )
+
+
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
 # In the future VmecINDATAPyWrapper and the C++ VmecINDATA will merge into one type,
 # and this will become a Python wrapper around the one C++ VmecINDATA type.
@@ -263,6 +279,16 @@ class VmecInput(BaseModelWithNumpy):
 
     May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
     """
+
+    @property
+    def mpol_max(self) -> int:
+        """The final mpol resolution, if a multigrid sequence is used."""
+        return _final_resolution(self.mpol)
+
+    @property
+    def ntor_max(self) -> int:
+        """The final ntor resolution, if a multigrid sequence is used."""
+        return _final_resolution(self.ntor)
 
     mpol_geometry: int = -1
     """Optional reduced poloidal resolution for the geometry (R, Z).
@@ -546,6 +572,18 @@ class VmecInput(BaseModelWithNumpy):
     Only used if lasym=True.
     """
 
+    raxis_cc = _alias_property("raxis_c")
+    raxis_cs = _alias_property("raxis_s")
+    zaxis_cc = _alias_property("zaxis_c")
+    zaxis_cs = _alias_property("zaxis_s")
+
+    @pydantic.field_validator(
+        "mgrid_file", "pmass_type", "pcurr_type", "piota_type", mode="before"
+    )
+    @classmethod
+    def _decode_bytes(cls, value: typing.Any) -> typing.Any:
+        return value.decode().strip() if isinstance(value, bytes) else value
+
     rbc: SerializableSparseCoefficientArray[
         jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
@@ -586,8 +624,8 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
-        mpol_final = _final_resolution(self.mpol)
-        ntor_final = _final_resolution(self.ntor)
+        mpol_final = self.mpol_max
+        ntor_final = self.ntor_max
         expected_shape = (mpol_final, 2 * ntor_final + 1)
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
@@ -2877,6 +2915,79 @@ def _print_progress_tip_once() -> None:
 
 
 @dataclasses.dataclass(frozen=True)
+class HalfGridFields:
+    """The fields of a force evaluation on the half grid, at the angles ``theta_l = 2 pi
+    l / ntheta_even``, ``l < ntheta_eff``, and ``zeta_k = 2 pi k / (nfp nzeta)``, ``k <
+    nzeta``.
+
+    Without ``lasym`` the poloidal points cover [0, pi], and a field on the rest
+    of a surface follows from ``f(theta, zeta) = f(-theta, -zeta)``.
+    """
+
+    gsqrt: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff], each row zeta-major: the Jacobian sqrt(g),
+    whose sign is ``signgs``."""
+
+    bsupu: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] contravariant poloidal component of B."""
+
+    bsupv: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] contravariant toroidal component of B."""
+
+    bsubu: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] covariant poloidal component of B."""
+
+    bsubv: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] covariant toroidal component of B."""
+
+    weight: np.ndarray
+    """[ntheta_eff] weight of each point in an angle average, ``<f> = sum_{k,l} weight_l
+    f_kl``."""
+
+    buco: np.ndarray
+    """[ns - 1] ``<B_theta>``, the ``buco`` of the wout file."""
+
+    bvco: np.ndarray
+    """[ns - 1] ``<B_zeta>``, the ``bvco`` of the wout file."""
+
+    iota: np.ndarray
+    """[ns - 1] rotational transform, the ``iotas`` of the wout file."""
+
+    phip: np.ndarray
+    """[ns - 1] toroidal flux derivative, the ``phips`` of the wout file."""
+
+    vp: np.ndarray
+    """[ns - 1] ``signgs <sqrt(g)>``, the ``vp`` of the wout file."""
+
+    ntheta_even: int
+    ntheta_eff: int
+    nzeta: int
+    nfp: int
+    signgs: int
+
+    @staticmethod
+    def _from_cpp(cpp_fields: _vmecpp.HalfGridFields) -> HalfGridFields:
+        return HalfGridFields(
+            gsqrt=np.array(cpp_fields.gsqrt),
+            bsupu=np.array(cpp_fields.bsupu),
+            bsupv=np.array(cpp_fields.bsupv),
+            bsubu=np.array(cpp_fields.bsubu),
+            bsubv=np.array(cpp_fields.bsubv),
+            weight=np.array(cpp_fields.weight),
+            buco=np.array(cpp_fields.buco),
+            bvco=np.array(cpp_fields.bvco),
+            iota=np.array(cpp_fields.iota),
+            phip=np.array(cpp_fields.phip),
+            vp=np.array(cpp_fields.vp),
+            ntheta_even=cpp_fields.ntheta_even,
+            ntheta_eff=cpp_fields.ntheta_eff,
+            nzeta=cpp_fields.nzeta,
+            nfp=cpp_fields.nfp,
+            signgs=cpp_fields.signgs,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
 class SolverState:
     """The state of the solver after one force iteration, handed to the
     ``iteration_callback`` of :func:`run`."""
@@ -2922,6 +3033,18 @@ class SolverState:
     geometry: _geometry.Geometry
     """R, Z and lambda coefficients of the state."""
 
+    half_grid: HalfGridFields
+    """The fields of the force evaluation of this iteration, which the time step that
+    followed it has moved ``geometry`` away from, except on the iteration that
+    converges."""
+
+    curr_h: np.ndarray
+    """[ns - 1] with ``ncurr = 1``, the enclosed toroidal current that the force
+    evaluations prescribe, in the units of ``half_grid.buco``: each evaluation solves
+    for chi' so that ``buco`` equals it. Empty with ``ncurr = 0``. The callback may
+    change its values in place, and the force evaluations prescribe the changed
+    current from the next iteration to the end of the multigrid step."""
+
     @staticmethod
     def _from_cpp(cpp_state: _vmecpp.SolverState) -> SolverState:
         return SolverState(
@@ -2938,6 +3061,8 @@ class SolverState:
             vacuum_pressure_active=cpp_state.vacuum_pressure_active,
             mhd_energy=cpp_state.mhd_energy,
             geometry=_geometry.from_cpp(cpp_state.geometry),
+            half_grid=HalfGridFields._from_cpp(cpp_state.half_grid),
+            curr_h=np.array(cpp_state.curr_h),
         )
 
 
@@ -2974,7 +3099,10 @@ def run(
             of the state just reached, after every thread has finished the step. Returning
             ``False`` stops the run, which then returns the outputs of that state with
             ``wout.ier_flag`` reporting no convergence; returning ``None`` or ``True`` continues.
-            An exception raised inside the callback stops the run and propagates.
+            An exception raised inside the callback stops the run and propagates, and a return
+            value that does not convert to a bool stops the run with a ``TypeError``. With
+            ``ncurr = 1`` the callback may change the values of ``state.curr_h``, the
+            enclosed current the following force evaluations prescribe.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -3036,7 +3164,10 @@ def run(
         user_callback = iteration_callback
 
         def forward(cpp_state: _vmecpp.SolverState) -> bool | None:
-            return user_callback(SolverState._from_cpp(cpp_state))
+            state = SolverState._from_cpp(cpp_state)
+            keep_going = user_callback(state)
+            cpp_state.curr_h = state.curr_h
+            return keep_going
 
         cpp_iteration_callback = forward
 
@@ -3263,5 +3394,6 @@ __all__ = [  # noqa: RUF022
     "IterationResult",
     "IterationState",
     "SolverState",
+    "HalfGridFields",
     "has_exact_force_jacobian",
 ]
