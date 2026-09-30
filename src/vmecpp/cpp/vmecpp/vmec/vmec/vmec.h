@@ -64,6 +64,36 @@ struct HotRestartState {
 // Called periodically from the iteration loop.
 using InterruptCallback = std::function<bool()>;
 
+// The fields of a force evaluation on the half grid, at the angles
+// theta_l = 2 pi l / ntheta_even, l < ntheta_eff, and
+// zeta_k = 2 pi k / (nfp nzeta), k < nzeta. Without lasym the poloidal points
+// cover [0, pi], and a field on the rest of a surface follows from
+// f(theta, zeta) = f(-theta, -zeta).
+struct HalfGridFields {
+  // [ns - 1, nzeta * ntheta_eff], each row zeta-major: the Jacobian sqrt(g),
+  // whose sign is signgs, and the contravariant and covariant components of B
+  RowMatrixXd gsqrt;
+  RowMatrixXd bsupu;
+  RowMatrixXd bsupv;
+  RowMatrixXd bsubu;
+  RowMatrixXd bsubv;
+  // [ntheta_eff] weight of each point in an angle average,
+  // <f> = sum_{k,l} weight_l f_kl
+  Eigen::VectorXd weight;
+  // [ns - 1] the half-grid profiles of the wout file: buco = <B_theta>,
+  // bvco = <B_zeta>, iotas, phips and vp = signgs <sqrt(g)>
+  Eigen::VectorXd buco;
+  Eigen::VectorXd bvco;
+  Eigen::VectorXd iota;
+  Eigen::VectorXd phip;
+  Eigen::VectorXd vp;
+  int ntheta_even = 0;
+  int ntheta_eff = 0;
+  int nzeta = 0;
+  int nfp = 0;
+  int signgs = 0;
+};
+
 // The state of the solver after the force iteration that just completed,
 // handed to an IterationCallback by the master thread while the other threads
 // wait.
@@ -91,11 +121,21 @@ struct SolverState {
   double mhd_energy;
   // R, Z and lambda coefficients of the state, as MakeGeometry lays them out
   Geometry geometry;
+  // the fields of the force evaluation of this iteration, which the time step
+  // that followed it has moved geometry away from, except on the iteration
+  // that converges
+  HalfGridFields half_grid;
+  // [ns - 1] with ncurr = 1, the enclosed toroidal current that the force
+  // evaluations prescribe, in the units of buco: each evaluation solves for
+  // chi' so that buco equals it. Empty with ncurr = 0.
+  Eigen::VectorXd curr_h;
 };
 
 // Called once per force iteration; return false to stop the run, which then
-// returns the output quantities of the state reached.
-using IterationCallback = std::function<bool(const SolverState&)>;
+// returns the output quantities of the state reached. The callback may change
+// the values of state.curr_h, and the force evaluations prescribe the changed
+// current from the next iteration to the end of the multigrid step.
+using IterationCallback = std::function<bool(SolverState&)>;
 
 // This is the preferred way to run VMEC++.
 absl::StatusOr<OutputQuantities> run(
@@ -321,6 +361,13 @@ class Vmec {
   // Geometry.
   Geometry EquilibriumState() const;
 
+  // The fields of the last force evaluation on the half grid, gathered from
+  // the threads.
+  HalfGridFields HalfGridState() const;
+
+  // The enclosed current each thread prescribes, on the whole half grid.
+  Eigen::VectorXd EnclosedCurrent() const;
+
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
 
@@ -342,6 +389,10 @@ class Vmec {
 
   // set to true when the iteration callback asks to stop the run
   bool stopped_by_callback_ = false;
+
+  // the error of an iteration callback that left state.curr_h at another
+  // length, which stops the run
+  absl::Status callback_status_;
 
   // index into ns_array of the multigrid stage being solved
   int multigrid_step_ = 0;

@@ -75,8 +75,10 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
 }
 
 // Adapts a Python iteration callback to vmecpp::IterationCallback: the hook
-// acquires the GIL, treats a None return as "keep going", and stops the run
-// on an exception, which Rethrow raises once the run has returned.
+// acquires the GIL, hands the callback a copy of the state that Python owns,
+// takes curr_h back from that copy, treats a None return as "keep going", and
+// stops the run on an exception, which Rethrow raises once the run has
+// returned.
 struct PythonIterationCallback {
   py::object callable;
   std::optional<py::error_already_set> error;
@@ -85,10 +87,12 @@ struct PythonIterationCallback {
     if (callable.is_none()) {
       return nullptr;
     }
-    return [this](const vmecpp::SolverState &state) -> bool {
+    return [this](vmecpp::SolverState &m_state) -> bool {
       py::gil_scoped_acquire acquire;
       try {
+        py::object state = py::cast(m_state, py::return_value_policy::copy);
         py::object keep_going = callable(state);
+        m_state.curr_h = state.cast<const vmecpp::SolverState &>().curr_h;
         return keep_going.is_none() || py::cast<bool>(keep_going);
       } catch (py::error_already_set &e) {
         error.emplace(std::move(e));
@@ -190,36 +194,6 @@ void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
 // expensive forward model and the per-step Fourier-coefficient arithmetic stay
 // in C++; the iteration *logic* (damping, time-step control, restart decisions,
 // convergence test) is owned by the Python caller. See vmecpp._iteration.
-// The fields of the last VmecModel.evaluate() on the half grid, at the angles
-// theta_l = 2 pi l / ntheta_even, l < ntheta_eff, and zeta_k = 2 pi k /
-// (nfp nzeta), k < nzeta. Without lasym the poloidal points cover [0, pi], and
-// a field on the rest of the surface follows from f(theta, zeta) = f(-theta,
-// -zeta).
-struct HalfGridFields {
-  // [ns - 1, nzeta * ntheta_eff], each row zeta-major: the Jacobian sqrt(g),
-  // whose sign is signgs, and the contravariant and covariant components of B
-  vmecpp::RowMatrixXd gsqrt;
-  vmecpp::RowMatrixXd bsupu;
-  vmecpp::RowMatrixXd bsupv;
-  vmecpp::RowMatrixXd bsubu;
-  vmecpp::RowMatrixXd bsubv;
-  // [ntheta_eff] weight of each point in an angle average,
-  // <f> = sum_{k,l} weight_l f_kl
-  Eigen::VectorXd weight;
-  // [ns - 1] the half-grid profiles of the wout file: buco = <B_theta>,
-  // bvco = <B_zeta>, iotas, phips and vp = signgs <sqrt(g)>
-  Eigen::VectorXd buco;
-  Eigen::VectorXd bvco;
-  Eigen::VectorXd iota;
-  Eigen::VectorXd phip;
-  Eigen::VectorXd vp;
-  int ntheta_even = 0;
-  int ntheta_eff = 0;
-  int nzeta = 0;
-  int nfp = 0;
-  int signgs = 0;
-};
-
 class VmecModel {
  public:
   explicit VmecModel(std::unique_ptr<vmecpp::Vmec> vmec)
@@ -905,56 +879,6 @@ class VmecModel {
   // Exposed to let callers (and tests) check chip_state_vjp and
   // geometry_state_vjp's ncurr=1 flux route against a finite difference.
   Eigen::VectorXd chip_h() const { return vmec_->p_[0]->chipH; }
-
-  // The enclosed toroidal current that ncurr = 1 prescribes on the half grid,
-  // in the units of wout buco: every evaluate() solves for chi' such that
-  // buco equals it. Initialization (create, refine_to, reinitialize) sets it
-  // from ac and curtor.
-  Eigen::VectorXd curr_h() const { return vmec_->p_[0]->currH; }
-  void set_curr_h(const Eigen::VectorXd &profile) const {
-    if (vmec_->indata_.ncurr != 1) {
-      throw std::runtime_error(
-          "VmecModel.curr_h prescribes the enclosed current, which needs "
-          "ncurr = 1, but ncurr is " +
-          std::to_string(vmec_->indata_.ncurr));
-    }
-    if (profile.size() != vmec_->p_[0]->currH.size()) {
-      throw std::runtime_error(
-          "VmecModel.curr_h has one entry per half-grid surface, " +
-          std::to_string(vmec_->p_[0]->currH.size()) + ", but got " +
-          std::to_string(profile.size()));
-    }
-    vmec_->p_[0]->currH = profile;
-  }
-
-  HalfGridFields GetHalfGridFields() const {
-    const vmecpp::IdealMhdModel &model = *vmec_->m_[0];
-    const vmecpp::RadialProfiles &profiles = *vmec_->p_[0];
-    const vmecpp::Sizes &sizes = vmec_->s_;
-    const Eigen::Index num_half = profiles.bucoH.size();
-    auto surfaces = [&](const Eigen::VectorXd &values) {
-      return vmecpp::RowMatrixXd(Eigen::Map<const vmecpp::RowMatrixXd>(
-          values.data(), num_half, sizes.nZnT));
-    };
-    HalfGridFields fields;
-    fields.gsqrt = surfaces(model.gsqrt);
-    fields.bsupu = surfaces(model.bsupu);
-    fields.bsupv = surfaces(model.bsupv);
-    fields.bsubu = surfaces(model.bsubu);
-    fields.bsubv = surfaces(model.bsubv);
-    fields.weight = sizes.wInt;
-    fields.buco = profiles.bucoH;
-    fields.bvco = profiles.bvcoH;
-    fields.iota = profiles.iotaH;
-    fields.phip = profiles.phipH;
-    fields.vp = profiles.dVdsH;
-    fields.ntheta_even = sizes.nThetaEven;
-    fields.ntheta_eff = sizes.nThetaEff;
-    fields.nzeta = sizes.nZeta;
-    fields.nfp = sizes.nfp;
-    fields.signgs = vmec_->indata_.signgs;
-    return fields;
-  }
   static bool openmp_enabled() {
 #ifdef _OPENMP
     return true;
@@ -1636,6 +1560,23 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("coefficients", &vmecpp::Geometry::coefficients)
       .def("evaluate", &vmecpp::EvaluateGeometry, py::arg("s"),
            py::arg("theta"), py::arg("zeta"));
+  py::class_<vmecpp::HalfGridFields>(m, "HalfGridFields")
+      .def_readonly("gsqrt", &vmecpp::HalfGridFields::gsqrt)
+      .def_readonly("bsupu", &vmecpp::HalfGridFields::bsupu)
+      .def_readonly("bsupv", &vmecpp::HalfGridFields::bsupv)
+      .def_readonly("bsubu", &vmecpp::HalfGridFields::bsubu)
+      .def_readonly("bsubv", &vmecpp::HalfGridFields::bsubv)
+      .def_readonly("weight", &vmecpp::HalfGridFields::weight)
+      .def_readonly("buco", &vmecpp::HalfGridFields::buco)
+      .def_readonly("bvco", &vmecpp::HalfGridFields::bvco)
+      .def_readonly("iota", &vmecpp::HalfGridFields::iota)
+      .def_readonly("phip", &vmecpp::HalfGridFields::phip)
+      .def_readonly("vp", &vmecpp::HalfGridFields::vp)
+      .def_readonly("ntheta_even", &vmecpp::HalfGridFields::ntheta_even)
+      .def_readonly("ntheta_eff", &vmecpp::HalfGridFields::ntheta_eff)
+      .def_readonly("nzeta", &vmecpp::HalfGridFields::nzeta)
+      .def_readonly("nfp", &vmecpp::HalfGridFields::nfp)
+      .def_readonly("signgs", &vmecpp::HalfGridFields::signgs);
   py::class_<vmecpp::SolverState>(m, "SolverState")
       .def_readonly("iteration", &vmecpp::SolverState::iteration)
       .def_readonly("multigrid_step", &vmecpp::SolverState::multigrid_step)
@@ -1653,7 +1594,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("vacuum_pressure_active",
                     &vmecpp::SolverState::vacuum_pressure_active)
       .def_readonly("mhd_energy", &vmecpp::SolverState::mhd_energy)
-      .def_readonly("geometry", &vmecpp::SolverState::geometry);
+      .def_readonly("geometry", &vmecpp::SolverState::geometry)
+      .def_readonly("half_grid", &vmecpp::SolverState::half_grid)
+      .def_readwrite("curr_h", &vmecpp::SolverState::curr_h);
   m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
     return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
                                 vmecpp::GeometryCoefficientState::kPhysical);
@@ -1818,24 +1761,6 @@ PYBIND11_MODULE(_vmecpp, m) {
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
   // from Python (see vmecpp._iteration).
-  py::class_<HalfGridFields>(m, "HalfGridFields")
-      .def_readonly("gsqrt", &HalfGridFields::gsqrt)
-      .def_readonly("bsupu", &HalfGridFields::bsupu)
-      .def_readonly("bsupv", &HalfGridFields::bsupv)
-      .def_readonly("bsubu", &HalfGridFields::bsubu)
-      .def_readonly("bsubv", &HalfGridFields::bsubv)
-      .def_readonly("weight", &HalfGridFields::weight)
-      .def_readonly("buco", &HalfGridFields::buco)
-      .def_readonly("bvco", &HalfGridFields::bvco)
-      .def_readonly("iota", &HalfGridFields::iota)
-      .def_readonly("phip", &HalfGridFields::phip)
-      .def_readonly("vp", &HalfGridFields::vp)
-      .def_readonly("ntheta_even", &HalfGridFields::ntheta_even)
-      .def_readonly("ntheta_eff", &HalfGridFields::ntheta_eff)
-      .def_readonly("nzeta", &HalfGridFields::nzeta)
-      .def_readonly("nfp", &HalfGridFields::nfp)
-      .def_readonly("signgs", &HalfGridFields::signgs);
-
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt,
@@ -1929,7 +1854,5 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ijacob", &VmecModel::ijacob)
       .def_property_readonly("raxis_c", &VmecModel::raxis_c)
       .def_property_readonly("chip_h", &VmecModel::chip_h)
-      .def_property("curr_h", &VmecModel::curr_h, &VmecModel::set_curr_h)
-      .def("half_grid_fields", &VmecModel::GetHalfGridFields)
       .def_static("openmp_enabled", &VmecModel::openmp_enabled);
 }  // NOLINT(readability/fn_size)
