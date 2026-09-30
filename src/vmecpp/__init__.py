@@ -481,7 +481,8 @@ class VmecInput(BaseModelWithNumpy):
     """Shorten every time step that would take the Jacobian below 1% of its value at
     some grid point, so that flux surfaces cannot cross during the iteration.
 
-    False keeps the time step of VMEC 8.52.
+    False keeps the time step of VMEC 8.52. The iterations reached by a shortened step
+    are listed as ``RestartReason.SHORTENED_STEP`` in ``wout.restart_reasons``.
     """
 
     return_outputs_even_if_not_converged: bool = False

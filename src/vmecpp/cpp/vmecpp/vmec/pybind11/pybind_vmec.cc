@@ -780,6 +780,9 @@ class VmecModel {
   double fsqz1() const { return vmec_->fc_.fsqz1; }
   double fsql1() const { return vmec_->fc_.fsql1; }
   double mhd_energy() const { return vmec_->h_.mhdEnergy; }
+  // Fraction of the last time step that jacobian_safe_step kept in the last
+  // evaluation; 1 when the step was not shortened.
+  double step_fraction() const { return vmec_->h_.step_fraction; }
 
   int restart_reason() const {
     return static_cast<int>(vmec_->fc_.restart_reason);
@@ -823,7 +826,7 @@ class VmecModel {
   }
   // Per-iteration restart-reason trace recorded alongside the residual traces
   // (one entry per recorded force iteration); NO_RESTART=1, BAD_JACOBIAN=2,
-  // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4.
+  // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4, SHORTENED_STEP=5.
   std::vector<int> restart_reasons() const {
     std::vector<int> out;
     out.reserve(vmec_->fc_.restart_reasons.size());
@@ -1723,6 +1726,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("fsqz1", &VmecModel::fsqz1)
       .def_property_readonly("fsql1", &VmecModel::fsql1)
       .def_property_readonly("mhd_energy", &VmecModel::mhd_energy)
+      .def_property_readonly("step_fraction", &VmecModel::step_fraction)
       .def_property("restart_reason", &VmecModel::restart_reason,
                     &VmecModel::set_restart_reason)
       .def_property_readonly("status", &VmecModel::status)

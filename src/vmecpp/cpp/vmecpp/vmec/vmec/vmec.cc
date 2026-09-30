@@ -1502,7 +1502,11 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     } else {
       fc_.delbsq.push_back(0.0);
     }
-    fc_.restart_reasons.push_back(fc_.restart_reason);
+    const bool shortened_step =
+        fc_.restart_reason == RestartReason::NO_RESTART &&
+        h_.step_fraction < 1.0;
+    fc_.restart_reasons.push_back(shortened_step ? RestartReason::SHORTENED_STEP
+                                                 : fc_.restart_reason);
     fc_.mhd_energy.push_back(h_.mhdEnergy);
   }
 

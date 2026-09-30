@@ -1094,7 +1094,7 @@ TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
 // D3zD6qDAHKSDjVyBVtg9AfA) whose first time steps at delt = 0.7 make flux
 // surfaces cross. Without jacobian_safe_step the run gives up after 75
 // restarts. With it the run converges, to the same state on one thread and on
-// four.
+// four, and its restart-reason trace marks the same shortened steps.
 TEST(TestVmec, JacobianSafeStepConvergesWhereTimeStepsCrossFluxSurfaces) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/constellaration_nfp5.json");
@@ -1127,12 +1127,22 @@ TEST(TestVmec, JacobianSafeStepConvergesWhereTimeStepsCrossFluxSurfaces) {
   EXPECT_LT(rel_max(a.iotaf, b.iotaf), kTol);
   EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol);
   EXPECT_LT(rel_max(a.zmns, b.zmns), kTol);
+
+  const auto shortened = [](const Eigen::VectorXi& restart_reasons) {
+    return (restart_reasons.array() ==
+            static_cast<int>(vmecpp::RestartReason::SHORTENED_STEP))
+        .count();
+  };
+  EXPECT_GT(shortened(a.restart_reason_timetrace), 0);
+  EXPECT_EQ(shortened(a.restart_reason_timetrace),
+            shortened(b.restart_reason_timetrace));
 }
 
 namespace {
 
 // Runs indata with and without jacobian_safe_step on one thread and expects
-// the same iterations and the same state, bit for bit.
+// the same iterations, the same restart-reason trace and the same state, bit
+// for bit.
 void ExpectUnchangedByJacobianSafeStep(VmecINDATA indata,
                                        const std::string& name) {
   indata.jacobian_safe_step = false;
@@ -1147,6 +1157,13 @@ void ExpectUnchangedByJacobianSafeStep(VmecINDATA indata,
   const auto& a = unlimited->wout;
   const auto& b = limited->wout;
   EXPECT_EQ(a.itfsq, b.itfsq) << name;
+  ASSERT_EQ(a.restart_reason_timetrace.size(),
+            b.restart_reason_timetrace.size())
+      << name;
+  EXPECT_TRUE(
+      (a.restart_reason_timetrace.array() == b.restart_reason_timetrace.array())
+          .all())
+      << name;
   auto max_difference = [](const auto& x, const auto& y) -> double {
     return (x - y).cwiseAbs().maxCoeff();
   };

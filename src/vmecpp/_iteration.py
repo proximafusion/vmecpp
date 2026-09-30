@@ -58,6 +58,15 @@ class RestartReason(enum.IntEnum):
     """Irst == 4, huge initial forces, flux surfaces are too close to each other (but
     not overlapping yet)"""
 
+    SHORTENED_STEP = 5
+    """The time step into this iteration was shortened by ``jacobian_safe_step``.
+
+    Recorded in the restart-reason trace only; the state is kept, not reverted.
+    """
+
+
+# RestartReason::NO_RESTART, the restart reason of an iteration that keeps its state.
+_NO_RESTART = 1
 
 # Vmec::kNDamp -- history length for the 1/tau time-step damping average.
 _NDAMP = 10
@@ -298,7 +307,11 @@ def solve_equilibrium(
                 trace_r.append(fsqr)
                 trace_z.append(fsqz)
                 trace_l.append(fsql)
-                trace_rr.append(int(rr))
+                trace_rr.append(
+                    int(RestartReason.SHORTENED_STEP)
+                    if rr == _NO_RESTART and model.step_fraction < 1.0
+                    else int(rr)
+                )
 
                 # Sequential left-to-right sum, matching Eigen's scalar
                 # VectorXd::sum() bit for bit. numpy's pairwise summation
