@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790784990244,
+  "lastUpdate": 1790786676194,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -22791,6 +22791,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3224814309999715,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "762ab0ac8f4d9257719a3cf79061fcedea923713",
+          "message": "Put the half-grid fields and the enclosed current on SolverState (#877)\n\n* Expose the half-grid fields and the enclosed current to the Python-driven solve\n\n* Put the half-grid fields and the enclosed current on SolverState\n\n* Move the tests and the example onto SolverState.half_grid and curr_h",
+          "timestamp": "2026-09-30T18:39:54+02:00",
+          "tree_id": "5aba43ba53bfb3b3edf07b7f05175056d95f755c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/762ab0ac8f4d9257719a3cf79061fcedea923713"
+        },
+        "date": 1790786670639,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.40198342679999544,
+            "range": "stddev: 0.0030729808192800573",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 1.8852228860000082,
+            "range": "stddev: 0.5610878852315145",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6531176133333171,
+            "range": "stddev: 0.0034003643830608143",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.2591497453333318,
+            "range": "stddev: 0.5298421385486414",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.9855470693333169,
+            "range": "stddev: 0.008784035040172795",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 4.111015757666678,
+            "range": "stddev: 0.051802879389510406",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.658026829999983,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.17260116699998207,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
