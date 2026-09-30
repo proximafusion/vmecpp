@@ -316,6 +316,7 @@ TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
   std::vector<vmecpp::SolverState> states;
   const auto output = vmecpp::run(*indata, std::nullopt, std::nullopt,
                                   vmecpp::OutputMode::kSilent, nullptr,
+                                  /*always_fix_m1_gauge=*/false,
                                   [&states](const vmecpp::SolverState& state) {
                                     states.push_back(state);
                                     return true;
@@ -360,12 +361,12 @@ TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
             final_geometry.coefficients.lambda_sc);
 
   int seen = 0;
-  const auto stopped = vmecpp::run(*indata, std::nullopt, std::nullopt,
-                                   vmecpp::OutputMode::kSilent, nullptr,
-                                   [&seen](const vmecpp::SolverState& state) {
-                                     ++seen;
-                                     return state.iteration < 20;
-                                   });
+  const auto stopped = vmecpp::run(
+      *indata, std::nullopt, std::nullopt, vmecpp::OutputMode::kSilent, nullptr,
+      /*always_fix_m1_gauge=*/false, [&seen](const vmecpp::SolverState& state) {
+        ++seen;
+        return state.iteration < 20;
+      });
   ASSERT_TRUE(stopped.ok());
   EXPECT_EQ(seen, 20);
   EXPECT_EQ(stopped->wout.ns, indata->ns_array[0]);
