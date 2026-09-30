@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790729361269,
+  "lastUpdate": 1790753629729,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -22071,6 +22071,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.5061949929998946,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "94a21c0cc3a080f76ac943ef82a47d5662832c29",
+          "message": "Hand every force iteration to a callback and watch a solve converge (#839)\n\n* Hand every force iteration to a callback and watch a solve converge\n\n* Type the snapshot alias, import the backend registry, and record the example without a display\n\n* Move the solve viewer into an example and redraw it\n\n* Update README.md\n\n* Use std::numbers::pi in the iteration snapshot's MHD energy\n\n* Hand the iteration callback a SolverState dataclass and name the geometry EquilibriumState\n\n* Bind the iteration callback wrapper to a name pyright accepts\n\n* Write the watch_solve plot labels in ASCII mathtext\n\n* Declare retry_from_three_surfaces_ in Vmec\n\n* Pass always_fix_m1_gauge before the iteration callback in vmec_test\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-30T09:27:27+02:00",
+          "tree_id": "b0289960a50e0cbed13e97aa76c375ae99dcfd7c",
+          "url": "https://github.com/proximafusion/vmecpp/commit/94a21c0cc3a080f76ac943ef82a47d5662832c29"
+        },
+        "date": 1790753621874,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5206114899999988,
+            "range": "stddev: 0.008075388663211955",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.527345649333332,
+            "range": "stddev: 0.8066907998981788",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.911520021333312,
+            "range": "stddev: 0.007886083858289603",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7106467486666663,
+            "range": "stddev: 0.680448592961598",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.3119949883333295,
+            "range": "stddev: 0.03805879680749401",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.694981471666665,
+            "range": "stddev: 0.02976137044956795",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.377573337000001,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.32096198800002185,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
