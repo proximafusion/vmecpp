@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790723290591,
+  "lastUpdate": 1790726773071,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21911,6 +21911,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.41280491699990307,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "78ce50b1debcdd55902bcd45e65d1a2d98134063",
+          "message": "Pin the m=1 gauge in VmecModel so the equilibrium and its Jacobian are functions of the boundary (#849)\n\n* Expose a fixed m=1 gauge solve on VmecModel and its force Jacobian\n\nFourierCoeffs::m1Constraint stores, for every m=1 mode, (rss + zcs)/2 and\n(rss - zcs)/2; the second one is a poloidal-angle origin per toroidal\nharmonic. IdealMhdModel::update zeroes its force only when\nalways_fix_m1_gauge || fsqz < 1e-6 || iter2 < 2, so the native iteration lets\nthe gauge drift under its force for the first iterations and freezes it\nwherever it is: the converged state depends on the iteration history. On\ncth_like_fixed_bdy (ncurr 0, ns 25, ftol 1e-16) the gauge moves by 8.5e-5\nagainst a size of 7.4e-5, and a direct ns 25 solve and a 13 -> 25 multigrid\nsolve differ by 4e-5 in z_cs and 1.2e-3 in lambda_cs.\n\nVmec gets always_fix_m1_gauge_, forwarded to IdealMhdModel::update from\nUpdateForwardModel and exposed as the VmecModel.always_fix_m1_gauge property.\nWith the flag set, InitializeRadial also sets the gauge entries from the\nboundary (FourierGeometry::setM1GaugeFromBoundary) after a hot restart or a\nmultigrid interpolation, since the odd-m axis extrapolation of\nInterpolateToNextMultigridStep does not reproduce the sqrt(s) profile. The\nconverged gauge then equals the boundary gauge times sqrt(s) on every\nsurface, and the two multigrid histories above agree to 2e-8 in R, Z and\n1.4e-6 in lambda (the convergence floor). Force evaluations to convergence are\nunchanged (1405 both ways); the truncation error against an mpol 8, ntor 6\nreference is the same (R, Z: 4.04e-4 pinned vs 4.05e-4 native).\n\nExactHessianVectorProduct and its transpose take the same always_fix_m1_gauge\nargument as Evaluate (default true) instead of hard-wiring the fixed gauge, so\nthe product with a given flag is the Jacobian of the force Evaluate returns\nfor that flag, and with the property set it is the Jacobian of the system\nsolve() iterates.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>\n\n* Differentiate the pinned m=1 gauge through the implicit boundary adjoint\n\nautodiff._solve_model sets always_fix_m1_gauge on the model it solves, so the\nexact force Jacobian used in the implicit VJP is the linearization of the\niterated system. The gauge entries of the state, previously dropped by the\nstructural deflation and held fixed, are with the pinned gauge a linear\nfunction of the boundary: the boundary gauge times sqrt(s)\n(FourierGeometry::interpFromBoundaryAndAxis). The VJP now treats them like\nthe boundary entries, dJ/db = M^T (dJ/dx_P - H_SP^T lambda) with P the\nboundary plus gauge entries, and folds the gauge cotangents onto the boundary\ngauge before the parser transpose. The forward-tangent helper in\ntest_autodiff.py seeds the same entries.\n\nOn cth_like_fixed_bdy (ncurr 0, ns 25, ftol 1e-16) the gradient of\nsum(r_cc[12, 1, :]^2) + sum(lambda_sc^2) w.r.t. rbc(1, +1), zbs(1, -1) and\nrbc(1, 0) agrees with Richardson-extrapolated central differences of the\npinned-gauge re-solve to 8e-6, 2e-6 and 6e-6 relative. The same differences of\nthe native-gauge solve are only reproducible to 2e-5 to 3e-5 between step\nsizes and sit 3e-4 to 1.2e-3 from the adjoint.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>\n\n* Align traced VMEC solve and adjoint gauge\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* Respect geometry caps and hot-restart gauge pinning\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: Claude Fable 5.1 <noreply@anthropic.com>\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-09-30T01:58:50+02:00",
+          "tree_id": "4302d113bd0a4d758cf8b8103704a4344bf9abaa",
+          "url": "https://github.com/proximafusion/vmecpp/commit/78ce50b1debcdd55902bcd45e65d1a2d98134063"
+        },
+        "date": 1790726765200,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6909511407999844,
+            "range": "stddev: 0.0065838444244910345",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.222279067000007,
+            "range": "stddev: 1.1711068998050633",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1086406180000001,
+            "range": "stddev: 0.002399164964337054",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.2597829306666504,
+            "range": "stddev: 1.052981061100995",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4751067073333388,
+            "range": "stddev: 0.0061869656630273474",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.818003871666671,
+            "range": "stddev: 0.03818270078585739",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.834364297000036,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5014924719999954,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
