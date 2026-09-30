@@ -1529,13 +1529,16 @@ def _pad_both(values_interior: jax.Array) -> jax.Array:
 def _extrapolate_both(values_interior: jax.Array) -> jax.Array:
     """Interior full-grid profile extrapolated linearly to axis and edge.
 
-    As in the C++ output stage, the axis is extrapolated first, from full-grid
-    entries 1 and 2, and the edge then from entries ns - 2 and ns - 3; for
-    ns = 3, entry 2 is the still-zero edge and entry 0 the new axis value.
+    As in the C++ output stage (ExtrapolateFullGridEnds), each end is read from
+    the interior alone: the axis from full-grid entries 1 and 2, the edge from
+    entries ns - 2 and ns - 3; for ns = 3 both ends take the single interior
+    value.
     """
-    full = jnp.pad(values_interior, (1, 1))
-    full = full.at[0].set(2.0 * full[1] - full[2])
-    return full.at[-1].set(2.0 * full[-2] - full[-3])
+    if values_interior.shape[0] < 2:
+        return jnp.pad(values_interior, (1, 1), mode="edge")
+    axis = 2.0 * values_interior[0] - values_interior[1]
+    edge = 2.0 * values_interior[-1] - values_interior[-2]
+    return jnp.concatenate([axis[None], values_interior, edge[None]])
 
 
 def _extrapolate_axis_column(coefficients: jax.Array) -> jax.Array:

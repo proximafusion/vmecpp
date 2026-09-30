@@ -228,6 +228,12 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Scale of the lambda preconditioner, which multiplies the inverse of the
+  // diagonal lambda stiffness. 1.0 applies the undamped inverse, values below
+  // 1.0 damp the lambda step and values above 1.0 accelerate it; the default
+  // 0.5 is the damping of VMEC 8.52.
+  double lambda_preconditioner_scale;
+
   // If true, re-compute the full-grid covariant B_s by solving the radial
   // force balance equation
   //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
@@ -248,6 +254,15 @@ class VmecINDATA {
   // returned quantities are computed from whatever internal state the solver
   // was in when it gave up, and can be arbitrarily unphysical.
   bool return_outputs_even_if_not_converged;
+
+  // Abandon the whole multigrid sequence when a step ends with any residual
+  // still above fgiveup times its tolerance, rather than carrying a state that
+  // far out onto a finer grid. Off by default.
+  bool lgiveup;
+
+  // Multiple of ftol_array a step's residuals must be under for the sequence to
+  // continue when lgiveup is set.
+  double fgiveup;
 
   // ---------------------------------
   // initial guess for magnetic axis

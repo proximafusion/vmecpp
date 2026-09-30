@@ -92,8 +92,9 @@ wheel.exclude = [
     "include/eigen3/",
 ]
 build.verbose = true
-# Caching directory for wheel builds
-build-dir = "build"
+# Caching directory for wheel builds; one per Python tag, so that virtual environments
+# with different interpreters do not overwrite each other's CMake cache.
+build-dir = "build/{wheel_tag}"
 # When vmecpp is installed in editable mode
 # pip install -e .
 # it will check if the C++ sources have changed on each package import and rebuild individual files as needed
