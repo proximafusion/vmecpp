@@ -101,6 +101,10 @@ vmec_output.wout.save("wout_w7x.nc")
 
 All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
+An optional `iteration_callback` is available to investigate the progress of the solver. It can be used to interactively debug
+and interact with `vmecpp`'s state from a Python repl, or generate animations of the convergence progress like in
+[`examples/watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py).
+
 ### With SIMSOPT
 
 [SIMSOPT](https://simsopt.readthedocs.io) is a popular stellarator optimization framework.

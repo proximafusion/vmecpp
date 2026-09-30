@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
 
+#include <algorithm>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -15,6 +16,7 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/output_quantities/test_helpers.h"
@@ -299,6 +301,79 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
               /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
+
+// The iteration callback receives every force iteration of the multigrid run:
+// the residuals the solver records, in order, plus the converged iteration
+// that closes each stage, whose geometry is the one the outputs are built
+// from. Returning false stops the run with the state reached.
+TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  std::vector<vmecpp::SolverState> states;
+  const auto output = vmecpp::run(*indata, std::nullopt, std::nullopt,
+                                  vmecpp::OutputMode::kSilent, nullptr,
+                                  /*always_fix_m1_gauge=*/false,
+                                  [&states](const vmecpp::SolverState& state) {
+                                    states.push_back(state);
+                                    return true;
+                                  });
+  ASSERT_TRUE(output.ok());
+  const vmecpp::WOutFileContents& wout = output->wout;
+
+  const int num_stages = static_cast<int>(indata->ns_array.size());
+  int recorded = 0;
+  int stage_ends = 0;
+  for (std::size_t i = 0; i < states.size(); ++i) {
+    const vmecpp::SolverState& state = states[i];
+    const bool last_of_stage =
+        i + 1 == states.size() ||
+        states[i + 1].multigrid_step != state.multigrid_step;
+    if (last_of_stage) {
+      ++stage_ends;
+      EXPECT_EQ(state.ns, indata->ns_array[state.multigrid_step]);
+      EXPECT_LE(std::max({state.fsqr, state.fsqz, state.fsql}), state.ftol);
+      continue;
+    }
+    if (state.restart_reason != vmecpp::RestartReason::NO_RESTART) {
+      continue;
+    }
+    ASSERT_LT(recorded, wout.force_residual_r.size());
+    EXPECT_EQ(state.fsqr, wout.force_residual_r[recorded]);
+    EXPECT_EQ(state.fsqz, wout.force_residual_z[recorded]);
+    EXPECT_EQ(state.fsql, wout.force_residual_lambda[recorded]);
+    ++recorded;
+  }
+  EXPECT_EQ(stage_ends, num_stages);
+  EXPECT_EQ(recorded, static_cast<int>(wout.fsqt.size()));
+
+  const vmecpp::Geometry final_geometry =
+      vmecpp::MakeGeometry(output->indata, output->vmec_internal_results,
+                           vmecpp::GeometryCoefficientState::kPhysical);
+  EXPECT_EQ(states.back().geometry.coefficients.r_cc,
+            final_geometry.coefficients.r_cc);
+  EXPECT_EQ(states.back().geometry.coefficients.z_sc,
+            final_geometry.coefficients.z_sc);
+  EXPECT_EQ(states.back().geometry.coefficients.lambda_sc,
+            final_geometry.coefficients.lambda_sc);
+
+  int seen = 0;
+  const auto stopped = vmecpp::run(
+      *indata, std::nullopt, std::nullopt, vmecpp::OutputMode::kSilent, nullptr,
+      /*always_fix_m1_gauge=*/false, [&seen](const vmecpp::SolverState& state) {
+        ++seen;
+        return state.iteration < 20;
+      });
+  ASSERT_TRUE(stopped.ok());
+  EXPECT_EQ(seen, 20);
+  EXPECT_EQ(stopped->wout.ns, indata->ns_array[0]);
+  EXPECT_EQ(stopped->wout.ier_flag,
+            vmecpp::VmecStatusCode(vmecpp::VmecStatus::MORE_ITERATIONS_NEEDED));
+  EXPECT_EQ(stopped->wout.fsqt.size(), 20);
+}
 
 // A stellarator-symmetric, axisymmetric equilibrium (solovev) must converge to
 // the same result whether run with lasym=false or with lasym=true and zero
