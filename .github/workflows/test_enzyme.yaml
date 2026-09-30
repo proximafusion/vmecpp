@@ -61,11 +61,12 @@ jobs:
           test -n "${plugin}"
           echo "ENZYME_PLUGIN=${plugin}" >> "${GITHUB_ENV}"
 
-      - name: Mount bazel cache
-        uses: actions/cache@v4
+      - name: Restore bazel cache
+        uses: actions/cache/restore@v4
         with:
           path: "~/.cache/bazel"
-          key: bazel-enzyme
+          key: bazel-enzyme-${{ github.sha }}
+          restore-keys: bazel-enzyme
 
       - name: Run the enzyme smoke test via bazel
         run: |
@@ -76,6 +77,14 @@ jobs:
             --copt="-fplugin=${ENZYME_PLUGIN}" \
             --test_output=all \
             //vmecpp/common/enzyme:enzyme_smoke_test
+
+      # Entries are immutable: a new key per main commit refreshes the cache, GitHub evicts old ones.
+      - name: Save bazel cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: "~/.cache/bazel"
+          key: bazel-enzyme-${{ github.sha }}
 
       - uses: astral-sh/setup-uv@v6
 

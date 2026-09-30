@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/vmec/vmec.h"
 
+#include <algorithm>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -15,6 +16,7 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
 #include "vmecpp/vmec/handover_storage/handover_storage.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/output_quantities/test_helpers.h"
@@ -138,6 +140,63 @@ TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
   CHECK(status.ok());
 }  // CheckNoErrorOnNonConvergenceIfDesired
 
+// A run that runs out of iterations advances its state after the last force
+// evaluation. Its output carries the force residuals and the energies of the
+// state it returns, which a run given one more iteration computes in its last
+// evaluation. Fortran VMEC recomputes the fields at that state in fileout but
+// writes the residuals of the state before the last step.
+TEST(TestVmec, OutputAtTheIterationLimitDescribesTheReturnedState) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.return_outputs_even_if_not_converged = true;
+
+  // cth_like_fixed_bdy converges in 119 iterations
+  indata.niter_array[0] = 59;
+  const auto stopped = vmecpp::run(indata);
+  ASSERT_TRUE(stopped.ok()) << stopped.status();
+  ASSERT_EQ(stopped->wout.ier_flag, 0);
+
+  // halted after its 60th evaluation, which is at the returned state
+  indata.niter_array[0] = 60;
+  auto maybe_vmec = Vmec::FromIndata(indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& continued = **maybe_vmec;
+  const absl::StatusOr<bool> reached_checkpoint = continued.run(
+      VmecCheckpoint::EVOLVE, /*iterations_before_checkpointing=*/60);
+  ASSERT_TRUE(reached_checkpoint.ok()) << reached_checkpoint.status();
+  ASSERT_TRUE(*reached_checkpoint);
+
+  const vmecpp::WOutFileContents& wout = stopped->wout;
+  EXPECT_EQ(wout.fsqr, continued.fc_.fsqr);
+  EXPECT_EQ(wout.fsqz, continued.fc_.fsqz);
+  EXPECT_EQ(wout.fsql, continued.fc_.fsql);
+  EXPECT_EQ(wout.wb, continued.h_.magneticEnergy);
+  EXPECT_EQ(wout.wp, continued.h_.thermalEnergy);
+}  // OutputAtTheIterationLimitDescribesTheReturnedState
+
+// A time step that makes the flux surfaces cross leaves a returned state whose
+// Jacobian changes sign, which the output of a run out of iterations reports.
+TEST(TestVmec, OutputAtTheIterationLimitReportsABadJacobian) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.return_outputs_even_if_not_converged = true;
+  indata.niter_array[0] = 1;
+  indata.delt = 5.0;
+
+  const auto output = vmecpp::run(indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_EQ(output->wout.ier_flag,
+            vmecpp::VmecStatusCode(vmecpp::VmecStatus::BAD_JACOBIAN));
+}  // OutputAtTheIterationLimitReportsABadJacobian
+
 // With ncurr = 1 the current profile is scaled to curtor by its value at the
 // boundary, so a profile that encloses no net current there cannot be imposed
 // and used to run silently with zero current.
@@ -175,6 +234,23 @@ TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   auto maybe_vmec = Vmec::FromIndata(indata);
   EXPECT_FALSE(maybe_vmec.ok());
 }  // CheckFromIndataReturnsErrorForInvalidMgridPath
+
+// A thread count below 1 is an error status, not a failed check in FlowControl.
+TEST(TestVmec, CheckRunRejectsAThreadCountBelowOne) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  for (const int max_threads : {0, -2}) {
+    const auto output = vmecpp::run(*indata, std::nullopt, max_threads);
+    ASSERT_FALSE(output.ok()) << max_threads;
+    EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(output.status().message()),
+                ::testing::HasSubstr("number of threads must be >= 1"));
+  }
+}  // CheckRunRejectsAThreadCountBelowOne
 
 TEST(TestVmec, CheckInMemoryMgrid) {
   // test the constructor that takes an in-memory mgrid
@@ -225,6 +301,79 @@ TEST(TestVmec, CheckInMemoryMgrid) {
   CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
               /*tolerance=*/1e-7);
 }  // CheckInMemoryMgrid
+
+// The iteration callback receives every force iteration of the multigrid run:
+// the residuals the solver records, in order, plus the converged iteration
+// that closes each stage, whose geometry is the one the outputs are built
+// from. Returning false stops the run with the state reached.
+TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  std::vector<vmecpp::SolverState> states;
+  const auto output = vmecpp::run(*indata, std::nullopt, std::nullopt,
+                                  vmecpp::OutputMode::kSilent, nullptr,
+                                  /*always_fix_m1_gauge=*/false,
+                                  [&states](const vmecpp::SolverState& state) {
+                                    states.push_back(state);
+                                    return true;
+                                  });
+  ASSERT_TRUE(output.ok());
+  const vmecpp::WOutFileContents& wout = output->wout;
+
+  const int num_stages = static_cast<int>(indata->ns_array.size());
+  int recorded = 0;
+  int stage_ends = 0;
+  for (std::size_t i = 0; i < states.size(); ++i) {
+    const vmecpp::SolverState& state = states[i];
+    const bool last_of_stage =
+        i + 1 == states.size() ||
+        states[i + 1].multigrid_step != state.multigrid_step;
+    if (last_of_stage) {
+      ++stage_ends;
+      EXPECT_EQ(state.ns, indata->ns_array[state.multigrid_step]);
+      EXPECT_LE(std::max({state.fsqr, state.fsqz, state.fsql}), state.ftol);
+      continue;
+    }
+    if (state.restart_reason != vmecpp::RestartReason::NO_RESTART) {
+      continue;
+    }
+    ASSERT_LT(recorded, wout.force_residual_r.size());
+    EXPECT_EQ(state.fsqr, wout.force_residual_r[recorded]);
+    EXPECT_EQ(state.fsqz, wout.force_residual_z[recorded]);
+    EXPECT_EQ(state.fsql, wout.force_residual_lambda[recorded]);
+    ++recorded;
+  }
+  EXPECT_EQ(stage_ends, num_stages);
+  EXPECT_EQ(recorded, static_cast<int>(wout.fsqt.size()));
+
+  const vmecpp::Geometry final_geometry =
+      vmecpp::MakeGeometry(output->indata, output->vmec_internal_results,
+                           vmecpp::GeometryCoefficientState::kPhysical);
+  EXPECT_EQ(states.back().geometry.coefficients.r_cc,
+            final_geometry.coefficients.r_cc);
+  EXPECT_EQ(states.back().geometry.coefficients.z_sc,
+            final_geometry.coefficients.z_sc);
+  EXPECT_EQ(states.back().geometry.coefficients.lambda_sc,
+            final_geometry.coefficients.lambda_sc);
+
+  int seen = 0;
+  const auto stopped = vmecpp::run(
+      *indata, std::nullopt, std::nullopt, vmecpp::OutputMode::kSilent, nullptr,
+      /*always_fix_m1_gauge=*/false, [&seen](const vmecpp::SolverState& state) {
+        ++seen;
+        return state.iteration < 20;
+      });
+  ASSERT_TRUE(stopped.ok());
+  EXPECT_EQ(seen, 20);
+  EXPECT_EQ(stopped->wout.ns, indata->ns_array[0]);
+  EXPECT_EQ(stopped->wout.ier_flag,
+            vmecpp::VmecStatusCode(vmecpp::VmecStatus::MORE_ITERATIONS_NEEDED));
+  EXPECT_EQ(stopped->wout.fsqt.size(), 20);
+}
 
 // A stellarator-symmetric, axisymmetric equilibrium (solovev) must converge to
 // the same result whether run with lasym=false or with lasym=true and zero
@@ -925,6 +1074,82 @@ TEST(TestVmec, ToroidalFluxFollowsTheAphiPolynomial) {
     EXPECT_TRUE(IsCloseRelAbs(expected, phi[jF], 1.0e-13)) << "jF = " << jF;
   }
 }  // ToroidalFluxFollowsTheAphiPolynomial
+
+// The lambda preconditioner scale multiplies an already assembled force, so it
+// cannot move the invariant residual of the first step.
+TEST(TestVmec, LambdaPreconditionerScaleLeavesTheFirstForceResidual) {
+  for (const std::string& case_name :
+       {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/" + case_name + ".json");
+    ASSERT_TRUE(indata_json.ok()) << case_name;
+    const absl::StatusOr<VmecINDATA> base_indata =
+        VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok()) << case_name;
+    const double ftol =
+        base_indata->ftol_array(base_indata->ftol_array.size() - 1);
+
+    VmecINDATA damped = *base_indata;
+    damped.lambda_preconditioner_scale = 0.5;
+    const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
+    ASSERT_TRUE(damped_output.ok()) << case_name;
+
+    VmecINDATA undamped = *base_indata;
+    undamped.lambda_preconditioner_scale = 1.0;
+    const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
+    ASSERT_TRUE(undamped_output.ok()) << case_name;
+
+    const auto& a = damped_output->wout;
+    const auto& b = undamped_output->wout;
+    ASSERT_GT(a.itfsq, 0) << case_name;
+    ASSERT_GT(b.itfsq, 0) << case_name;
+    EXPECT_EQ(a.fsqt(0), b.fsqt(0)) << case_name;
+    // fsqt sums the three force components that convergence tests one by one,
+    // so it lands within a factor of three of the tolerance.
+    EXPECT_LT(a.fsqt(a.itfsq - 1), 3.0 * ftol) << case_name;
+    EXPECT_LT(b.fsqt(b.itfsq - 1), 3.0 * ftol) << case_name;
+  }
+}  // LambdaPreconditionerScaleLeavesTheFirstForceResidual
+
+// Both runs are held to ftol 1e-12 because the residual fixes how closely they
+// agree; what remains there is the spectral-condensation angle gauge, which
+// moves the poloidal spectrum without moving the flux surfaces. The bounds are
+// five times the measured deviation.
+TEST(TestVmec, LambdaPreconditionerScaleConvergesToTheSameEquilibrium) {
+  for (const std::string& case_name :
+       {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/" + case_name + ".json");
+    ASSERT_TRUE(indata_json.ok()) << case_name;
+    absl::StatusOr<VmecINDATA> base_indata = VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok()) << case_name;
+    base_indata->ftol_array =
+        Eigen::VectorXd::Constant(base_indata->ftol_array.size(), 1.0e-12);
+
+    VmecINDATA damped = *base_indata;
+    damped.lambda_preconditioner_scale = 0.5;
+    const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
+    ASSERT_TRUE(damped_output.ok()) << case_name;
+
+    VmecINDATA undamped = *base_indata;
+    undamped.lambda_preconditioner_scale = 1.0;
+    const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
+    ASSERT_TRUE(undamped_output.ok()) << case_name;
+
+    const auto& a = damped_output->wout;
+    const auto& b = undamped_output->wout;
+    ASSERT_EQ(a.ns, b.ns) << case_name;
+
+    auto rel_max = [](const auto& x, const auto& y) -> double {
+      const double peak = x.cwiseAbs().maxCoeff();
+      return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+    };
+    EXPECT_LT(rel_max(a.rmnc, b.rmnc), 2.2e-4) << case_name << " rmnc";
+    EXPECT_LT(rel_max(a.zmns, b.zmns), 1.5e-3) << case_name << " zmns";
+    EXPECT_LT(rel_max(a.iotaf, b.iotaf), 2.6e-5) << case_name << " iotaf";
+    EXPECT_TRUE(IsCloseRelAbs(a.wb, b.wb, 1.2e-7)) << case_name << " wb";
+  }
+}  // UndampedLambdaPreconditionerConvergesToTheSameEquilibrium
 
 // An inconsistent VmecINDATA must come back as a status from the factory:
 // constructing first ends the process instead of reporting the input error.

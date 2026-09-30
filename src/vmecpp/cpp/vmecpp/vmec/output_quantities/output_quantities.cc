@@ -35,6 +35,43 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
   }
 }  // NonEmptyVectorOr
 
+// Fill the axis and the boundary entry of a full-grid radial profile by linear
+// extrapolation from the two interior surfaces next to each end, reading only
+// interior values. At ns == 3 there is one interior surface and both ends take
+// its value.
+void ExtrapolateFullGridEnds(int ns, VectorXd& m_profile) {
+  if (ns < 4) {
+    const double interior = m_profile[1];
+    m_profile[0] = interior;
+    m_profile[ns - 1] = interior;
+    return;
+  }
+
+  const double axis = 2.0 * m_profile[1] - m_profile[2];
+  const double boundary = 2.0 * m_profile[ns - 2] - m_profile[ns - 3];
+  m_profile[0] = axis;
+  m_profile[ns - 1] = boundary;
+}  // ExtrapolateFullGridEnds
+
+// ExtrapolateFullGridEnds for a full-grid field of ns surfaces of n_znt
+// tangential points.
+void ExtrapolateFullGridEnds(int ns, int n_znt, vmecpp::RowMatrixXd& m_field) {
+  for (int kl = 0; kl < n_znt; ++kl) {
+    if (ns < 4) {
+      const double interior = m_field(1 * n_znt + kl);
+      m_field(0 * n_znt + kl) = interior;
+      m_field((ns - 1) * n_znt + kl) = interior;
+      continue;
+    }
+
+    const double axis = 2.0 * m_field(1 * n_znt + kl) - m_field(2 * n_znt + kl);
+    const double boundary =
+        2.0 * m_field((ns - 2) * n_znt + kl) - m_field((ns - 3) * n_znt + kl);
+    m_field(0 * n_znt + kl) = axis;
+    m_field((ns - 1) * n_znt + kl) = boundary;
+  }  // kl
+}  // ExtrapolateFullGridEnds
+
 // Fill the axis and the boundary column of a Fourier coefficient stored as one
 // row of ns full-grid columns per mode, reading interior columns only. The
 // axis column is written for m <= 1 and left at zero otherwise. At ns == 3 the
@@ -1565,6 +1602,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
       vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
+      vmec_status == VmecStatus::MORE_ITERATIONS_NEEDED ||
       indata.return_outputs_even_if_not_converged) {
     MeshBledingBSubZeta(
         s, fc,
@@ -1742,6 +1780,108 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
   return output_quantities;
 }  // ComputeOutputQuantities
 
+namespace {
+
+// size the spectral state of results for num_full full-grid surfaces
+void AllocateStateVector(const vmecpp::Sizes& s, int num_full,
+                         vmecpp::VmecInternalResults& m_results) {
+  m_results.rmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  m_results.zmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  m_results.lmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  if (s.lthreed) {
+    m_results.rmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.zmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.lmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  }
+  if (s.lasym) {
+    m_results.rmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.zmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.lmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    if (s.lthreed) {
+      m_results.rmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+      m_results.zmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+      m_results.lmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    }
+  }
+}
+
+// copy the spectral coefficients of full-grid surface jF from the thread that
+// holds it into the gathered results
+void GatherStateVectorOfSurface(const vmecpp::Sizes& s,
+                                const vmecpp::RadialPartitioning& r,
+                                const vmecpp::FourierGeometry& decomposed_x,
+                                int jF,
+                                vmecpp::VmecInternalResults& m_results) {
+  for (int n = 0; n < s.ntor + 1; ++n) {
+    for (int m = 0; m < s.mpol; ++m) {
+      const int source_index =
+          ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+      const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
+
+      m_results.rmncc(target_index) = decomposed_x.rmncc[source_index];
+      m_results.zmnsc(target_index) = decomposed_x.zmnsc[source_index];
+      m_results.lmnsc(target_index) = decomposed_x.lmnsc[source_index];
+      if (s.lthreed) {
+        m_results.rmnss(target_index) = decomposed_x.rmnss[source_index];
+        m_results.zmncs(target_index) = decomposed_x.zmncs[source_index];
+        m_results.lmncs(target_index) = decomposed_x.lmncs[source_index];
+      }
+      if (s.lasym) {
+        m_results.rmnsc(target_index) = decomposed_x.rmnsc[source_index];
+        m_results.zmncc(target_index) = decomposed_x.zmncc[source_index];
+        m_results.lmncc(target_index) = decomposed_x.lmncc[source_index];
+        if (s.lthreed) {
+          m_results.rmncs(target_index) = decomposed_x.rmncs[source_index];
+          m_results.zmnss(target_index) = decomposed_x.zmnss[source_index];
+          m_results.lmnss(target_index) = decomposed_x.lmnss[source_index];
+        }
+      }
+    }  // m
+  }  // n
+}
+
+}  // namespace
+
+vmecpp::VmecInternalResults vmecpp::GatherSpectralStateFromThreads(
+    const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
+    const VmecConstants& constants,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
+    const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
+    const std::vector<std::unique_ptr<RadialProfiles>>& radial_profiles) {
+  VmecInternalResults results;
+
+  results.sign_of_jacobian = sign_of_jacobian;
+  results.lamscale = constants.lamscale;
+  results.num_half = fc.ns - 1;
+  results.num_full = fc.ns;
+
+  results.phipF = VectorXd::Zero(results.num_full);
+  results.phipH = VectorXd::Zero(results.num_half);
+  results.iotaH = VectorXd::Zero(results.num_half);
+  AllocateStateVector(s, results.num_full, results);
+
+  const std::size_t num_threads = radial_partitioning.size();
+  for (std::size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
+    const RadialPartitioning& r = *radial_partitioning[thread_id];
+    const RadialProfiles& p = *radial_profiles[thread_id];
+
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      // half-grid points are overlapping --> only take unique ones !
+      if (jH < r.nsMaxH - 1 || jH == fc.ns - 2) {
+        results.phipH[jH] = p.phipH[jH - r.nsMinH];
+        results.iotaH[jH] = p.iotaH[jH - r.nsMinH];
+      }
+    }  // jH
+
+    for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
+      results.phipF[jF] = p.phipF[jF - r.nsMinF1];
+      GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
+    }  // jF
+  }  // thread_id
+
+  return results;
+}
+
 vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
     const VmecConstants& constants,
@@ -1783,25 +1923,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   results.iotaH = VectorXd::Zero(results.num_half);
   results.currH = VectorXd::Zero(results.num_half);
 
-  // state vector
-  results.rmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.zmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.lmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  if (s.lthreed) {
-    results.rmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  }
-  if (s.lasym) {
-    results.rmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    if (s.lthreed) {
-      results.rmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.zmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.lmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    }
-  }
+  AllocateStateVector(s, results.num_full, results);
 
   // from inv-DFTs
   results.r_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
@@ -1914,46 +2036,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
       results.iotaF[jF] = p.iotaF[jF - r.nsMinF1];
       results.spectral_width[jF] = p.spectral_width[jF - r.nsMinF1];
 
-      // state vector
-      for (int n = 0; n < s.ntor + 1; ++n) {
-        for (int m = 0; m < s.mpol; ++m) {
-          // FIXME(eguiraud) slow loop
-          const int source_index =
-              ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
-          const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
-
-          results.rmncc(target_index) =
-              decomposed_x[thread_id]->rmncc[source_index];
-          results.zmnsc(target_index) =
-              decomposed_x[thread_id]->zmnsc[source_index];
-          results.lmnsc(target_index) =
-              decomposed_x[thread_id]->lmnsc[source_index];
-          if (s.lthreed) {
-            results.rmnss(target_index) =
-                decomposed_x[thread_id]->rmnss[source_index];
-            results.zmncs(target_index) =
-                decomposed_x[thread_id]->zmncs[source_index];
-            results.lmncs(target_index) =
-                decomposed_x[thread_id]->lmncs[source_index];
-          }
-          if (s.lasym) {
-            results.rmnsc(target_index) =
-                decomposed_x[thread_id]->rmnsc[source_index];
-            results.zmncc(target_index) =
-                decomposed_x[thread_id]->zmncc[source_index];
-            results.lmncc(target_index) =
-                decomposed_x[thread_id]->lmncc[source_index];
-            if (s.lthreed) {
-              results.rmncs(target_index) =
-                  decomposed_x[thread_id]->rmncs[source_index];
-              results.zmnss(target_index) =
-                  decomposed_x[thread_id]->zmnss[source_index];
-              results.lmnss(target_index) =
-                  decomposed_x[thread_id]->lmnss[source_index];
-            }
-          }
-        }  // m
-      }  // n
+      GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
 
       double unlamscale = 1.0;
       if (jF > 0) {
@@ -2721,22 +2804,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
 void vmecpp::ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                               BSubSFull& m_bsubs_full) {
-  for (int kl = 0; kl < s.nZnT; ++kl) {
-    // extrapolate towards axis from first two interior full-grid points
-    const int index_0 = 0 * s.nZnT + kl;
-    const int index_1 = 1 * s.nZnT + kl;
-    const int index_2 = 2 * s.nZnT + kl;
-    m_bsubs_full.bsubs_full(index_0) = 2.0 * m_bsubs_full.bsubs_full(index_1) -
-                                       m_bsubs_full.bsubs_full(index_2);
-
-    // extrapolate towards boundary from last two interior full-grid points
-    const int index_ns_1 = (fc.ns - 1) * s.nZnT + kl;
-    const int index_ns_2 = (fc.ns - 2) * s.nZnT + kl;
-    const int index_ns_3 = (fc.ns - 3) * s.nZnT + kl;
-    m_bsubs_full.bsubs_full(index_ns_1) =
-        2.0 * m_bsubs_full.bsubs_full(index_ns_2) -
-        m_bsubs_full.bsubs_full(index_ns_3);
-  }  // kl
+  ExtrapolateFullGridEnds(fc.ns, s.nZnT, m_bsubs_full.bsubs_full);
 }  // ExtrapolateBSubS
 
 vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
@@ -3057,41 +3125,15 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   }
 
   // extrapolate stuff to axis and boundary
-  for (int kl = 0; kl < s.nZnT; ++kl) {
-    // used to extrapolate towards axis from first two interior full-grid points
-    const int index_0 = 0 * s.nZnT + kl;
-    const int index_1 = 1 * s.nZnT + kl;
-    const int index_2 = 2 * s.nZnT + kl;
-
-    // used to extrapolate towards boundary from last two interior full-grid
-    // points
-    const int index_ns_1 = (fc.ns - 1) * s.nZnT + kl;
-    const int index_ns_2 = (fc.ns - 2) * s.nZnT + kl;
-    const int index_ns_3 = (fc.ns - 3) * s.nZnT + kl;
-
-    jxbout.izeta(index_0) = 2.0 * jxbout.izeta(index_1) - jxbout.izeta(index_2);
-    jxbout.izeta(index_ns_1) =
-        2.0 * jxbout.izeta(index_ns_2) - jxbout.izeta(index_ns_3);
-  }  // kl
-
-  jxbout.jdotb[0] = 2.0 * jxbout.jdotb[1] - jxbout.jdotb[2];
-  jxbout.jdotb[fc.ns - 1] =
-      2.0 * jxbout.jdotb[fc.ns - 2] - jxbout.jdotb[fc.ns - 3];
-
-  jxbout.bdotb[0] = 2.0 * jxbout.bdotb[1] - jxbout.bdotb[2];
-  jxbout.bdotb[fc.ns - 1] =
-      2.0 * jxbout.bdotb[fc.ns - 2] - jxbout.bdotb[fc.ns - 3];
-
-  jxbout.bdotgradv[0] = 2.0 * jxbout.bdotgradv[1] - jxbout.bdotgradv[2];
-  jxbout.bdotgradv[fc.ns - 1] =
-      2.0 * jxbout.bdotgradv[fc.ns - 2] - jxbout.bdotgradv[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, s.nZnT, jxbout.izeta);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.jdotb);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.bdotb);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.bdotgradv);
 
   // Note that jpar2, jperp2 have been initialized to all-0 in the beginning,
   // so there is not need to set the axis and boundary entries to zero here.
 
-  jxbout.pprim[0] = 2.0 * jxbout.pprim[1] - jxbout.pprim[2];
-  jxbout.pprim[fc.ns - 1] =
-      2.0 * jxbout.pprim[fc.ns - 2] - jxbout.pprim[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, jxbout.pprim);
 
   return jxbout;
 }  // ComputeJxBOutputFileContents
@@ -3391,9 +3433,12 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     mercier.s[jF] = mercier_intermediate.s[jF];
 
     // V' = dV/dPhi on full-grid
+    // mercier.f90 forms this as sqs = 0.5*(vp_real(i) + vp_real(i+1))*sign_jac
+    // and divides SHEAR, ITOR' and PRES' by it, so the Jacobian sign belongs
+    // here rather than only on WELL.
     const double vp_full = (mercier_intermediate.vp_real[jHo] +
                             mercier_intermediate.vp_real[jHi]) /
-                           2.0;
+                           2.0 * vmec_internal_results.sign_of_jacobian;
     if (vp_full == 0.0) {
       // skip this surface
       continue;
@@ -3685,40 +3730,11 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       0.5 * threed1_first_table_intermediate.bvcoH[fc.ns - 3];
 
   // extrapolate full-grid quantites to axis and LCFS
-  threed1_first_table_intermediate.equif[0] =
-      2.0 * threed1_first_table_intermediate.equif[1] -
-      threed1_first_table_intermediate.equif[2];
-  threed1_first_table_intermediate.equif[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.equif[fc.ns - 2] -
-      threed1_first_table_intermediate.equif[fc.ns - 3];
-
-  threed1_first_table_intermediate.jcurv[0] =
-      2.0 * threed1_first_table_intermediate.jcurv[1] -
-      threed1_first_table_intermediate.jcurv[2];
-  threed1_first_table_intermediate.jcurv[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.jcurv[fc.ns - 2] -
-      threed1_first_table_intermediate.jcurv[fc.ns - 3];
-
-  threed1_first_table_intermediate.jcuru[0] =
-      2.0 * threed1_first_table_intermediate.jcuru[1] -
-      threed1_first_table_intermediate.jcuru[2];
-  threed1_first_table_intermediate.jcuru[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.jcuru[fc.ns - 2] -
-      threed1_first_table_intermediate.jcuru[fc.ns - 3];
-
-  threed1_first_table_intermediate.presgrad[0] =
-      2.0 * threed1_first_table_intermediate.presgrad[1] -
-      threed1_first_table_intermediate.presgrad[2];
-  threed1_first_table_intermediate.presgrad[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.presgrad[fc.ns - 2] -
-      threed1_first_table_intermediate.presgrad[fc.ns - 3];
-
-  threed1_first_table_intermediate.vpphi[0] =
-      2.0 * threed1_first_table_intermediate.vpphi[1] -
-      threed1_first_table_intermediate.vpphi[2];
-  threed1_first_table_intermediate.vpphi[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.vpphi[fc.ns - 2] -
-      threed1_first_table_intermediate.vpphi[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.equif);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.jcurv);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.jcuru);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.presgrad);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.vpphi);
 
   return threed1_first_table_intermediate;
 }  // ComputeIntermediateThreed1FirstTableQuantities
