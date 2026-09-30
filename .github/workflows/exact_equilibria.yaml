@@ -61,7 +61,14 @@ jobs:
             --reference analytic_3d_equilibria || status=$?
           cat exact_equilibria_out/quick.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
-      - name: Upload the plots and data
+      - name: Upload the plots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-equilibria-quick-plots
+          path: exact_equilibria_out/*.png
+          retention-days: 30
+      - name: Upload the tables and data
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -99,10 +106,19 @@ jobs:
           path: analytic_3d_equilibria
       - name: Run the full suite
         run: |
+          status=0
           python examples/exact_equilibria.py --suite full --member ${{ matrix.member }} \
-            --out exact_equilibria_out --reference analytic_3d_equilibria
+            --out exact_equilibria_out --reference analytic_3d_equilibria --check || status=$?
           cat exact_equilibria_out/full.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload the plots and data
+          exit $status
+      - name: Upload the plots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-equilibria-full-${{ matrix.member }}-plots
+          path: exact_equilibria_out/*.png
+          retention-days: 90
+      - name: Upload the tables and data
         if: always()
         uses: actions/upload-artifact@v4
         with:
