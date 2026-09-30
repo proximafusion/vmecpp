@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790786753497,
+  "lastUpdate": 1790803686653,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -22871,6 +22871,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.17260116699998207,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5b6e1e40caa22e9a47b8821b0c484132e9ee7513",
+          "message": "Size the OpenMP teams to the threads the runtime grants (#897)\n\n* Size the OpenMP teams to the threads the runtime grants\n\n* Reword the thread-limit test docstring to docformatter's wrapping\n\n* Build the thread-limit test's field from coils.cth_like instead of the LFS mgrid\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-09-30T23:20:57+02:00",
+          "tree_id": "7912f25ae56c58f16bbf093cf5fb8d30843677a5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5b6e1e40caa22e9a47b8821b0c484132e9ee7513"
+        },
+        "date": 1790803679132,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5970987390000004,
+            "range": "stddev: 0.004709238212832814",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.268970675999981,
+            "range": "stddev: 0.9395877786085548",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.070176197999994,
+            "range": "stddev: 0.0013664799293286803",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.404987232333307,
+            "range": "stddev: 0.7339086518025862",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2618851693333493,
+            "range": "stddev: 0.006674912567115839",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.389927804333335,
+            "range": "stddev: 0.018225204024540014",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.4884399559999792,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.29209494800005587,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
