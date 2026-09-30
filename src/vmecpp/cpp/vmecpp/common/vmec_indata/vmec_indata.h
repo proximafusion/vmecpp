@@ -234,6 +234,10 @@ class VmecINDATA {
   // 0.5 is the damping of VMEC 8.52.
   double lambda_preconditioner_scale;
 
+  // If true, a restart backup stores the last state whose forces were
+  // evaluated, where VMEC 8.52 stores the state the time step advanced to.
+  bool backup_evaluated_state;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

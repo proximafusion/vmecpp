@@ -200,6 +200,12 @@ def solve_equilibrium(
     ftolv = model.ftolv
     niterv = model.niterv
     delt_user = model.delt  # indata.delt, the reference time step
+    # the backup a store takes: the last evaluated state, or VMEC 8.52's advanced one
+    store_backup = (
+        model.save_evaluated_backup
+        if model.backup_evaluated_state
+        else model.save_backup
+    )
 
     delt0r = delt_user
     inv_tau = np.zeros(_NDAMP)
@@ -385,7 +391,7 @@ def solve_equilibrium(
                 res0 = min(res0, fsq1)
                 res1 = min(res1, fsq0)
                 if fsq1 <= res0 and fsq0 <= res1:
-                    model.save_evaluated_backup()
+                    store_backup()
                     saved_backup = True
                 elif (iter2 - iter1) > 10 and (
                     fsq1 > _PARVMEC_BLOWUP * res0 or fsq0 > _PARVMEC_BLOWUP * res1
@@ -408,7 +414,7 @@ def solve_equilibrium(
                 res0 = min(res0, fsq1)
                 res1 = min(res1, fsq0)
                 if fsq1 <= res0 and fsq0 <= res1:
-                    model.save_evaluated_backup()
+                    store_backup()
                     saved_backup = True
                 elif (
                     (iter2 - iter1) > 10
@@ -446,7 +452,7 @@ def solve_equilibrium(
                     n_restarts += 1
                     restarted = True
                 elif fsq1 <= res0 and (iter2 - iter1) > 10:
-                    model.save_evaluated_backup()
+                    store_backup()
                     saved_backup = True
                 elif (
                     (iter2 - iter1) > _PRECOND_INTERVAL // 2

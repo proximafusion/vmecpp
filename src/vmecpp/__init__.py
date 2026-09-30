@@ -524,6 +524,11 @@ class VmecInput(BaseModelWithNumpy):
     above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
+    backup_evaluated_state: bool = False
+    """If true, a restart backup stores the last state whose forces were evaluated,
+    where VMEC 8.52 stores the state the time step advanced to, whose Jacobian has not
+    been checked yet."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

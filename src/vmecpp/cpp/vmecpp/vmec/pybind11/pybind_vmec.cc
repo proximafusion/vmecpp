@@ -345,6 +345,9 @@ class VmecModel {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
   }
   // Back up the last state with a valid force evaluation.
+  bool backup_evaluated_state() const {
+    return vmec_->indata_.backup_evaluated_state;
+  }
   void SaveEvaluatedBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->last_evaluated_x_[0];
   }
@@ -1032,6 +1035,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
       .def_readwrite("lambda_preconditioner_scale",
                      &VmecINDATA::lambda_preconditioner_scale)
+      .def_readwrite("backup_evaluated_state",
+                     &VmecINDATA::backup_evaluated_state)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
@@ -1794,6 +1799,8 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("time_step"))
       .def("save_backup", &VmecModel::SaveBackup)
       .def("save_evaluated_backup", &VmecModel::SaveEvaluatedBackup)
+      .def_property_readonly("backup_evaluated_state",
+                             &VmecModel::backup_evaluated_state)
       .def("restore_backup", &VmecModel::RestoreBackup)
       .def("zero_velocity", &VmecModel::ZeroVelocity)
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
