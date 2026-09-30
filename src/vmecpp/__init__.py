@@ -215,6 +215,22 @@ def _validate_iteration_style(
     return IterationStyle(str(value))
 
 
+# SIMSOPT (wout-style) names for the magnetic axis coefficients.
+AXIS_ALIASES = {
+    "raxis_cc": "raxis_c",
+    "raxis_cs": "raxis_s",
+    "zaxis_cc": "zaxis_c",
+    "zaxis_cs": "zaxis_s",
+}
+
+
+def _alias_property(target: str) -> property:
+    return property(
+        lambda self: getattr(self, target),
+        lambda self, value: setattr(self, target, value),
+    )
+
+
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
 # In the future VmecINDATAPyWrapper and the C++ VmecINDATA will merge into one type,
 # and this will become a Python wrapper around the one C++ VmecINDATA type.
@@ -263,6 +279,16 @@ class VmecInput(BaseModelWithNumpy):
 
     May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
     """
+
+    @property
+    def mpol_max(self) -> int:
+        """The final mpol resolution, if a multigrid sequence is used."""
+        return _final_resolution(self.mpol)
+
+    @property
+    def ntor_max(self) -> int:
+        """The final ntor resolution, if a multigrid sequence is used."""
+        return _final_resolution(self.ntor)
 
     mpol_geometry: int = -1
     """Optional reduced poloidal resolution for the geometry (R, Z).
@@ -538,6 +564,18 @@ class VmecInput(BaseModelWithNumpy):
     Only used if lasym=True.
     """
 
+    raxis_cc = _alias_property("raxis_c")
+    raxis_cs = _alias_property("raxis_s")
+    zaxis_cc = _alias_property("zaxis_c")
+    zaxis_cs = _alias_property("zaxis_s")
+
+    @pydantic.field_validator(
+        "mgrid_file", "pmass_type", "pcurr_type", "piota_type", mode="before"
+    )
+    @classmethod
+    def _decode_bytes(cls, value: typing.Any) -> typing.Any:
+        return value.decode().strip() if isinstance(value, bytes) else value
+
     rbc: SerializableSparseCoefficientArray[
         jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
@@ -578,8 +616,8 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
-        mpol_final = _final_resolution(self.mpol)
-        ntor_final = _final_resolution(self.ntor)
+        mpol_final = self.mpol_max
+        ntor_final = self.ntor_max
         expected_shape = (mpol_final, 2 * ntor_final + 1)
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
