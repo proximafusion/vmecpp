@@ -33,17 +33,26 @@ runs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake libnetcdf-dev libomp-dev libhdf5-dev
 
-    - name: Mount bazel cache
-      uses: actions/cache@v4
+    - name: Restore bazel cache
+      uses: actions/cache/restore@v4
       with:
         path: "~/.cache/bazel"
-        key: bazel-bench
+        key: bazel-bench-${{ github.sha }}
+        restore-keys: bazel-bench
 
     - name: Install vmecpp with benchmark dependencies
       shell: bash
       run: |
         pip install uv
         uv pip install --system -v .[benchmark]
+
+    # Entries are immutable: a new key per main commit refreshes the cache, GitHub evicts old ones.
+    - name: Save bazel cache
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v4
+      with:
+        path: "~/.cache/bazel"
+        key: bazel-bench-${{ github.sha }}
 
     # --- Python end-to-end benchmarks (pytest-benchmark) ---
 
