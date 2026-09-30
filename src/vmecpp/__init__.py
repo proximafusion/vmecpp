@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import dataclasses
 import enum
 import json
 import logging
@@ -1016,6 +1017,7 @@ class VmecWOut(BaseModelWithNumpy):
         return {
             0: "normal termination: converged, or returned without convergence because return_outputs_even_if_not_converged was set",
             1: "initially bad Jacobian",
+            2: "stopped by the iteration callback before convergence",
             3: "NCURR_NE_1_BLOAT_NE_1",
             4: "Jacobian reset 75 times, the geometry isn't well defined",
             5: "unrecoverable error: a physical inconsistency in the MHD model, such as a degenerate flux-surface geometry or a free-boundary current mismatch, with no retry strategy",
@@ -2874,6 +2876,71 @@ def _print_progress_tip_once() -> None:
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class SolverState:
+    """The state of the solver after one force iteration, handed to the
+    ``iteration_callback`` of :func:`run`."""
+
+    iteration: int
+    """Iteration counter of the current multigrid stage, as printed."""
+
+    multigrid_step: int
+    """Index into ``ns_array`` of the current stage; -1 for the inserted ns = 3
+    stage."""
+
+    ns: int
+    """Number of flux surfaces of the current stage."""
+
+    fsqr: float
+    """Invariant force residual of R."""
+
+    fsqz: float
+    """Invariant force residual of Z."""
+
+    fsql: float
+    """Invariant force residual of lambda."""
+
+    ftol: float
+    """Tolerance the three residuals are tested against."""
+
+    delt: float
+    """Current time step."""
+
+    restart_reason: int
+    """1 no restart, 2 bad Jacobian, 3 bad progress, 4 huge initial forces; any value
+    but 1 means the state was reverted to the last backup."""
+
+    jacobian_resets: int
+    """Jacobian resets so far in this stage."""
+
+    vacuum_pressure_active: bool
+    """Whether the vacuum pressure is part of the force balance yet."""
+
+    mhd_energy: float
+    """MHD energy of the state."""
+
+    geometry: _geometry.Geometry
+    """R, Z and lambda coefficients of the state."""
+
+    @staticmethod
+    def _from_cpp(cpp_state: _vmecpp.SolverState) -> SolverState:
+        return SolverState(
+            iteration=cpp_state.iteration,
+            multigrid_step=cpp_state.multigrid_step,
+            ns=cpp_state.ns,
+            fsqr=cpp_state.fsqr,
+            fsqz=cpp_state.fsqz,
+            fsql=cpp_state.fsql,
+            ftol=cpp_state.ftol,
+            delt=cpp_state.delt,
+            restart_reason=cpp_state.restart_reason,
+            jacobian_resets=cpp_state.jacobian_resets,
+            vacuum_pressure_active=cpp_state.vacuum_pressure_active,
+            mhd_energy=cpp_state.mhd_energy,
+            geometry=_geometry.from_cpp(cpp_state.geometry),
+        )
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -2881,6 +2948,7 @@ def run(
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
+    iteration_callback: typing.Callable[[SolverState], bool | None] | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
@@ -2902,6 +2970,11 @@ def run(
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
+        iteration_callback: called once per force iteration with a :class:`SolverState`
+            of the state just reached, after every thread has finished the step. Returning
+            ``False`` stops the run, which then returns the outputs of that state with
+            ``wout.ier_flag`` reporting no convergence; returning ``None`` or ``True`` continues.
+            An exception raised inside the callback stops the run and propagates.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -2936,6 +3009,7 @@ def run(
             max_threads=max_threads,
             verbose=verbose,
             restart_from=restart_from,
+            iteration_callback=iteration_callback,
         )
 
     cpp_indata = input._to_cpp_vmecindata()
@@ -2957,12 +3031,22 @@ def run(
 
     _verbose = _output_mode(verbose)
 
+    cpp_iteration_callback = None
+    if iteration_callback is not None:
+        user_callback = iteration_callback
+
+        def forward(cpp_state: _vmecpp.SolverState) -> bool | None:
+            return user_callback(SolverState._from_cpp(cpp_state))
+
+        cpp_iteration_callback = forward
+
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
+            iteration_callback=cpp_iteration_callback,
         )
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
@@ -2974,6 +3058,7 @@ def run(
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
+            iteration_callback=cpp_iteration_callback,
         )
 
     if _use_jax_output_stage.get():
@@ -3177,5 +3262,6 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
+    "SolverState",
     "has_exact_force_jacobian",
 ]
