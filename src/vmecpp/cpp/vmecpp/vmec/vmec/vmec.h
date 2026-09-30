@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_VMEC_VMEC_H_
 #define VMECPP_VMEC_VMEC_VMEC_H_
 
+#include <atomic>
 #include <climits>
 #include <functional>
 #include <memory>
@@ -313,7 +314,7 @@ class Vmec {
       bool all_errors_are_recoverable);
 
   // Hand the iteration that just completed to iteration_callback_. Runs on
-  // the master thread while the other threads wait at a barrier.
+  // the master thread while the other threads wait on callback_running_.
   void NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                bool& m_liter_flag);
 
@@ -342,6 +343,10 @@ class Vmec {
 
   // set to true when the iteration callback asks to stop the run
   bool stopped_by_callback_ = false;
+
+  // true while the master thread runs the iteration callback; the other
+  // threads wait on it until it is false again
+  std::atomic<bool> callback_running_{false};
 
   // index into ns_array of the multigrid stage being solved
   int multigrid_step_ = 0;

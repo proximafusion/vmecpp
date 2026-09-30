@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
@@ -1359,15 +1360,21 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     if (iteration_callback_) {
       // Every thread has finished this iteration's time step; the master
-      // thread hands the state to the callback while the others wait.
+      // thread hands the state to the callback while the others sleep until
+      // it returns.
+      if (thread_id == 0) {
+        callback_running_.store(true, std::memory_order_relaxed);
+      }
 #ifdef _OPENMP
 #pragma omp barrier
-#pragma omp master
 #endif  // _OPENMP
-      NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+      if (thread_id == 0) {
+        NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
+        callback_running_.store(false, std::memory_order_release);
+        callback_running_.notify_all();
+      } else {
+        callback_running_.wait(true, std::memory_order_acquire);
+      }
     }
 
 // protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
