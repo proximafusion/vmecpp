@@ -28,6 +28,18 @@ jobs:
         uses: actions/checkout@v4
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6 # We use uv in cibuildwheel for faster builds
+      # Pull requests build one CPython per platform; releases and manual runs
+      # build them all.
+      - name: Select the CPython versions to build
+        if: github.event_name == 'pull_request'
+        run: echo "CIBW_BUILD=cp312-*" >> "$GITHUB_ENV"
+      # Compiler cache shared by the runs and by the CPython versions of a run.
+      - name: Cache the compiler outputs
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.os }}-
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
@@ -37,11 +49,15 @@ jobs:
           CIBW_ENVIRONMENT_LINUX: >
             PIP_CONSTRAINT=/project/.github/constraints.txt
             UV_CONSTRAINT=/project/.github/constraints.txt
+            CCACHE_DIR=/project/.ccache
+            CCACHE_MAXSIZE=500M
           CIBW_ENVIRONMENT_MACOS: >
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
             FC=gfortran-14
             OpenMP_ROOT=$(brew --prefix)/opt/libomp
+            CCACHE_DIR=${{ github.workspace }}/.ccache
+            CCACHE_MAXSIZE=500M
         with:
           package-dir: .
           output-dir: wheelhouse
@@ -77,15 +93,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro:
-          [
-            "ubuntu:24.04",
-            "ubuntu:22.04",
-            "archlinux/archlinux",
-            "debian:12",
-            # "debian:testing-20250224", # TODO(jurasic): re-enable when 3.14 support unblocked
-            "fedora:41",
-          ]
+        # Pull requests build only the CPython 3.12 wheels, which ubuntu:24.04 uses.
+        distro: ${{ fromJSON(github.event_name == 'pull_request'
+          && '["ubuntu:24.04"]'
+          || '["ubuntu:24.04", "ubuntu:22.04", "archlinux/archlinux", "debian:12", "fedora:41"]') }}
         runner: [ubuntu-24.04]
         include:
           # Exercise the aarch64 wheels too, on a native arm64 runner. One
