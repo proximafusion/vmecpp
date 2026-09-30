@@ -507,11 +507,12 @@ def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
 def test_vmecwout_holds_jax_arrays(cma_output: vmecpp.VmecOutput):
     jnp = pytest.importorskip("jax.numpy")
     wout = cma_output.wout
-    array_fields = {
-        name: jnp.asarray(value)
-        for name, value in wout.model_dump().items()
-        if isinstance(value, np.ndarray)
-    }
+    with vmecpp.enable_x64(True):
+        array_fields = {
+            name: jnp.asarray(value)
+            for name, value in wout.model_dump().items()
+            if isinstance(value, np.ndarray)
+        }
     jax_wout = vmecpp.VmecWOut.model_validate({**wout.model_dump(), **array_fields})
     assert isinstance(jax_wout.rmnc, type(array_fields["rmnc"]))
 
