@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
@@ -325,6 +326,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   }
 
   stopped_by_callback_ = false;
+  callback_status_ = absl::OkStatus();
 
   // !!! THIS must be the ONLY place where this gets set to zero !!!
   num_eqsolve_retries_ = 0;
@@ -502,6 +504,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
     // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
   }  // jacob_off
+
+  if (!callback_status_.ok()) {
+    return callback_status_;
+  }
 
   if (status_ != VmecStatus::SUCCESSFUL_TERMINATION && !stopped_by_callback_ &&
       !indata_.return_outputs_even_if_not_converged) {
@@ -718,6 +724,7 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     m_.resize(num_threads_);
     decomposed_x_.resize(num_threads_);
     physical_x_backup_.resize(num_threads_);
+    last_evaluated_x_.resize(num_threads_);
     physical_x_.resize(num_threads_);
     decomposed_f_.resize(num_threads_);
     physical_f_.resize(num_threads_);
@@ -787,6 +794,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
 
       // physically-correct coefficients
       physical_x_backup_[thread_id] =
+          std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
+      last_evaluated_x_[thread_id] =
           std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
 
       // even/odd-m decomposed coefficients
@@ -1273,7 +1282,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // minimum after 10 steps.
       const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
       if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
-        RestartIteration(fc_.delt0r, thread_id);
+        RestartIteration(fc_.delt0r, thread_id,
+                         /*backup_evaluated_state=*/true);
       } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
                                            fsq_invariant > 1.0e4 * fc_.res1)) {
 #ifdef _OPENMP
@@ -1284,7 +1294,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
-      RestartIteration(fc_.delt0r, thread_id);
+      RestartIteration(fc_.delt0r, thread_id,
+                       /*backup_evaluated_state=*/true);
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 
@@ -1371,15 +1382,21 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     if (iteration_callback_) {
       // Every thread has finished this iteration's time step; the master
-      // thread hands the state to the callback while the others wait.
+      // thread hands the state to the callback while the others sleep until
+      // it returns.
+      if (thread_id == 0) {
+        callback_running_.store(true, std::memory_order_relaxed);
+      }
 #ifdef _OPENMP
 #pragma omp barrier
-#pragma omp master
 #endif  // _OPENMP
-      NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
+      if (thread_id == 0) {
+        NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
+        callback_running_.store(false, std::memory_order_release);
+        callback_running_.notify_all();
+      } else {
+        callback_running_.wait(true, std::memory_order_acquire);
+      }
     }
 
 // protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
@@ -1422,7 +1439,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 }
 
 // aligned visually with restart_iter.f90
-void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
+void Vmec::RestartIteration(double& m_delt0r, int thread_id,
+                            bool backup_evaluated_state) {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
@@ -1483,7 +1501,12 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id) {
     // save current state vector, e.g. restart_reason == NO_RESTART
 
     // update backup
-    *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
+    if (backup_evaluated_state) {
+      // decomposed_x_ is already advanced and unevaluated.
+      *physical_x_backup_[thread_id] = *last_evaluated_x_[thread_id];
+    } else {
+      *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
+    }
   }
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1861,7 +1884,7 @@ void Vmec::ApplyAxisBlock(int thread_id) {
 
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                    bool& m_liter_flag) {
-  const SolverState state{
+  SolverState state{
       .iteration = iter2,
       .multigrid_step = multigrid_step_,
       .ns = fc_.ns,
@@ -1876,8 +1899,28 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
           vacuum_pressure_state_ >= VacuumPressureState::kInitialized,
       .mhd_energy = h_.mhdEnergy * 4.0 * std::numbers::pi * std::numbers::pi,
       .geometry = EquilibriumState(),
+      .half_grid = HalfGridState(),
+      .curr_h = EnclosedCurrent(),
   };
-  if (!iteration_callback_(state)) {
+  const Eigen::Index num_current = state.curr_h.size();
+  const bool keep_going = iteration_callback_(state);
+
+  if (state.curr_h.size() != num_current) {
+    callback_status_ = absl::InvalidArgumentError(absl::StrFormat(
+        "the iteration callback may change the values of state.curr_h, which "
+        "has one entry per half-grid surface, %d, but left it with %d",
+        num_current, state.curr_h.size()));
+  } else if (num_current > 0) {
+    // the other threads wait on callback_running_ until this call returns
+    for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
+      const RadialPartitioning& r = *r_[thread_id];
+      for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+        p_[thread_id]->currH[jH - r.nsMinH] = state.curr_h[jH];
+      }
+    }
+  }
+
+  if (!keep_going || !callback_status_.ok()) {
     m_liter_flag = false;
     status_ = VmecStatus::MORE_ITERATIONS_NEEDED;
 #ifdef _OPENMP
@@ -1891,6 +1934,66 @@ Geometry Vmec::EquilibriumState() const {
   return MakeGeometry(indata_, GatherSpectralStateFromThreads(
                                    kSignOfJacobian, s_, fc_, constants_, r_,
                                    decomposed_x_, p_));
+}
+
+HalfGridFields Vmec::HalfGridState() const {
+  const int num_half = fc_.ns - 1;
+  HalfGridFields fields{
+      .gsqrt = RowMatrixXd(num_half, s_.nZnT),
+      .bsupu = RowMatrixXd(num_half, s_.nZnT),
+      .bsupv = RowMatrixXd(num_half, s_.nZnT),
+      .bsubu = RowMatrixXd(num_half, s_.nZnT),
+      .bsubv = RowMatrixXd(num_half, s_.nZnT),
+      .weight = s_.wInt,
+      .buco = Eigen::VectorXd(num_half),
+      .bvco = Eigen::VectorXd(num_half),
+      .iota = Eigen::VectorXd(num_half),
+      .phip = Eigen::VectorXd(num_half),
+      .vp = Eigen::VectorXd(num_half),
+      .ntheta_even = s_.nThetaEven,
+      .ntheta_eff = s_.nThetaEff,
+      .nzeta = s_.nZeta,
+      .nfp = s_.nfp,
+      .signgs = indata_.signgs,
+  };
+  for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
+    const RadialPartitioning& r = *r_[thread_id];
+    const IdealMhdModel& m = *m_[thread_id];
+    const RadialProfiles& p = *p_[thread_id];
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      // a surface two threads share is taken from the outer one
+      if (jH == r.nsMaxH - 1 && jH != num_half - 1) {
+        continue;
+      }
+      const int local = jH - r.nsMinH;
+      const Eigen::Index offset = static_cast<Eigen::Index>(local) * s_.nZnT;
+      fields.gsqrt.row(jH) = m.gsqrt.segment(offset, s_.nZnT).transpose();
+      fields.bsupu.row(jH) = m.bsupu.segment(offset, s_.nZnT).transpose();
+      fields.bsupv.row(jH) = m.bsupv.segment(offset, s_.nZnT).transpose();
+      fields.bsubu.row(jH) = m.bsubu.segment(offset, s_.nZnT).transpose();
+      fields.bsubv.row(jH) = m.bsubv.segment(offset, s_.nZnT).transpose();
+      fields.buco[jH] = p.bucoH[local];
+      fields.bvco[jH] = p.bvcoH[local];
+      fields.iota[jH] = p.iotaH[local];
+      fields.phip[jH] = p.phipH[local];
+      fields.vp[jH] = p.dVdsH[local];
+    }
+  }
+  return fields;
+}
+
+Eigen::VectorXd Vmec::EnclosedCurrent() const {
+  if (indata_.ncurr != 1) {
+    return {};
+  }
+  Eigen::VectorXd current(fc_.ns - 1);
+  for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
+    const RadialPartitioning& r = *r_[thread_id];
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      current[jH] = p_[thread_id]->currH[jH - r.nsMinH];
+    }
+  }
+  return current;
 }
 
 void Vmec::Printout(double delt0r, int thread_id, int iter2) {
@@ -2023,6 +2126,12 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+
+  // Keep the last state with a valid force evaluation.
+  if (fc_.restart_reason == RestartReason::NO_RESTART ||
+      fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) {
+    *last_evaluated_x_[thread_id] = *decomposed_x_[thread_id];
+  }
 
   performTimeStep(s_, fc_, *r_[thread_id], fac, b1, time_step,
                   /*m_decomposed_x=*/*decomposed_x_[thread_id],

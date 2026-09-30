@@ -150,6 +150,16 @@ def test_exception_in_the_callback_propagates():
         vmecpp.run(vmec_input, verbose=False, iteration_callback=fail_at_five)
 
 
+def test_a_return_value_that_is_not_a_bool_raises_type_error():
+    vmec_input = vmecpp.VmecInput.from_file(SOLOVEV)
+    with pytest.raises(TypeError, match="returned an object of type list"):
+        vmecpp.run(
+            vmec_input,
+            verbose=False,
+            iteration_callback=lambda state: [state.iteration],
+        )
+
+
 @pytest.mark.parametrize(
     "case",
     [
