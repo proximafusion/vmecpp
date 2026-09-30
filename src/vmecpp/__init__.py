@@ -2908,9 +2908,9 @@ def _print_progress_tip_once() -> None:
 
 @dataclasses.dataclass(frozen=True)
 class HalfGridFields:
-    """The fields of a force evaluation on the half grid, at the angles
-    ``theta_l = 2 pi l / ntheta_even``, ``l < ntheta_eff``, and
-    ``zeta_k = 2 pi k / (nfp nzeta)``, ``k < nzeta``.
+    """The fields of a force evaluation on the half grid, at the angles ``theta_l = 2 pi
+    l / ntheta_even``, ``l < ntheta_eff``, and ``zeta_k = 2 pi k / (nfp nzeta)``, ``k <
+    nzeta``.
 
     Without ``lasym`` the poloidal points cover [0, pi], and a field on the rest
     of a surface follows from ``f(theta, zeta) = f(-theta, -zeta)``.
@@ -2933,8 +2933,8 @@ class HalfGridFields:
     """[ns - 1, nzeta * ntheta_eff] covariant toroidal component of B."""
 
     weight: np.ndarray
-    """[ntheta_eff] weight of each point in an angle average,
-    ``<f> = sum_{k,l} weight_l f_kl``."""
+    """[ntheta_eff] weight of each point in an angle average, ``<f> = sum_{k,l} weight_l
+    f_kl``."""
 
     buco: np.ndarray
     """[ns - 1] ``<B_theta>``, the ``buco`` of the wout file."""
@@ -3026,8 +3026,8 @@ class SolverState:
     """R, Z and lambda coefficients of the state."""
 
     half_grid: HalfGridFields
-    """The fields of the force evaluation of this iteration, which the time step
-    that followed it has moved ``geometry`` away from, except on the iteration that
+    """The fields of the force evaluation of this iteration, which the time step that
+    followed it has moved ``geometry`` away from, except on the iteration that
     converges."""
 
     curr_h: np.ndarray

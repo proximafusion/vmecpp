@@ -1,15 +1,18 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""A bootstrap current made self-consistent during the solve, from Python.
+"""A bootstrap current made self-consistent during the solve.
 
-``vmecpp.solve_equilibrium`` runs the force-balance iteration in Python and
-hands every iteration to a callback. Here the callback replaces the enclosed
-toroidal current, every 25 iterations, by the bootstrap current of SIMSOPT's
-Redl closure on the iterating field, read through
-``VmecModel.half_grid_fields``, and prescribes it through ``VmecModel.curr_h``.
-The solve ends when the forces are balanced and the closure no longer changes
-the current.
+The ``iteration_callback`` of ``vmecpp.run`` receives every force iteration as a
+``vmecpp.SolverState``, which carries the fields of the force evaluation on the
+half grid, ``state.half_grid``, and the enclosed toroidal current the force
+evaluations prescribe, ``state.curr_h``. Here the callback moves that current,
+every 25 iterations of the final multigrid step, halfway to the bootstrap current
+of SIMSOPT's Redl closure on the iterating field, by changing ``state.curr_h`` in
+place. When the forces converge while the closure still changes the current, the
+final step is hot-restarted with the current reached as the input profile. The
+solve ends when the forces are balanced and the closure no longer changes the
+current.
 
 The Redl closure holds for tokamaks and quasi-symmetric fields. The
 configuration is the quasi-helical warm start of the SIMSOPT examples, whose
@@ -27,6 +30,8 @@ import vmecpp
 
 MU_0 = 4.0e-7 * np.pi
 ELEMENTARY_CHARGE = 1.602176634e-19
+# SolverState.restart_reason of an iteration that kept its time step
+NO_RESTART = 1
 
 
 def kinetic_pressure(ne, te, ti, zeff):
@@ -44,7 +49,7 @@ def full_surfaces(values, fields):
     Without lasym the solver stores theta in [0, pi], and the rest of each surface
     follows from f(theta, zeta) = f(-theta, -zeta).
     """
-    stored = np.asarray(values).reshape(-1, fields.nzeta, fields.ntheta_eff)
+    stored = values.reshape(-1, fields.nzeta, fields.ntheta_eff)
     if fields.ntheta_eff == fields.ntheta_even:
         full = stored
     else:
@@ -60,21 +65,18 @@ def full_surfaces(values, fields):
 
 def redl_current(fields, ne, te, ti, zeff, helicity_n, psi_edge):
     """The enclosed current, in the units of wout buco, that the Redl bootstrap current
-    of the fields drives, and <J.B> on the half grid.
+    of the ``vmecpp.HalfGridFields`` drives, and <J.B> on the half grid.
 
     mu_0 <J.B> = signgs (G I' - I G') / vp with G = bvco and I = buco, so
     (I / G)' = signgs mu_0 <J.B> vp / G^2, integrated from I(0) = 0.
     """
-    modb = np.sqrt(
-        np.asarray(fields.bsupu) * np.asarray(fields.bsubu)
-        + np.asarray(fields.bsupv) * np.asarray(fields.bsubv)
-    )
+    modb = np.sqrt(fields.bsupu * fields.bsubu + fields.bsupv * fields.bsubv)
     _, _, epsilon, _, fsa_1overb, f_t = compute_trapped_fraction(
         full_surfaces(modb, fields), full_surfaces(fields.gsqrt, fields)
     )
-    g = np.asarray(fields.bvco)
-    i = np.asarray(fields.buco)
-    iota = np.asarray(fields.iota)
+    g = fields.bvco
+    i = fields.buco
+    iota = fields.iota
     num_half = g.size
     s = (np.arange(num_half) + 0.5) / num_half
     j_dot_b, _ = j_dot_B_Redl(
@@ -92,7 +94,7 @@ def redl_current(fields, ne, te, ti, zeff, helicity_n, psi_edge):
         psi_edge=psi_edge,
         nfp=fields.nfp,
     )
-    integrand = fields.signgs * MU_0 * j_dot_b * np.asarray(fields.vp) / g**2
+    integrand = fields.signgs * MU_0 * j_dot_b * fields.vp / g**2
     delta_s = 1.0 / num_half
     i_over_g = 0.5 * delta_s * integrand[0] + np.concatenate(
         ([0.0], np.cumsum(0.5 * (integrand[1:] + integrand[:-1]) * delta_s))
@@ -116,43 +118,73 @@ def solve_with_bootstrap_current(
     """Solve ``vmec_input`` with the enclosed current made equal to the Redl bootstrap
     current of the equilibrium.
 
-    The multigrid solve with the input's current gives the starting state. On the
-    final grid, the callback moves the current a fraction ``relaxation`` towards the
-    closure every ``interval`` iterations once the invariant residual is below 1e-2,
-    and a new round starts whenever the forces converge while the closure still
-    changes the current by more than ``tolerance`` of its maximum. ``vmec_input``
-    needs ncurr = 1. Returns the model and the number of force iterations on the
-    final grid.
+    On the final multigrid step, the callback moves the current a fraction
+    ``relaxation`` towards the closure every ``interval`` iterations once the force
+    residuals sum to less than 1e-2. When the forces converge while the closure still
+    changes the current by more than ``tolerance`` of its maximum, the next round
+    hot-restarts the final step from that equilibrium, with the relaxed current as the
+    input profile. ``vmec_input`` needs ncurr = 1. Returns the output of the last
+    round, the enclosed current of its equilibrium on the half grid, in the units of
+    wout buco, and the number of force iterations on the final grid.
     """
     psi_edge = -vmec_input.phiedge / (2.0 * np.pi)
-    model, results = vmecpp.solve_multigrid(vmec_input)
-    if not results[-1].converged:
-        msg = "the starting equilibrium did not converge"
-        raise RuntimeError(msg)
 
-    def relaxed_current():
-        target, _ = redl_current(
-            model.half_grid_fields(), ne, te, ti, zeff, helicity_n, psi_edge
+    def closure(fields):
+        target, _ = redl_current(fields, ne, te, ti, zeff, helicity_n, psi_edge)
+        return target
+
+    def solve(round_input, restart_from):
+        final_step = len(round_input.ns_array) - 1
+        last_state = None
+        iterations = 0
+
+        def callback(state):
+            nonlocal last_state, iterations
+            if state.multigrid_step != final_step:
+                return
+            last_state = state
+            iterations += 1
+            # no force evaluation follows the iteration that converges
+            converged = max(state.fsqr, state.fsqz, state.fsql) <= state.ftol
+            if (
+                state.iteration % interval == 0
+                and state.restart_reason == NO_RESTART
+                and state.fsqr + state.fsqz + state.fsql < 1.0e-2
+                and not converged
+            ):
+                state.curr_h[:] += relaxation * (
+                    closure(state.half_grid) - state.curr_h
+                )
+
+        output = vmecpp.run(
+            round_input,
+            verbose=False,
+            restart_from=restart_from,
+            iteration_callback=callback,
         )
-        current = np.asarray(model.curr_h)
-        change = np.abs(target - current).max() / np.abs(target).max()
-        return current + relaxation * (target - current), change
-
-    def callback(state):
-        if state.iteration % interval == 0 and state.fsq_invariant < 1.0e-2:
-            model.curr_h, _ = relaxed_current()
-
-    iterations = 0
-    for _ in range(max_rounds):
-        relaxed, change = relaxed_current()
-        if change < tolerance:
-            return model, iterations
-        model.curr_h = relaxed
-        result = vmecpp.solve_equilibrium(model, callback=callback)
-        iterations += result.num_iterations
-        if not result.converged:
+        if output.wout.ier_flag != 0:
             msg = "the equilibrium did not converge with the bootstrap current"
             raise RuntimeError(msg)
+        return output, last_state, iterations
+
+    final_step_input = vmec_input.model_copy(
+        update={
+            "ns_array": vmec_input.ns_array[-1:],
+            "ftol_array": vmec_input.ftol_array[-1:],
+            "niter_array": vmec_input.niter_array[-1:],
+        }
+    )
+    output, state, iterations = solve(vmec_input, restart_from=None)
+    for _ in range(max_rounds):
+        target = closure(state.half_grid)
+        change = np.abs(target - state.curr_h).max() / np.abs(target).max()
+        if change < tolerance:
+            return output, state.curr_h, iterations
+        relaxed = state.curr_h + relaxation * (target - state.curr_h)
+        output, state, round_iterations = solve(
+            with_current_profile(final_step_input, relaxed), restart_from=output
+        )
+        iterations += round_iterations
     msg = f"the bootstrap current did not settle in {max_rounds} rounds"
     raise RuntimeError(msg)
 
@@ -240,13 +272,12 @@ def main():
     ti = ProfilePolynomial(ti_coefficients)
 
     zero_current = vmecpp.run(vmec_input, verbose=False)
-    model, iterations = solve_with_bootstrap_current(
+    _, buco, iterations = solve_with_bootstrap_current(
         vmec_input, ne, te, ti, zeff, helicity_n
     )
-    buco = np.asarray(model.curr_h)
     self_consistent = vmecpp.run(with_current_profile(vmec_input, buco), verbose=False)
 
-    print(f"force iterations with the closure: {iterations}")
+    print(f"force iterations on the final grid with the closure: {iterations}")
     print(f"volume-averaged beta: {self_consistent.wout.betatotal:.4f}")
     print(f"net bootstrap current: {self_consistent.wout.ctor:.1f} A")
     for name, output in [

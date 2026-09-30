@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 """The example examples/self_consistent_bootstrap_current.py: a Redl bootstrap current
-made self-consistent through the callback of the Python-driven solve."""
+made self-consistent through the iteration callback of ``run``."""
 
 import sys
 from pathlib import Path
@@ -51,10 +51,16 @@ def test_the_equilibrium_carries_the_redl_current_by_simsopt_s_measure() -> None
     mismatches = []
     for ns in (16, 25):
         vmec_input = _input(ns)
-        model, _ = example.solve_with_bootstrap_current(
+        solved, buco, _ = example.solve_with_bootstrap_current(
             vmec_input, ne, te, te, ZEFF, HELICITY_N
         )
-        buco = np.asarray(model.curr_h)
+        # the equilibrium the closure converged to carries the current it left
+        np.testing.assert_allclose(
+            np.asarray(solved.wout.buco)[1:],
+            buco,
+            rtol=0.0,
+            atol=1e-12 * abs(buco).max(),
+        )
         output = vmecpp.run(
             example.with_current_profile(vmec_input, buco), verbose=False
         )
