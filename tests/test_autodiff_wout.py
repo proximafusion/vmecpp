@@ -218,6 +218,29 @@ def test_run_returns_the_output_stage_wout() -> None:
         np.testing.assert_array_equal(value, getattr(reference, name), err_msg=name)
 
 
+def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
+    """One iteration per step stops cma in its ns = 25 step with a bad Jacobian;
+    return_outputs_even_if_not_converged then returns that step's wout.
+
+    The field of a bad-Jacobian state is not meaningful, so only the geometry is
+    compared.
+    """
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json").model_copy(
+        update={
+            "niter_array": np.asarray([1, 1]),
+            "return_outputs_even_if_not_converged": True,
+        }
+    )
+    output = _run_cpp(indata)
+    expected = vmecpp.VmecWOut._from_cpp_wout(output.wout)
+    assert expected.ns < indata.ns_array[-1]
+    actual = vmecpp._wout_from_output_stage(indata, output)
+    assert actual.bmnc.shape == expected.bmnc.shape
+    np.testing.assert_allclose(
+        actual.rmnc, expected.rmnc, rtol=0.0, atol=1.0e-12 * np.abs(expected.rmnc).max()
+    )
+
+
 def test_cli_uses_the_cpp_output_stage(tmp_path) -> None:
     script = (
         "import runpy, sys\n"
@@ -351,7 +374,14 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
     """A traced boundary solves through the differentiable path; under jax.jit the
     forward solve is not observable, so only the wout physics fields are set."""
     indata = _cth_like_input()
-    reference = vmecpp.run(indata, max_threads=1, verbose=False)
+    reference = vmecpp.VmecWOut._from_cpp_wout(
+        _vmecpp.run(
+            indata._to_cpp_vmecindata(),
+            max_threads=1,
+            verbose=_vmecpp.OutputMode.SILENT,
+            always_fix_m1_gauge=True,
+        ).wout
+    )
 
     @jax.jit
     def solve(boundary):
@@ -367,11 +397,11 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
         _assert_field_close(
             name,
             getattr(output.wout, name),
-            getattr(reference.wout, name),
-            reference.wout,
+            getattr(reference, name),
+            reference,
         )
     for name, value in autodiff_wout.static_fields(indata).items():
-        _assert_field_close(name, getattr(output.wout, name), value, reference.wout)
+        _assert_field_close(name, getattr(output.wout, name), value, reference)
 
 
 @pytest.mark.parametrize(
@@ -458,7 +488,12 @@ def test_run_with_a_traced_boundary_fills_the_cpp_outputs() -> None:
     """Under jax.grad the forward solve runs eagerly, so the non-differentiable members
     of the output come from its C++ output stage."""
     indata = _cth_like_input()
-    reference = vmecpp.run(indata, max_threads=1, verbose=False)
+    reference = _vmecpp.run(
+        indata._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+        always_fix_m1_gauge=True,
+    )
     captured = {}
 
     def aspect(boundary):
@@ -523,8 +558,20 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
     assert np.all(np.isfinite(gradient))
 
     direction = _low_mode_direction(indata, seed)
-    plus = float(objective(boundary + direction))
-    minus = float(objective(boundary - direction))
+
+    def pinned_objective(value):
+        cpp_input = _with_boundary(indata, value)._to_cpp_vmecindata()
+        wout = vmecpp.VmecWOut._from_cpp_wout(
+            _vmecpp.run(
+                cpp_input,
+                verbose=_vmecpp.OutputMode.SILENT,
+                always_fix_m1_gauge=True,
+            ).wout
+        )
+        return wout.aspect if objective_name == "aspect" else _quasisymmetry_proxy(wout)
+
+    plus = float(pinned_objective(boundary + direction))
+    minus = float(pinned_objective(boundary - direction))
     finite_difference = 0.5 * (plus - minus)
     directional = float(np.sum(gradient * direction))
     print(

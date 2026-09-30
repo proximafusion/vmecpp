@@ -229,6 +229,11 @@ def _tangent_through_the_solve(indata, boundary, seed_state):
     model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, edge = autodiff._interior_and_boundary(model)
+    # The pinned m=1 gauge entries are prescribed by the boundary, like the
+    # edge entries; the parser tangent below carries their sqrt(s) profile.
+    gauge = autodiff._gauge_entries(model)
+    edge = np.concatenate([edge, gauge])
+    interior = np.setdiff1d(interior, gauge)
     model.set_state(np.ascontiguousarray(state))
     model.evaluate(2, 2, True)
     keep = autodiff._structural_nullfree_interior(model, interior)
@@ -323,7 +328,7 @@ def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity() -> None:
 
     seed_state = _parser_state_tangent(indata, boundary, direction)
     tangent = _tangent_through_the_solve(indata, boundary, seed_state)
-    adjoint = solver._backward_callback(boundary, cotangent)
+    adjoint = solver._backward_callback(boundary, cotangent)[0]
 
     np.testing.assert_allclose(
         float(cotangent @ tangent), float((adjoint * direction).sum()), rtol=1.0e-6
