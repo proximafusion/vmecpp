@@ -49,7 +49,7 @@ for ConStellaration):
   interpolation of any order is zero on (−1)^j. What does lift them: a second-difference
   (Rhie–Chow-type) stabilization, or storing λ on the half grid.
 
-![spectra and checkerboard](lambda_spectra_checkerboard.png)
+![spectra and checkerboard](./lambda_spectra_checkerboard.png)
 
 Left: smallest eigenvalues of the preconditioned operators. Middle: the slowest
 eigenvector (checkerboard) against the tail error (smooth hump). Right: radial λ
@@ -91,12 +91,12 @@ discretizations. Wider symmetric stencils don't help (4.4e-6 → 6e-6 relative);
 over-damped. All later drivers use VMEC's exact form and reproduce native iteration
 counts to within 1–3%.
 
-![momentum methods](momentum_comparison_gauge.png)
+![momentum methods](./momentum_comparison_fsq.png)
 
 ### 3.2 Validated backup (robustness)
 
-![delt scan](constellaration_delt_scan.png)
-![resolution scan](backup_fix_resolution_scan.png)
+![delt scan](./constellaration_delt_scan.png)
+![resolution scan](./backup_fix_resolution_scan.png)
 
 - **ConStellaration.** `delt` 0.66–0.9 converges in 895–1175 iterations, against
   943–3580 or failure on main.
@@ -121,8 +121,8 @@ counts to within 1–3%.
 | λ exact, 2 evaluations/step | 647 | 23042 |
 | Exact {R/Z, λ} block Jacobi (finite differences) | **231** | **961** |
 
-![exact lambda tails](exact_lambda_tails.png)
-![exact lambda cost](exact_lambda_cost.png)
+![exact lambda tails](./exact_lambda_tails.png)
+![exact lambda cost](./exact_lambda_cost.png)
 
 ### 3.4 Block preconditioners in the tail
 
@@ -134,7 +134,7 @@ counts to within 1–3%.
   (assembly 271 evaluations), −22% on W7-X. Mixed at larger mc, because the low/high
   coupling is dropped.
 
-![block preconditioner tails](block_preconditioner_tail.png)
+![block preconditioner tails](./block_preconditioner_tail.png)
 
 ### 3.5 Analytic preconditioners (no finite differencing)
 
@@ -143,14 +143,14 @@ counts to within 1–3%.
   version). Replacing only VMEC's λ preconditioner by the regularized version changes
   iterations by −8% to +3% at 1.4–5× the wall time. Without stabilization it stalls on
   bad Jacobians.
-  ![lambda-only preconditioner](vmec_lambda_regularized_preconditioner.png)
+  ![lambda-only preconditioner](./vmec_lambda_regularized_preconditioner.png)
 - **Analytic low-mode coupled block.** Per-point 28×28 Hessians of the energy density
   (JAX) combined with a low-mode Galerkin: 1.05% error against finite differences.
   Rebuild ≈0.4 s on cth_like (≈250 evaluations there; estimated ≈100–150 at W7-X scale).
   Made positive definite by a block modified Cholesky. **It does not help yet**:
   - small floor: eig(M⁻¹H) up to ~900, i.e. directions where M is too soft;
   - large floor: soft physical modes over-stiffened to 2e-5, and the tail takes 50k iterations.
-  ![analytic low-mode block](lowmode_analytic_preconditioner.png)
+  ![analytic low-mode block](./lowmode_analytic_preconditioner.png)
 
 ## 4. Near-null directions (prescribed-ι cth_like)
 
@@ -175,7 +175,7 @@ counts to within 1–3%.
   de-aliased with faccon ∝ 1/xmpq²; profile tcon from the preconditioner diagonal
   × (32Δs)².
 
-![indefinite directions](indefinite_directions.png)
+![indefinite directions](./indefinite_directions.png)
 
 ## 5. End-to-end result (current best)
 
@@ -207,7 +207,7 @@ wall time.
   - An automatic keep-or-switch-back rule over a fixed 400-evaluation window was too
     conservative: it switched back on cases where the block was winning.
 
-![end to end](end_to_end_comparison.png)
+![end to end](./end_to_end_comparison.png)
 
 ## 6. Recommendations
 
