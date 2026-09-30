@@ -104,6 +104,7 @@ absl::StatusOr<OutputQuantities> run(
     std::optional<int> max_threads = std::nullopt,
     OutputMode verbose = OutputMode::kLegacy,
     InterruptCallback interrupt_callback = nullptr,
+    bool always_fix_m1_gauge = false,
     IterationCallback iteration_callback = nullptr);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
@@ -195,6 +196,9 @@ class Vmec {
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
+  // Evaluate the model at the current state as the next iteration would,
+  // without advancing the state.
+  absl::Status EvaluateFinalState();
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
@@ -248,6 +252,13 @@ class Vmec {
   VmecConstants constants_;
   HandoverStorage h_;
   FlowControl fc_;
+  // Zero the m=1 gauge force (FourierForces::zeroZForceForM1) from the first
+  // iteration instead of only once fsqz < 1e-6, and set the gauge from the
+  // boundary in InitializeRadial. The converged gauge then equals the
+  // boundary gauge scaled by sqrt(s) on every surface, independent of the
+  // iteration and multigrid history, and the fixed-gauge force Jacobian is
+  // the linearization of the iterated system.
+  bool always_fix_m1_gauge_ = false;
   MGridProvider mgrid_;
   OutputQuantities output_quantities_;
 
@@ -293,6 +304,13 @@ class Vmec {
   absl::StatusOr<SolveEqLoopStatus> SolveEquilibriumLoop(
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& m_lreset_internal, bool& m_liter_flag);
+
+  // Returns the errors the threads reported, or sets status_ to
+  // UNRECOVERABLE_ERROR and returns ok when every error is a physical
+  // inconsistency and outputs were requested even if not converged.
+  absl::Status RecoverFromThreadErrors(
+      const absl::Status& status_of_all_threads,
+      bool all_errors_are_recoverable);
 
   // Hand the iteration that just completed to iteration_callback_. Runs on
   // the master thread while the other threads wait at a barrier.
