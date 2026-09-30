@@ -141,9 +141,12 @@ ProfileCoeffType = typing.Annotated[
 ]
 
 MgridModeType: typing.TypeAlias = typing.Annotated[
-    typing.Literal["R", "S", ""], pydantic.Field(max_length=1)
+    typing.Literal["R", "S", ""],
+    pydantic.Field(max_length=1),
+    pydantic.BeforeValidator(lambda mode: "" if mode == "N" else mode),
 ]
-"""[Scaled, Raw, Unset]"""
+"""[Raw, Scaled, Unset]; the mode "N", which LIBSTELL assigns to an mgrid file without a
+mode and simsopt writes, reads as unset."""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
 
@@ -474,8 +477,25 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 0.5
     """Constraint force scaling factor for ns --> 0."""
 
+    lgiveup: bool = False
+    """Abandon the whole multigrid sequence when a step ends with any residual still
+    above ``fgiveup`` times its tolerance, rather than carrying a state that far out
+    onto a finer grid."""
+
+    fgiveup: float = 30.0
+    """Multiple of ``ftol_array`` a step's residuals must be under for the sequence to
+    continue when ``lgiveup`` is set."""
+
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
+
+    lambda_preconditioner_scale: float = 0.5
+    """Scale of the lambda preconditioner, which multiplies the inverse of the diagonal
+    lambda stiffness to turn the lambda force into the lambda step.
+
+    1.0 applies the undamped inverse, values below 1.0 damp the lambda step and values
+    above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
+    """
 
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
