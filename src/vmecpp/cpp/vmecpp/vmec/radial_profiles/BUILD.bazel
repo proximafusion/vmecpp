@@ -7,6 +7,7 @@ cc_library(
     hdrs = ["radial_profiles.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings:str_format",
         "@abseil-cpp//absl/log:log",
         "//vmecpp/common/vmec_indata:vmec_indata",

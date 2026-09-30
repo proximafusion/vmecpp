@@ -18,3 +18,17 @@ cc_library(
         "//vmecpp/free_boundary/free_boundary_base:free_boundary_base",
     ],
 )
+
+cc_test(
+    name = "nestor_test",
+    srcs = ["nestor_test.cc"],
+    deps = [
+        ":nestor",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/mgrid_provider:mgrid_provider",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

@@ -44,6 +44,12 @@ namespace fs = std::filesystem;
 namespace vmecpp {
 
 // used to specify case-specific tolerances
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -534,11 +540,14 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
   }  // jF
 }  // CheckJxBOutputContents
 
-// TODO(jons): Clarify below guess.
-// I suspect these are so bad because J x B is close to 0
-// in case of an equilibrium with small toroidal current.
-// cth_like_fixed_bdy has a large toroidal current,
-// so I suspect that J x B is more well-defined in that case...
+// The tolerances track beta rather than the toroidal current. From the
+// reference wout files: cma carries no current at all (ctor = -6e-11) and
+// betator = 0, and needs the loosest tolerance; solovev has the largest current
+// of the three (ctor = -4.4e5) but betator = 4.1e-6, and sits in between;
+// cth_like_fixed_bdy has the smallest current (ctor = 4.3e4) and the largest
+// betator = 2.1e-3, and takes the tightest. J x B is what is being compared,
+// and it needs a pressure gradient as much as a current, so it is beta that
+// orders these.
 INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, JxBOutputContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 2.0e-5},
@@ -613,10 +622,10 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
     EXPECT_TRUE(IsCloseRelAbs(mercier["vpp"][jF - 1],
                               mercier_intermediate.vpp[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(mercier["presp"][jF - 1],
-                              mercier_intermediate.d_pressure_d_s[jF],
+                              mercier_intermediate.d_pressure_d_phi[jF],
                               tolerance));
     EXPECT_TRUE(IsCloseRelAbs(mercier["ip"][jF - 1],
-                              mercier_intermediate.d_toroidal_current_d_s[jF],
+                              mercier_intermediate.d_toroidal_current_d_phi[jF],
                               tolerance));
   }  // jF
 
@@ -672,7 +681,7 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
 
     const double vp_full = (static_cast<double>(mercier["vp_real"][jHo]) +
                             static_cast<double>(mercier["vp_real"][jHi])) /
-                           2.0;
+                           2.0 * sign_of_jacobian;
 
     // The running sum advances even on surfaces the assembly skips, and is
     // scaled by deltaS only at the end, as the assembly does.
@@ -692,9 +701,9 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
                               tolerance))
         << "toroidal_flux at jF = " << jF;
 
-    EXPECT_TRUE(IsCloseRelAbs(vp_full, mercier_file_contents.d_volume_d_s[jF],
+    EXPECT_TRUE(IsCloseRelAbs(vp_full, mercier_file_contents.d_volume_d_phi[jF],
                               tolerance))
-        << "d_volume_d_s at jF = " << jF;
+        << "d_volume_d_phi at jF = " << jF;
 
     EXPECT_TRUE(
         IsCloseRelAbs(static_cast<double>(mercier["shear"][jF - 1]) / vp_full,
@@ -715,13 +724,13 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
 
     EXPECT_TRUE(IsCloseRelAbs(
         static_cast<double>(mercier["ip"][jF - 1]) / vp_full,
-        mercier_file_contents.d_toroidal_current_d_s[jF], tolerance))
-        << "d_toroidal_current_d_s at jF = " << jF;
+        mercier_file_contents.d_toroidal_current_d_volume[jF], tolerance))
+        << "d_toroidal_current_d_volume at jF = " << jF;
 
     EXPECT_TRUE(
         IsCloseRelAbs(static_cast<double>(mercier["presp"][jF - 1]) / vp_full,
-                      mercier_file_contents.d_pressure_d_s[jF], tolerance))
-        << "d_pressure_d_s at jF = " << jF;
+                      mercier_file_contents.d_pressure_d_volume[jF], tolerance))
+        << "d_pressure_d_volume at jF = " << jF;
 
     // iota and pressure are averaged from half-grid profiles that the
     // reference does not carry, so only the averaging itself is checked.
@@ -1108,8 +1117,9 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-9},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 5.0e-9},
-           DataSource{.identifier = "cma", .tolerance = 1.0e-6},
-           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-6}));
+           DataSource{.identifier = "cma", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-06}));
 
 class Threed1VolumetricsTest : public TestWithParam<DataSource> {
  protected:
@@ -1391,10 +1401,10 @@ INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, Threed1ShafranovIntegralsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-11},
            DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-11},
-           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-11},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-10},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
-                      .tolerance = 5.0e-11},
-           DataSource{.identifier = "cma", .tolerance = 5.0e-11},
+                      .tolerance = 5.0e-10},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-10},
            DataSource{.identifier = "cth_like_free_bdy", .tolerance = 5.0e-5})
     // NOTE: vacuum_b_phi likely largest influence here!
 );

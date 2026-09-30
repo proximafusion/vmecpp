@@ -31,6 +31,7 @@ classifiers = [
 dependencies = [
   "netCDF4",
   "numpy",
+  "scipy",
   "pydantic>=2.11", # Introduced support for by_alias validation
   "jaxtyping>=0.2.6",
   "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
@@ -90,9 +91,10 @@ wheel.exclude = [
     # ships or uses them at runtime.
     "include/eigen3/",
 ]
-build.verbose = true
-# Caching directory for wheel builds
-build-dir = "build"
+build.verbose = false
+# Caching directory for wheel builds; one per Python tag, so that virtual environments
+# with different interpreters do not overwrite each other's CMake cache.
+build-dir = "build/{wheel_tag}"
 # When vmecpp is installed in editable mode
 # pip install -e .
 # it will check if the C++ sources have changed on each package import and rebuild individual files as needed
@@ -114,10 +116,14 @@ test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
 
 [tool.cibuildwheel.linux]
-before-build = "yum install -y zlib-devel"
+before-build = "yum install -y zlib-devel epel-release && yum install -y ccache"
 
 [tool.cibuildwheel.macos]
-before-build = "brew install gcc libomp"
+before-build = "brew install gcc libomp ccache"
+# simsopt builds from source in the test environment where it has no wheel
+# (CPython 3.14). Without OpenMP_ROOT it builds without OpenMP, as its wheels
+# are, and the test process loads one libomp, the one in the vmecpp wheel.
+test-environment = { OpenMP_ROOT = "" }
 
 [tool.coverage.run]
 source_pkgs = ["vmecpp", "tests"]

@@ -36,6 +36,7 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.niter, wout2.niter);
   EXPECT_EQ(wout1.lfreeb, wout2.lfreeb);
   EXPECT_EQ(wout1.mgrid_file, wout2.mgrid_file);
+  EXPECT_EQ(wout1.nextcur, wout2.nextcur);
   EXPECT_EQ(wout1.extcur, wout2.extcur);
   EXPECT_EQ(wout1.mgrid_mode, wout2.mgrid_mode);
   EXPECT_EQ(wout1.wb, wout2.wb);
@@ -83,6 +84,7 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.phips, wout2.phips);
   EXPECT_EQ(wout1.over_r, wout2.over_r);
   EXPECT_EQ(wout1.jdotb, wout2.jdotb);
+  EXPECT_EQ(wout1.bdotb, wout2.bdotb);
   EXPECT_EQ(wout1.bdotgradv, wout2.bdotgradv);
   EXPECT_EQ(wout1.DMerc, wout2.DMerc);
   EXPECT_EQ(wout1.DShear, wout2.DShear);

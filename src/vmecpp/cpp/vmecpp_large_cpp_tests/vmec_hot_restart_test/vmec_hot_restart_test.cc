@@ -135,7 +135,7 @@ TEST_P(GeometryInitializationTest, CheckGeometryInitialization) {
         vmec.t_, output_quantities.wout.rmnc, output_quantities.wout.zmns,
         output_quantities.wout.lmns_full, output_quantities.wout.rmns,
         output_quantities.wout.zmnc, output_quantities.wout.lmnc_full,
-        *vmec.p_[thread_id], vmec.constants_, &(vmec.b_));
+        *vmec.p_[thread_id], vmec.constants_, vmec.indata_.signgs, &(vmec.b_));
 
     for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
       for (int m = 0; m < s.mpol; ++m) {
@@ -652,6 +652,58 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy",
                       .tolerance = 1.0e-4}));
 
+class HotRestartOntoChangedBoundary : public TestWithParam<DataSource> {};
+
+TEST_P(HotRestartOntoChangedBoundary, KeepsTheFluxSurfacesNested) {
+  // A fixed-boundary hot restart onto a boundary whose R_{1,0} is 2 percent
+  // larger than in the restart state.
+  const auto& ds = GetParam();
+
+  const std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", ds.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const VmecINDATA& indata = maybe_indata.value();
+
+  const auto original_output = vmecpp::run(indata);
+  ASSERT_TRUE(original_output.ok());
+
+  // a hot restart runs the last multigrid step only
+  VmecINDATA changed_indata = indata;
+  const int last_multigrid_step = static_cast<int>(indata.ns_array.size()) - 1;
+  changed_indata.ns_array.resize(1);
+  changed_indata.ns_array[0] = indata.ns_array[last_multigrid_step];
+  changed_indata.ftol_array.resize(1);
+  changed_indata.ftol_array[0] = indata.ftol_array[last_multigrid_step];
+  changed_indata.niter_array.resize(1);
+  changed_indata.niter_array[0] = indata.niter_array[last_multigrid_step];
+  changed_indata.rbc(1, changed_indata.ntor) *= 1.02;
+
+  const auto cold_output = vmecpp::run(changed_indata);
+  ASSERT_TRUE(cold_output.ok());
+
+  const auto hot_output =
+      vmecpp::run(changed_indata, vmecpp::HotRestartState(*original_output));
+  ASSERT_TRUE(hot_output.ok());
+
+  const Eigen::VectorXi& restart_reasons =
+      hot_output->wout.restart_reason_timetrace;
+  const int bad_jacobian_restarts =
+      static_cast<int>((restart_reasons.array() ==
+                        static_cast<int>(vmecpp::RestartReason::BAD_JACOBIAN))
+                           .count());
+  EXPECT_EQ(bad_jacobian_restarts, 0);
+  EXPECT_LT(hot_output->wout.niter, cold_output->wout.niter);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TestHotRestart, HotRestartOntoChangedBoundary,
+    Values(DataSource{.identifier = "solovev"}, DataSource{.identifier = "cma"},
+           DataSource{.identifier = "cth_like_fixed_bdy"}));
+
 TEST(HotRestartIntegration, MultigridContinuation) {
   // Test that a hot restart seeded at the first (coarse) grid and then
   // continued through all remaining multigrid steps produces the same
@@ -757,10 +809,10 @@ TEST(HotRestartIntegration, FreeBoundary) {
 
   // COMPARE RUN FROM SCRATCH AND HOT-RESTARTED RUN
   //
-  // The bound is set by jdotb, which differs by 2.8e-2 between the two runs,
-  // and jcuru at 1.6e-2. Everything else stays at or below 1.8e-3 (DMerc),
-  // with the geometry and field coefficients at 1e-5 and the integrated
-  // scalars at 1e-10 or tighter.
+  // 0.1 is close to the floor: DCurr differs by 5.9e-2 between the two runs,
+  // jdotb by 2.8e-2 and jcuru by 1.6e-2, while the geometry and field
+  // coefficients sit at 1e-5. Those are derivative diagnostics of two
+  // convergence paths into the same shallow minimum, not of one state.
   const double tolerance = 0.1;
   const bool check_equal_maximum_iterations = false;
   CompareWOut(displaced_hotrestarted_output->wout,

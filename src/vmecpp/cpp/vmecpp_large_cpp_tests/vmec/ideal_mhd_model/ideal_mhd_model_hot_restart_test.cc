@@ -35,6 +35,12 @@ namespace vmecpp {
 
 // used to specify case-specific tolerances
 // and which iterations to test
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
@@ -107,7 +113,7 @@ TEST_P(FourierGeometryToStartWithFromWOutTest,
         vmec.t_, output_quantities.wout.rmnc, output_quantities.wout.zmns,
         output_quantities.wout.lmns_full, output_quantities.wout.rmns,
         output_quantities.wout.zmnc, output_quantities.wout.lmnc_full,
-        *vmec.p_[thread_id], vmec.constants_, &(vmec.b_));
+        *vmec.p_[thread_id], vmec.constants_, vmec.indata_.signgs, &(vmec.b_));
 
     for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
       for (int m = 0; m < s.mpol; ++m) {
@@ -235,7 +241,7 @@ TEST_P(FourierGeometryToStartWithFromDebugOutTest,
 
 INSTANTIATE_TEST_SUITE_P(HotRestart, FourierGeometryToStartWithFromDebugOutTest,
                          Values(DataSource{.identifier = "solovev",
-                                           .tolerance = 1.0e-11},
+                                           .tolerance = 5.0e-11},
                                 DataSource{.identifier = "cth_like_fixed_bdy",
                                            .tolerance = 1.0e-13}));
 

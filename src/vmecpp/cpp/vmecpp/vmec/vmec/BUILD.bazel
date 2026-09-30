@@ -30,6 +30,8 @@ cc_library(
         "//vmecpp/vmec/handover_storage",
         "//vmecpp/vmec/radial_partitioning",
         "//vmecpp/vmec/output_quantities",
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
         "//vmecpp/free_boundary/free_boundary_base",
         "//vmecpp/free_boundary/nestor",
         "//vmecpp/free_boundary/only_coils",
@@ -49,8 +51,11 @@ cc_test(
         "//vmecpp/test_data:cth_like_free_bdy",
         "//vmecpp/test_data:cth_like_free_bdy_asym",
         "//vmecpp/test_data:cth_like_free_bdy_multigrid",
+        "//vmecpp/test_data:solovev_free_bdy",
     ],
     deps = [
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
         "//vmecpp/vmec/output_quantities:test_helpers",
         "//vmecpp/vmec/vmec",
         "@googletest//:gtest_main",
@@ -60,6 +65,21 @@ cc_test(
     # The four fixed-boundary flag-combination cases roughly double what this
     # target solves, which puts it over the 300s a medium test gets under tsan.
     size = "large",
+)
+
+cc_test(
+    name = "energy_gradient_test",
+    srcs = ["energy_gradient_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "medium",
 )
 
 cc_test(
@@ -93,4 +113,23 @@ cc_test(
         "//vmecpp/vmec/vmec",
     ],
     size = "medium",
+)
+
+cc_test(
+    name = "energy_hessian_test",
+    srcs = ["energy_hessian_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:li383_low_res",
+        "//vmecpp/test_data:up_down_asym",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "large",
 )
