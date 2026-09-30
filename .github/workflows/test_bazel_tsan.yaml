@@ -51,3 +51,7 @@ jobs:
             -v ~/.cache/bazel:/root/.cache/bazel \
             proximafusion/tsan \
             bash -c "cd /vmecpp/src/vmecpp/cpp && bazel test --config=tsan_archer_in_docker --jobs=1 --test_output=errors -- //vmecpp/... -//vmecpp/vmec/pybind11/..."
+      # The container runs as root; make the cache readable for the cache save.
+      - name: Fix bazel cache ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" ~/.cache/bazel
