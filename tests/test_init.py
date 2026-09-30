@@ -1077,3 +1077,31 @@ def test_hot_restart_from_a_wout_without_full_grid_lambda(tmp_path):
     hot = vmecpp.run(hot_input, restart_from=restart_from, max_threads=1, verbose=False)
 
     assert hot.wout.niter < 10
+
+
+def test_vmec_input_decodes_bytes_string_fields():
+    vmec_input = vmecpp.VmecInput.model_validate(
+        {
+            "mgrid_file": b"mgrid.nc  ",
+            "pmass_type": b"power_series ",
+            "pcurr_type": "power_series",
+        }
+    )
+
+    assert vmec_input.mgrid_file == "mgrid.nc"
+    assert vmec_input.pmass_type == "power_series"
+    assert vmec_input.pcurr_type == "power_series"
+
+
+def test_vmec_input_axis_aliases_read_write_the_axis_fields():
+    vmec_input = vmecpp.VmecInput(lasym=True)
+
+    vmec_input.raxis_cc = np.array([3.0])
+    vmec_input.zaxis_cs = np.array([0.5])
+    vmec_input.raxis_cs = np.array([0.1])
+    vmec_input.zaxis_cc = np.array([0.2])
+
+    np.testing.assert_array_equal(vmec_input.raxis_c, [3.0])
+    np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
+    np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
+    np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
