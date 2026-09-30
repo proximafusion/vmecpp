@@ -340,6 +340,10 @@ class VmecModel {
   void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
   }
+  // Back up the last state with a valid force evaluation.
+  void SaveEvaluatedBackup() const {
+    *vmec_->physical_x_backup_[0] = *vmec_->last_evaluated_x_[0];
+  }
   void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
     *vmec_->decomposed_x_[0] = *vmec_->physical_x_backup_[0];
@@ -1766,6 +1770,7 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
            py::arg("time_step"))
       .def("save_backup", &VmecModel::SaveBackup)
+      .def("save_evaluated_backup", &VmecModel::SaveEvaluatedBackup)
       .def("restore_backup", &VmecModel::RestoreBackup)
       .def("zero_velocity", &VmecModel::ZeroVelocity)
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
