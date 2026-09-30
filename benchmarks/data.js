@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790726773071,
+  "lastUpdate": 1790726943339,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -67014,6 +67014,162 @@ window.BENCHMARK_DATA = {
             "value": 0.0048694322849142145,
             "unit": "seconds",
             "extra": "iterations: 290\ncpu: 0.004833590910344829 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "78ce50b1debcdd55902bcd45e65d1a2d98134063",
+          "message": "Pin the m=1 gauge in VmecModel so the equilibrium and its Jacobian are functions of the boundary (#849)\n\n* Expose a fixed m=1 gauge solve on VmecModel and its force Jacobian\n\nFourierCoeffs::m1Constraint stores, for every m=1 mode, (rss + zcs)/2 and\n(rss - zcs)/2; the second one is a poloidal-angle origin per toroidal\nharmonic. IdealMhdModel::update zeroes its force only when\nalways_fix_m1_gauge || fsqz < 1e-6 || iter2 < 2, so the native iteration lets\nthe gauge drift under its force for the first iterations and freezes it\nwherever it is: the converged state depends on the iteration history. On\ncth_like_fixed_bdy (ncurr 0, ns 25, ftol 1e-16) the gauge moves by 8.5e-5\nagainst a size of 7.4e-5, and a direct ns 25 solve and a 13 -> 25 multigrid\nsolve differ by 4e-5 in z_cs and 1.2e-3 in lambda_cs.\n\nVmec gets always_fix_m1_gauge_, forwarded to IdealMhdModel::update from\nUpdateForwardModel and exposed as the VmecModel.always_fix_m1_gauge property.\nWith the flag set, InitializeRadial also sets the gauge entries from the\nboundary (FourierGeometry::setM1GaugeFromBoundary) after a hot restart or a\nmultigrid interpolation, since the odd-m axis extrapolation of\nInterpolateToNextMultigridStep does not reproduce the sqrt(s) profile. The\nconverged gauge then equals the boundary gauge times sqrt(s) on every\nsurface, and the two multigrid histories above agree to 2e-8 in R, Z and\n1.4e-6 in lambda (the convergence floor). Force evaluations to convergence are\nunchanged (1405 both ways); the truncation error against an mpol 8, ntor 6\nreference is the same (R, Z: 4.04e-4 pinned vs 4.05e-4 native).\n\nExactHessianVectorProduct and its transpose take the same always_fix_m1_gauge\nargument as Evaluate (default true) instead of hard-wiring the fixed gauge, so\nthe product with a given flag is the Jacobian of the force Evaluate returns\nfor that flag, and with the property set it is the Jacobian of the system\nsolve() iterates.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>\n\n* Differentiate the pinned m=1 gauge through the implicit boundary adjoint\n\nautodiff._solve_model sets always_fix_m1_gauge on the model it solves, so the\nexact force Jacobian used in the implicit VJP is the linearization of the\niterated system. The gauge entries of the state, previously dropped by the\nstructural deflation and held fixed, are with the pinned gauge a linear\nfunction of the boundary: the boundary gauge times sqrt(s)\n(FourierGeometry::interpFromBoundaryAndAxis). The VJP now treats them like\nthe boundary entries, dJ/db = M^T (dJ/dx_P - H_SP^T lambda) with P the\nboundary plus gauge entries, and folds the gauge cotangents onto the boundary\ngauge before the parser transpose. The forward-tangent helper in\ntest_autodiff.py seeds the same entries.\n\nOn cth_like_fixed_bdy (ncurr 0, ns 25, ftol 1e-16) the gradient of\nsum(r_cc[12, 1, :]^2) + sum(lambda_sc^2) w.r.t. rbc(1, +1), zbs(1, -1) and\nrbc(1, 0) agrees with Richardson-extrapolated central differences of the\npinned-gauge re-solve to 8e-6, 2e-6 and 6e-6 relative. The same differences of\nthe native-gauge solve are only reproducible to 2e-5 to 3e-5 between step\nsizes and sit 3e-4 to 1.2e-3 from the adjoint.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>\n\n* Align traced VMEC solve and adjoint gauge\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* Respect geometry caps and hot-restart gauge pinning\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: Claude Fable 5.1 <noreply@anthropic.com>\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-09-30T01:58:50+02:00",
+          "tree_id": "4302d113bd0a4d758cf8b8103704a4344bf9abaa",
+          "url": "https://github.com/proximafusion/vmecpp/commit/78ce50b1debcdd55902bcd45e65d1a2d98134063"
+        },
+        "date": 1790726942817,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000024168258604497984,
+            "unit": "seconds",
+            "extra": "iterations: 47856\ncpu: 2.415444378970244e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.00003169081026656961,
+            "unit": "seconds",
+            "extra": "iterations: 43978\ncpu: 3.168633630451589e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005506615406312283,
+            "unit": "seconds",
+            "extra": "iterations: 2544\ncpu: 0.0005506095011792454 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014480273422493946,
+            "unit": "seconds",
+            "extra": "iterations: 966\ncpu: 0.0014479288954451343 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00016290266100556726,
+            "unit": "seconds",
+            "extra": "iterations: 7171\ncpu: 0.00016287285176404964 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013956893496111077,
+            "unit": "seconds",
+            "extra": "iterations: 10004\ncpu: 0.00013955766803278692 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00031929533178792096,
+            "unit": "seconds",
+            "extra": "iterations: 4362\ncpu: 0.00031924364878496096 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002835090951884849,
+            "unit": "seconds",
+            "extra": "iterations: 4946\ncpu: 0.0002834604023453296 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005145687218570112,
+            "unit": "seconds",
+            "extra": "iterations: 2713\ncpu: 0.0005145006667895318 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00045624406754266186,
+            "unit": "seconds",
+            "extra": "iterations: 3131\ncpu: 0.00045622053880549324 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017630794319849887,
+            "unit": "seconds",
+            "extra": "iterations: 799\ncpu: 0.0017624933016270356 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019480284287839754,
+            "unit": "seconds",
+            "extra": "iterations: 717\ncpu: 0.0019476979065550903 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000032237404658607495,
+            "unit": "seconds",
+            "extra": "iterations: 43012\ncpu: 3.2277747419324785e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017414654563525155,
+            "unit": "seconds",
+            "extra": "iterations: 7999\ncpu: 0.00017422181660207606 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0008594997094554212,
+            "unit": "seconds",
+            "extra": "iterations: 1629\ncpu: 0.0008595063406998327 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027007912542746138,
+            "unit": "seconds",
+            "extra": "iterations: 51887\ncpu: 2.7032021315550312e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00015357965239425956,
+            "unit": "seconds",
+            "extra": "iterations: 9133\ncpu: 0.00015357209000328248 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007815849167408456,
+            "unit": "seconds",
+            "extra": "iterations: 1729\ncpu: 0.0007815860225563981 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00029979643649956784,
+            "unit": "seconds",
+            "extra": "iterations: 4664\ncpu: 0.0002997895079331044 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011854073083078542,
+            "unit": "seconds",
+            "extra": "iterations: 1184\ncpu: 0.0011852904864864857 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005400224663745398,
+            "unit": "seconds",
+            "extra": "iterations: 261\ncpu: 0.0053998853678161015 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.005234447428554396,
+            "unit": "seconds",
+            "extra": "iterations: 301\ncpu: 0.005174577780730897 seconds\nthreads: 1"
           }
         ]
       }
