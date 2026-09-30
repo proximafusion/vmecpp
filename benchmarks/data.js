@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790726943339,
+  "lastUpdate": 1790729207490,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -21991,6 +21991,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.5014924719999954,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d358bbd4e73cbdb75f540f40ee67ea4d4e32a0db",
+          "message": "Extrapolate the full-grid ends from the interior alone (#864)\n\n* Extrapolate the full-grid ends from the interior alone\n\n* Extrapolate the JAX output stage's full-grid ends from the interior alone",
+          "timestamp": "2026-09-30T00:39:24Z",
+          "tree_id": "50c7852e483d0e7281b46f7b29a8bec283c96fa3",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d358bbd4e73cbdb75f540f40ee67ea4d4e32a0db"
+        },
+        "date": 1790729202728,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7204089852000038,
+            "range": "stddev: 0.014960698263519248",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.329365350000008,
+            "range": "stddev: 1.1690573628281111",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1141705933333317,
+            "range": "stddev: 0.012697702854767711",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.2587064520000126,
+            "range": "stddev: 1.0115272074301744",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4899380789999934,
+            "range": "stddev: 0.01956146075575398",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.780772937333343,
+            "range": "stddev: 0.02699572525180521",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.0932622630000424,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5061949929998946,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
