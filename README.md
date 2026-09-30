@@ -309,14 +309,14 @@ hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 > The autodiff API is not yet stable. We are planning to make autodiff the default
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
-The `wout` quantities support autodiff with JAX. `jax.grad` can objectives written
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
 in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
 When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
 force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
 Otherwise it returns NumPy arrays as before.
 
 Leaves that change shape depending on iteration progress (`fsqt` trace for example)
-are treated as aux data to support differentiability. jxbout, Mercier and threed1
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
 tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
 and diagnostics are `None`.
 
