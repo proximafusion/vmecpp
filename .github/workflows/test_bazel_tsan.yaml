@@ -46,8 +46,11 @@ jobs:
           key: bazel-tsan
       - name: Run TSAN tests in Docker
         run: |
+          mkdir -p ~/.cache/bazel
           docker run --rm \
             -v ${{ github.workspace }}:/vmecpp \
-            -v ~/.cache/bazel:/root/.cache/bazel \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp/home -e USER=root \
+            -v ~/.cache:/tmp/home/.cache \
             proximafusion/tsan \
             bash -c "cd /vmecpp/src/vmecpp/cpp && bazel test --config=tsan_archer_in_docker --jobs=1 --test_output=errors -- //vmecpp/... -//vmecpp/vmec/pybind11/..."
