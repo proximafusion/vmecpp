@@ -3,6 +3,8 @@ project(vmecpp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# No C++ modules are used; the scan's flags break ccache with GCC 14.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
