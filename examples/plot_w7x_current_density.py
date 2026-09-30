@@ -9,6 +9,9 @@ Two figures are produced with a diverging red-blue colorscale:
 - the parallel current density J.B/|B|, i.e. the current along (red) and
   against (blue) the magnetic field lines.
 
+A third figure shows the radial profiles of iota and of the flux-surface
+averaged currents, with black lines where iota crosses a rational n/m, m <= 12.
+
 Requires matplotlib. Run with     MPLBACKEND=Agg python
 examples/plot_w7x_current_density.py to save the figures without opening a window.
 """
@@ -115,11 +118,64 @@ def plot_signed(sections, key, label, output_path):
     plt.close(fig)
 
 
+def rational_surfaces(s, iota, max_m=12):
+    """Return (s, n, m) where iota(s) crosses n/m, m <= max_m, n/m in lowest
+    terms."""
+    crossings = []
+    for m in range(1, max_m + 1):
+        for n in range(int(np.ceil(iota.min() * m)), int(np.floor(iota.max() * m)) + 1):
+            if np.gcd(n, m) != 1:
+                continue
+            delta = iota - n / m
+            for i in np.nonzero(np.sign(delta[:-1]) != np.sign(delta[1:]))[0]:
+                weight = delta[i] / (delta[i] - delta[i + 1])
+                crossings.append((s[i] + weight * (s[i + 1] - s[i]), n, m))
+    return crossings
+
+
+def plot_profiles(wout, output_path):
+    s = np.linspace(0, 1, wout.ns)
+    # Drop the extrapolated axis and boundary values of the current profiles.
+    interior = slice(1, wout.ns - 1)
+    fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True, constrained_layout=True)
+    axes[0].plot(s, wout.iotaf, color="tab:green")
+    axes[0].set_ylabel("iota")
+    axes[1].plot(s[interior], wout.jcuru[interior] / 1e3, label="jcuru")
+    axes[1].plot(s[interior], wout.jcurv[interior] / 1e3, label="jcurv")
+    axes[1].set_ylabel("<J^u>, <J^v> [kA/m^2]")
+    axes[1].legend()
+    axes[2].plot(s[interior], wout.jdotb[interior], color="tab:red")
+    axes[2].set_ylabel("<J.B> [T A/m^2]")
+    axes[2].set_xlabel("s")
+
+    for s_rational, n, m in rational_surfaces(s, wout.iotaf):
+        for ax in axes:
+            ax.axvline(s_rational, color="black", linewidth=0.8)
+        axes[0].annotate(
+            f"{n}/{m}",
+            (s_rational, 1),
+            xycoords=("data", "axes fraction"),
+            xytext=(2, -12),
+            textcoords="offset points",
+            fontsize=8,
+        )
+    for ax in axes[1:]:
+        ax.axhline(0, color="gray", linewidth=0.5)
+
+    if output_path is None:
+        plt.show()
+    else:
+        fig.savefig(output_path, dpi=110)
+    plt.close(fig)
+
+
 def plot_current_density(output_dir=None):
     vmec_input = vmecpp.VmecInput.from_file(
         Path(__file__).parent / "data" / "input.w7x"
     )
     vmec_input.lbsubs = True
+    vmec_input.ntheta = 96
+    vmec_input.nzeta = 96
     wout = vmecpp.run(vmec_input).wout
 
     theta = np.linspace(0, 2 * np.pi, 129, endpoint=False)
@@ -139,6 +195,10 @@ def plot_current_density(output_dir=None):
     for key, (label, filename) in figures.items():
         path = None if output_dir is None else Path(output_dir) / filename
         plot_signed(sections, key, label, path)
+    plot_profiles(
+        wout,
+        None if output_dir is None else Path(output_dir) / "w7x_current_profiles.png",
+    )
 
 
 if __name__ == "__main__":
