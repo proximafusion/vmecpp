@@ -66,7 +66,7 @@ class IdealMhdModel {
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
-                     bool lforbal);
+                     bool lforbal, double lambda_preconditioner_scale);
 
   // With the Jacobian step limit, every accepted update() keeps its geometry
   // and Jacobian as the start of the next time step, and an update() with
@@ -537,6 +537,7 @@ class IdealMhdModel {
   Eigen::VectorXd dLambda;
   Eigen::VectorXd cLambda;
   Eigen::VectorXd lambdaPreconditioner;
+  double lambda_preconditioner_scale_ = 0.5;
 
   // R,Z preconditioner
   Eigen::VectorXd ax;

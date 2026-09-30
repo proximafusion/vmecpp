@@ -99,13 +99,14 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback) {
+    InterruptCallback interrupt_callback, bool always_fix_m1_gauge) {
   auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
                                      std::move(interrupt_callback));
   if (!maybe_vmec.ok()) {
     return maybe_vmec.status();
   }
   Vmec& v = **maybe_vmec;
+  v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -156,6 +157,14 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
       IsConsistent(indata, /*enable_info_messages=*/false);
   if (!is_indata_consistent.ok()) {
     return is_indata_consistent;
+  }
+
+  // the constructor sizes the thread pool from max_threads
+  if (max_threads.has_value() && *max_threads < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "The number of threads must be >= 1, but is %d. To use all available "
+        "threads, leave max_threads unset.",
+        *max_threads));
   }
 
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
@@ -347,7 +356,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // IF PREVIOUS SEQUENCE DID NOT CONVERGE WELL
         fc_.nsval = 3;
         fc_.ftolv = 1.0e-4;
-        // niterv taken from niter_array[0] in INDATA, I guess?
+        // fc_.niterv keeps the niter_array entry of the stage that failed
 
         // Fully restart the vacuum. The assignment to kInitialized above
         // applies to a hot restart, where the vacuum solution carried in with
@@ -384,8 +393,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       }
 
       // notify logger of the next multigrid stage
-      logger_.BeginStage(igrid, max_grids + jacob_off_, fc_.nsval, s_.mnmax,
-                         fc_.ftolv, fc_.niterv, fc_.lfreeb);
+      logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
+                         s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb);
 
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
@@ -414,6 +423,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // not reach convergence
       if (status_ != VmecStatus::NORMAL_TERMINATION &&
           status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+        if (retry_from_three_surfaces_) {
+          // retried below from a three-surface mesh
+          break;
+        }
         if (!indata_.return_outputs_even_if_not_converged) {
           const auto msg = absl::StrFormat(
               "FATAL ERROR in SolveEquilibrium: %s\n"
@@ -435,7 +448,15 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         break;
       }
 
-      // TODO(jons): insert lgiveup/fgiveup logic here
+      // A step that ends this far from its tolerance will not be rescued by a
+      // finer grid, so abandon the sequence rather than interpolate that state
+      // onto one.
+      if (indata_.lgiveup && (fc_.fsqr > fc_.ftolv * indata_.fgiveup ||
+                              fc_.fsqz > fc_.ftolv * indata_.fgiveup ||
+                              fc_.fsql > fc_.ftolv * indata_.fgiveup)) {
+        giving_up = true;
+        break;
+      }
 
       // If this point is reached, the current multi-grid step should have
       // properly converged.
@@ -471,6 +492,15 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         VmecStatusAsString(status_), iter2_ - 1, fc_.niterv, fc_.nsval,
         fc_.ftolv, fc_.fsqr, fc_.fsqz, fc_.fsql);
     return absl::InternalError(msg);
+  }
+
+  // A run that ran out of iterations advanced its state after the last force
+  // evaluation, so the model is evaluated once more at the state it returns.
+  if (status_ == VmecStatus::NORMAL_TERMINATION) {
+    absl::Status evaluated = EvaluateFinalState();
+    if (!evaluated.ok()) {
+      return evaluated;
+    }
   }
 
   // A converged free-boundary result must not rest on a vacuum field that was
@@ -701,7 +731,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
           vac_num_threads_, indata_.signgs, indata_.nvacskip,
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
-                                   indata_.lforbal);
+                                   indata_.lforbal,
+                                   indata_.lambda_preconditioner_scale);
       m_[thread_id]->setJacobianSafeStep(indata_.jacobian_safe_step);
     }  // thread_id
 
@@ -824,6 +855,17 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       }
     }
 
+    // With the m=1 gauge force zeroed throughout, the gauge stays at its
+    // initial value. Set it from the boundary here so that it does not
+    // carry the hot-restart state or the coarse-grid interpolation (whose
+    // odd-m axis extrapolation does not reproduce the sqrt(s) profile).
+    if (always_fix_m1_gauge_) {
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_,
+                                                         *p_[thread_id]);
+      }
+    }
+
     // restart_reason == NO_RESTART at entry of restart_iter means to store xc
     // in xstore. The backup is taken AFTER the multigrid interpolation, so
     // that the first rollback target of a continuation stage is the
@@ -865,6 +907,8 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   // Shared communication variable for all threads. Used to signal an early exit
   // of the main iteration loop.
   bool liter_flag = true;
+
+  retry_from_three_surfaces_ = false;
 
 // NOTE: *THIS* is the main parallel region for the equilibrium solver
 #ifdef _OPENMP
@@ -926,26 +970,12 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   }
 
   if (!status_of_all_threads.ok()) {
-    if (indata_.return_outputs_even_if_not_converged &&
-        all_errors_are_recoverable) {
-      // A physical inconsistency (not a code bug) was detected deep in the
-      // MHD model, with no retry strategy available. Since outputs were
-      // requested even if not converged, don't hard-error here: record it as
-      // an unrecoverable status and let run() fall through to
-      // ComputeOutputQuantities() with best-effort (likely unphysical)
-      // state, for debugging purposes.
-      if (verbose_) {
-        std::cout << absl::StrFormat(
-            "WARNING: %s\n"
-            "return_outputs_even_if_not_converged is set, so returning "
-            "best-effort (likely unphysical) output for debugging "
-            "purposes.\n",
-            status_of_all_threads.message());
-      }
-      status_ = VmecStatus::UNRECOVERABLE_ERROR;
-      return false;
+    absl::Status unrecovered = RecoverFromThreadErrors(
+        status_of_all_threads, all_errors_are_recoverable);
+    if (!unrecovered.ok()) {
+      return unrecovered;
     }
-    return status_of_all_threads;
+    return false;
   }
 
   if (!any_checkpoint_reached) {
@@ -955,6 +985,31 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 
   return any_checkpoint_reached;
 }  // SolveEquilibrium
+
+absl::Status Vmec::RecoverFromThreadErrors(
+    const absl::Status& status_of_all_threads,
+    bool all_errors_are_recoverable) {
+  if (!indata_.return_outputs_even_if_not_converged ||
+      !all_errors_are_recoverable) {
+    return status_of_all_threads;
+  }
+  // A physical inconsistency (not a code bug) was detected deep in the
+  // MHD model, with no retry strategy available. Since outputs were
+  // requested even if not converged, don't hard-error here: record it as
+  // an unrecoverable status and let run() fall through to
+  // ComputeOutputQuantities() with best-effort (likely unphysical)
+  // state, for debugging purposes.
+  if (verbose_) {
+    std::cout << absl::StrFormat(
+        "WARNING: %s\n"
+        "return_outputs_even_if_not_converged is set, so returning "
+        "best-effort (likely unphysical) output for debugging "
+        "purposes.\n",
+        status_of_all_threads.message());
+  }
+  status_ = VmecStatus::UNRECOVERABLE_ERROR;
+  return absl::OkStatus();
+}
 
 absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     int thread_id, int iterations_before_checkpointing,
@@ -1065,14 +1120,25 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (status_ != VmecStatus::NORMAL_TERMINATION &&
                status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       // if something went totally wrong even in this initial steps, do not
-      // continue at all
-      if (!indata_.return_outputs_even_if_not_converged) {
+      // continue at all; a bad Jacobian on the first pass returns to run(),
+      // which retries from a three-surface mesh
+      const bool retry_from_three_surfaces =
+          status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0;
+      if (!indata_.return_outputs_even_if_not_converged &&
+          !retry_from_three_surfaces) {
         const auto msg = absl::StrFormat(
             "FATAL ERROR in thread=%d. The solver failed during the first "
             "iterations. This may happen if the initial boundary is poorly "
             "shaped or if it isn't spectrally condensed enough.",
             thread_id);
         return absl::UnknownError(msg);
+      }
+
+      if (retry_from_three_surfaces) {
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif  // _OPENMP
+        retry_from_three_surfaces_ = true;
       }
 
       // return_outputs_even_if_not_converged: stop iterating on this thread
@@ -1568,11 +1634,10 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
     int thread_id) {
   bool need_restart = false;
 
-  absl::StatusOr<bool> reached_checkpoint =
-      UpdateModel(thread_id, need_restart, last_preconditioner_update_,
-                  last_full_update_nestor_, iter1_, iter2_, checkpoint,
-                  iterations_before_checkpointing, verbose_,
-                  /*always_fix_m1_gauge=*/false);
+  absl::StatusOr<bool> reached_checkpoint = UpdateModel(
+      thread_id, need_restart, last_preconditioner_update_,
+      last_full_update_nestor_, iter1_, iter2_, checkpoint,
+      iterations_before_checkpointing, verbose_, always_fix_m1_gauge_);
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
@@ -1595,6 +1660,58 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
 #endif  // _OPENMP
 
   return reached_checkpoint;
+}
+
+absl::Status Vmec::EvaluateFinalState() {
+  // as Evolve does before each evaluation; computeJacobian sets BAD_JACOBIAN
+  fc_.restart_reason = RestartReason::NO_RESTART;
+
+  absl::Status status_of_all_threads = absl::OkStatus();
+  bool all_errors_are_recoverable = true;
+  // Switching on the vacuum pressure also sets BAD_JACOBIAN, to restart the
+  // iterations that would follow.
+  bool vacuum_pressure_switched_on = false;
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(num_threads_)
+#endif  // _OPENMP
+  {
+#ifdef _OPENMP
+    const int thread_id = omp_get_thread_num();
+#else
+    const int thread_id = 0;
+#endif  // _OPENMP
+
+    bool need_restart = false;
+    const absl::StatusOr<bool> evaluated = m_[thread_id]->update(
+        *decomposed_x_[thread_id], *physical_x_[thread_id],
+        *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
+        last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+        iter2_, VmecCheckpoint::NONE, INT_MAX, verbose_);
+
+#ifdef _OPENMP
+#pragma omp critical
+#endif  // _OPENMP
+    {
+      vacuum_pressure_switched_on = vacuum_pressure_switched_on || need_restart;
+      if (!evaluated.ok()) {
+        all_errors_are_recoverable &= (evaluated.status().code() ==
+                                       absl::StatusCode::kFailedPrecondition);
+        UpdateStatusForThread(status_of_all_threads, thread_id,
+                              evaluated.status());
+      }
+    }
+  }  // omp parallel
+
+  if (!status_of_all_threads.ok()) {
+    return RecoverFromThreadErrors(status_of_all_threads,
+                                   all_errors_are_recoverable);
+  }
+  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN &&
+      !vacuum_pressure_switched_on) {
+    status_ = VmecStatus::BAD_JACOBIAN;
+  }
+  return absl::OkStatus();
 }
 
 void Vmec::PerformTimeStep(double fac, double b1, double time_step,

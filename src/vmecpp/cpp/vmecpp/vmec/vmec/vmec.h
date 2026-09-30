@@ -69,7 +69,8 @@ absl::StatusOr<OutputQuantities> run(
     std::optional<HotRestartState> initial_state = std::nullopt,
     std::optional<int> max_threads = std::nullopt,
     OutputMode verbose = OutputMode::kLegacy,
-    InterruptCallback interrupt_callback = nullptr);
+    InterruptCallback interrupt_callback = nullptr,
+    bool always_fix_m1_gauge = false);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.
 // The mgrid_file entry in `indata` will be ignored.
@@ -157,6 +158,9 @@ class Vmec {
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
+  // Evaluate the model at the current state as the next iteration would,
+  // without advancing the state.
+  absl::Status EvaluateFinalState();
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
 
   // Moves the state m_x back along the last time step to the given fraction of
@@ -250,6 +254,13 @@ class Vmec {
   VmecConstants constants_;
   HandoverStorage h_;
   FlowControl fc_;
+  // Zero the m=1 gauge force (FourierForces::zeroZForceForM1) from the first
+  // iteration instead of only once fsqz < 1e-6, and set the gauge from the
+  // boundary in InitializeRadial. The converged gauge then equals the
+  // boundary gauge scaled by sqrt(s) on every surface, independent of the
+  // iteration and multigrid history, and the fixed-gauge force Jacobian is
+  // the linearization of the iterated system.
+  bool always_fix_m1_gauge_ = false;
   MGridProvider mgrid_;
   OutputQuantities output_quantities_;
 
@@ -296,6 +307,13 @@ class Vmec {
       int thread_id, int maximum_iterations, VmecCheckpoint checkpoint,
       bool& m_lreset_internal, bool& m_liter_flag);
 
+  // Returns the errors the threads reported, or sets status_ to
+  // UNRECOVERABLE_ERROR and returns ok when every error is a physical
+  // inconsistency and outputs were requested even if not converged.
+  absl::Status RecoverFromThreadErrors(
+      const absl::Status& status_of_all_threads,
+      bool all_errors_are_recoverable);
+
   // flag to enable or disable ALL screen output from VMEC++
   bool verbose_;
 
@@ -307,6 +325,10 @@ class Vmec {
 
   // set to true when the interrupt callback signals an interrupt
   bool interrupted_ = false;
+
+  // set when SolveEquilibriumLoop hands a bad Jacobian that the axis guess did
+  // not fix back to run(), which then retries from a three-surface mesh
+  bool retry_from_three_surfaces_ = false;
 
   // initialization state counter for Nestor. Called ivac in Fortran VMEC.
   VacuumPressureState vacuum_pressure_state_;

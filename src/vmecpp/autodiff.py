@@ -6,6 +6,14 @@ and solves the transposed interior force system. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
 
+The solve pins the m=1 poloidal-origin gauge (``VmecModel.always_fix_m1_gauge``):
+the native iteration lets that gauge drift under its force until ``fsqz`` drops
+below 1e-6 and freezes it wherever it is, so the converged state would depend on
+the iteration history and the fixed-gauge force Jacobian would not describe it.
+With the gauge pinned, the gauge entries of the state are a linear function of
+the boundary, and the VJP pulls them back to the boundary like the boundary
+entries themselves.
+
 The first public parameterization is the fixed-boundary case, with either a
 prescribed iota or a prescribed toroidal current profile (``ncurr``). The
 differentiable parameter is one dense array with rows ``rbc`` and ``zbs`` and
@@ -116,7 +124,7 @@ def _solve_model(template, boundary: np.ndarray, profiles=None):
         if ns < 3:
             continue
         if model is None:
-            model = _vmecpp.VmecModel.create(indata, ns)
+            model = _vmecpp.VmecModel.create(indata, ns, always_fix_m1_gauge=True)
         else:
             model.refine_to(ns)
         model.solve()
@@ -189,6 +197,52 @@ def _interior_and_boundary(model) -> tuple[np.ndarray, np.ndarray]:
     return interior_array, boundary_array
 
 
+def _gauge_entries(model) -> np.ndarray:
+    """State entries holding the m=1 poloidal-origin gauge on interior surfaces.
+
+    ``FourierCoeffs::m1Constraint`` stores ``(r_ss - z_cs) / 2`` for ``m = 1``
+    in the ``z_cs`` slot. Its force is zeroed when the gauge is fixed, so with
+    ``always_fix_m1_gauge`` the solve leaves these entries at the initial guess:
+    the boundary value scaled by ``sqrt(s)`` on every surface. The ``n = 0``
+    entry is identically zero and is left to the structural deflation. Modes
+    excluded by the geometry resolution are zeroed during force evaluation.
+    """
+    if not model.lthreed or model.mpol_geometry <= 1:
+        return np.zeros(0, dtype=np.int64)
+    slices = _span_slices(model)
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    span = slices["z_cs"]
+    entries = [
+        span.start + j * modes_per_surface + 1 * (model.ntor + 1) + n
+        for j in range(1, model.ns - 1)
+        for n in range(1, model.ntor_geometry + 1)
+    ]
+    return np.asarray(entries, dtype=np.int64)
+
+
+def _gauge_radial_weight(model, gauge: np.ndarray) -> np.ndarray:
+    """``sqrt(s_j)`` for every gauge entry: the factor mapping the boundary gauge
+    to surface ``j`` in ``FourierGeometry::interpFromBoundaryAndAxis``."""
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    span_start = _span_slices(model)["z_cs"].start
+    surface = (gauge - span_start) // modes_per_surface
+    return np.sqrt(surface / (model.ns - 1.0))
+
+
+def _pull_gauge_back_to_boundary(
+    model, state_bar: np.ndarray, gauge: np.ndarray
+) -> np.ndarray:
+    """Fold the gauge cotangents onto the boundary gauge entries they derive from."""
+    result = state_bar.copy()
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    span_start = _span_slices(model)["z_cs"].start
+    mode = (gauge - span_start) % modes_per_surface
+    edge = span_start + (model.ns - 1) * modes_per_surface + mode
+    np.add.at(result, edge, _gauge_radial_weight(model, gauge) * state_bar[gauge])
+    result[gauge] = 0.0
+    return result
+
+
 def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     """Transpose the fixed-boundary parser for a symmetric input."""
     if model.lasym:
@@ -219,6 +273,8 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     zbcs_bar = np.zeros((mpol, ntor + 1))
     for m in range(mpol):
         for n in range(ntor + 1):
+            if m >= model.mpol_geometry or n > model.ntor_geometry:
+                continue
             scale = (1.0 if m == 0 else np.sqrt(2.0)) * (
                 1.0 if n == 0 else np.sqrt(2.0)
             )
@@ -321,6 +377,12 @@ def _implicit_vjp(
             "No finite-difference derivative is used."
         )
         raise RuntimeError(error_message)
+    if not model.always_fix_m1_gauge:
+        error_message = (
+            "VMEC++ adjoint: the model was solved with a free m=1 gauge; the exact "
+            "force Jacobian describes the solve only with always_fix_m1_gauge"
+        )
+        raise RuntimeError(error_message)
     coefficient_bar = np.asarray(geometry_bar[2 * model.ns :], dtype=np.float64)
     poloidal_flux_bar = np.asarray(
         geometry_bar[model.ns : 2 * model.ns], dtype=np.float64
@@ -330,6 +392,11 @@ def _implicit_vjp(
     )
     state = np.asarray(model.get_state(), dtype=np.float64)
     interior, boundary = _interior_and_boundary(model)
+    # The pinned gauge entries are prescribed by the boundary, like the boundary
+    # entries themselves: they leave the interior system and are pulled back.
+    gauge = _gauge_entries(model)
+    interior = np.setdiff1d(interior, gauge)
+    prescribed = np.concatenate([boundary, gauge])
     model.set_state(np.ascontiguousarray(state))
     model.evaluate(2, 2, True)
     state_size = state.size
@@ -376,9 +443,9 @@ def _implicit_vjp(
         raise RuntimeError(error_message)
     embedded = np.zeros(state_size)
     embedded[interior] = adjoint
-    internal_boundary_bar = state_bar[boundary] - transpose(embedded)[boundary]
     full_state_bar = np.zeros(state_size)
-    full_state_bar[boundary] = internal_boundary_bar
+    full_state_bar[prescribed] = state_bar[prescribed] - transpose(embedded)[prescribed]
+    full_state_bar = _pull_gauge_back_to_boundary(model, full_state_bar, gauge)
     profile_bar = np.zeros((3, model.ns - 1))
     if with_profiles:
         # dJ/dp = J_p - adjoint^T F_p, J_p through the poloidal flux
@@ -477,6 +544,7 @@ class DifferentiableVmec:
         )
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
         model = _vmecpp.VmecModel.create(indata, self.ns)
+        model.always_fix_m1_gauge = True
         model.set_state(np.ascontiguousarray(state))
         return model
 
@@ -593,7 +661,7 @@ def make_solver(vmec_input) -> DifferentiableVmec:
 
 @dataclass(frozen=True)
 class _RunSolver(DifferentiableVmec):
-    """:class:`DifferentiableVmec` whose forward solve is a full ``vmecpp.run``.
+    """:class:`DifferentiableVmec` whose forward solve is a pinned-gauge C++ run.
 
     The C++ output of the forward solve supplies what the JAX output stage does
     not compute (jxbout, mercier, threed1, the solver diagnostics) and, as the
@@ -616,6 +684,7 @@ class _RunSolver(DifferentiableVmec):
             indata,
             max_threads=self.max_threads,
             verbose=_vmecpp.OutputMode(self.verbose),
+            always_fix_m1_gauge=True,
         )
         initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
         model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)
