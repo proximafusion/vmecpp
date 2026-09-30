@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import dataclasses
 import enum
 import json
 import logging
@@ -141,9 +142,12 @@ ProfileCoeffType = typing.Annotated[
 ]
 
 MgridModeType: typing.TypeAlias = typing.Annotated[
-    typing.Literal["R", "S", ""], pydantic.Field(max_length=1)
+    typing.Literal["R", "S", ""],
+    pydantic.Field(max_length=1),
+    pydantic.BeforeValidator(lambda mode: "" if mode == "N" else mode),
 ]
-"""[Scaled, Raw, Unset]"""
+"""[Raw, Scaled, Unset]; the mode "N", which LIBSTELL assigns to an mgrid file without a
+mode and simsopt writes, reads as unset."""
 
 ProfileType = typing.Annotated[str, pydantic.Field(max_length=20)]
 
@@ -211,6 +215,22 @@ def _validate_iteration_style(
     return IterationStyle(str(value))
 
 
+# SIMSOPT (wout-style) names for the magnetic axis coefficients.
+AXIS_ALIASES = {
+    "raxis_cc": "raxis_c",
+    "raxis_cs": "raxis_s",
+    "zaxis_cc": "zaxis_c",
+    "zaxis_cs": "zaxis_s",
+}
+
+
+def _alias_property(target: str) -> property:
+    return property(
+        lambda self: getattr(self, target),
+        lambda self, value: setattr(self, target, value),
+    )
+
+
 # This is a pure Python equivalent of VmecINDATAPyWrapper.
 # In the future VmecINDATAPyWrapper and the C++ VmecINDATA will merge into one type,
 # and this will become a Python wrapper around the one C++ VmecINDATA type.
@@ -260,6 +280,16 @@ class VmecInput(BaseModelWithNumpy):
     May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
     """
 
+    @property
+    def mpol_max(self) -> int:
+        """The final mpol resolution, if a multigrid sequence is used."""
+        return _final_resolution(self.mpol)
+
+    @property
+    def ntor_max(self) -> int:
+        """The final ntor resolution, if a multigrid sequence is used."""
+        return _final_resolution(self.ntor)
+
     mpol_geometry: int = -1
     """Optional reduced poloidal resolution for the geometry (R, Z).
 
@@ -272,6 +302,20 @@ class VmecInput(BaseModelWithNumpy):
 
     If in [0, ntor), R/Z modes with n > ntor_geometry are held fixed while lambda keeps
     the full ntor. < 0 (default) means geometry uses ntor.
+    """
+
+    vacuum_mpol: int = 0
+    """Poloidal Fourier cutoff of the vacuum potential in a free-boundary run.
+
+    NESTOR expands the vacuum potential to mpol like the plasma; a value above mpol
+    raises the potential's cutoff alone. 0 (default) means the potential uses mpol.
+    """
+
+    vacuum_ntor: int = 0
+    """Toroidal Fourier cutoff of the vacuum potential in a free-boundary run.
+
+    A value above ntor raises the potential's cutoff alone; nzeta must then be at least
+    2 * vacuum_ntor + 4. 0 (default) means the potential uses ntor.
     """
 
     ntheta: int = 0
@@ -460,6 +504,15 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 0.5
     """Constraint force scaling factor for ns --> 0."""
 
+    lgiveup: bool = False
+    """Abandon the whole multigrid sequence when a step ends with any residual still
+    above ``fgiveup`` times its tolerance, rather than carrying a state that far out
+    onto a finer grid."""
+
+    fgiveup: float = 30.0
+    """Multiple of ``ftol_array`` a step's residuals must be under for the sequence to
+    continue when ``lgiveup`` is set."""
+
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
@@ -470,6 +523,14 @@ class VmecInput(BaseModelWithNumpy):
     computes on the boundary.
 
     ``freeb_data`` in Fortran VMEC.
+    """
+
+    lambda_preconditioner_scale: float = 0.5
+    """Scale of the lambda preconditioner, which multiplies the inverse of the diagonal
+    lambda stiffness to turn the lambda force into the lambda step.
+
+    1.0 applies the undamped inverse, values below 1.0 damp the lambda step and values
+    above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
     return_outputs_even_if_not_converged: bool = False
@@ -512,6 +573,18 @@ class VmecInput(BaseModelWithNumpy):
     Only used if lasym=True.
     """
 
+    raxis_cc = _alias_property("raxis_c")
+    raxis_cs = _alias_property("raxis_s")
+    zaxis_cc = _alias_property("zaxis_c")
+    zaxis_cs = _alias_property("zaxis_s")
+
+    @pydantic.field_validator(
+        "mgrid_file", "pmass_type", "pcurr_type", "piota_type", mode="before"
+    )
+    @classmethod
+    def _decode_bytes(cls, value: typing.Any) -> typing.Any:
+        return value.decode().strip() if isinstance(value, bytes) else value
+
     rbc: SerializableSparseCoefficientArray[
         jt.Float[NpOrJax, "mpol two_ntor_plus_one"]
     ] = pydantic.Field(default_factory=lambda: np.zeros((6, 1)))
@@ -552,8 +625,8 @@ class VmecInput(BaseModelWithNumpy):
         if self.lasym:
             mpol_two_ntor_plus_one_fields.extend(["rbs", "zbc"])
 
-        mpol_final = _final_resolution(self.mpol)
-        ntor_final = _final_resolution(self.ntor)
+        mpol_final = self.mpol_max
+        ntor_final = self.ntor_max
         expected_shape = (mpol_final, 2 * ntor_final + 1)
         for field in mpol_two_ntor_plus_one_fields:
             current_value = getattr(self, field)
@@ -696,6 +769,56 @@ class VmecInput(BaseModelWithNumpy):
                 resized_coeff[m, n + ntor_new] = coeff[m, n + ntor]
 
         return resized_coeff
+
+    def resize(self, mpol_new: int, ntor_new: int) -> VmecInput:
+        """Return a copy of this input resampled to a new (mpol, ntor) Fourier
+        resolution.
+
+        Boundary coefficients are zero-padded or truncated to match, discarding
+        higher modes with a warning; see :meth:`resize_2d_coeff`. Axis
+        coefficients are zero-padded or, when shrinking ntor, truncated with a
+        warning.
+        """
+
+        def resize_axis(
+            coeff: jt.Float[np.ndarray, "ntor_plus_1"],
+        ) -> jt.Float[np.ndarray, "ntor_new_plus_1"]:
+            new_len = ntor_new + 1
+            if coeff.size > new_len:
+                logger.warning(
+                    f"Discarding axis coefficients because ntor={coeff.size - 1} "
+                    f"is larger than ntor_new={ntor_new}"
+                )
+                coeff = coeff[:new_len]
+            return self.resize_1d_axis_coeff(coeff, ntor_new)
+
+        updated_fields: dict[str, typing.Any] = {}
+        updated_fields["mpol"] = mpol_new
+        updated_fields["ntor"] = ntor_new
+        updated_fields["rbc"] = self.resize_2d_coeff(
+            np.asarray(self.rbc), mpol_new, ntor_new
+        )
+        updated_fields["zbs"] = self.resize_2d_coeff(
+            np.asarray(self.zbs), mpol_new, ntor_new
+        )
+        updated_fields["raxis_c"] = resize_axis(self.raxis_c)
+        updated_fields["zaxis_s"] = resize_axis(self.zaxis_s)
+
+        if self.lasym:
+            assert self.rbs is not None
+            assert self.zbc is not None
+            assert self.raxis_s is not None
+            assert self.zaxis_c is not None
+            updated_fields["rbs"] = self.resize_2d_coeff(
+                np.asarray(self.rbs), mpol_new, ntor_new
+            )
+            updated_fields["zbc"] = self.resize_2d_coeff(
+                np.asarray(self.zbc), mpol_new, ntor_new
+            )
+            updated_fields["raxis_s"] = resize_axis(self.raxis_s)
+            updated_fields["zaxis_c"] = resize_axis(self.zaxis_c)
+
+        return self.model_copy(update=updated_fields)
 
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
@@ -933,6 +1056,7 @@ class VmecWOut(BaseModelWithNumpy):
         return {
             0: "normal termination: converged, or returned without convergence because return_outputs_even_if_not_converged was set",
             1: "initially bad Jacobian",
+            2: "stopped by the iteration callback before convergence",
             3: "NCURR_NE_1_BLOAT_NE_1",
             4: "Jacobian reset 75 times, the geometry isn't well defined",
             5: "unrecoverable error: a physical inconsistency in the MHD model, such as a degenerate flux-surface geometry or a free-boundary current mismatch, with no retry strategy",
@@ -1209,7 +1333,13 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
-    :math:`B_{s}` on the full- grid."""
+    :math:`B_{s}` on the half-grid, as written by VMEC 8.52.
+
+    Unlike the other half-grid quantities, the first column is not zero but
+    ``2 * bsubsmns[:, 1] - bsubsmns[:, 2]``. Fortran VMEC 9.0 and later write the
+    full-grid :math:`B_{s}` here instead; a wout file from those versions, loaded with
+    ``from_wout_file``, carries that full-grid array.
+    """
 
     bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
@@ -2373,8 +2503,8 @@ class Mercier(BaseModelWithNumpy):
     shear: jt.Float[np.ndarray, "n_surfaces"]
     """Magnetic shear profile."""
 
-    d_volume_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of plasma volume with respect to `s`."""
+    d_volume_d_phi: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of plasma volume with respect to the enclosed toroidal flux `phi`."""
 
     well: jt.Float[np.ndarray, "n_surfaces"]
     """Magnetic well profile."""
@@ -2382,14 +2512,14 @@ class Mercier(BaseModelWithNumpy):
     toroidal_current: jt.Float[np.ndarray, "n_surfaces"]
     """Enclosed toroidal current profile."""
 
-    d_toroidal_current_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of enclosed toroidal current."""
+    d_toroidal_current_d_volume: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of enclosed toroidal current with respect to plasma volume."""
 
     pressure: jt.Float[np.ndarray, "n_surfaces"]
     """Pressure profile `p`."""
 
-    d_pressure_d_s: jt.Float[np.ndarray, "n_surfaces"]
-    """Radial derivative of pressure profile."""
+    d_pressure_d_volume: jt.Float[np.ndarray, "n_surfaces"]
+    """Derivative of pressure profile with respect to plasma volume."""
 
     DMerc: jt.Float[np.ndarray, "n_surfaces"]
     """Full Mercier stability criterion."""
@@ -2771,8 +2901,15 @@ def _run_traced(
             stacklevel=3,
         )
     shape = np.shape(vmec_input.rbc)
+    profiles = {
+        name: getattr(vmec_input, name)
+        for name in autodiff_wout.PROFILE_PARAMETERS
+        if isinstance(getattr(vmec_input, name), jax.core.Tracer)
+    }
+    # concrete placeholders; the forward solve receives the traced values
+    placeholders = {name: np.zeros(np.shape(value)) for name, value in profiles.items()}
     template = vmec_input.model_copy(
-        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape)}
+        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
     )
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
@@ -2784,8 +2921,17 @@ def _run_traced(
                 jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
             ]
         )
-        geometry, extra = solver._solve(boundary)
-        mass_half, iotas, buco = jax.numpy.split(jax.lax.stop_gradient(extra), 3)
+        geometry, extra = solver._solve(boundary, profiles)
+        extra = jax.lax.stop_gradient(extra)
+        mass_half, iotas, buco = jax.numpy.split(extra[:-1], 3)
+        # the solver's profiles, with the derivative of their parameterization
+        half = autodiff_wout.half_grid_profiles(template, solver.ns, profiles)
+        half = half - jax.lax.stop_gradient(half)
+        mass_half, iotas, buco = (
+            mass_half + half[0],
+            iotas + extra[-1] * half[1],
+            buco + half[2],
+        )
         # With ncurr = 1, iota follows from the geometry through the current
         # constraint, and so does its derivative; otherwise it is prescribed.
         if vmec_input.ncurr == 1:
@@ -2797,7 +2943,7 @@ def _run_traced(
         forward = solver.forward_outputs()
         if forward is None:
             fields = {
-                **autodiff_wout.static_fields(template),
+                **autodiff_wout.static_fields(vmec_input),
                 **autodiff_wout.UNKNOWN_DIAGNOSTICS,
             }
             others = dict.fromkeys(
@@ -2813,7 +2959,12 @@ def _run_traced(
                 )
             )
         else:
-            fields = forward["wout_fields"]
+            # the C++ echoes of traced profile coefficients carry no derivative
+            echoes = autodiff_wout.static_fields(vmec_input)
+            echoes = {
+                name: echoes[name] for name in ("am", "ac", "ai") if name in profiles
+            }
+            fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
         quantities = autodiff_wout.wout_quantities(
             geometry, template, mass_half=mass_half, **profile
@@ -2834,6 +2985,158 @@ def _print_progress_tip_once() -> None:
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class HalfGridFields:
+    """The fields of a force evaluation on the half grid, at the angles ``theta_l = 2 pi
+    l / ntheta_even``, ``l < ntheta_eff``, and ``zeta_k = 2 pi k / (nfp nzeta)``, ``k <
+    nzeta``.
+
+    Without ``lasym`` the poloidal points cover [0, pi], and a field on the rest
+    of a surface follows from ``f(theta, zeta) = f(-theta, -zeta)``.
+    """
+
+    gsqrt: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff], each row zeta-major: the Jacobian sqrt(g),
+    whose sign is ``signgs``."""
+
+    bsupu: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] contravariant poloidal component of B."""
+
+    bsupv: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] contravariant toroidal component of B."""
+
+    bsubu: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] covariant poloidal component of B."""
+
+    bsubv: np.ndarray
+    """[ns - 1, nzeta * ntheta_eff] covariant toroidal component of B."""
+
+    weight: np.ndarray
+    """[ntheta_eff] weight of each point in an angle average, ``<f> = sum_{k,l} weight_l
+    f_kl``."""
+
+    buco: np.ndarray
+    """[ns - 1] ``<B_theta>``, the ``buco`` of the wout file."""
+
+    bvco: np.ndarray
+    """[ns - 1] ``<B_zeta>``, the ``bvco`` of the wout file."""
+
+    iota: np.ndarray
+    """[ns - 1] rotational transform, the ``iotas`` of the wout file."""
+
+    phip: np.ndarray
+    """[ns - 1] toroidal flux derivative, the ``phips`` of the wout file."""
+
+    vp: np.ndarray
+    """[ns - 1] ``signgs <sqrt(g)>``, the ``vp`` of the wout file."""
+
+    ntheta_even: int
+    ntheta_eff: int
+    nzeta: int
+    nfp: int
+    signgs: int
+
+    @staticmethod
+    def _from_cpp(cpp_fields: _vmecpp.HalfGridFields) -> HalfGridFields:
+        return HalfGridFields(
+            gsqrt=np.array(cpp_fields.gsqrt),
+            bsupu=np.array(cpp_fields.bsupu),
+            bsupv=np.array(cpp_fields.bsupv),
+            bsubu=np.array(cpp_fields.bsubu),
+            bsubv=np.array(cpp_fields.bsubv),
+            weight=np.array(cpp_fields.weight),
+            buco=np.array(cpp_fields.buco),
+            bvco=np.array(cpp_fields.bvco),
+            iota=np.array(cpp_fields.iota),
+            phip=np.array(cpp_fields.phip),
+            vp=np.array(cpp_fields.vp),
+            ntheta_even=cpp_fields.ntheta_even,
+            ntheta_eff=cpp_fields.ntheta_eff,
+            nzeta=cpp_fields.nzeta,
+            nfp=cpp_fields.nfp,
+            signgs=cpp_fields.signgs,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class SolverState:
+    """The state of the solver after one force iteration, handed to the
+    ``iteration_callback`` of :func:`run`."""
+
+    iteration: int
+    """Iteration counter of the current multigrid stage, as printed."""
+
+    multigrid_step: int
+    """Index into ``ns_array`` of the current stage; -1 for the inserted ns = 3
+    stage."""
+
+    ns: int
+    """Number of flux surfaces of the current stage."""
+
+    fsqr: float
+    """Invariant force residual of R."""
+
+    fsqz: float
+    """Invariant force residual of Z."""
+
+    fsql: float
+    """Invariant force residual of lambda."""
+
+    ftol: float
+    """Tolerance the three residuals are tested against."""
+
+    delt: float
+    """Current time step."""
+
+    restart_reason: int
+    """1 no restart, 2 bad Jacobian, 3 bad progress, 4 huge initial forces; any value
+    but 1 means the state was reverted to the last backup."""
+
+    jacobian_resets: int
+    """Jacobian resets so far in this stage."""
+
+    vacuum_pressure_active: bool
+    """Whether the vacuum pressure is part of the force balance yet."""
+
+    mhd_energy: float
+    """MHD energy of the state."""
+
+    geometry: _geometry.Geometry
+    """R, Z and lambda coefficients of the state."""
+
+    half_grid: HalfGridFields
+    """The fields of the force evaluation of this iteration, which the time step that
+    followed it has moved ``geometry`` away from, except on the iteration that
+    converges."""
+
+    curr_h: np.ndarray
+    """[ns - 1] with ``ncurr = 1``, the enclosed toroidal current that the force
+    evaluations prescribe, in the units of ``half_grid.buco``: each evaluation solves
+    for chi' so that ``buco`` equals it. Empty with ``ncurr = 0``. The callback may
+    change its values in place, and the force evaluations prescribe the changed
+    current from the next iteration to the end of the multigrid step."""
+
+    @staticmethod
+    def _from_cpp(cpp_state: _vmecpp.SolverState) -> SolverState:
+        return SolverState(
+            iteration=cpp_state.iteration,
+            multigrid_step=cpp_state.multigrid_step,
+            ns=cpp_state.ns,
+            fsqr=cpp_state.fsqr,
+            fsqz=cpp_state.fsqz,
+            fsql=cpp_state.fsql,
+            ftol=cpp_state.ftol,
+            delt=cpp_state.delt,
+            restart_reason=cpp_state.restart_reason,
+            jacobian_resets=cpp_state.jacobian_resets,
+            vacuum_pressure_active=cpp_state.vacuum_pressure_active,
+            mhd_energy=cpp_state.mhd_energy,
+            geometry=_geometry.from_cpp(cpp_state.geometry),
+            half_grid=HalfGridFields._from_cpp(cpp_state.half_grid),
+            curr_h=np.array(cpp_state.curr_h),
+        )
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -2841,6 +3144,7 @@ def run(
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
+    iteration_callback: typing.Callable[[SolverState], bool | None] | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
@@ -2862,6 +3166,14 @@ def run(
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
+        iteration_callback: called once per force iteration with a :class:`SolverState`
+            of the state just reached, after every thread has finished the step. Returning
+            ``False`` stops the run, which then returns the outputs of that state with
+            ``wout.ier_flag`` reporting no convergence; returning ``None`` or ``True`` continues.
+            An exception raised inside the callback stops the run and propagates, and a return
+            value that does not convert to a bool stops the run with a ``TypeError``. With
+            ``ncurr = 1`` the callback may change the values of ``state.curr_h``, the
+            enclosed current the following force evaluations prescribe.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -2879,7 +3191,8 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    if isinstance(input.rbc, jax.core.Tracer) or isinstance(input.zbs, jax.core.Tracer):
+    traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
+    if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
         return _run_traced(
             input,
             magnetic_field,
@@ -2895,6 +3208,7 @@ def run(
             max_threads=max_threads,
             verbose=verbose,
             restart_from=restart_from,
+            iteration_callback=iteration_callback,
         )
 
     cpp_indata = input._to_cpp_vmecindata()
@@ -2916,12 +3230,25 @@ def run(
 
     _verbose = _output_mode(verbose)
 
+    cpp_iteration_callback = None
+    if iteration_callback is not None:
+        user_callback = iteration_callback
+
+        def forward(cpp_state: _vmecpp.SolverState) -> bool | None:
+            state = SolverState._from_cpp(cpp_state)
+            keep_going = user_callback(state)
+            cpp_state.curr_h = state.curr_h
+            return keep_going
+
+        cpp_iteration_callback = forward
+
     if magnetic_field is None:
         cpp_output_quantities = _vmecpp.run(
             cpp_indata,
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
+            iteration_callback=cpp_iteration_callback,
         )
     else:
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
@@ -2933,6 +3260,7 @@ def run(
             initial_state=initial_state,
             max_threads=max_threads,
             verbose=_verbose.value,
+            iteration_callback=cpp_iteration_callback,
         )
 
     if _use_jax_output_stage.get():
@@ -3141,5 +3469,7 @@ __all__ = [  # noqa: RUF022
     "solve_multigrid",
     "IterationResult",
     "IterationState",
+    "SolverState",
+    "HalfGridFields",
     "has_exact_force_jacobian",
 ]

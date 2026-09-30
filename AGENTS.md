@@ -156,6 +156,8 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 **Prose**:
 - Comments and pull request descriptions do not pre-empt objections; they state what is and stop
 - Comments carry the change or the measurement, without praise, deference, or defensive justification
+- Pull request descriptions and review replies open with the content, with no pleasantries, acknowledgements or other social filler
+- They are concise: each point is made once, in the fewest words that carry it
 
 **Configuration and errors**:
 - Toggle features through fields of `VmecInput`, not environment variables

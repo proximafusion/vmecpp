@@ -101,6 +101,10 @@ vmec_output.wout.save("wout_w7x.nc")
 
 All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
+An optional `iteration_callback` is available to investigate the progress of the solver. It can be used to interactively debug
+and interact with `vmecpp`'s state from a Python repl, or generate animations of the convergence progress like in
+[`examples/watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py).
+
 ### With SIMSOPT
 
 [SIMSOPT](https://simsopt.readthedocs.io) is a popular stellarator optimization framework.
@@ -305,14 +309,14 @@ hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 > The autodiff API is not yet stable. We are planning to make autodiff the default
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
-The `wout` quantities support autodiff with JAX. `jax.grad` can objectives written
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
 in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
 When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
 force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
 Otherwise it returns NumPy arrays as before.
 
 Leaves that change shape depending on iteration progress (`fsqt` trace for example)
-are treated as aux data to support differentiability. jxbout, Mercier and threed1
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
 tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
 and diagnostics are `None`.
 
@@ -368,7 +372,6 @@ VMEC++:
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
-- `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
 - `lbsubs` logic in computing outputs is not implemented yet
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
 - several profile parameterizations are not fully implemented yet:

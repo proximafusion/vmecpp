@@ -559,11 +559,7 @@ class Vmec(Optimizable):
 
     def set_mpol_ntor(self, new_mpol: int, new_ntor: int):
         assert self.indata is not None
-        # Converting to and back is a bit unfortunate, but avoids
-        # having the resize method both in C++ and Python
-        indata_wrapper = self.indata._to_cpp_vmecindata()
-        indata_wrapper._set_mpol_ntor(new_mpol, new_ntor)
-        self.indata = vmecpp.VmecInput._from_cpp_vmecindata(indata_wrapper)
+        self.indata = self.indata.resize(new_mpol, new_ntor)
 
         mpol_for_surfacerzfourier, ntor_for_surfacerzfourier = (
             self._surface_rzfourier_resolution(new_mpol, new_ntor)
