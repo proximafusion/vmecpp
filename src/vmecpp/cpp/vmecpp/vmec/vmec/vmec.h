@@ -189,7 +189,10 @@ class Vmec {
       bool is_checkpoint_step = true);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
-  void RestartIteration(double& m_delt0r, int thread_id);
+  // backup_evaluated_state: on a store, back up last_evaluated_x_ instead of
+  // decomposed_x_ (already advanced by PerformTimeStep).
+  void RestartIteration(double& m_delt0r, int thread_id,
+                        bool backup_evaluated_state = false);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
@@ -275,6 +278,8 @@ class Vmec {
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
   std::vector<std::unique_ptr<FourierGeometry>> decomposed_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
+  // decomposed_x_ as of the last valid force evaluation.
+  std::vector<std::unique_ptr<FourierGeometry>> last_evaluated_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_;
   std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
