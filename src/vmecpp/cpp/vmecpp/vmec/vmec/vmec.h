@@ -6,8 +6,10 @@
 #define VMECPP_VMEC_VMEC_VMEC_H_
 
 #include <climits>
+#include <condition_variable>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -313,7 +315,7 @@ class Vmec {
       bool all_errors_are_recoverable);
 
   // Hand the iteration that just completed to iteration_callback_. Runs on
-  // the master thread while the other threads wait at a barrier.
+  // the master thread while the other threads sleep on callback_returned_.
   void NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                bool& m_liter_flag);
 
@@ -342,6 +344,12 @@ class Vmec {
 
   // set to true when the iteration callback asks to stop the run
   bool stopped_by_callback_ = false;
+
+  // true while the master thread runs the iteration callback; the other
+  // threads sleep on callback_returned_ until it is false again
+  bool callback_running_ = false;
+  std::mutex callback_mutex_;
+  std::condition_variable callback_returned_;
 
   // index into ns_array of the multigrid stage being solved
   int multigrid_step_ = 0;
