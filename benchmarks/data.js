@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790775835826,
+  "lastUpdate": 1790784036104,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -22631,6 +22631,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.49955960599999116,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fb5b08b0557328aca5d755ada314e5a353cca838",
+          "message": "Add two prose rules to AGENTS.md (#932)\n\nRule out opening pleasantries and social filler in pull request text, and ask for concision",
+          "timestamp": "2026-09-30T17:53:10+02:00",
+          "tree_id": "42b9ed1eb0c824023127dc6d070d9a2d56076874",
+          "url": "https://github.com/proximafusion/vmecpp/commit/fb5b08b0557328aca5d755ada314e5a353cca838"
+        },
+        "date": 1790784029002,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7148767345999886,
+            "range": "stddev: 0.017411300538607618",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.334449602999996,
+            "range": "stddev: 1.0884106759055554",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1509610543333224,
+            "range": "stddev: 0.007670853523060062",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.2727020210000055,
+            "range": "stddev: 0.9585720768596863",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.6089129476666433,
+            "range": "stddev: 0.03135644454346224",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 7.170793138000003,
+            "range": "stddev: 0.013146632225892631",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.441214854999998,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.41936954800002013,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
