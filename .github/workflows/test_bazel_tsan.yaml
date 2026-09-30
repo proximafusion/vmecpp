@@ -39,19 +39,26 @@ jobs:
           IMAGE=ghcr.io/${{ github.repository_owner }}/vmecpp-tsan:latest
           docker pull "${IMAGE,,}"
           docker tag "${IMAGE,,}" proximafusion/tsan
-      - name: Mount bazel cache
-        uses: actions/cache@v4
+      - name: Restore bazel cache
+        uses: actions/cache/restore@v4
         with:
           path: "~/.cache/bazel"
-          key: bazel-tsan
+          key: bazel-tsan-${{ github.sha }}
+          restore-keys: bazel-tsan
       - name: Run TSAN tests in Docker
         run: |
+          mkdir -p ~/.cache/bazel
           docker run --rm \
             -v ${{ github.workspace }}:/vmecpp \
-            -v ~/.cache/bazel:/root/.cache/bazel \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp/home -e USER=root \
+            -v ~/.cache:/tmp/home/.cache \
             proximafusion/tsan \
             bash -c "cd /vmecpp/src/vmecpp/cpp && bazel test --config=tsan_archer_in_docker --jobs=1 --test_output=errors -- //vmecpp/... -//vmecpp/vmec/pybind11/..."
-      # The container runs as root; make the cache readable for the cache save.
-      - name: Fix bazel cache ownership
-        if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" ~/.cache/bazel
+      # Entries are immutable: a new key per main commit refreshes the cache, GitHub evicts old ones.
+      - name: Save bazel cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: "~/.cache/bazel"
+          key: bazel-tsan-${{ github.sha }}

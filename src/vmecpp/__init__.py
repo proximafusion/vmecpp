@@ -3091,7 +3091,8 @@ def run(
             of the state just reached, after every thread has finished the step. Returning
             ``False`` stops the run, which then returns the outputs of that state with
             ``wout.ier_flag`` reporting no convergence; returning ``None`` or ``True`` continues.
-            An exception raised inside the callback stops the run and propagates. With
+            An exception raised inside the callback stops the run and propagates, and a return
+            value that does not convert to a bool stops the run with a ``TypeError``. With
             ``ncurr = 1`` the callback may change the values of ``state.curr_h``, the
             enclosed current the following force evaluations prescribe.
 

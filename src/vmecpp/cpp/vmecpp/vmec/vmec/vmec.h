@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_VMEC_VMEC_H_
 #define VMECPP_VMEC_VMEC_VMEC_H_
 
+#include <atomic>
 #include <climits>
 #include <functional>
 #include <memory>
@@ -228,7 +229,10 @@ class Vmec {
       bool is_checkpoint_step = true);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
-  void RestartIteration(double& m_delt0r, int thread_id);
+  // backup_evaluated_state: on a store, back up last_evaluated_x_ instead of
+  // decomposed_x_ (already advanced by PerformTimeStep).
+  void RestartIteration(double& m_delt0r, int thread_id,
+                        bool backup_evaluated_state = false);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
@@ -314,6 +318,8 @@ class Vmec {
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
   std::vector<std::unique_ptr<FourierGeometry>> decomposed_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
+  // decomposed_x_ as of the last valid force evaluation.
+  std::vector<std::unique_ptr<FourierGeometry>> last_evaluated_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_;
   std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
@@ -353,7 +359,7 @@ class Vmec {
       bool all_errors_are_recoverable);
 
   // Hand the iteration that just completed to iteration_callback_. Runs on
-  // the master thread while the other threads wait at a barrier.
+  // the master thread while the other threads wait on callback_running_.
   void NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                bool& m_liter_flag);
 
@@ -393,6 +399,10 @@ class Vmec {
   // the error of an iteration callback that left state.curr_h at another
   // length, which stops the run
   absl::Status callback_status_;
+
+  // true while the master thread runs the iteration callback; the other
+  // threads wait on it until it is false again
+  std::atomic<bool> callback_running_{false};
 
   // index into ns_array of the multigrid stage being solved
   int multigrid_step_ = 0;

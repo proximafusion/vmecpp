@@ -78,7 +78,8 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
 // acquires the GIL, hands the callback a copy of the state that Python owns,
 // takes curr_h back from that copy, treats a None return as "keep going", and
 // stops the run on an exception, which Rethrow raises once the run has
-// returned.
+// returned. A return value that does not convert to a bool stops the run with
+// a TypeError.
 struct PythonIterationCallback {
   py::object callable;
   std::optional<py::error_already_set> error;
@@ -93,7 +94,18 @@ struct PythonIterationCallback {
         py::object state = py::cast(m_state, py::return_value_policy::copy);
         py::object keep_going = callable(state);
         m_state.curr_h = state.cast<const vmecpp::SolverState &>().curr_h;
-        return keep_going.is_none() || py::cast<bool>(keep_going);
+        if (keep_going.is_none()) {
+          return true;
+        }
+        try {
+          return py::cast<bool>(keep_going);
+        } catch (const py::cast_error &) {
+          PyErr_Format(PyExc_TypeError,
+                       "iteration_callback must return None or a bool, but "
+                       "returned an object of type %s",
+                       Py_TYPE(keep_going.ptr())->tp_name);
+          throw py::error_already_set();
+        }
       } catch (py::error_already_set &e) {
         error.emplace(std::move(e));
         return false;
@@ -331,6 +343,10 @@ class VmecModel {
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
+  }
+  // Back up the last state with a valid force evaluation.
+  void SaveEvaluatedBackup() const {
+    *vmec_->physical_x_backup_[0] = *vmec_->last_evaluated_x_[0];
   }
   void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
@@ -1777,6 +1793,7 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
            py::arg("time_step"))
       .def("save_backup", &VmecModel::SaveBackup)
+      .def("save_evaluated_backup", &VmecModel::SaveEvaluatedBackup)
       .def("restore_backup", &VmecModel::RestoreBackup)
       .def("zero_velocity", &VmecModel::ZeroVelocity)
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
