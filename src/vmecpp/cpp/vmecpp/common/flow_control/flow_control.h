@@ -27,12 +27,12 @@ enum class RestartReason : std::uint8_t {
 
   // irst == 4, huge initial forces, flux surfaces are too close to each other
   // (but not overlapping yet)
-  HUGE_INITIAL_FORCES = 4,
+  HUGE_INITIAL_FORCES = 4,  // NOLINT(readability-identifier-naming)
 
   // the time step into this iteration was shortened by jacobian_safe_step;
   // recorded in restart_reasons in place of NO_RESTART, never set as
   // restart_reason, since the state is kept rather than reverted
-  SHORTENED_STEP = 5
+  SHORTENED_STEP = 5  // NOLINT(readability-identifier-naming)
 };
 
 RestartReason RestartReasonFromInt(int restart_reason);
