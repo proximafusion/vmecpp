@@ -5,6 +5,7 @@
 #ifndef VMECPP_VMEC_VMEC_VMEC_H_
 #define VMECPP_VMEC_VMEC_VMEC_H_
 
+#include <array>
 #include <climits>
 #include <functional>
 #include <memory>
@@ -194,10 +195,45 @@ class Vmec {
                               bool& m_liter_flag);
   void Printout(double delt0r, int thread_id, int iter2);
 
-  // Fold the squared change of this thread's R and Z coefficients since the
-  // previous printout into fc_.geometry_change, then keep the current geometry
-  // for the next one. Every thread of the team must call this.
-  void AccumulateGeometryChange(int thread_id);
+  // The coupled block of indata_.axis_block_preconditioner for the current
+  // multigrid step. A group is one coefficient at n = 0, R cosine (basis 0),
+  // Z sine (1) or lambda sine (2) at poloidal mode m, on the surfaces
+  // [j_begin, j_end), and its entries follow one another from first_entry.
+  // A probe perturbs one group on the surfaces j with j % (2 kAxisBlockStencil
+  // + 1) == color.
+  struct AxisBlockGroup {
+    int basis;
+    int m;
+    int j_begin;
+    int j_end;
+    int first_entry;
+  };
+  struct AxisBlockProbe {
+    int group;
+    int color;
+  };
+
+  // With indata_.axis_block_preconditioner, list the coefficients of the
+  // coupled block for the current multigrid step and have every thread's
+  // model hand its raw forces on them to axis_block_force_.
+  void SetUpAxisBlock();
+  // Probe the coupled block by central differences of the raw forces and
+  // factorize it, leaving the state and the residuals as they were. Every
+  // thread of the team must call this, before the evaluation of an
+  // iteration.
+  absl::Status ProbeAxisBlock(int thread_id);
+  // Replace the preconditioned forces on the block's coefficients by the
+  // coupled step. Every thread of the team must call this, after the
+  // evaluation of an iteration.
+  void ApplyAxisBlock(int thread_id);
+  // Copy the forces of this thread's surfaces on the block's entries into
+  // m_values, indexed by entry.
+  void GatherAxisBlockForces(const FourierForces& forces, int thread_id,
+                             double* m_values) const;
+  // Add delta to the coefficients a probe perturbs on this thread's
+  // surfaces, satellites included.
+  void PerturbAxisBlock(const AxisBlockProbe& probe, double delta,
+                        FourierGeometry& m_geometry) const;
   absl::StatusOr<bool> UpdateForwardModel(VmecCheckpoint checkpoint,
                                           int maximum_iterations,
                                           int thread_id);
@@ -284,10 +320,30 @@ class Vmec {
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
   std::vector<std::unique_ptr<FourierVelocity>> decomposed_v_;
 
-  // Geometry as it stood at the previous printout, per thread, against which
-  // fc_.geometry_change is measured. Empty until the first printout of a
-  // multigrid step, since the radial resolution changes between steps.
-  std::vector<std::unique_ptr<FourierGeometry>> geometry_at_last_printout_;
+  // The state of the coupled block for the current multigrid step.
+  std::vector<AxisBlockGroup> axis_block_groups_;
+  std::vector<AxisBlockProbe> axis_block_probes_;
+  int axis_block_size_ = 0;
+  // the block of the force Jacobian on the entries and its factorization
+  Eigen::MatrixXd axis_block_;
+  Eigen::PartialPivLU<Eigen::MatrixXd> axis_block_lu_;
+  bool axis_block_ready_ = false;
+  // iterations since the last probe, and evaluations in this multigrid step
+  int axis_block_age_ = 0;
+  int axis_block_evaluations_ = 0;
+  // the raw forces the last preconditioned evaluation left on the entries,
+  // the step that replaces their preconditioned forces, the forces of each
+  // probe in both directions and the size of each probe's perturbation
+  Eigen::VectorXd axis_block_force_;
+  Eigen::VectorXd axis_block_step_;
+  Eigen::MatrixXd axis_block_response_;
+  std::vector<double> axis_block_eps_;
+  double axis_block_state_norm_ = 0.0;
+  bool axis_block_probe_failed_ = false;
+  // what the probe evaluations overwrite: fsqr, fsqz, fsql, fsqr1, fsqz1,
+  // fsql1 and the restart reason
+  std::array<double, 6> axis_block_saved_residuals_{};
+  RestartReason axis_block_saved_restart_reason_ = RestartReason::NO_RESTART;
 
   std::vector<std::unique_ptr<FourierGeometry>> old_xc_scaled_;
   std::vector<std::unique_ptr<RadialPartitioning>> old_r_;

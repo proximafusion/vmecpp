@@ -504,14 +504,13 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 0.5
     """Constraint force scaling factor for ns --> 0."""
 
-    geometry_tolerance: float = 0.0
-    """Distance in metres below which the geometry counts as settled, measured over the
-    last ``nstep`` iterations as the Euclidean norm of the change in the R and Z
-    spectral coefficients.
+    axis_block_preconditioner: bool = False
+    """If true, R and Z at m = 0 to 2 and lambda at m = 1 to 4, all at n = 0, take their
+    step from the block of the force Jacobian that couples them, probed by finite
+    differences, in place of the separate R, Z and lambda preconditioners, once the
+    residuals are below 1e-4.
 
-    When positive, a multigrid step converges only once the force residuals meet
-    ``ftol_array`` and the geometry has moved less than this. Zero leaves convergence on
-    the residuals alone.
+    Fixed boundary only.
     """
 
     lgiveup: bool = False

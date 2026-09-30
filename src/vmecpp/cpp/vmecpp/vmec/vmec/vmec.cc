@@ -202,6 +202,16 @@ int VacuumMpol(const vmecpp::VmecINDATA& indata) {
 int VacuumNtor(const vmecpp::VmecINDATA& indata) {
   return std::max(indata.vacuum_ntor, indata.ntor);
 }
+
+// The coupled block of axis_block_preconditioner: the sum of the invariant
+// residuals below which it takes the step, the iterations between probes,
+// the fraction of its Newton step taken, and the radial reach of the force
+// stencil, in surfaces, that the probes resolve.
+constexpr double kAxisBlockThreshold = 1.0e-4;
+constexpr int kAxisBlockRefresh = 500;
+constexpr double kAxisBlockStepFraction = 0.5;
+constexpr int kAxisBlockStencil = 2;
+constexpr int kAxisBlockColors = 2 * kAxisBlockStencil + 1;
 }  // namespace
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
@@ -402,13 +412,6 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.delbsq.reserve(cap);
         fc_.restart_reasons.reserve(cap);
       }
-
-      // The radial grid changes between stages, so the geometry of the previous
-      // stage is not something this one can be compared against.
-      for (auto& geometry : geometry_at_last_printout_) {
-        geometry.reset();
-      }
-      fc_.geometry_change = -1.0;
 
       // notify logger of the next multigrid stage
       logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
@@ -714,7 +717,6 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     p_.resize(num_threads_);
     m_.resize(num_threads_);
     decomposed_x_.resize(num_threads_);
-    geometry_at_last_printout_.resize(num_threads_);
     physical_x_backup_.resize(num_threads_);
     physical_x_.resize(num_threads_);
     decomposed_f_.resize(num_threads_);
@@ -903,6 +905,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     fc_.ns_old = fc_.ns;
     fc_.neqs_old = fc_.neqs;
   }
+
+  SetUpAxisBlock();
 
   return false;
 }
@@ -1497,6 +1501,15 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     fc_.restart_reason = RestartReason::NO_RESTART;
   }
 
+  if (!axis_block_groups_.empty() && axis_block_evaluations_ > 0 &&
+      fc_.fsqr + fc_.fsqz + fc_.fsql < kAxisBlockThreshold &&
+      (!axis_block_ready_ || axis_block_age_ >= kAxisBlockRefresh)) {
+    absl::Status probed = ProbeAxisBlock(thread_id);
+    if (!probed.ok()) {
+      return probed;
+    }
+  }
+
   // `funct3d` - COMPUTE MHD FORCES
   absl::StatusOr<bool> reached_checkpoint = UpdateForwardModel(
       checkpoint, iterations_before_checkpointing, thread_id);
@@ -1518,12 +1531,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
     } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
-               fc_.fsql <= fc_.ftolv &&
-               (indata_.geometry_tolerance <= 0.0 ||
-                (fc_.geometry_change >= 0.0 &&
-                 fc_.geometry_change <= indata_.geometry_tolerance))) {
-      // converged to desired tolerance, and where a geometry tolerance is set,
-      // the flux surfaces have stopped moving as well
+               fc_.fsql <= fc_.ftolv) {
+      // converged to desired tolerance
 
       m_liter_flag = false;
       status_ = VmecStatus::SUCCESSFUL_TERMINATION;
@@ -1606,54 +1615,248 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
+  if (!axis_block_groups_.empty()) {
+    if (axis_block_ready_ &&
+        fc_.fsqr + fc_.fsqz + fc_.fsql < kAxisBlockThreshold) {
+      ApplyAxisBlock(thread_id);
+    }
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      ++axis_block_age_;
+      ++axis_block_evaluations_;
+    }
+  }
+
   PerformTimeStep(fac, b1, time_step, thread_id);
 
   return false;
 }
 
-void Vmec::AccumulateGeometryChange(int thread_id) {
-  const FourierGeometry& x = *decomposed_x_[thread_id];
-  const RadialPartitioning& r = *r_[thread_id];
-  const int mnsize = s_.mnsize;
-  const int offset = (r.nsMinF - x.nsMin()) * mnsize;
-  const int count = (r.nsMaxFIncludingLcfs - r.nsMinF) * mnsize;
+void Vmec::SetUpAxisBlock() {
+  axis_block_groups_.clear();
+  axis_block_probes_.clear();
+  axis_block_size_ = 0;
+  axis_block_ready_ = false;
+  axis_block_age_ = 0;
+  axis_block_evaluations_ = 0;
+  if (!indata_.axis_block_preconditioner) {
+    return;
+  }
 
-  // Surfaces [nsMinF, nsMaxFIncludingLcfs) partition the plasma across the
-  // team, so no surface is counted twice and the measure does not depend on
-  // how many threads run.
-  const std::array<std::span<double>, 8> now = {
-      x.rmncc, x.rmnss, x.rmnsc, x.rmncs, x.zmnsc, x.zmncs, x.zmncc, x.zmnss};
-  double contribution = 0.0;
-  const FourierGeometry* previous = geometry_at_last_printout_[thread_id].get();
-  if (previous != nullptr) {
-    const std::array<std::span<double>, 8> before = {
-        previous->rmncc, previous->rmnss, previous->rmnsc, previous->rmncs,
-        previous->zmnsc, previous->zmncs, previous->zmncc, previous->zmnss};
-    for (size_t block = 0; block < now.size(); ++block) {
-      if (now[block].size() != before[block].size() ||
-          static_cast<int>(now[block].size()) < offset + count) {
-        continue;
-      }
-      for (int i = offset; i < offset + count; ++i) {
-        const double difference = now[block][i] - before[block][i];
-        contribution += difference * difference;
-      }
+  // R at m = 0 to 2 and Z at m = 1 to 2 on the surfaces a fixed-boundary run
+  // moves, with the axis at m = 0, and lambda at m = 1 to 4 off the axis
+  constexpr std::array<std::array<int, 2>, 9> kGroups = {
+      {{0, 0}, {0, 1}, {0, 2}, {1, 1}, {1, 2}, {2, 1}, {2, 2}, {2, 3}, {2, 4}}};
+  for (const auto& [basis, m] : kGroups) {
+    const int j_begin = (basis == 0 && m == 0) ? 0 : 1;
+    const int j_end = basis == 2 ? fc_.ns : fc_.ns - 1;
+    if (m >= s_.mpol || j_end <= j_begin) {
+      continue;
+    }
+    const int group = static_cast<int>(axis_block_groups_.size());
+    axis_block_groups_.push_back({basis, m, j_begin, j_end, axis_block_size_});
+    axis_block_size_ += j_end - j_begin;
+    for (int k = 0; k < std::min(kAxisBlockColors, j_end - j_begin); ++k) {
+      axis_block_probes_.push_back({group, (j_begin + k) % kAxisBlockColors});
     }
   }
 
-  SumOverThreads(&contribution, 1, thread_id, r.get_num_threads(),
-                 h_.thread_reduce_slots.data(), h_.GeometryChangeAccumulator());
+  const int num_probes = static_cast<int>(axis_block_probes_.size());
+  axis_block_.setZero(axis_block_size_, axis_block_size_);
+  axis_block_force_.setZero(axis_block_size_);
+  axis_block_step_.setZero(axis_block_size_);
+  axis_block_response_.setZero(axis_block_size_, 2 * num_probes);
+  axis_block_eps_.assign(num_probes, 0.0);
+  for (std::size_t thread_id = 0; thread_id < m_.size(); ++thread_id) {
+    m_[thread_id]->SetRawForceObserver(
+        [this, thread_id](const FourierForces& forces) {
+          GatherAxisBlockForces(forces, static_cast<int>(thread_id),
+                                axis_block_force_.data());
+        });
+  }
+}
+
+void Vmec::GatherAxisBlockForces(const FourierForces& forces, int thread_id,
+                                 double* m_values) const {
+  const RadialPartitioning& r = *r_[thread_id];
+  for (const AxisBlockGroup& g : axis_block_groups_) {
+    const std::span<const double> f =
+        g.basis == 0 ? forces.frcc : (g.basis == 1 ? forces.fzsc : forces.flsc);
+    const int j_min = std::max(g.j_begin, r.nsMinF);
+    const int j_max = std::min(g.j_end, r.nsMaxFIncludingLcfs);
+    for (int j = j_min; j < j_max; ++j) {
+      m_values[g.first_entry + j - g.j_begin] =
+          f[((j - forces.nsMin()) * s_.mpol + g.m) * (s_.ntor + 1)];
+    }
+  }
+}
+
+void Vmec::PerturbAxisBlock(const AxisBlockProbe& probe, double delta,
+                            FourierGeometry& m_geometry) const {
+  const AxisBlockGroup& g = axis_block_groups_[probe.group];
+  const std::span<double> x =
+      g.basis == 0 ? m_geometry.rmncc
+                   : (g.basis == 1 ? m_geometry.zmnsc : m_geometry.lmnsc);
+  const int j_min = std::max(g.j_begin, m_geometry.nsMin());
+  const int j_max = std::min(g.j_end, m_geometry.nsMax());
+  for (int j = j_min; j < j_max; ++j) {
+    if (j % kAxisBlockColors == probe.color) {
+      x[((j - m_geometry.nsMin()) * s_.mpol + g.m) * (s_.ntor + 1)] += delta;
+    }
+  }
+}
+
+absl::Status Vmec::ProbeAxisBlock(int thread_id) {
+  const RadialPartitioning& r = *r_[thread_id];
+  FourierGeometry& x = *decomposed_x_[thread_id];
+  const FourierGeometry saved = x;
+
+  const double local_norm =
+      x.rzNorm(/*includeOffset=*/true, r.nsMinF, r.nsMaxFIncludingLcfs);
+  SumOverThreads(&local_norm, 1, thread_id, r.get_num_threads(),
+                 h_.thread_reduce_slots.data(), &axis_block_state_norm_);
 
 #ifdef _OPENMP
-#pragma omp single nowait
+#pragma omp single
 #endif  // _OPENMP
   {
-    // Every thread creates its copy in the same pass, so this test is the same
-    // on all of them and it does not matter which one runs the block.
-    fc_.geometry_change = previous == nullptr ? -1.0 : h_.GeometryChange();
+    axis_block_saved_residuals_ = {fc_.fsqr,  fc_.fsqz,  fc_.fsql,
+                                   fc_.fsqr1, fc_.fsqz1, fc_.fsql1};
+    axis_block_saved_restart_reason_ = fc_.restart_reason;
+    axis_block_probe_failed_ = false;
   }
 
-  geometry_at_last_printout_[thread_id] = std::make_unique<FourierGeometry>(x);
+  const auto restore_residuals = [this](RestartReason restart_reason) {
+    fc_.fsqr = axis_block_saved_residuals_[0];
+    fc_.fsqz = axis_block_saved_residuals_[1];
+    fc_.fsql = axis_block_saved_residuals_[2];
+    fc_.fsqr1 = axis_block_saved_residuals_[3];
+    fc_.fsqz1 = axis_block_saved_residuals_[4];
+    fc_.fsql1 = axis_block_saved_residuals_[5];
+    fc_.restart_reason = restart_reason;
+  };
+
+  for (std::size_t p = 0; p < axis_block_probes_.size(); ++p) {
+    const AxisBlockProbe& probe = axis_block_probes_[p];
+    const AxisBlockGroup& g = axis_block_groups_[probe.group];
+    int count = 0;
+    for (int j = g.j_begin; j < g.j_end; ++j) {
+      count += j % kAxisBlockColors == probe.color ? 1 : 0;
+    }
+    const double eps = 1.0e-7 * (1.0 + std::sqrt(axis_block_state_norm_)) /
+                       std::sqrt(static_cast<double>(count));
+    for (int side = 0; side < 2; ++side) {
+      x = saved;
+      PerturbAxisBlock(probe, side == 0 ? eps : -eps, x);
+      // every evaluation starts from the residuals the iteration left
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      restore_residuals(RestartReason::NO_RESTART);
+
+      // iter1 != iter2 and (iter2 - iter1) not a multiple of the
+      // preconditioner interval, so the evaluation neither resets the
+      // constraint reference nor updates the preconditioner
+      bool need_restart = false;
+      const absl::StatusOr<bool> reached = m_[thread_id]->update(
+          x, *physical_x_[thread_id], *decomposed_f_[thread_id],
+          *physical_f_[thread_id], need_restart, last_preconditioner_update_,
+          last_full_update_nestor_, fc_, /*iter1=*/1, /*iter2=*/3,
+          VmecCheckpoint::INVARIANT_RESIDUALS,
+          /*iterations_before_checkpointing=*/0, /*verbose=*/false,
+          always_fix_m1_gauge_);
+      if (!reached.ok()) {
+        x = saved;
+        return reached.status();
+      }
+      GatherAxisBlockForces(
+          *decomposed_f_[thread_id], thread_id,
+          axis_block_response_.col(static_cast<Eigen::Index>(2 * p + side))
+              .data());
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        // a perturbation that turns the Jacobian leaves no forces to read
+        if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+          axis_block_probe_failed_ = true;
+        }
+        axis_block_eps_[p] = eps;
+      }
+    }
+  }
+  x = saved;
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    restore_residuals(axis_block_saved_restart_reason_);
+    axis_block_age_ = 0;
+    axis_block_ready_ = false;
+    if (!axis_block_probe_failed_) {
+      axis_block_.setZero();
+      for (std::size_t p = 0; p < axis_block_probes_.size(); ++p) {
+        const AxisBlockProbe& probe = axis_block_probes_[p];
+        const AxisBlockGroup& g = axis_block_groups_[probe.group];
+        const auto plus = static_cast<Eigen::Index>(2 * p);
+        for (const AxisBlockGroup& row_group : axis_block_groups_) {
+          for (int j = row_group.j_begin; j < row_group.j_end; ++j) {
+            // the one surface this probe perturbs within the stencil of j
+            int offset =
+                ((probe.color - j) % kAxisBlockColors + kAxisBlockColors) %
+                kAxisBlockColors;
+            if (offset > kAxisBlockStencil) {
+              offset -= kAxisBlockColors;
+            }
+            const int j_col = j + offset;
+            if (j_col < g.j_begin || j_col >= g.j_end) {
+              continue;
+            }
+            const Eigen::Index row =
+                row_group.first_entry + j - row_group.j_begin;
+            const Eigen::Index col = g.first_entry + j_col - g.j_begin;
+            axis_block_(row, col) = (axis_block_response_(row, plus) -
+                                     axis_block_response_(row, plus + 1)) /
+                                    (2.0 * axis_block_eps_[p]);
+          }
+        }
+      }
+      axis_block_lu_.compute(axis_block_);
+      axis_block_ready_ = true;
+    }
+  }
+  return absl::OkStatus();
+}
+
+void Vmec::ApplyAxisBlock(int thread_id) {
+  // every thread's model has handed its raw forces over by now
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+  {
+    axis_block_step_ =
+        -kAxisBlockStepFraction * axis_block_lu_.solve(axis_block_force_);
+  }
+
+  FourierForces& forces = *decomposed_f_[thread_id];
+  const RadialPartitioning& r = *r_[thread_id];
+  for (const AxisBlockGroup& g : axis_block_groups_) {
+    const std::span<double> f =
+        g.basis == 0 ? forces.frcc : (g.basis == 1 ? forces.fzsc : forces.flsc);
+    const int j_min = std::max(g.j_begin, r.nsMinF);
+    const int j_max = std::min(g.j_end, r.nsMaxFIncludingLcfs);
+    for (int j = j_min; j < j_max; ++j) {
+      f[((j - forces.nsMin()) * s_.mpol + g.m) * (s_.ntor + 1)] =
+          axis_block_step_[g.first_entry + j - g.j_begin];
+    }
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
 }
 
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
@@ -1698,7 +1901,6 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
     h_.ResetSpectralWidthAccumulators();
   }
   p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
-  AccumulateGeometryChange(thread_id);
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP

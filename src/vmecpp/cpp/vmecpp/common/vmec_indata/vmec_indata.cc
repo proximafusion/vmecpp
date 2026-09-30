@@ -331,7 +331,7 @@ VmecINDATA::VmecINDATA() {
   aphi[0] = 1.0;
   delt = 1.0;
   tcon0 = 0.5;
-  geometry_tolerance = 0.0;
+  axis_block_preconditioner = false;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
   iteration_style = IterationStyle::VMEC_8_52;
@@ -463,7 +463,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(nstep, "/indata/nstep", file);
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
-  WriteH5Dataset(geometry_tolerance, "/indata/geometry_tolerance", file);
+  WriteH5Dataset(axis_block_preconditioner, "/indata/axis_block_preconditioner",
+                 file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
@@ -579,9 +580,9 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.nstep, "/indata/nstep", from_file);
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
-  if (from_file.nameExists("/indata/geometry_tolerance")) {
-    ReadH5Dataset(m_indata.geometry_tolerance, "/indata/geometry_tolerance",
-                  from_file);
+  if (from_file.nameExists("/indata/axis_block_preconditioner")) {
+    ReadH5Dataset(m_indata.axis_block_preconditioner,
+                  "/indata/axis_block_preconditioner", from_file);
   }
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
   // Legacy way of checking for dataset existence
@@ -1092,12 +1093,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.tcon0 = maybe_tcon0->value();
   }
 
-  auto maybe_geometry_tolerance = JsonReadDouble(j, "geometry_tolerance");
-  if (!maybe_geometry_tolerance.ok()) {
-    return maybe_geometry_tolerance.status();
+  auto maybe_axis_block_preconditioner =
+      JsonReadBool(j, "axis_block_preconditioner");
+  if (!maybe_axis_block_preconditioner.ok()) {
+    return maybe_axis_block_preconditioner.status();
   }
-  if (maybe_geometry_tolerance->has_value()) {
-    vmec_indata.geometry_tolerance = maybe_geometry_tolerance->value();
+  if (maybe_axis_block_preconditioner->has_value()) {
+    vmec_indata.axis_block_preconditioner =
+        maybe_axis_block_preconditioner->value();
   }
 
   auto maybe_lforbal = JsonReadBool(j, "lforbal");
@@ -1463,7 +1466,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["aphi"] = aphi;
   output["delt"] = delt;
   output["tcon0"] = tcon0;
-  output["geometry_tolerance"] = geometry_tolerance;
+  output["axis_block_preconditioner"] = axis_block_preconditioner;
   output["lforbal"] = lforbal;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["iteration_style"] = ToString(iteration_style);
@@ -1825,11 +1828,10 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.delt));
   }
 
-  if (vmec_indata.geometry_tolerance < 0.0) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "input variable 'geometry_tolerance' is a distance and cannot be "
-        "negative, but is %g\n",
-        vmec_indata.geometry_tolerance));
+  if (vmec_indata.axis_block_preconditioner && vmec_indata.lfreeb) {
+    return absl::InvalidArgumentError(
+        "input variable 'axis_block_preconditioner' applies to fixed-boundary "
+        "runs only, but 'lfreeb' is set\n");
   }
 
   if (vmec_indata.lgiveup && vmec_indata.fgiveup <= 0.0) {

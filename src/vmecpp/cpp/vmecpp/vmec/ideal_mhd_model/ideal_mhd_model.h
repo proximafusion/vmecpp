@@ -7,8 +7,10 @@
 
 #include <Eigen/Dense>
 #include <climits>
+#include <functional>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 #ifdef _OPENMP
@@ -88,6 +90,14 @@ class IdealMhdModel {
       bool always_fix_m1_gauge = false);
   std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
   void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
+
+  // Called by update() with the forces of each evaluation that goes on to be
+  // preconditioned, after the invariant residuals and before the
+  // preconditioners act on them.
+  void SetRawForceObserver(
+      std::function<void(const FourierForces&)> raw_force_observer) {
+    raw_force_observer_ = std::move(raw_force_observer);
+  }
 
   // Coordinates which inverse-DFT routine to call for computing
   // the flux surface geometry and lambda on it from the provided Fourier
@@ -619,6 +629,7 @@ class IdealMhdModel {
   int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
+  std::function<void(const FourierForces&)> raw_force_observer_;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
