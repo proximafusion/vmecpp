@@ -131,6 +131,8 @@ def test_output_quantities():
     case_name = "cma"
 
     indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     output_quantities = vmec.run(indata)
 
     # jxbout
@@ -433,9 +435,12 @@ def test_output_quantities():
         1.0e-11,
     )
 
+    # Deviation from VMEC 8.52: bsubsmns is on the full grid; the reference holds the
+    # half grid, averaged here to the interior full-grid surfaces.
+    reference_bsubsmns = wout["bsubsmns"][()]
     assert is_close_ra(
-        np.reshape(output_quantities.wout.bsubsmns, [mnmax_nyq, ns], order="C").T,
-        wout["bsubsmns"][()],
+        np.reshape(output_quantities.wout.bsubsmns, [mnmax_nyq, ns], order="C").T[1:-1],
+        0.5 * (reference_bsubsmns[1:-1] + reference_bsubsmns[2:]),
         1.0e-11,
     )
 
@@ -473,7 +478,6 @@ def test_output_quantities():
         "bsubumns",
         "bsubvmns",
         "bsubsmnc",
-        "bsubsmnc_full",
         "bsupumns",
         "bsupvmns",
         "currumns",
@@ -510,6 +514,8 @@ def test_threed1_output_quantities():
     case_name = "cma"
 
     indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     output_quantities = vmec.run(indata)
 
     # The first table stores some columns in the form they are printed in, so

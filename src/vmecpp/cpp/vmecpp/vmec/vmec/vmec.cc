@@ -610,10 +610,6 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 }  // run
 
 void Vmec::SetupVacuumSolvers() {
-  // Compute the vacuum thread count once; it is ns-independent (depends only on
-  // the tangential grid size nZnT and the thread budget).
-  vac_num_threads_ = vmec_adjust_vacuum_num_threads(fc_.max_threads(), s_.nZnT);
-
 #ifdef _OPENMP
   // The vacuum solve runs in a parallel region nested inside the persistent
   // radial parallel region (see IdealMhdModel::update). Allow at least two
@@ -623,6 +619,19 @@ void Vmec::SetupVacuumSolvers() {
   omp_set_nested(1);
   omp_set_max_active_levels(2);
 #endif  // _OPENMP
+
+  // The tangential partitioning covers the grid only if every vacuum thread
+  // runs, so the vacuum team is sized to what the runtime grants next to the
+  // radial team of num_threads_ threads. OMP_THREAD_LIMIT counts both teams,
+  // and an enclosing parallel region can use up the active levels.
+  const int vac_num_threads = GrantedNestedThreads(
+      num_threads_, vmec_adjust_vacuum_num_threads(fc_.max_threads(), s_.nZnT));
+  if (vac_num_threads == vac_num_threads_) {
+    return;
+  }
+  // A rebuild happens only between multigrid steps, where the first vacuum
+  // solve is a full update, so no state of the previous solvers is needed.
+  vac_num_threads_ = vac_num_threads;
 
   vacuum_reduce_slots_.setZero(static_cast<Eigen::Index>(vac_num_threads_) *
                                matrixShare.size());
@@ -731,19 +740,23 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       }  // thread_id
     }
 
-    // adjust parallellism for nsval at hand
-    num_threads_ = vmec_adjust_num_threads(fc_.max_threads(),
-                                           fc_.num_surfaces_to_distribute);
+    // adjust parallellism for nsval at hand. The radial partitioning below
+    // assigns every surface to one of num_threads_ threads, so num_threads_ is
+    // the team the runtime grants, which OMP_THREAD_LIMIT or an enclosing
+    // parallel region can make smaller than the request.
+    num_threads_ = GrantedThreads(vmec_adjust_num_threads(
+        fc_.max_threads(), fc_.num_surfaces_to_distribute));
 
-    // Set up the free-boundary vacuum solvers exactly once. Their thread count
-    // (vac_num_threads_) is decoupled from the radial num_threads_ and is
-    // ns-independent: the vacuum solve is parallelized over the tangential grid
-    // (nZnT), so it can use the full thread budget even at coarse multigrid
-    // steps where num_threads_ is capped at ns/2. The solvers (and their
-    // accumulated vacuum response matrix/RHS, which live in ns-independent
-    // Fourier space) persist across multigrid steps, reproducing Fortran VMEC's
+    // Set up the free-boundary vacuum solvers. Their thread count
+    // (vac_num_threads_) is decoupled from the radial num_threads_: the vacuum
+    // solve is parallelized over the tangential grid (nZnT), so it can use the
+    // full thread budget even at coarse multigrid steps where num_threads_ is
+    // capped at ns/2. The solvers persist across multigrid steps, rebuilt only
+    // when the team granted next to this step's radial team changes size; the
+    // accumulated vacuum response matrix/RHS live in Vmec, in ns-independent
+    // Fourier space, and persist either way, reproducing Fortran VMEC's
     // persistent vacuum state.
-    if (fc_.lfreeb && fb_vac_.empty()) {
+    if (fc_.lfreeb) {
       SetupVacuumSolvers();
     }
 
@@ -991,8 +1004,10 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
   {
 #ifdef _OPENMP
     int thread_id = omp_get_thread_num();
+    const int team_size = omp_get_num_threads();
 #else
     int thread_id = 0;
+    const int team_size = 1;
 #endif
 
     // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
@@ -1001,6 +1016,17 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
     bool m_lreset_internal = false;
 
     absl::StatusOr<SolveEqLoopStatus> s = SolveEqLoopStatus::MUST_RETRY;
+
+    // num_threads_ is the team InitializeRadial found the runtime grants; a
+    // smaller team here would leave the surfaces of the missing threads
+    // unevaluated. Every thread of the team sees the same size, so the team
+    // skips the solve as a whole.
+    if (team_size != num_threads_) {
+      s = absl::ResourceExhaustedError(absl::StrFormat(
+          "the radial solve is partitioned over %d threads, but OpenMP granted "
+          "%d",
+          num_threads_, team_size));
+    }
 
     // n_local_eqsolve_retries is a thread-local counter
     // max iterations only to ensure this terminates eventually, should never be
@@ -1323,8 +1349,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // minimum after 10 steps.
       const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
       if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
-        RestartIteration(fc_.delt0r, thread_id,
-                         /*backup_evaluated_state=*/true);
+        RestartIteration(fc_.delt0r, thread_id, indata_.backup_evaluated_state);
       } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
                                            fsq_invariant > 1.0e4 * fc_.res1)) {
 #ifdef _OPENMP
@@ -1335,8 +1360,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
-      RestartIteration(fc_.delt0r, thread_id,
-                       /*backup_evaluated_state=*/true);
+      RestartIteration(fc_.delt0r, thread_id, indata_.backup_evaluated_state);
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 
