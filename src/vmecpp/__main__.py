@@ -16,7 +16,7 @@ def _parse_convert_arguments(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument(
         "input_file",
-        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
+        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format, or the extension of an indata file ('w7x' for 'input.w7x').",
         type=Path,
     )
     args = p.parse_args(argv)
@@ -37,7 +37,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "input_file",
-        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format.",
+        help="A VMEC input file either in the classic Fortran 'indata' format or in VMEC++'s JSON format, or the extension of an indata file ('w7x' for 'input.w7x').",
         type=Path,
     )
     p.add_argument(
@@ -71,13 +71,14 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main() -> None:
     args = parse_arguments()
+    input_file = vmecpp._util.resolve_input_file(args.input_file)
 
     if args.command == "convert":
-        vmec_input = vmecpp.VmecInput.from_file(args.input_file)
-        json_name = args.input_file.name.replace("input.", "")
-        json_file = Path(f"{args.input_file.parent}/{json_name}.json")
+        vmec_input = vmecpp.VmecInput.from_file(input_file)
+        json_name = input_file.name.replace("input.", "")
+        json_file = Path(f"{input_file.parent}/{json_name}.json")
         vmec_input.save(json_file, indent=4)
-        print(f"Converted {args.input_file} to {json_file}")  # noqa: T201
+        print(f"Converted {input_file} to {json_file}")  # noqa: T201
         return
 
     if args.quiet:
@@ -91,13 +92,13 @@ def main() -> None:
         )
         vmecpp._progress_tip_shown = True
 
-    vmec_input = vmecpp.VmecInput.from_file(args.input_file)
+    vmec_input = vmecpp.VmecInput.from_file(input_file)
     # The wout of a CLI run comes straight from the C++ output stage, sparing
     # every invocation the JAX compilation of vmecpp.autodiff_wout.
     vmecpp._use_jax_output_stage.set(False)
     output = vmecpp.run(vmec_input, max_threads=args.max_threads, verbose=verbose)
 
-    configuration_name = vmecpp._util.get_vmec_configuration_name(args.input_file)
+    configuration_name = vmecpp._util.get_vmec_configuration_name(input_file)
     wout_file = Path(f"wout_{configuration_name}.nc")
     output.wout.save(wout_file)
 

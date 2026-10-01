@@ -47,6 +47,27 @@ def test_run(max_threads, input_file, verbose):
     assert vmec_output.wout is not None
 
 
+def test_from_file_reads_the_input_extension():
+    """As in Fortran VMEC, ``cma`` names the input file ``input.cma``."""
+    by_extension = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma")
+    by_name = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "input.cma")
+    assert by_extension.model_dump_json() == by_name.model_dump_json()
+
+    with pytest.raises(FileNotFoundError, match="no_such_case"):
+        vmecpp.VmecInput.from_file(TEST_DATA_DIR / "no_such_case")
+
+
+def test_cli_takes_the_input_extension(tmp_path):
+    """``vmecpp convert solovev`` and ``vmecpp solovev`` read ``input.solovev``."""
+    shutil.copy(TEST_DATA_DIR / "input.solovev", tmp_path)
+    for arguments in (["convert", "solovev"], ["solovev", "--quiet"]):
+        subprocess.run(
+            [sys.executable, "-m", "vmecpp", *arguments], cwd=tmp_path, check=True
+        )
+    assert (tmp_path / "solovev.json").is_file()
+    assert (tmp_path / "wout_solovev.nc").is_file()
+
+
 @pytest.mark.parametrize(
     ("mgrid_path", "expected_exception"),
     [

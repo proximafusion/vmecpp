@@ -73,6 +73,16 @@ def get_vmec_configuration_name(vmec_file: Path) -> str:
     return case_name
 
 
+def resolve_input_file(input_file: Path) -> Path:
+    """The input file to read for ``input_file``: the path itself if it exists,
+    otherwise ``input.<name>`` in the same directory, as Fortran VMEC reads
+    ``input.w7x`` for the argument ``w7x``."""
+    if input_file.exists() or not input_file.name:
+        return input_file
+    shorthand = input_file.with_name(f"input.{input_file.name}")
+    return shorthand if shorthand.is_file() else input_file
+
+
 def indata_to_json(
     filename: Path,
     use_mgrid_file_absolute_path: bool = False,

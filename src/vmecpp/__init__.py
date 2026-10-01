@@ -818,8 +818,9 @@ class VmecInput(BaseModelWithNumpy):
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
         """Build a VmecInput from either a VMEC++ JSON input file or a classic INDATA
-        file."""
-        absolute_input_path = Path(input_file).resolve()
+        file, given by its path or, as in Fortran VMEC, by the extension of an INDATA
+        file: ``w7x`` reads ``input.w7x``."""
+        absolute_input_path = _util.resolve_input_file(Path(input_file)).resolve()
 
         # we call this in a temporary directory because it produces the file in the current working directory
         with (  # noqa: SIM117
