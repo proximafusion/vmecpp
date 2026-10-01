@@ -327,7 +327,11 @@ def _to_wout_version_9(varname, actual, desired, xm_nyq):
     return actual, desired
 
 
-def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
+def test_vmecwout_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    # The reference restarts from the advanced state.
+    vmec_input.backup_evaluated_state = False
+    cma_output = vmecpp.run(vmec_input, verbose=False)
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
 
@@ -415,6 +419,8 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
 )
 def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     if indata.lfreeb:
         indata.mgrid_file = str(
             REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file

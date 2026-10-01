@@ -244,6 +244,10 @@ class VmecINDATA {
   // equilibrium iteration is unchanged.
   bool lbsubs;
 
+  // If true, restart backups hold the state of the last force evaluation; if
+  // false, they hold the advanced state, as in educational_VMEC.
+  bool backup_evaluated_state;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)
