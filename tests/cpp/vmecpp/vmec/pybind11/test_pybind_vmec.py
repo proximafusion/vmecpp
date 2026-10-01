@@ -131,6 +131,8 @@ def test_output_quantities():
     case_name = "cma"
 
     indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     output_quantities = vmec.run(indata)
 
     # jxbout
@@ -510,6 +512,8 @@ def test_threed1_output_quantities():
     case_name = "cma"
 
     indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     output_quantities = vmec.run(indata)
 
     # The first table stores some columns in the form they are printed in, so

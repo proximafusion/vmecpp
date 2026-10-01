@@ -38,6 +38,16 @@ def vmec(input_file_path) -> simsopt_compat.Vmec:
     return vmec
 
 
+@pytest.fixture(scope="module")
+def vmec_advanced_backup(input_file_path) -> simsopt_compat.Vmec:
+    vmec = simsopt_compat.Vmec(input_file_path)
+    assert vmec.indata is not None
+    # The reference restarts from the advanced state.
+    vmec.indata.backup_evaluated_state = False
+    vmec.run()
+    return vmec
+
+
 @pytest.fixture
 def reference_wout(input_file_path) -> netCDF4.Dataset:
     if "solovev" in input_file_path.name:
@@ -66,26 +76,26 @@ def test_volume(vmec, reference_wout):
     np.testing.assert_allclose(volume, expected_volume, rtol=1e-11, atol=0.0)
 
 
-def test_iota_axis(vmec, reference_wout):
-    iota_axis = vmec.iota_axis()
+def test_iota_axis(vmec_advanced_backup, reference_wout):
+    iota_axis = vmec_advanced_backup.iota_axis()
     expected_iota_axis = reference_wout.variables["iotaf"][()][0]
     np.testing.assert_allclose(iota_axis, expected_iota_axis, rtol=1e-11, atol=1e-11)
 
 
-def test_iota_edge(vmec, reference_wout):
-    iota_edge = vmec.iota_edge()
+def test_iota_edge(vmec_advanced_backup, reference_wout):
+    iota_edge = vmec_advanced_backup.iota_edge()
     expected_iota_edge = reference_wout.variables["iotaf"][()][-1]
     np.testing.assert_allclose(iota_edge, expected_iota_edge, rtol=1e-11, atol=0.0)
 
 
-def test_mean_iota(vmec, reference_wout):
-    mean_iota = vmec.mean_iota()
+def test_mean_iota(vmec_advanced_backup, reference_wout):
+    mean_iota = vmec_advanced_backup.mean_iota()
     expected_mean_iota = np.mean(reference_wout.variables["iotas"][()][1:])
     np.testing.assert_allclose(mean_iota, expected_mean_iota, rtol=1e-11, atol=0.0)
 
 
-def test_mean_shear(vmec, reference_wout):
-    mean_shear = vmec.mean_shear()
+def test_mean_shear(vmec_advanced_backup, reference_wout):
+    mean_shear = vmec_advanced_backup.mean_shear()
     # Compute mean shear as in simsopt
     s_full_grid = np.linspace(0, 1, reference_wout.variables["ns"][()])
     ds = s_full_grid[1] - s_full_grid[0]
