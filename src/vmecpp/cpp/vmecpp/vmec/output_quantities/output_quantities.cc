@@ -1025,7 +1025,6 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubumnc);
   WRITEMEMBER(bsubvmnc);
   WRITEMEMBER(bsubsmns);
-  WRITEMEMBER(bsubsmns_full);
   WRITEMEMBER(bsupumnc);
   WRITEMEMBER(bsupvmnc);
   WRITEMEMBER(currumnc);
@@ -1041,7 +1040,6 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubumns);
   WRITEMEMBER(bsubvmns);
   WRITEMEMBER(bsubsmnc);
-  WRITEMEMBER(bsubsmnc_full);
   WRITEMEMBER(bsupumns);
   WRITEMEMBER(bsupvmns);
   WRITEMEMBER(currumns);
@@ -1225,7 +1223,6 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   ReadAndTransposePadHalfGrid2D(m_obj.bsubumnc, "bsubumnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubvmnc, "bsubvmnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubsmns, "bsubsmns", m_obj.mnmax_nyq);
-  READMEMBER(bsubsmns_full);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupumnc, "bsupumnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupvmnc, "bsupvmnc", m_obj.mnmax_nyq);
   if (from_file.nameExists(absl::StrFormat("%s/currumnc", H5key))) {
@@ -1245,7 +1242,6 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   ReadAndTransposePadHalfGrid2D(m_obj.bsubumns, "bsubumns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubvmns, "bsubvmns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubsmnc, "bsubsmnc", m_obj.mnmax_nyq);
-  READMEMBER(bsubsmnc_full);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupumns, "bsupumns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupvmns, "bsupvmns", m_obj.mnmax_nyq);
   if (from_file.nameExists(absl::StrFormat("%s/currumns", H5key))) {
@@ -1774,8 +1770,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     output_quantities.wout = ComputeWOutFileContents(
         indata, s, t, fc, constants, h, mgrid_mode, coil_group_names,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
-        output_quantities.bsubs_half, output_quantities.bsubs_full,
-        output_quantities.mercier, output_quantities.jxbout,
+        output_quantities.bsubs_full, output_quantities.mercier,
+        output_quantities.jxbout,
         output_quantities.threed1_first_table_intermediate,
         output_quantities.threed1_first_table,
         output_quantities.threed1_geometric_magnetic,
@@ -5047,9 +5043,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     const std::vector<std::string>& coil_group_names,
-    VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
-    const JxBOutFileContents& jxbout,
+    VmecInternalResults& m_vmec_internal_results, const BSubSFull& bsubs_full,
+    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
@@ -5496,13 +5491,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.bsubumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   wout.bsubvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
-  // Note: bsubsmns is a half-grid quantity,
-  // but stored in Fortran VMEC fashion offset by 1 index to the right,
-  // in order to also have the (wrong) extrapolation
-  // beyond the axis on the j=0 grid point
-  // for backwards compatibility.
-  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-
   wout.bsupumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   wout.bsupvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
@@ -5512,7 +5500,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.bmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsubumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsubvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsupumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsupvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   }
@@ -5542,8 +5529,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         Fc_bsubu(partial_sum_size), Fs_bsubu(partial_sum_size),
         Fc_bsubv(partial_sum_size), Fs_bsubv(partial_sum_size),
         Fc_bsupu(partial_sum_size), Fs_bsupu(partial_sum_size),
-        Fc_bsupv(partial_sum_size), Fs_bsupv(partial_sum_size),
-        Fc_bsubs(partial_sum_size), Fs_bsubs(partial_sum_size);
+        Fc_bsupv(partial_sum_size), Fs_bsupv(partial_sum_size);
     // Asymmetric partial sums (only populated when lasym=true).
     std::vector<double> Fc_gsqrt_a, Fs_gsqrt_a;
     std::vector<double> Fc_bmnc_a, Fs_bmnc_a;
@@ -5551,7 +5537,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     std::vector<double> Fc_bsubv_a, Fs_bsubv_a;
     std::vector<double> Fc_bsupu_a, Fs_bsupu_a;
     std::vector<double> Fc_bsupv_a, Fs_bsupv_a;
-    std::vector<double> Fc_bsubs_a, Fs_bsubs_a;
     if (s.lasym) {
       Fc_gsqrt_a.resize(partial_sum_size);
       Fs_gsqrt_a.resize(partial_sum_size);
@@ -5565,8 +5550,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       Fs_bsupu_a.resize(partial_sum_size);
       Fc_bsupv_a.resize(partial_sum_size);
       Fs_bsupv_a.resize(partial_sum_size);
-      Fc_bsubs_a.resize(partial_sum_size);
-      Fs_bsubs_a.resize(partial_sum_size);
     }
 
 #ifdef _OPENMP
@@ -5583,7 +5566,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double fc_bsubv = 0.0, fs_bsubv = 0.0;
           double fc_bsupu = 0.0, fs_bsupu = 0.0;
           double fc_bsupv = 0.0, fs_bsupv = 0.0;
-          double fc_bsubs = 0.0, fs_bsubs = 0.0;
 
           int k_rev = 0;
           double fc_gsqrt_a = 0.0, fs_gsqrt_a = 0.0;
@@ -5592,7 +5574,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double fc_bsubv_a = 0.0, fs_bsubv_a = 0.0;
           double fc_bsupu_a = 0.0, fs_bsupu_a = 0.0;
           double fc_bsupv_a = 0.0, fs_bsupv_a = 0.0;
-          double fc_bsubs_a = 0.0, fs_bsubs_a = 0.0;
           if (s.lasym) {
             k_rev = (s.nZeta - k) % s.nZeta;
           }
@@ -5609,14 +5590,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             double bv = m_vmec_internal_results.bsubv(idx_kl);
             double bpu = m_vmec_internal_results.bsupu(idx_kl);
             double bpv = m_vmec_internal_results.bsupv(idx_kl);
-            double bs = bsubs_half.bsubs_half(idx_kl);
 
             if (s.lasym) {
               // symoutput: on the reduced theta interval, the cos(mu-nv)
               // coefficients come from the stellarator-symmetric projection
               // 0.5 * (F(u,v) + F(-u,-v)) and the sin(mu-nv) coefficients
-              // from the antisymmetric projection 0.5 * (F(u,v) - F(-u,-v));
-              // for bsubs the parities are reversed.
+              // from the antisymmetric projection 0.5 * (F(u,v) - F(-u,-v)).
               const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
               const int idx_kl_rev =
                   (jH * s.nZeta + k_rev) * s.nThetaEff + l_rev;
@@ -5627,7 +5606,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               const double bv_rev = m_vmec_internal_results.bsubv(idx_kl_rev);
               const double bpu_rev = m_vmec_internal_results.bsupu(idx_kl_rev);
               const double bpv_rev = m_vmec_internal_results.bsupv(idx_kl_rev);
-              const double bs_rev = bsubs_half.bsubs_half(idx_kl_rev);
 
               const double g_a = 0.5 * (g - g_rev);
               const double mp_a = 0.5 * (mp - mp_rev);
@@ -5635,8 +5613,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               const double bv_a = 0.5 * (bv - bv_rev);
               const double bpu_a = 0.5 * (bpu - bpu_rev);
               const double bpv_a = 0.5 * (bpv - bpv_rev);
-              // bsubs uses + (cos-parity asymmetric part).
-              const double bs_a = 0.5 * (bs + bs_rev);
 
               g = 0.5 * (g + g_rev);
               mp = 0.5 * (mp + mp_rev);
@@ -5644,8 +5620,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               bv = 0.5 * (bv + bv_rev);
               bpu = 0.5 * (bpu + bpu_rev);
               bpv = 0.5 * (bpv + bpv_rev);
-              // bsubs uses - (sin-parity symmetric part).
-              bs = 0.5 * (bs - bs_rev);
 
               fc_gsqrt_a += cmu * g_a;
               fs_gsqrt_a += smu * g_a;
@@ -5659,8 +5633,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               fs_bsupu_a += smu * bpu_a;
               fc_bsupv_a += cmu * bpv_a;
               fs_bsupv_a += smu * bpv_a;
-              fc_bsubs_a += cmu * bs_a;
-              fs_bsubs_a += smu * bs_a;
             }
 
             fc_gsqrt += cmu * g;
@@ -5675,8 +5647,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             fs_bsupu += smu * bpu;
             fc_bsupv += cmu * bpv;
             fs_bsupv += smu * bpv;
-            fc_bsubs += cmu * bs;
-            fs_bsubs += smu * bs;
           }  // l
 
           const int idx_mk = m_nzeta_p1 + k;
@@ -5692,8 +5662,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           Fs_bsupu[idx_mk] = fs_bsupu;
           Fc_bsupv[idx_mk] = fc_bsupv;
           Fs_bsupv[idx_mk] = fs_bsupv;
-          Fc_bsubs[idx_mk] = fc_bsubs;
-          Fs_bsubs[idx_mk] = fs_bsubs;
           if (s.lasym) {
             Fc_gsqrt_a[idx_mk] = fc_gsqrt_a;
             Fs_gsqrt_a[idx_mk] = fs_gsqrt_a;
@@ -5707,8 +5675,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             Fs_bsupu_a[idx_mk] = fs_bsupu_a;
             Fc_bsupv_a[idx_mk] = fc_bsupv_a;
             Fs_bsupv_a[idx_mk] = fs_bsupv_a;
-            Fc_bsubs_a[idx_mk] = fc_bsubs_a;
-            Fs_bsubs_a[idx_mk] = fs_bsubs_a;
           }
         }  // k
       }  // m
@@ -5726,8 +5692,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int m_nzeta = m * s.nZeta;
 
         double acc_gmnc = 0.0, acc_bmnc = 0.0, acc_bsubumnc = 0.0,
-               acc_bsubvmnc = 0.0, acc_bsubsmns = 0.0, acc_bsupumnc = 0.0,
-               acc_bsupvmnc = 0.0;
+               acc_bsubvmnc = 0.0, acc_bsupumnc = 0.0, acc_bsupvmnc = 0.0;
 
         for (int k = 0; k < s.nZeta; ++k) {
           const int kn = k * (s.nnyq2 + 1) + abs_n;
@@ -5746,16 +5711,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               cnv * Fc_bsupu[idx_mk] + sign_n * snv * Fs_bsupu[idx_mk];
           acc_bsupvmnc +=
               cnv * Fc_bsupv[idx_mk] + sign_n * snv * Fs_bsupv[idx_mk];
-          // sin(mu-nv) kernel: cnv*Fs - sign_n*snv*Fc
-          acc_bsubsmns +=
-              cnv * Fs_bsubs[idx_mk] - sign_n * snv * Fc_bsubs[idx_mk];
         }  // k
 
         wout.gmnc(mn_nyq, jH + 1) = dmult * acc_gmnc;
         wout.bmnc(mn_nyq, jH + 1) = dmult * acc_bmnc;
         wout.bsubumnc(mn_nyq, jH + 1) = dmult * acc_bsubumnc;
         wout.bsubvmnc(mn_nyq, jH + 1) = dmult * acc_bsubvmnc;
-        wout.bsubsmns(mn_nyq, jH + 1) = dmult * acc_bsubsmns;
         wout.bsupumnc(mn_nyq, jH + 1) = dmult * acc_bsupumnc;
         wout.bsupvmnc(mn_nyq, jH + 1) = dmult * acc_bsupvmnc;
 
@@ -5764,7 +5725,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double acc_bmns = 0.0;
           double acc_bsubumns = 0.0;
           double acc_bsubvmns = 0.0;
-          double acc_bsubsmnc = 0.0;
           double acc_bsupumns = 0.0;
           double acc_bsupvmns = 0.0;
 
@@ -5787,16 +5747,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                 cnv * Fs_bsupu_a[idx_mk] - sign_n * snv * Fc_bsupu_a[idx_mk];
             acc_bsupvmns +=
                 cnv * Fs_bsupv_a[idx_mk] - sign_n * snv * Fc_bsupv_a[idx_mk];
-            // cos(mu-nv) kernel for bsubs_asym (cos-parity)
-            acc_bsubsmnc +=
-                cnv * Fc_bsubs_a[idx_mk] + sign_n * snv * Fs_bsubs_a[idx_mk];
           }  // k
 
           wout.gmns(mn_nyq, jH + 1) = dmult * acc_gmns;
           wout.bmns(mn_nyq, jH + 1) = dmult * acc_bmns;
           wout.bsubumns(mn_nyq, jH + 1) = dmult * acc_bsubumns;
           wout.bsubvmns(mn_nyq, jH + 1) = dmult * acc_bsubvmns;
-          wout.bsubsmnc(mn_nyq, jH + 1) = dmult * acc_bsubsmnc;
           wout.bsupumns(mn_nyq, jH + 1) = dmult * acc_bsupumns;
           wout.bsupvmns(mn_nyq, jH + 1) = dmult * acc_bsupvmns;
         }
@@ -5807,40 +5763,13 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   }  // omp parallel
 #endif
 
-  // Note that bsubs in wrout.f in Fortran VMEC is on the half-grid,
-  // as it is computed from bsup(u,v) (both of which are on the half-grid)
-  // and the metric elements g_su and g_sv, which are also on the half-grid.
-  // The wout file attributes document bsubsmns to be on the full-grid though,
-  // and an extrapolation towards the axis as if bsubsmns was on the full grid
-  // is done, in Fortran VMEC. For now, we replicate the axis extrapolation
-  // (which is wrong, because it extrapolates one full grid step further than
-  // the innermost half-grid point, i.e., from s=0.5 and s=1.5 to s=-0.5, i.e.,
-  // beyond the magnetic axis) to be consistent with Fortran VMEC, but will have
-  // to revisit this later. Also note that a full-grid version of bsubs is
-  // computed in jxbforce, and is available in the jxbout file contents in
-  // realspace as bsubs3.
-  for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-    wout.bsubsmns(mn_nyq, 0) =
-        2.0 * wout.bsubsmns(mn_nyq, 1) - wout.bsubsmns(mn_nyq, 2);
-  }  // mn_nyq
-  if (s.lasym) {
-    for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-      wout.bsubsmnc(mn_nyq, 0) =
-          2.0 * wout.bsubsmnc(mn_nyq, 1) - wout.bsubsmnc(mn_nyq, 2);
-    }  // mn_nyq
-  }
-
   // -------------------
-  // Full-grid covariant B_s Fourier coefficients (bsubsmns_full).
-  // bsubsmns above is the on-grid (half-grid) B_s; bsubsmns_full is the forward
-  // sine transform of the full-grid realspace B_s (bsubs_full, interpolated to
-  // the full grid and extrapolated to axis/edge in PutBSubSOnFullGrid /
-  // ExtrapolateBSubS). Since the radial half->full interpolation is linear and
-  // commutes with the angular DFT, bsubsmns_full(:, jF) for interior jF equals
-  // 0.5 * (bsubsmns(:, jF+1) + bsubsmns(:, jF)).
-  wout.bsubsmns_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  // Full-grid covariant B_s, as in jxbforce of PARVMEC (VMEC 8.52 writes the
+  // half-grid B_s instead): the forward sine transform of bsubs_full
+  // (PutBSubSOnFullGrid or the lbsubs solve, then ExtrapolateBSubS).
+  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   if (s.lasym) {
-    wout.bsubsmnc_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   }
   // Use the same two-phase separable DFT as the half-grid loop above,
   // parallelised over full-grid surfaces jF.
@@ -5933,9 +5862,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                      sign_n * t.sinnv[kn] * Fs_bsubs_full_a[idx_mk];
           }
         }  // k
-        wout.bsubsmns_full(mn_nyq, jF) = dmult * acc;
+        wout.bsubsmns(mn_nyq, jF) = dmult * acc;
         if (s.lasym) {
-          wout.bsubsmnc_full(mn_nyq, jF) = dmult * acc_a;
+          wout.bsubsmnc(mn_nyq, jF) = dmult * acc_a;
         }
       }  // mn_nyq
     }  // jF
@@ -6090,10 +6019,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   //   sqrt(g) * J^zeta  = (1/mu0) * (dB_theta/ds - dB_s/dtheta)
   //
   // In Fourier space (combined basis cos(m*theta - n*nfp*zeta)):
-  //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs_interp - dBzeta_cos/ds)
-  //   currvmnc(m,n) = (1/mu0) * (-m     * Bs_interp + dBtheta_cos/ds)
+  //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs - dBzeta_cos/ds)
+  //   currvmnc(m,n) = (1/mu0) * (-m     * Bs + dBtheta_cos/ds)
   //
-  // Radial derivatives use sqrt(s) regularization for odd-m modes.
+  // B_s is the full-grid bsubsmns, used as is (LIBSTELL read_wout_mod of
+  // VMEC 9.0). Radial derivatives use sqrt(s) regularization for odd-m
+  // modes.
   {
     const double ohs = 1.0 / fc.deltaS;
 
@@ -6106,7 +6037,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
     // Interior full-grid points: j_f = 1 .. ns-2
     // In the wout storage convention (Fortran-style offset by 1),
-    // bsub*(:, j_f) and bsub*(:, j_f+1) are the neighboring half-grid data.
+    // bsub[uv]*(:, j_f) and bsub[uv]*(:, j_f+1) are the neighboring half-grid
+    // data.
     // sqrtSH[j_f-1] and sqrtSH[j_f] are the corresponding sqrt(s) values.
     // sqrtSF[j_f] is the full-grid sqrt(s).
     for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
@@ -6118,17 +6050,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int m = wout.xm_nyq[mn];
         const double n_nfp = static_cast<double>(wout.xn_nyq[mn]);
 
-        double t1 = 0.0;
+        const double t1 = wout.bsubsmns(mn, j_f);
         double t2 = 0.0;
         double t3 = 0.0;
 
         if (m % 2 == 1) {
           // odd m: regularized derivatives
-          t1 = 0.5 *
-               (sqrt_s_half_outer * wout.bsubsmns(mn, j_f + 1) +
-                sqrt_s_half_inner * wout.bsubsmns(mn, j_f)) /
-               sqrt_s_full;
-
           const double bu0 = wout.bsubumnc(mn, j_f) / sqrt_s_half_inner;
           const double bu1 = wout.bsubumnc(mn, j_f + 1) / sqrt_s_half_outer;
           t2 = ohs * (bu1 - bu0) * sqrt_s_full +
@@ -6140,7 +6067,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                0.25 * (bv0 + bv1) / sqrt_s_full;
         } else {
           // even m: simple finite differences
-          t1 = 0.5 * (wout.bsubsmns(mn, j_f + 1) + wout.bsubsmns(mn, j_f));
           t2 = ohs * (wout.bsubumnc(mn, j_f + 1) - wout.bsubumnc(mn, j_f));
           t3 = ohs * (wout.bsubvmnc(mn, j_f + 1) - wout.bsubvmnc(mn, j_f));
         }
@@ -6149,16 +6075,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         wout.currvmnc(mn, j_f) = -m * t1 + t2;
 
         if (s.lasym) {
-          double t1a = 0.0;
+          const double t1a = wout.bsubsmnc(mn, j_f);
           double t2a = 0.0;
           double t3a = 0.0;
 
           if (m % 2 == 1) {
-            t1a = 0.5 *
-                  (sqrt_s_half_outer * wout.bsubsmnc(mn, j_f + 1) +
-                   sqrt_s_half_inner * wout.bsubsmnc(mn, j_f)) /
-                  sqrt_s_full;
-
             const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_inner;
             const double bu1a = wout.bsubumns(mn, j_f + 1) / sqrt_s_half_outer;
             t2a = ohs * (bu1a - bu0a) * sqrt_s_full +
@@ -6169,7 +6090,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             t3a = ohs * (bv1a - bv0a) * sqrt_s_full +
                   0.25 * (bv0a + bv1a) / sqrt_s_full;
           } else {
-            t1a = 0.5 * (wout.bsubsmnc(mn, j_f + 1) + wout.bsubsmnc(mn, j_f));
             t2a = ohs * (wout.bsubumns(mn, j_f + 1) - wout.bsubumns(mn, j_f));
             t3a = ohs * (wout.bsubvmns(mn, j_f + 1) - wout.bsubvmns(mn, j_f));
           }
