@@ -1036,6 +1036,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
+      .def_readwrite("fixed_boundary_without_mgrid",
+                     &VmecINDATA::fixed_boundary_without_mgrid)
 
       // initial guess for magnetic axis
       // disallow re-assignment of the whole vector (to preserve sizes

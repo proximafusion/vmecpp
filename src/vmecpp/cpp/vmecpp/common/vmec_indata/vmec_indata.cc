@@ -336,6 +336,7 @@ VmecINDATA::VmecINDATA() {
   lbsubs = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
+  fixed_boundary_without_mgrid = false;
   lgiveup = false;
   fgiveup = 30.0;
 
@@ -469,6 +470,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
+  WriteH5Dataset(fixed_boundary_without_mgrid,
+                 "/indata/fixed_boundary_without_mgrid", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
   WriteH5Dataset(fgiveup, "/indata/fgiveup", file);
 
@@ -604,6 +607,12 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/return_outputs_even_if_not_converged", from_file);
   } else {
     m_indata.return_outputs_even_if_not_converged = false;
+  }
+  if (from_file.nameExists("/indata/fixed_boundary_without_mgrid")) {
+    ReadH5Dataset(m_indata.fixed_boundary_without_mgrid,
+                  "/indata/fixed_boundary_without_mgrid", from_file);
+  } else {
+    m_indata.fixed_boundary_without_mgrid = false;
   }
   if (from_file.nameExists("/indata/lgiveup")) {
     ReadH5Dataset(m_indata.lgiveup, "/indata/lgiveup", from_file);
@@ -1146,6 +1155,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         maybe_return_outputs_even_if_not_converged->value();
   }
 
+  auto maybe_fixed_boundary_without_mgrid =
+      JsonReadBool(j, "fixed_boundary_without_mgrid");
+  if (!maybe_fixed_boundary_without_mgrid.ok()) {
+    return maybe_fixed_boundary_without_mgrid.status();
+  }
+  if (maybe_fixed_boundary_without_mgrid->has_value()) {
+    vmec_indata.fixed_boundary_without_mgrid =
+        maybe_fixed_boundary_without_mgrid->value();
+  }
+
   auto maybe_lgiveup = JsonReadBool(j, "lgiveup");
   if (!maybe_lgiveup.ok()) {
     return maybe_lgiveup.status();
@@ -1473,6 +1492,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
+  output["fixed_boundary_without_mgrid"] = fixed_boundary_without_mgrid;
   output["lgiveup"] = lgiveup;
   output["fgiveup"] = fgiveup;
 

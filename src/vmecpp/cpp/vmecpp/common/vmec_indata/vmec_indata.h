@@ -255,6 +255,11 @@ class VmecINDATA {
   // was in when it gave up, and can be arbitrarily unphysical.
   bool return_outputs_even_if_not_converged;
 
+  // If true, a free-boundary input whose mgrid file is "NONE" or cannot be
+  // found runs as a fixed-boundary one, as Fortran VMEC does, instead of
+  // failing.
+  bool fixed_boundary_without_mgrid;
+
   // Abandon the whole multigrid sequence when a step ends with any residual
   // still above fgiveup times its tolerance, rather than carrying a state that
   // far out onto a finer grid. Off by default.

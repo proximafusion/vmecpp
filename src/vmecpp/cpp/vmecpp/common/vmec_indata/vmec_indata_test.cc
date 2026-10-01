@@ -925,6 +925,8 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);
+  EXPECT_EQ(copy.fixed_boundary_without_mgrid,
+            indata.fixed_boundary_without_mgrid);
   EXPECT_EQ(copy.raxis_c, indata.raxis_c);
   EXPECT_EQ(copy.zaxis_s, indata.zaxis_s);
   EXPECT_EQ(copy.raxis_s, indata.raxis_s);

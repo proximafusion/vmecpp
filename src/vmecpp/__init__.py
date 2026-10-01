@@ -540,6 +540,15 @@ class VmecInput(BaseModelWithNumpy):
     any physical quantity in the output.
     """
 
+    fixed_boundary_without_mgrid: bool = False
+    """If true, a free-boundary input whose ``mgrid_file`` is ``"NONE"`` or cannot be
+    found runs as a fixed-boundary one, as Fortran VMEC does, with a warning instead of
+    an error.
+
+    The wout file then reports ``lfreeb`` as false. A response table passed to
+    :func:`run` as ``magnetic_field`` takes the place of the mgrid file.
+    """
+
     raxis_c: jt.Float[np.ndarray, "ntor_plus_1"] = pydantic.Field(
         default_factory=lambda: np.array([0.0])
     )

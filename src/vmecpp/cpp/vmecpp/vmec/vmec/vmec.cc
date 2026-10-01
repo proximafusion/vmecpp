@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <numbers>
@@ -173,13 +174,30 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
         *max_threads));
   }
 
-  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+  // Fortran VMEC runs a free-boundary input as a fixed-boundary one when its
+  // mgrid file is "NONE" or cannot be found; fixed_boundary_without_mgrid opts
+  // into that.
+  VmecINDATA run_indata = indata;
+  if (indata.lfreeb && indata.fixed_boundary_without_mgrid &&
+      magnetic_response_table == nullptr &&
+      (indata.mgrid_file == "NONE" ||
+       !std::filesystem::exists(indata.mgrid_file))) {
+    run_indata.lfreeb = false;
+    if (verbose != OutputMode::kSilent) {
+      std::cout << absl::StrFormat(
+          "WARNING: mgrid file '%s' not found, running as fixed-boundary "
+          "since fixed_boundary_without_mgrid is set.\n",
+          indata.mgrid_file);
+    }
+  }
+
+  auto v = std::make_unique<Vmec>(run_indata, max_threads, verbose,
                                   std::move(interrupt_callback),
                                   std::move(iteration_callback));
 
   // This part of Vmec initialization requires Status handling, and is therefore
   // in this factory method instead of the constructor.
-  if (indata.lfreeb) {
+  if (run_indata.lfreeb) {
     absl::Status s{};
     if (magnetic_response_table == nullptr) {
       s = v->mgrid_.LoadFile(indata.mgrid_file, indata.extcur);
