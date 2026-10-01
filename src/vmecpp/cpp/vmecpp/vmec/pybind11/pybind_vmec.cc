@@ -1086,6 +1086,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("enable_force_source", &VmecINDATA::enable_force_source)
       .def_readwrite("lambda_preconditioner_scale",
                      &VmecINDATA::lambda_preconditioner_scale)
+      .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
+      .def_readwrite("backup_evaluated_state",
+                     &VmecINDATA::backup_evaluated_state)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
@@ -1528,7 +1531,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubumnc", &vmecpp::WOutFileContents::bsubumnc)
       .def_readwrite("bsubvmnc", &vmecpp::WOutFileContents::bsubvmnc)
       .def_readwrite("bsubsmns", &vmecpp::WOutFileContents::bsubsmns)
-      .def_readwrite("bsubsmns_full", &vmecpp::WOutFileContents::bsubsmns_full)
       .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
       .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
       //
@@ -1547,7 +1549,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubumns", &vmecpp::WOutFileContents::bsubumns)
       .def_readwrite("bsubvmns", &vmecpp::WOutFileContents::bsubvmns)
       .def_readwrite("bsubsmnc", &vmecpp::WOutFileContents::bsubsmnc)
-      .def_readwrite("bsubsmnc_full", &vmecpp::WOutFileContents::bsubsmnc_full)
       .def_readwrite("bsupumns", &vmecpp::WOutFileContents::bsupumns)
       .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns)
       //

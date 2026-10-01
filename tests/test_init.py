@@ -310,7 +310,26 @@ _MISSING_FORTRAN_VARIABLES = [
 in wout files produced by VMEC++."""
 
 
-def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
+def _to_8_52_reference(varname, actual, desired, xm_nyq):
+    """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
+
+    VMEC++ writes B_s on the full grid.
+    """
+    if varname in ("bsubsmns", "bsubsmnc"):
+        # the 8.52 half grid averaged to the interior full-grid surfaces
+        return actual[1:-1], 0.5 * (desired[1:-1] + desired[2:])
+    if varname in ("currumnc", "currvmnc", "currumns", "currvmns"):
+        # odd m use the full-grid B_s instead of its sqrt(s)-weighted average
+        even = xm_nyq % 2 == 0
+        return actual[:, even], desired[:, even]
+    return actual, desired
+
+
+def test_vmecwout_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    # The reference restarts from the advanced state.
+    vmec_input.backup_evaluated_state = False
+    cma_output = vmecpp.run(vmec_input, verbose=False)
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
 
@@ -372,6 +391,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -395,6 +417,8 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
 )
 def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     if indata.lfreeb:
         indata.mgrid_file = str(
             REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
@@ -461,6 +485,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -469,6 +496,18 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             atol=atol,
             equal_nan=True,
         )
+
+
+def test_run_reports_the_spectral_width_of_the_solver():
+    """vmecpp.run returns the spectral width the C++ solver computes."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_output = _vmecpp.run(
+        vmec_input._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+    )
+    np.testing.assert_array_equal(output.wout.specw, cpp_output.wout.specw)
 
 
 def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
@@ -800,6 +839,61 @@ def test_raise_invalid_threadcount():
         vmecpp.run(vmec_input, max_threads=-1)
     with pytest.raises(RuntimeError):
         vmecpp.run(vmec_input, max_threads=0)
+
+
+def test_run_under_an_openmp_thread_limit():
+    """Runs under OMP_THREAD_LIMIT=2 get fewer threads than they request.
+
+    The fixed-boundary run requests four radial threads and gets two, which makes it the
+    run with two threads. The free-boundary run requests two radial threads with a
+    nested vacuum team of two, which the limit leaves one thread.
+    """
+    script = f"""\
+from pathlib import Path
+
+import vmecpp
+
+data = Path({str(TEST_DATA_DIR)!r})
+fixed = vmecpp.VmecInput.from_file(data / "solovev.json")
+print("fixed", repr(vmecpp.run(fixed, max_threads=4, verbose=False).wout.volume))
+grid = vmecpp.MakegridParameters.from_file(data / "makegrid_parameters_cth_like.json")
+grid.number_of_r_grid_points = 31
+grid.number_of_phi_grid_points = 36
+grid.number_of_z_grid_points = 20
+field = vmecpp.MagneticFieldResponseTable.from_coils_file(data / "coils.cth_like", grid)
+free = vmecpp.VmecInput.from_file(data / "cth_like_free_bdy.json")
+print("free", repr(vmecpp.run(free, field, max_threads=2, verbose=False).wout.volume))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "OMP_THREAD_LIMIT": "2"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    volumes = {}
+    for line in result.stdout.splitlines():
+        words = line.split()
+        if len(words) == 2 and words[0] in ("fixed", "free"):
+            volumes[words[0]] = float(words[1])
+
+    fixed = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    two_threads = vmecpp.run(fixed, max_threads=2, verbose=False)
+    assert volumes["fixed"] == two_threads.wout.volume
+
+    grid = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    grid.number_of_r_grid_points = 31
+    grid.number_of_phi_grid_points = 36
+    grid.number_of_z_grid_points = 20
+    field = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", grid
+    )
+    free = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    two_vacuum_threads = vmecpp.run(free, field, max_threads=2, verbose=False)
+    assert volumes["free"] == pytest.approx(two_vacuum_threads.wout.volume, rel=1e-10)
 
 
 def test_vmec_input_validation():
