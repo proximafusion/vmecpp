@@ -1270,8 +1270,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // minimum after 10 steps.
       const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
       if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
-        RestartIteration(fc_.delt0r, thread_id,
-                         /*backup_evaluated_state=*/true);
+        RestartIteration(fc_.delt0r, thread_id, backup_evaluated_state_);
       } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
                                            fsq_invariant > 1.0e4 * fc_.res1)) {
 #ifdef _OPENMP
@@ -1282,8 +1281,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
-      RestartIteration(fc_.delt0r, thread_id,
-                       /*backup_evaluated_state=*/true);
+      RestartIteration(fc_.delt0r, thread_id, backup_evaluated_state_);
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
 

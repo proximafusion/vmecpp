@@ -78,6 +78,8 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
   ASSERT_TRUE(maybe_vmec.ok());
   Vmec& vmec = **maybe_vmec;
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
 
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;

@@ -59,6 +59,8 @@ TEST_P(InputsToNestorCallTest, CheckInputsToNestorCall) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FourierBasisFastToroidal fourier_basis(&s);
     const FlowControl& fc = vmec.fc_;
@@ -161,6 +163,8 @@ TEST_P(BsqVacTest, CheckBsqVac) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;

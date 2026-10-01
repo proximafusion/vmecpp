@@ -91,6 +91,8 @@ TEST_P(PrintoutTest, CheckPrintout) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
@@ -206,6 +208,8 @@ TEST_P(EvolveTest, CheckEvolve) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -340,6 +344,8 @@ TEST_P(MultigridResultTest, CheckMultigridResult) {
             : data_source_.multigrid_tolerances.at(multi_grid_step - 1);
 
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -440,6 +446,8 @@ TEST_P(InterpTest, CheckInterp) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 

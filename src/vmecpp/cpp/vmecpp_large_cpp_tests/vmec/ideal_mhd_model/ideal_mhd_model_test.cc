@@ -401,6 +401,8 @@ void CheckTransposeIdentities(const std::string& identifier, bool lthreed) {
       VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
   Vmec vmec(*vmec_indata, 1, OutputMode::kSilent);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   ASSERT_EQ(vmec.s_.lthreed, lthreed);
   const absl::StatusOr<bool> initialized =
       vmec.run(VmecCheckpoint::FOURIER_GEOMETRY_TO_START_WITH, 1);
@@ -459,6 +461,8 @@ TEST_P(SpectralConstraintTest, CheckSpectralConstraint) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
 
   bool reached_checkpoint =
@@ -519,6 +523,8 @@ TEST_P(FourierGeometryToStartWithTest, CheckFourierGeometryToStartWith) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -601,6 +607,8 @@ TEST_P(InverseFourierTransformGeometryTest,
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -763,6 +771,8 @@ TEST_P(JacobianTest, CheckJacobian) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -853,6 +863,8 @@ TEST_P(MetricTest, CheckMetric) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -940,6 +952,8 @@ TEST_P(VolumeTest, CheckVolume) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
 
@@ -1009,6 +1023,8 @@ TEST_P(ContravariantMagneticFieldTest, CheckContravariantMagneticField) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1147,6 +1163,8 @@ TEST_P(CovariantMagneticFieldTest, CheckCovariantMagneticField) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1222,6 +1240,8 @@ TEST_P(TotalPressureAndEnergiesTest, CheckTotalPressureAndEnergies) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
@@ -1304,6 +1324,8 @@ TEST_P(RadialForceBalanceTest, CheckRadialForceBalance) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
@@ -1395,6 +1417,8 @@ TEST_P(HybridLambdaForceTest, CheckHybridLambdaForce) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
@@ -1522,6 +1546,8 @@ TEST_P(UpdateRadialPreconditionerTest, CheckUpdateRadialPreconditioner) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1713,6 +1739,8 @@ TEST_P(ForceNormsTest, CheckForceNorms) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const HandoverStorage& h = vmec.h_;
     const FlowControl& fc = vmec.fc_;
@@ -1803,6 +1831,8 @@ TEST_P(ConstraintForceMultiplierTest, CheckConstraintForceMultiplier) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
@@ -1877,6 +1907,8 @@ TEST_P(RBsqTest, CheckRBsq) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1942,6 +1974,8 @@ TEST_P(AliasTest, CheckAlias) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2063,6 +2097,8 @@ TEST_P(RealspaceForcesTest, CheckRealspaceForces) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2172,6 +2208,8 @@ TEST_P(ForwardTransformForcesTest, CheckForwardTransformForces) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2299,6 +2337,8 @@ TEST_P(PhysicalForcesTest, CheckPhysicalForces) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2385,6 +2425,8 @@ TEST_P(InvariantResidualsTest, CheckInvariantResiduals) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
@@ -2448,6 +2490,8 @@ TEST_P(ApplyM1PreconditionerTest, CheckApplyM1Preconditioner) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2530,6 +2574,8 @@ TEST_P(AssembleRZPreconditionerTest, CheckAssembleRZPreconditioner) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2635,6 +2681,8 @@ TEST_P(ApplyPreconditionerTest, CheckApplyPreconditioner) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2812,6 +2860,8 @@ TEST_P(PreconditionedResidualsTest, CheckPreconditionedResiduals) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
+    // The reference restarts from the advanced state.
+    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =

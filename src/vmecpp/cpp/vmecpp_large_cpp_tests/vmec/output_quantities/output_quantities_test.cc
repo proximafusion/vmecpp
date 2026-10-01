@@ -74,6 +74,8 @@ TEST_P(GatherDataFromThreadsTest, CheckGatherDataFromThreads) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -137,6 +139,8 @@ TEST_P(GatherDataFromThreadsTest, CheckMatrixElementOrder) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -199,6 +203,8 @@ TEST_P(BSSRoutineOutputsTest, CheckBSSRoutineOutputs) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -291,6 +297,8 @@ TEST_P(LowpassFilterBSubsSTest, CheckLowpassFilterBSubsS) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -385,6 +393,8 @@ TEST_P(ExtrapolateBSubsSTest, CheckExtrapolateBSubsS) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -449,6 +459,8 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -577,6 +589,8 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -789,6 +803,8 @@ TEST_P(Threed1FirstTableTest, CheckThreed1FirstTable) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const FlowControl& fc = vmec.fc_;
 
   // run until convergence
@@ -919,6 +935,8 @@ TEST_P(Threed1GeometricMagneticQuantitiesTest,
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -1140,6 +1158,8 @@ TEST_P(Threed1VolumetricsTest, CheckThreed1Volumetrics) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
 
   const FlowControl& fc = vmec.fc_;
 
@@ -1218,6 +1238,8 @@ TEST_P(Threed1AxisTest, CheckThreed1Axis) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;
 
@@ -1282,6 +1304,8 @@ TEST_P(Threed1BetasTest, CheckThreed1Betas) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const FlowControl& fc = vmec.fc_;
 
   // run until convergence
@@ -1345,6 +1369,8 @@ TEST_P(Threed1ShafranovIntegralsTest, CheckThreed1ShafranovIntegrals) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const FlowControl& fc = vmec.fc_;
 
   // run until convergence
@@ -1428,6 +1454,8 @@ TEST_P(CurrentDensityTest, CheckCurrentDensityFourierCoefficients) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
 
   // run until convergence
   bool reached_checkpoint = vmec.run().value();
@@ -1501,6 +1529,8 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
   ASSERT_TRUE(vmec_indata->lfreeb);
 
   Vmec vmec(*vmec_indata);
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   const bool reached_checkpoint = vmec.run().value();
   ASSERT_FALSE(reached_checkpoint);
 
@@ -1571,6 +1601,8 @@ TEST(Threed1FreeBoundary, MatchesEducationalVmec) {
   auto maybe_vmec = Vmec::FromIndata(*indata);
   ASSERT_TRUE(maybe_vmec.ok());
   Vmec& vmec = **maybe_vmec;
+  // The reference restarts from the advanced state.
+  vmec.backup_evaluated_state_ = false;
   ASSERT_TRUE(vmec.run().ok());
 
   const std::string filename = absl::StrFormat(
