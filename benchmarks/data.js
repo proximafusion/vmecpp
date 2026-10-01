@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790863396879,
+  "lastUpdate": 1790894426054,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -23111,6 +23111,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4985465259999273,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a9d70b0e22f85fddf042fb33ac97053b89cfd914",
+          "message": "Expose backup_evaluated_state on VmecInput (#943)\n\n* original no backup state in tests\n\n* Expose backup_evaluated_state on VmecInput\n\nRestart backups hold the last evaluated state by default; the reference\nfiles restart from the advanced state, so only the tests that fail\nagainst them set backup_evaluated_state = False. A W7-X test checks that\nthe evaluated backup converges in fewer iterations to the same state.",
+          "timestamp": "2026-10-02T00:32:44+02:00",
+          "tree_id": "10ce4e6a65434ec263c37b3e1a42902bfe0a6cb1",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a9d70b0e22f85fddf042fb33ac97053b89cfd914"
+        },
+        "date": 1790894416823,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6462462082000002,
+            "range": "stddev: 0.005039935404270591",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 3.837825372666657,
+            "range": "stddev: 1.0628365940453453",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1570464089999934,
+            "range": "stddev: 0.011569825975193949",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 2.556892358333357,
+            "range": "stddev: 0.9557684902614287",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.321966749000012,
+            "range": "stddev: 0.003757124236117901",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.720728753333371,
+            "range": "stddev: 0.05764004292049115",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.7051308399999243,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.38440356499995687,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
