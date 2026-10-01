@@ -989,6 +989,20 @@ def _lambda_on_full_grid(
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
+def _half_to_full_grid_columns(coefficients: np.ndarray) -> np.ndarray:
+    """Full-grid coefficients from half-grid ones in columns 1 ..
+
+    ns - 1: interior
+    averages, axis and edge extrapolated linearly (ExtrapolateBSubS).
+    """
+    interior = 0.5 * (coefficients[:, 1:-1] + coefficients[:, 2:])
+    if interior.shape[1] < 2:
+        return np.repeat(interior, 3, axis=1)
+    axis = 2.0 * interior[:, :1] - interior[:, 1:2]
+    edge = 2.0 * interior[:, -1:] - interior[:, -2:-1]
+    return np.concatenate([axis, interior, edge], axis=1)
+
+
 class VmecWOut(BaseModelWithNumpy):
     """Python equivalent of a VMEC "wout file".
 
@@ -1979,13 +1993,9 @@ class VmecWOut(BaseModelWithNumpy):
 
         # Version 8.52 stores B_s on the half grid.
         if np.isclose(attrs["version_"], 8.52):
-            attrs["bsubsmns"] = autodiff_wout.half_to_full_grid_columns(
-                attrs["bsubsmns"]
-            )
-            if attrs["lasym__logical__"] and "bsubsmnc" in attrs:
-                attrs["bsubsmnc"] = autodiff_wout.half_to_full_grid_columns(
-                    attrs["bsubsmnc"]
-                )
+            for name in ("bsubsmns", "bsubsmnc"):
+                if attrs.get(name) is not None:
+                    attrs[name] = _half_to_full_grid_columns(attrs[name])
             attrs["version_"] = 9.0
 
         # Backwards compatibility: lrfp flag may not exist in older wout files
@@ -2820,8 +2830,6 @@ def _run_traced(
         or not isinstance(vmec_input.ntor, int),
         "magnetic_field": magnetic_field is not None,
         "restart_from": restart_from is not None,
-        # the JAX output stage computes B_s from the metric only
-        "lbsubs=True": vmec_input.lbsubs,
     }
     for name, present in unsupported.items():
         if present:
@@ -3199,8 +3207,7 @@ def run(
             iteration_callback=cpp_iteration_callback,
         )
 
-    # The JAX output stage computes B_s from the metric only, not lbsubs.
-    if _use_jax_output_stage.get() and not input.lbsubs:
+    if _use_jax_output_stage.get():
         wout = _wout_from_output_stage(input, cpp_output_quantities)
     else:
         wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)

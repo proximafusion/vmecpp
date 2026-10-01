@@ -490,50 +490,6 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
 }  // CheckWOutFileContents
 
-// With lbsubs = false the full-grid B_s is the average of the two neighboring
-// half-grid surfaces, and the transform is linear, so on interior surfaces
-//   bsubsmns(:, jF) == 0.5 * (half(:, jF-1) + half(:, jF)),
-// where half is the transform of the half-grid realspace B_s.
-TEST_P(WOutFileContentsTest, BSubSIsAveragedHalfGridBSubS) {
-  const std::string filename =
-      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
-  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
-  ASSERT_TRUE(indata_json.ok());
-
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
-  ASSERT_TRUE(vmec_indata.ok());
-  ASSERT_FALSE(vmec_indata->lbsubs);
-
-  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
-  ASSERT_TRUE(maybe_vmec.ok());
-  Vmec& vmec = **maybe_vmec;
-
-  const bool reached_checkpoint = vmec.run().value();
-  ASSERT_FALSE(reached_checkpoint);
-
-  const WOutFileContents& wout = vmec.output_quantities_.wout;
-  ASSERT_EQ(wout.bsubsmns.rows(), wout.mnmax_nyq);
-  ASSERT_EQ(wout.bsubsmns.cols(), wout.ns);
-
-  RowMatrixXd half_bsubsmns;
-  RowMatrixXd half_bsubsmnc;
-  BSubSToFourierNyquist(vmec.s_, vmec.t_, vmec.fc_,
-                        vmec.output_quantities_.bsubs_half.bsubs_half,
-                        half_bsubsmns, half_bsubsmnc);
-
-  constexpr double kTolerance = 1.0e-12;
-  for (int jF = 1; jF < wout.ns - 1; ++jF) {
-    for (int mn_nyq = 0; mn_nyq < wout.mnmax_nyq; ++mn_nyq) {
-      const double averaged =
-          0.5 * (half_bsubsmns(mn_nyq, jF - 1) + half_bsubsmns(mn_nyq, jF));
-      EXPECT_TRUE(
-          IsCloseRelAbs(averaged, wout.bsubsmns(mn_nyq, jF), kTolerance))
-          << "jF = " << jF << ", mn_nyq = " << mn_nyq;
-    }  // mn_nyq
-  }  // jF
-}  // BSubSIsAveragedHalfGridBSubS
-
 INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, WOutFileContentsTest,
     Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-7},

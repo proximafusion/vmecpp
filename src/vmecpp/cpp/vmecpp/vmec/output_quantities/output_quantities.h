@@ -1518,14 +1518,6 @@ CovariantBDerivatives LowPassFilterCovariantB(
 void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                       BSubSFull& m_bsubs_full);
 
-// Forward Nyquist transform of B_s given in realspace on each row (radial
-// surface) of bsubs: the sin(mu-nv) coefficients into m_bsubsmns and, if
-// lasym, the cos(mu-nv) coefficients into m_bsubsmnc, both of shape
-// (mnmax_nyq, bsubs.rows()).
-void BSubSToFourierNyquist(const Sizes& s, const FourierBasisFastPoloidal& t,
-                           const FlowControl& fc, const RowMatrixXd& bsubs,
-                           RowMatrixXd& m_bsubsmns, RowMatrixXd& m_bsubsmnc);
-
 // Re-compute the full-grid covariant B_s on interior surfaces (jF = 1 .. ns-2)
 // by solving the radial force-balance equation
 //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho

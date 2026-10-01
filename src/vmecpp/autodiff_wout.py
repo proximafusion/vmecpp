@@ -12,15 +12,13 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-from typing import Any, TypeVar, cast
+from typing import Any
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from vmecpp import geometry as vmec_geometry
-
-_ArrayT = TypeVar("_ArrayT", np.ndarray, jax.Array)
 
 MU_0 = 4.0e-7 * np.pi
 
@@ -351,6 +349,19 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
         [zero_surface, 0.5 * (bsubs[1:] + bsubs[:-1]), zero_surface]
     )
     _, bsubsu, bsubsv = _filter_sine_type(setup, bsubs_full)
+    if setup.lbsubs is not None:
+        bsubs_full, bsubsu, bsubsv = _bsubs_from_force_balance(
+            setup,
+            (bsubs_full, bsubsu, bsubsv),
+            bsupu * gsqrt,
+            bsupv * gsqrt,
+            gsqrt,
+            bsubu_out,
+            bsubv_out,
+            pres_h,
+            dvds_h,
+        )
+    bsubs_full = _extrapolate_both(bsubs_full[1:-1])
 
     # jxbforce: current density and flux-surface averages on the interior
     # full grid (ComputeJxBOutputFileContents).
@@ -490,9 +501,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     bsubvmnc, bsubvmns = _nyquist_half(setup, bsubv_out, cosine=True)
     bsupumnc, bsupumns = _nyquist_half(setup, bsupu, cosine=True)
     bsupvmnc, bsupvmns = _nyquist_half(setup, bsupv, cosine=True)
-    bsubsmns, bsubsmnc = _nyquist_half(setup, bsubs, cosine=False)
-    # B_s on the full grid (PutBSubSOnFullGrid, ExtrapolateBSubS).
-    bsubsmns = half_to_full_grid_columns(bsubsmns)
+    bsubsmns, bsubsmnc = _nyquist_half(setup, bsubs_full, cosine=False, half=False)
     currumnc, currvmnc = _currents(setup, bsubsmns, bsubumnc, bsubvmnc, sign=1.0)
 
     # Combined-basis coefficients of R, Z and lambda on the full grid.
@@ -524,7 +533,6 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
         assert bsubsmnc is not None
         assert bsubumns is not None
         assert bsubvmns is not None
-        bsubsmnc = half_to_full_grid_columns(bsubsmnc)
         currumns, currvmns = _currents(setup, bsubsmnc, bsubumns, bsubvmns, sign=-1.0)
         lmnc_full = _to_combined(
             setup, geometry.lambda_cc, geometry.lambda_ss, cosine=True
@@ -853,6 +861,7 @@ class _Setup:
     cos_kernel: jax.Array
     sin_kernel: jax.Array
     low_pass: dict[str, tuple[jax.Array, ...]]
+    lbsubs: tuple[np.ndarray, ...] | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -868,6 +877,7 @@ class _Sizes:
     gamma: float
     ntheta_even: int
     nzeta: int
+    lbsubs: bool = False
 
     @property
     def ntheta_reduced(self) -> int:
@@ -912,6 +922,7 @@ def _sizes(vmec_input: Any, ns: int | None = None) -> _Sizes:
         gamma=float(vmec_input.gamma),
         ntheta_even=2 * (ntheta // 2),
         nzeta=nzeta,
+        lbsubs=bool(vmec_input.lbsubs),
     )
 
 
@@ -961,7 +972,12 @@ def _kernels(sizes: _Sizes) -> dict[str, Any]:
         sizes.mnyq,
         sizes.nnyq,
     )
-    return {"cos_kernel": cos_kernel, "sin_kernel": sin_kernel, "low_pass": low_pass}
+    return {
+        "cos_kernel": cos_kernel,
+        "sin_kernel": sin_kernel,
+        "low_pass": low_pass,
+        "lbsubs": _lbsubs_basis(sizes) if sizes.lbsubs else None,
+    }
 
 
 def _make_setup(sizes: _Sizes, profiles, kernels) -> _Setup:
@@ -1026,6 +1042,7 @@ def _make_setup(sizes: _Sizes, profiles, kernels) -> _Setup:
         cos_kernel=kernels["cos_kernel"],
         sin_kernel=kernels["sin_kernel"],
         low_pass=kernels["low_pass"],
+        lbsubs=kernels["lbsubs"],
     )
 
 
@@ -1197,18 +1214,124 @@ def _filter_sine_type(setup: _Setup, field):
     )
 
 
-def _nyquist_half(setup: _Setup, field, *, cosine: bool):
-    """Nyquist-band coefficients of a half-grid field in the ``(mn, ns)`` layout.
+def _lbsubs_basis(sizes: _Sizes) -> tuple[np.ndarray, ...] | None:
+    """Collocation basis of the lbsubs solve for B_s (getbsubs.f90).
 
-    Returns the stellarator-symmetric coefficients (cos for ``cosine=True``,
-    sin otherwise) and the non-symmetric ones, ``None`` for ``lasym=False``.
+    Columns are sin(m theta) cos(n zeta) and cos(m theta) sin(n zeta) for m <= mnyq, n
+    <= nnyq in the layout of RecomputeBSubSFromRadialForceBalance, plus a pedestal
+    column for the surface average. Rows are the reduced-grid points without the
+    reflected duplicates at theta = 0, pi. Returns None where the C++ solve keeps the
+    metric B_s: lasym or a grid that does not match the Nyquist sizes.
+    """
+    mmax, nmax = sizes.mnyq, sizes.nnyq
+    if sizes.lasym or mmax + 1 != sizes.ntheta_reduced or nmax != sizes.nzeta // 2:
+        return None
+    theta, zeta = _grids(sizes)
+    columns = []
+    for m in range(mmax + 1):
+        for n in range(nmax + 1):
+            if n in (0, nmax):
+                kind = "sc" if m > 0 else "pedestal" if n == 0 else "cs"
+                columns.append((kind, m, n))
+            elif m in (0, mmax):
+                columns.append(("cs", m, n))
+            else:
+                columns += [("sc", m, n), ("cs", m, n)]
+    zeta_grid, theta_grid = np.meshgrid(zeta, theta, indexing="ij")
+    theta_grid, zeta_grid = theta_grid.ravel(), zeta_grid.ravel()
+    value, dtheta, dzeta = (np.zeros((theta_grid.size, len(columns))) for _ in "abc")
+    pedestal = np.zeros(len(columns))
+    for c, (kind, m, n) in enumerate(columns):
+        sin_m, cos_m = np.sin(m * theta_grid), np.cos(m * theta_grid)
+        sin_n, cos_n = np.sin(n * zeta_grid), np.cos(n * zeta_grid)
+        dn = n * sizes.nfp
+        if kind == "sc":
+            value[:, c], dtheta[:, c], dzeta[:, c] = (
+                sin_m * cos_n,
+                m * cos_m * cos_n,
+                -dn * sin_m * sin_n,
+            )
+        elif kind == "cs":
+            value[:, c], dtheta[:, c], dzeta[:, c] = (
+                cos_m * sin_n,
+                -m * sin_m * sin_n,
+                dn * cos_m * cos_n,
+            )
+        else:
+            pedestal[c] = 1.0
+    l_index = np.tile(np.arange(sizes.ntheta_reduced), sizes.nzeta)
+    k_index = np.repeat(np.arange(sizes.nzeta), sizes.ntheta_reduced)
+    duplicate = ((l_index == 0) | (l_index == sizes.ntheta_reduced - 1)) & (
+        k_index > sizes.nzeta // 2
+    )
+    rows = np.nonzero(~duplicate)[0]
+    assert rows.size == len(columns)
+    return rows, value, dtheta, dzeta, pedestal
+
+
+def _bsubs_from_force_balance(
+    setup: _Setup, metric, bsupu_g, bsupv_g, gsqrt, bsubu, bsubv, pres_h, dvds_h
+):
+    """Full-grid B_s and its derivatives from the radial force balance (lbsubs).
+
+    On each interior full-grid surface, sqrt(g) (B^u dB_s/du + B^v dB_s/dv) equals
+    the radial force-balance residual of the other components, with its surface
+    average removed; solved by collocation (RecomputeBSubSFromRadialForceBalance).
+    ``metric`` holds the full-grid B_s and its derivatives kept on surfaces where
+    the solve fails.
+    """
+    assert setup.lbsubs is not None
+    rows, value, dtheta, dzeta, pedestal = (jnp.asarray(a) for a in setup.lbsubs)
+    delta_s = 1.0 / (setup.ns - 1)
+    shape = (setup.ns - 2, -1)
+
+    def full(values_h):
+        return (0.5 * (values_h[1:] + values_h[:-1])).reshape(shape)
+
+    sqrtg_f, bsupu_f, bsupv_f = full(gsqrt), full(bsupu_g), full(bsupv_g)
+    dbsubu = (bsubu[1:] - bsubu[:-1]).reshape(shape)
+    dbsubv = (bsubv[1:] - bsubv[:-1]).reshape(shape)
+    brho = (bsupu_f * dbsubu + bsupv_f * dbsubv) / delta_s + (
+        jnp.diff(pres_h) / delta_s
+    )[:, None] * sqrtg_f
+    w_int = jnp.tile(jnp.asarray(setup.w_int), setup.nzeta)
+    brho00 = brho @ w_int
+    vp_f = 0.5 * (dvds_h[1:] + dvds_h[:-1])
+    brho = brho - setup.signgs * sqrtg_f * (brho00 / vp_f)[:, None]
+
+    matrix = bsupu_f[:, rows, None] * dtheta[rows] + bsupv_f[:, rows, None] * (
+        dzeta[rows] + pedestal
+    )
+    rhs = brho[:, rows]
+    # one LAPACK solve per surface; the batched CPU LU is two orders slower
+    solution = jax.lax.map(lambda system: jnp.linalg.solve(*system), (matrix, rhs))
+    residual = jnp.max(jnp.abs(jnp.einsum("jrc,jc->jr", matrix, solution) - rhs), 1)
+    scale = jnp.maximum(jnp.max(jnp.abs(rhs), axis=1), 1.0)
+    solved = jnp.all(jnp.isfinite(solution), axis=1) & (residual <= 1e-8 * scale)
+
+    grid = (setup.ns - 2, setup.nzeta, setup.ntheta_eff)
+    out = []
+    for basis, kept in zip((value, dtheta, dzeta), metric, strict=True):
+        interior = (solution @ basis.T).reshape(grid)
+        interior = jnp.where(solved[:, None, None], interior, kept[1:-1])
+        out.append(kept.at[1:-1].set(interior))
+    return tuple(out)
+
+
+def _nyquist_half(setup: _Setup, field, *, cosine: bool, half: bool = True):
+    """Nyquist-band coefficients of a field in the ``(mn, ns)`` layout.
+
+    A half-grid field (``half=True``) fills columns 1 .. ns - 1, a full-grid field
+    all columns. Returns the stellarator-symmetric coefficients (cos for
+    ``cosine=True``, sin otherwise) and the non-symmetric ones, ``None`` for
+    ``lasym=False``.
     """
     cos_kernel = jnp.asarray(setup.cos_kernel)
     sin_kernel = jnp.asarray(setup.sin_kernel)
 
     def transform(values, kernel):
         coefficients = jnp.einsum("jkl,mkl->mj", values, kernel)
-        return jnp.pad(coefficients, ((0, 0), (1, 0)))
+        return jnp.pad(coefficients, ((0, 0), (1, 0))) if half else coefficients
 
     if not setup.lasym:
         return transform(field, cos_kernel if cosine else sin_kernel), None
@@ -1530,27 +1653,11 @@ def _extrapolate_both(values_interior: jax.Array) -> jax.Array:
     value.
     """
     if values_interior.shape[0] < 2:
-        return jnp.pad(values_interior, (1, 1), mode="edge")
+        widths = [(1, 1)] + [(0, 0)] * (values_interior.ndim - 1)
+        return jnp.pad(values_interior, widths, mode="edge")
     axis = 2.0 * values_interior[0] - values_interior[1]
     edge = 2.0 * values_interior[-1] - values_interior[-2]
     return jnp.concatenate([axis[None], values_interior, edge[None]])
-
-
-def half_to_full_grid_columns(coefficients: _ArrayT) -> _ArrayT:
-    """Full-grid coefficients from half-grid ones stored in columns 1 .. ns - 1.
-
-    Interior columns average the two neighboring half-grid columns, the axis and edge
-    columns are extrapolated linearly for all modes. NumPy input gives NumPy output.
-    """
-    xp = np if isinstance(coefficients, np.ndarray) else jnp
-    interior = 0.5 * (coefficients[:, 1:-1] + coefficients[:, 2:])
-    if interior.shape[1] < 2:
-        axis = edge = interior[:, 0]
-    else:
-        axis = 2.0 * interior[:, 0] - interior[:, 1]
-        edge = 2.0 * interior[:, -1] - interior[:, -2]
-    full = xp.concatenate([axis[:, None], interior, edge[:, None]], axis=1)
-    return cast(_ArrayT, full)
 
 
 __all__ = [
@@ -1559,7 +1666,6 @@ __all__ = [
     "UNKNOWN_DIAGNOSTICS",
     "WOUT_QUANTITIES",
     "half_grid_profiles",
-    "half_to_full_grid_columns",
     "mass_profile",
     "static_fields",
     "toroidal_flux_derivative",

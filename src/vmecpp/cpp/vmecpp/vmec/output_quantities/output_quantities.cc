@@ -120,38 +120,6 @@ void HalfToFullGridColumns(vmecpp::RowMatrixXd& m_coefficients) {
   m_coefficients.col(ns - 1) =
       2.0 * m_coefficients.col(ns - 2) - m_coefficients.col(ns - 3);
 }  // HalfToFullGridColumns
-
-// t.cosmui with the Nyquist poloidal mode halved.
-std::vector<double> NyquistCosMuI(const vmecpp::Sizes& s,
-                                  const vmecpp::FourierBasisFastPoloidal& t) {
-  std::vector<double> cosmui(s.nThetaReduced * (s.mnyq2 + 1));
-  for (int ml = 0; ml < s.nThetaReduced * (s.mnyq2 + 1); ++ml) {
-    cosmui[ml] = t.cosmui[ml];
-  }
-  if (s.mnyq != 0) {
-    for (int l = 0; l < s.nThetaReduced; ++l) {
-      const int ml = s.mnyq * s.nThetaReduced + l;
-      cosmui[ml] /= 2.0;
-    }
-  }
-  return cosmui;
-}  // NyquistCosMuI
-
-// t.cosnv with the Nyquist toroidal mode halved.
-std::vector<double> NyquistCosNV(const vmecpp::Sizes& s,
-                                 const vmecpp::FourierBasisFastPoloidal& t) {
-  std::vector<double> cosnv((s.nnyq2 + 1) * s.nZeta);
-  for (int kn = 0; kn < (s.nnyq2 + 1) * s.nZeta; ++kn) {
-    cosnv[kn] = t.cosnv[kn];
-  }
-  if (s.nnyq != 0) {
-    for (int k = 0; k < s.nZeta; ++k) {
-      const int kn = k * (s.nnyq2 + 1) + s.nnyq;
-      cosnv[kn] /= 2.0;
-    }
-  }
-  return cosnv;
-}  // NyquistCosNV
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -2886,116 +2854,6 @@ void vmecpp::ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
   ExtrapolateFullGridEnds(fc.ns, s.nZnT, m_bsubs_full.bsubs_full);
 }  // ExtrapolateBSubS
 
-void vmecpp::BSubSToFourierNyquist(const Sizes& s,
-                                   const FourierBasisFastPoloidal& t,
-                                   const FlowControl& fc,
-                                   const RowMatrixXd& bsubs,
-                                   RowMatrixXd& m_bsubsmns,
-                                   RowMatrixXd& m_bsubsmnc) {
-  const int num_surfaces = static_cast<int>(bsubs.rows());
-  const std::vector<double> cosmui = NyquistCosMuI(s, t);
-  const std::vector<double> cosnv = NyquistCosNV(s, t);
-  const double tmult = 0.5;
-  const int partial_sum_size = (s.mnyq + 1) * s.nZeta;
-
-  m_bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, num_surfaces);
-  if (s.lasym) {
-    m_bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, num_surfaces);
-  }
-
-  // Two-phase separable DFT, parallelised over surfaces.
-#ifdef _OPENMP
-#pragma omp parallel num_threads(fc.max_threads())
-  {
-#endif
-    std::vector<double> Fc(partial_sum_size), Fs(partial_sum_size);
-    // Asymmetric partial sums (only populated when lasym=true).
-    std::vector<double> Fc_a, Fs_a;
-    if (s.lasym) {
-      Fc_a.resize(partial_sum_size);
-      Fs_a.resize(partial_sum_size);
-    }
-
-#ifdef _OPENMP
-#pragma omp for
-#endif
-    for (int j = 0; j < num_surfaces; ++j) {
-      // Phase 1: poloidal partial DFT
-      for (int m = 0; m <= s.mnyq; ++m) {
-        const int m_nzeta = m * s.nZeta;
-        for (int k = 0; k < s.nZeta; ++k) {
-          double fc_s = 0.0, fs_s = 0.0;
-          double fc_a = 0.0, fs_a = 0.0;
-          int k_rev = 0;
-          if (s.lasym) {
-            k_rev = (s.nZeta - k) % s.nZeta;
-          }
-          for (int l = 0; l < s.nThetaReduced; ++l) {
-            const int ml = m * s.nThetaReduced + l;
-            const int idx_kl = (j * s.nZeta + k) * s.nThetaEff + l;
-            double bs = bsubs(idx_kl);
-            if (s.lasym) {
-              // symoutput parity split for B_s: the sin(mu-nv) coefficients
-              // come from 0.5 * (F(u,v) - F(-u,-v)) and the cos(mu-nv)
-              // coefficients from 0.5 * (F(u,v) + F(-u,-v)).
-              const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
-              const int idx_kl_rev =
-                  (j * s.nZeta + k_rev) * s.nThetaEff + l_rev;
-              const double bs_rev = bsubs(idx_kl_rev);
-              const double bs_a = 0.5 * (bs + bs_rev);
-              bs = 0.5 * (bs - bs_rev);
-              fc_a += cosmui[ml] * bs_a;
-              fs_a += t.sinmui[ml] * bs_a;
-            }
-            fc_s += cosmui[ml] * bs;
-            fs_s += t.sinmui[ml] * bs;
-          }  // l
-          Fc[m_nzeta + k] = fc_s;
-          Fs[m_nzeta + k] = fs_s;
-          if (s.lasym) {
-            Fc_a[m_nzeta + k] = fc_a;
-            Fs_a[m_nzeta + k] = fs_a;
-          }
-        }  // k
-      }  // m
-
-      // Phase 2: toroidal DFT
-      for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-        const int m = t.xm_nyq[mn_nyq];
-        const int n = t.xn_nyq[mn_nyq] / s.nfp;
-        const int abs_n = std::abs(n);
-        const int sign_n = signum(n);
-        double dmult = t.mscale[m] * t.nscale[abs_n] * tmult;
-        if (m == 0 || n == 0) {
-          dmult *= 2.0;
-        }
-        const int m_nzeta = m * s.nZeta;
-
-        double acc = 0.0;
-        double acc_a = 0.0;
-        for (int k = 0; k < s.nZeta; ++k) {
-          const int kn = k * (s.nnyq2 + 1) + abs_n;
-          const int idx_mk = m_nzeta + k;
-          // sin(mu-nv) kernel: cosnv*Fs - sign_n*sinnv*Fc
-          acc += cosnv[kn] * Fs[idx_mk] - sign_n * t.sinnv[kn] * Fc[idx_mk];
-          if (s.lasym) {
-            // cos(mu-nv) kernel: cosnv*Fc + sign_n*sinnv*Fs
-            acc_a +=
-                cosnv[kn] * Fc_a[idx_mk] + sign_n * t.sinnv[kn] * Fs_a[idx_mk];
-          }
-        }  // k
-        m_bsubsmns(mn_nyq, j) = dmult * acc;
-        if (s.lasym) {
-          m_bsubsmnc(mn_nyq, j) = dmult * acc_a;
-        }
-      }  // mn_nyq
-    }  // j
-
-#ifdef _OPENMP
-  }  // omp parallel
-#endif
-}  // BSubSToFourierNyquist
-
 void vmecpp::RecomputeBSubSFromRadialForceBalance(
     const Sizes& s, const FlowControl& fc, const FourierBasisFastPoloidal& t,
     const VmecInternalResults& vmec_internal_results, BSubSFull& m_bsubs_full,
@@ -5487,8 +5345,28 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.zaxis_cs = threed1_axis.zaxis_symm;
 
   // NYQUIST FREQUENCY REQUIRES FACTOR OF 1/2
-  const std::vector<double> cosmui = NyquistCosMuI(s, t);
-  const std::vector<double> cosnv = NyquistCosNV(s, t);
+  std::vector<double> cosmui(s.nThetaReduced * (s.mnyq2 + 1));
+  for (int ml = 0; ml < s.nThetaReduced * (s.mnyq2 + 1); ++ml) {
+    cosmui[ml] = t.cosmui[ml];
+  }
+  if (s.mnyq != 0) {
+    for (int l = 0; l < s.nThetaReduced; ++l) {
+      const int ml = s.mnyq * s.nThetaReduced + l;
+      cosmui[ml] /= 2.0;
+    }
+  }
+
+  std::vector<double> cosnv((s.nnyq2 + 1) * s.nZeta);
+  for (int kn = 0; kn < (s.nnyq2 + 1) * s.nZeta; ++kn) {
+    cosnv[kn] = t.cosnv[kn];
+  }
+  if (s.nnyq != 0) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      // FIXME(eguiraud) slow loop
+      const int kn = k * (s.nnyq2 + 1) + s.nnyq;
+      cosnv[kn] /= 2.0;
+    }
+  }
 
   // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
   // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1, done
@@ -5921,10 +5799,115 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   }  // omp parallel
 #endif
 
-  // Full-grid B_s as in jxbforce of VMEC 9.0 / PARVMEC (VMEC 8.52 writes the
-  // half-grid B_s instead).
-  BSubSToFourierNyquist(s, t, fc, bsubs_full.bsubs_full, wout.bsubsmns,
-                        wout.bsubsmnc);
+  // -------------------
+  // Full-grid covariant B_s, as in jxbforce of VMEC 9.0 and PARVMEC (VMEC 8.52
+  // writes the half-grid B_s instead): the forward sine transform of bsubs_full
+  // (PutBSubSOnFullGrid or the lbsubs solve, then ExtrapolateBSubS).
+  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  if (s.lasym) {
+    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  }
+  // Use the same two-phase separable DFT as the half-grid loop above,
+  // parallelised over full-grid surfaces jF.
+#ifdef _OPENMP
+#pragma omp parallel num_threads(fc.max_threads())
+  {
+#endif
+    std::vector<double> Fc_bsubs_full(partial_sum_size),
+        Fs_bsubs_full(partial_sum_size);
+    // Asymmetric partial sums (only populated when lasym=true).
+    std::vector<double> Fc_bsubs_full_a, Fs_bsubs_full_a;
+    if (s.lasym) {
+      Fc_bsubs_full_a.resize(partial_sum_size);
+      Fs_bsubs_full_a.resize(partial_sum_size);
+    }
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
+    for (int jF = 0; jF < fc.ns; ++jF) {
+      std::fill(Fc_bsubs_full.begin(), Fc_bsubs_full.end(), 0.0);
+      std::fill(Fs_bsubs_full.begin(), Fs_bsubs_full.end(), 0.0);
+      if (s.lasym) {
+        std::fill(Fc_bsubs_full_a.begin(), Fc_bsubs_full_a.end(), 0.0);
+        std::fill(Fs_bsubs_full_a.begin(), Fs_bsubs_full_a.end(), 0.0);
+      }
+
+      // Phase 1: poloidal partial DFT
+      for (int m = 0; m <= s.mnyq; ++m) {
+        const int m_nzeta = m * s.nZeta;
+        for (int k = 0; k < s.nZeta; ++k) {
+          double fc = 0.0, fs = 0.0;
+          double fc_a = 0.0, fs_a = 0.0;
+          int k_rev = 0;
+          if (s.lasym) {
+            k_rev = (s.nZeta - k) % s.nZeta;
+          }
+          for (int l = 0; l < s.nThetaReduced; ++l) {
+            const int ml = m * s.nThetaReduced + l;
+            const int idx_kl = (jF * s.nZeta + k) * s.nThetaEff + l;
+            double bs = bsubs_full.bsubs_full(idx_kl);
+            if (s.lasym) {
+              // symoutput parity split for B_s: the sin(mu-nv) coefficients
+              // come from 0.5 * (F(u,v) - F(-u,-v)) and the cos(mu-nv)
+              // coefficients from 0.5 * (F(u,v) + F(-u,-v)).
+              const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
+              const int idx_kl_rev =
+                  (jF * s.nZeta + k_rev) * s.nThetaEff + l_rev;
+              const double bs_rev = bsubs_full.bsubs_full(idx_kl_rev);
+              const double bs_a = 0.5 * (bs + bs_rev);
+              bs = 0.5 * (bs - bs_rev);
+              fc_a += cosmui[ml] * bs_a;
+              fs_a += t.sinmui[ml] * bs_a;
+            }
+            fc += cosmui[ml] * bs;
+            fs += t.sinmui[ml] * bs;
+          }  // l
+          Fc_bsubs_full[m_nzeta + k] = fc;
+          Fs_bsubs_full[m_nzeta + k] = fs;
+          if (s.lasym) {
+            Fc_bsubs_full_a[m_nzeta + k] = fc_a;
+            Fs_bsubs_full_a[m_nzeta + k] = fs_a;
+          }
+        }  // k
+      }  // m
+
+      // Phase 2: toroidal DFT
+      for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
+        const int m = wout.xm_nyq[mn_nyq];
+        const int n = wout.xn_nyq[mn_nyq] / wout.nfp;
+        const int abs_n = std::abs(n);
+        const int sign_n = signum(n);
+        double dmult = t.mscale[m] * t.nscale[abs_n] * tmult;
+        if (m == 0 || n == 0) {
+          dmult *= 2.0;
+        }
+        const int m_nzeta = m * s.nZeta;
+
+        double acc = 0.0;
+        double acc_a = 0.0;
+        for (int k = 0; k < s.nZeta; ++k) {
+          const int kn = k * (s.nnyq2 + 1) + abs_n;
+          const int idx_mk = m_nzeta + k;
+          // sin(mu-nv) kernel: cosnv*Fs - sign_n*sinnv*Fc
+          acc += cosnv[kn] * Fs_bsubs_full[idx_mk] -
+                 sign_n * t.sinnv[kn] * Fc_bsubs_full[idx_mk];
+          if (s.lasym) {
+            // cos(mu-nv) kernel: cosnv*Fc + sign_n*sinnv*Fs
+            acc_a += cosnv[kn] * Fc_bsubs_full_a[idx_mk] +
+                     sign_n * t.sinnv[kn] * Fs_bsubs_full_a[idx_mk];
+          }
+        }  // k
+        wout.bsubsmns(mn_nyq, jF) = dmult * acc;
+        if (s.lasym) {
+          wout.bsubsmnc(mn_nyq, jF) = dmult * acc_a;
+        }
+      }  // mn_nyq
+    }  // jF
+
+#ifdef _OPENMP
+  }  // omp parallel
+#endif
 
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
