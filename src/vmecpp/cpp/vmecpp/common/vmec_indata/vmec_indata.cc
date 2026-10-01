@@ -335,6 +335,7 @@ VmecINDATA::VmecINDATA() {
   jacobian_safe_step = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;
+  backup_evaluated_state = true;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
@@ -469,6 +470,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
+  WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
+                 file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
@@ -601,6 +604,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
     ReadH5Dataset(m_indata.lbsubs, "/indata/lbsubs", from_file);
   } else {
     m_indata.lbsubs = false;
+  }
+
+  if (H5Lexists(from_file.getId(), "/indata/backup_evaluated_state", 0) == 1) {
+    ReadH5Dataset(m_indata.backup_evaluated_state,
+                  "/indata/backup_evaluated_state", from_file);
+  } else {
+    m_indata.backup_evaluated_state = true;
   }
 
   // Legacy way of checking for dataset existence
@@ -1136,6 +1146,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lbsubs = maybe_lbsubs->value();
   }
 
+  auto maybe_backup_evaluated_state = JsonReadBool(j, "backup_evaluated_state");
+  if (!maybe_backup_evaluated_state.ok()) {
+    return maybe_backup_evaluated_state.status();
+  }
+  if (maybe_backup_evaluated_state->has_value()) {
+    vmec_indata.backup_evaluated_state = maybe_backup_evaluated_state->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1485,6 +1503,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["jacobian_safe_step"] = jacobian_safe_step;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lbsubs"] = lbsubs;
+  output["backup_evaluated_state"] = backup_evaluated_state;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;

@@ -536,6 +536,10 @@ class VmecInput(BaseModelWithNumpy):
     """If true, recompute the full-grid covariant B_s by solving radial force balance
     (lbsubs flag in Fortran VMEC)."""
 
+    backup_evaluated_state: bool = True
+    """If true, restart backups hold the state of the last force evaluation; if false,
+    they hold the advanced state, as in educational_VMEC and the reference files."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.
@@ -1336,13 +1340,7 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
-    :math:`B_{s}` on the half-grid, as written by VMEC 8.52.
-
-    Unlike the other half-grid quantities, the first column is not zero but
-    ``2 * bsubsmns[:, 1] - bsubsmns[:, 2]``. Fortran VMEC 9.0 and later write the
-    full-grid :math:`B_{s}` here instead; a wout file from those versions, loaded with
-    ``from_wout_file``, carries that full-grid array.
-    """
+    :math:`B_{s}` on the full-grid; Fortran VMEC 8.52 writes the half-grid array."""
 
     bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
@@ -1423,7 +1421,7 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     """Fourier coefficients (cos) of the covariant magnetic field component
-    :math:`B_{s}` on the full- grid; non-stellarator-symmetric."""
+    :math:`B_{s}` on the full-grid; non-stellarator-symmetric."""
 
     bsupumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
@@ -2750,12 +2748,12 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
 def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
     """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
 
-    Input echoes, solver diagnostics and the free-boundary vacuum potential come from
-    the C++ run; the mass profile too, so that every profile type is covered, and the
-    prescribed iota or, with ncurr = 1, the toroidal current profile. The flux
-    increments of the geometry reproduce iota only to roundoff that the cumulative sums
-    amplify; solving chi' from the enclosed current as the solver does keeps <B_u> at
-    the prescribed current to roundoff.
+    Input echoes, solver diagnostics such as the spectral width and the free-boundary
+    vacuum potential come from the C++ run; the mass profile too, so that every profile
+    type is covered, and the prescribed iota or, with ncurr = 1, the toroidal current
+    profile. The flux increments of the geometry reproduce iota only to roundoff that
+    the cumulative sums amplify; solving chi' from the enclosed current as the solver
+    does keeps <B_u> at the prescribed current to roundoff.
     """
     wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     if vmec_input.ncurr == 1:
@@ -2772,6 +2770,8 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
     # writable NumPy arrays and Python floats, as the C++ wout provides
     update = {}
     for name, value in quantities.items():
+        if name == "specw":
+            continue
         array = None if value is None else np.array(value)
         update[name] = array.item() if array is not None and array.ndim == 0 else array
     return wout.model_copy(update=update)

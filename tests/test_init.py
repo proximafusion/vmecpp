@@ -310,7 +310,26 @@ _MISSING_FORTRAN_VARIABLES = [
 in wout files produced by VMEC++."""
 
 
-def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
+def _to_8_52_reference(varname, actual, desired, xm_nyq):
+    """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
+
+    VMEC++ writes B_s on the full grid.
+    """
+    if varname in ("bsubsmns", "bsubsmnc"):
+        # the 8.52 half grid averaged to the interior full-grid surfaces
+        return actual[1:-1], 0.5 * (desired[1:-1] + desired[2:])
+    if varname in ("currumnc", "currvmnc", "currumns", "currvmns"):
+        # odd m use the full-grid B_s instead of its sqrt(s)-weighted average
+        even = xm_nyq % 2 == 0
+        return actual[:, even], desired[:, even]
+    return actual, desired
+
+
+def test_vmecwout_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    # The reference restarts from the advanced state.
+    vmec_input.backup_evaluated_state = False
+    cma_output = vmecpp.run(vmec_input, verbose=False)
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
 
@@ -372,6 +391,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -395,6 +417,8 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
 )
 def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     if indata.lfreeb:
         indata.mgrid_file = str(
             REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
@@ -461,6 +485,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -469,6 +496,18 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             atol=atol,
             equal_nan=True,
         )
+
+
+def test_run_reports_the_spectral_width_of_the_solver():
+    """vmecpp.run returns the spectral width the C++ solver computes."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_output = _vmecpp.run(
+        vmec_input._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+    )
+    np.testing.assert_array_equal(output.wout.specw, cpp_output.wout.specw)
 
 
 def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
