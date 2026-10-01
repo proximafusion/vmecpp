@@ -322,9 +322,6 @@ class Vmec {
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
   // decomposed_x_ as of the last valid force evaluation.
   std::vector<std::unique_ptr<FourierGeometry>> last_evaluated_x_;
-  // Restart backups hold last_evaluated_x_; false backs up the advanced
-  // decomposed_x_ as educational_VMEC does.
-  bool backup_evaluated_state_ = true;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_;
   std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
   std::vector<std::unique_ptr<FourierForces>> physical_f_;

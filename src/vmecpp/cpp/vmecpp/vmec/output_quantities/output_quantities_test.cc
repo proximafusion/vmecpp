@@ -71,15 +71,14 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
   ASSERT_TRUE(maybe_vmec.ok());
   Vmec& vmec = **maybe_vmec;
-  // The reference restarts from the advanced state.
-  vmec.backup_evaluated_state_ = false;
 
   const Sizes& s = vmec.s_;
   const FlowControl& fc = vmec.fc_;

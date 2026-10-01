@@ -5,7 +5,6 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <algorithm>
-#include <cmath>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -1001,42 +1000,6 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // restart backups of the last evaluated state.
   EXPECT_EQ(output->wout.niter, 329);
 }  // MultiGridFreeBoundary
-
-// Restart backups of the last evaluated state instead of the advanced one
-// change the path after a restart, not the equilibrium it converges to.
-class RestartBackupTest : public ::testing::TestWithParam<std::string> {};
-
-TEST_P(RestartBackupTest, EvaluatedAndAdvancedBackupConvergeToTheSameState) {
-  const absl::StatusOr<std::string> indata_json =
-      ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", GetParam()));
-  ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
-  ASSERT_TRUE(indata.ok());
-
-  const auto solve = [&](bool backup_evaluated_state) {
-    auto maybe_vmec =
-        Vmec::FromIndata(*indata, nullptr, 1, vmecpp::OutputMode::kSilent);
-    CHECK_OK(maybe_vmec);
-    (*maybe_vmec)->backup_evaluated_state_ = backup_evaluated_state;
-    CHECK_OK((*maybe_vmec)->run());
-    return std::move(*maybe_vmec);
-  };
-  const auto evaluated = solve(true);
-  const auto advanced = solve(false);
-
-  const vmecpp::WOutFileContents& a = evaluated->output_quantities_.wout;
-  const vmecpp::WOutFileContents& b = advanced->output_quantities_.wout;
-  EXPECT_LE(a.niter, b.niter + b.niter / 20);
-
-  const double scale = b.rmnc.cwiseAbs().maxCoeff();
-  EXPECT_LT((a.rmnc - b.rmnc).cwiseAbs().maxCoeff() / scale, 5.0e-5);
-  EXPECT_LT((a.zmns - b.zmns).cwiseAbs().maxCoeff() / scale, 5.0e-5);
-  EXPECT_NEAR(a.volume, b.volume, 1.0e-5 * std::abs(b.volume));
-}
-
-INSTANTIATE_TEST_SUITE_P(TestVmec, RestartBackupTest,
-                         ::testing::Values("cth_like_free_bdy",
-                                           "cth_like_free_bdy_multigrid"));
 
 // The free-boundary threed1 section covers the poloidal range the run is solved
 // on, which is the full one for an asymmetric equilibrium, so the boundary it

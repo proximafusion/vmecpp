@@ -401,8 +401,6 @@ void CheckTransposeIdentities(const std::string& identifier, bool lthreed) {
       VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
   Vmec vmec(*vmec_indata, 1, OutputMode::kSilent);
-  // The reference restarts from the advanced state.
-  vmec.backup_evaluated_state_ = false;
   ASSERT_EQ(vmec.s_.lthreed, lthreed);
   const absl::StatusOr<bool> initialized =
       vmec.run(VmecCheckpoint::FOURIER_GEOMETRY_TO_START_WITH, 1);
@@ -461,8 +459,6 @@ TEST_P(SpectralConstraintTest, CheckSpectralConstraint) {
   ASSERT_TRUE(vmec_indata.ok());
 
   Vmec vmec(*vmec_indata);
-  // The reference restarts from the advanced state.
-  vmec.backup_evaluated_state_ = false;
   const Sizes& s = vmec.s_;
 
   bool reached_checkpoint =
@@ -517,14 +513,13 @@ TEST_P(FourierGeometryToStartWithTest, CheckFourierGeometryToStartWith) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -601,14 +596,13 @@ TEST_P(InverseFourierTransformGeometryTest,
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -765,14 +759,13 @@ TEST_P(JacobianTest, CheckJacobian) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -857,14 +850,13 @@ TEST_P(MetricTest, CheckMetric) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -946,14 +938,13 @@ TEST_P(VolumeTest, CheckVolume) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
 
@@ -1017,14 +1008,13 @@ TEST_P(ContravariantMagneticFieldTest, CheckContravariantMagneticField) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1157,14 +1147,13 @@ TEST_P(CovariantMagneticFieldTest, CheckCovariantMagneticField) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1234,14 +1223,13 @@ TEST_P(TotalPressureAndEnergiesTest, CheckTotalPressureAndEnergies) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
@@ -1318,14 +1306,13 @@ TEST_P(RadialForceBalanceTest, CheckRadialForceBalance) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
@@ -1411,14 +1398,13 @@ TEST_P(HybridLambdaForceTest, CheckHybridLambdaForce) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
     const HandoverStorage& h = vmec.h_;
@@ -1546,8 +1532,6 @@ TEST_P(UpdateRadialPreconditionerTest, CheckUpdateRadialPreconditioner) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1739,8 +1723,6 @@ TEST_P(ForceNormsTest, CheckForceNorms) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const HandoverStorage& h = vmec.h_;
     const FlowControl& fc = vmec.fc_;
@@ -1831,8 +1813,6 @@ TEST_P(ConstraintForceMultiplierTest, CheckConstraintForceMultiplier) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
@@ -1901,14 +1881,13 @@ TEST_P(RBsqTest, CheckRBsq) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -1968,14 +1947,13 @@ TEST_P(AliasTest, CheckAlias) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2091,14 +2069,13 @@ TEST_P(RealspaceForcesTest, CheckRealspaceForces) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2202,14 +2179,13 @@ TEST_P(ForwardTransformForcesTest, CheckForwardTransformForces) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2331,14 +2307,13 @@ TEST_P(PhysicalForcesTest, CheckPhysicalForces) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2419,14 +2394,13 @@ TEST_P(InvariantResidualsTest, CheckInvariantResiduals) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
@@ -2484,14 +2458,13 @@ TEST_P(ApplyM1PreconditionerTest, CheckApplyM1Preconditioner) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2574,8 +2547,6 @@ TEST_P(AssembleRZPreconditionerTest, CheckAssembleRZPreconditioner) {
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2675,14 +2646,13 @@ TEST_P(ApplyPreconditionerTest, CheckApplyPreconditioner) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const Sizes& s = vmec.s_;
     const FlowControl& fc = vmec.fc_;
 
@@ -2854,14 +2824,13 @@ TEST_P(PreconditionedResidualsTest, CheckPreconditionedResiduals) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   for (int number_of_iterations : data_source_.iter2_to_test) {
     Vmec vmec(*vmec_indata);
-    // The reference restarts from the advanced state.
-    vmec.backup_evaluated_state_ = false;
     const FlowControl& fc = vmec.fc_;
 
     bool reached_checkpoint =
