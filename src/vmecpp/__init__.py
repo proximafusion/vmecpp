@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import dataclasses
 import enum
 import json
@@ -2722,14 +2721,6 @@ for _model_type in (
     _register_model_pytree(_model_type, own_model_fields(_model_type))
 
 
-_use_jax_output_stage = contextvars.ContextVar("_use_jax_output_stage", default=True)
-"""Whether run() computes the wout physics fields with the JAX output stage.
-
-The CLI turns it off: a one-shot process would pay the stage's compilation on
-every run, and nothing there differentiates the result.
-"""
-
-
 def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
     """The VmecOutput members besides input and wout, from a C++ run."""
     return {
@@ -3207,10 +3198,7 @@ def run(
             iteration_callback=cpp_iteration_callback,
         )
 
-    if _use_jax_output_stage.get():
-        wout = _wout_from_output_stage(input, cpp_output_quantities)
-    else:
-        wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
+    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     return VmecOutput(
         input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
     )
