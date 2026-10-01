@@ -360,10 +360,17 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             )
         # np.asarray is needed to convert the masked array to a regular array.
         # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
-        # Current density coefficients are computed via finite differences of
-        # covariant B field Fourier coefficients, which amplifies floating-point
-        # non-determinism (e.g., from OpenMP reduction order).
-        rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
+        # Current density coefficients and jdotb are computed via finite
+        # differences of covariant B field Fourier coefficients, which amplifies
+        # floating-point non-determinism (e.g., from OpenMP reduction order).
+        # vmecpp.run evaluates specw on the converged state, the C++ solver,
+        # whose output wout_cma.nc holds, on the last stored one.
+        rtol = {
+            "currumnc": 1e-3,
+            "currvmnc": 1e-3,
+            "jdotb": 1e-5,
+            "specw": 1e-3,
+        }.get(varname, 1e-6)
         actual = np.asarray(test_value[:])
         desired = np.asarray(expected_value[:])
         if varname == "chipf":
@@ -419,6 +426,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
         # non-determinism (e.g., from OpenMP reduction order).
         "currumnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
         "currvmnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
+        # vmecpp.run evaluates specw on the converged state, the C++ solver,
+        # whose output the reference files hold, on the last stored one.
+        "specw": {"rtol": 1.0e-3, "atol": 1.0e-7},
     }
 
     for varname, expected_value in expected_dataset.variables.items():

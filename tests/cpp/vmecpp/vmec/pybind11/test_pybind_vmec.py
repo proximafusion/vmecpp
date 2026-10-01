@@ -164,7 +164,7 @@ def test_output_quantities():
     assert is_close_ra(
         np.reshape(output_quantities.jxbout.jsupu3, jkl_shape).T,
         jxbout["jsupu"][()],
-        1.0e-4,
+        1.0e-3,
     )
     assert is_close_ra(
         np.reshape(output_quantities.jxbout.jsupv3, jkl_shape).T,

@@ -51,7 +51,9 @@ misbehaves, the velocity `decomposed_v_` is zeroed and the state is rolled back 
 
 - `BAD_JACOBIAN` (overlapping flux surfaces): `delt0r *= 0.9`, increment `fc_.ijacob`.
 - `BAD_PROGRESS` (residuals not decaying): `delt0r /= 1.03`.
-- `NO_RESTART` (good path): back up the current state into `physical_x_backup_`.
+- `NO_RESTART` (good path): back up the state into `physical_x_backup_`. The stores during
+  the iteration take `last_evaluated_x_`, since `PerformTimeStep()` has already advanced
+  `decomposed_x_`; VMEC 8.52 backs up the advanced state.
 
 At a multigrid stage transition, the initial backup is taken **after**
 `InterpolateToNextMultigridStep()`, so the stage's first rollback target is the
@@ -69,6 +71,7 @@ multigrid steps proceed normally via `InterpolateToNextMultigridStep()`.
 - `decomposed_x_` / `decomposed_v_` / `decomposed_f_`: spectral position / velocity /
   (preconditioned) force.
 - `physical_x_backup_`: rollback snapshot for restarts.
+- `last_evaluated_x_`: `decomposed_x_` as of the last valid force evaluation.
 - `iter1_` / `iter2_`: branch-point and total-evaluation iteration markers.
 
 Output quantities are computed **after** convergence as a post-processing step, not during the
