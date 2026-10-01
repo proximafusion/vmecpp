@@ -26,11 +26,20 @@ class FourierGeometry : public FourierCoeffs {
   void interpFromBoundaryAndAxis(const FourierBasisFastPoloidal& t,
                                  const Boundaries& b, const RadialProfiles& p);
 
+  // Set the m=1 gauge combinations (the zmncs and, for lasym, zmncc slots
+  // that FourierCoeffs::m1Constraint couples to rmnss / rmnsc) on every
+  // owned surface to their interpFromBoundaryAndAxis value, the boundary
+  // gauge scaled by sqrt(s). Leaves all other coefficients untouched.
+  void setM1GaugeFromBoundary(const FourierBasisFastPoloidal& t,
+                              const Boundaries& b, const RadialProfiles& p);
+
   // Initialize the state of this FourierGeometry with the given Fourier
   // coefficients. If a Boundaries object is specified (defaults to nullptr; in
   // order to avoid a copy when using std::optional), the geometry of the
   // outermost flux surface (at ns-1) is taken from that Boundaries object
-  // instead of from the Fourier coefficient matrices.
+  // instead of from the Fourier coefficient matrices, and the inner surfaces
+  // are shifted by the difference between the two with the radial weights of
+  // interpFromBoundaryAndAxis.
   // This latter use case applies to fixed-boundary hot-restart operation of
   // VMEC++.
   // rmns, zmnc and lmnc_full carry the non-stellarator-symmetric half of the

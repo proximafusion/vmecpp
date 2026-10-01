@@ -15,6 +15,15 @@ using nlohmann::json;
 
 namespace json_io {
 
+absl::StatusOr<json> JsonParse(const std::string& json_text) {
+  try {
+    return json::parse(json_text);
+  } catch (const json::parse_error& parse_error) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("input is not valid JSON: %s", parse_error.what()));
+  }
+}  // JsonParse
+
 absl::StatusOr<std::optional<bool>> JsonReadBool(const json& j,
                                                  const std::string& name) {
   if (!j.contains(name)) {

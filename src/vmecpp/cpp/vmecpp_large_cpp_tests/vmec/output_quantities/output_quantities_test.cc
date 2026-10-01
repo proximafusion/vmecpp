@@ -69,9 +69,10 @@ TEST_P(GatherDataFromThreadsTest, CheckGatherDataFromThreads) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -132,9 +133,10 @@ TEST_P(GatherDataFromThreadsTest, CheckMatrixElementOrder) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -194,9 +196,10 @@ TEST_P(BSSRoutineOutputsTest, CheckBSSRoutineOutputs) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -286,9 +289,10 @@ TEST_P(LowpassFilterBSubsSTest, CheckLowpassFilterBSubsS) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -380,9 +384,10 @@ TEST_P(ExtrapolateBSubsSTest, CheckExtrapolateBSubsS) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -444,9 +449,10 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -572,9 +578,10 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -622,10 +629,10 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
     EXPECT_TRUE(IsCloseRelAbs(mercier["vpp"][jF - 1],
                               mercier_intermediate.vpp[jF], tolerance));
     EXPECT_TRUE(IsCloseRelAbs(mercier["presp"][jF - 1],
-                              mercier_intermediate.d_pressure_d_s[jF],
+                              mercier_intermediate.d_pressure_d_phi[jF],
                               tolerance));
     EXPECT_TRUE(IsCloseRelAbs(mercier["ip"][jF - 1],
-                              mercier_intermediate.d_toroidal_current_d_s[jF],
+                              mercier_intermediate.d_toroidal_current_d_phi[jF],
                               tolerance));
   }  // jF
 
@@ -681,7 +688,7 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
 
     const double vp_full = (static_cast<double>(mercier["vp_real"][jHo]) +
                             static_cast<double>(mercier["vp_real"][jHi])) /
-                           2.0;
+                           2.0 * sign_of_jacobian;
 
     // The running sum advances even on surfaces the assembly skips, and is
     // scaled by deltaS only at the end, as the assembly does.
@@ -701,9 +708,9 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
                               tolerance))
         << "toroidal_flux at jF = " << jF;
 
-    EXPECT_TRUE(IsCloseRelAbs(vp_full, mercier_file_contents.d_volume_d_s[jF],
+    EXPECT_TRUE(IsCloseRelAbs(vp_full, mercier_file_contents.d_volume_d_phi[jF],
                               tolerance))
-        << "d_volume_d_s at jF = " << jF;
+        << "d_volume_d_phi at jF = " << jF;
 
     EXPECT_TRUE(
         IsCloseRelAbs(static_cast<double>(mercier["shear"][jF - 1]) / vp_full,
@@ -724,13 +731,13 @@ TEST_P(MercierStabilityTest, CheckMercierStability) {
 
     EXPECT_TRUE(IsCloseRelAbs(
         static_cast<double>(mercier["ip"][jF - 1]) / vp_full,
-        mercier_file_contents.d_toroidal_current_d_s[jF], tolerance))
-        << "d_toroidal_current_d_s at jF = " << jF;
+        mercier_file_contents.d_toroidal_current_d_volume[jF], tolerance))
+        << "d_toroidal_current_d_volume at jF = " << jF;
 
     EXPECT_TRUE(
         IsCloseRelAbs(static_cast<double>(mercier["presp"][jF - 1]) / vp_full,
-                      mercier_file_contents.d_pressure_d_s[jF], tolerance))
-        << "d_pressure_d_s at jF = " << jF;
+                      mercier_file_contents.d_pressure_d_volume[jF], tolerance))
+        << "d_pressure_d_volume at jF = " << jF;
 
     // iota and pressure are averaged from half-grid profiles that the
     // reference does not carry, so only the averaging itself is checked.
@@ -784,9 +791,10 @@ TEST_P(Threed1FirstTableTest, CheckThreed1FirstTable) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const FlowControl& fc = vmec.fc_;
@@ -914,9 +922,10 @@ TEST_P(Threed1GeometricMagneticQuantitiesTest,
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -1135,9 +1144,10 @@ TEST_P(Threed1VolumetricsTest, CheckThreed1Volumetrics) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
 
@@ -1213,9 +1223,10 @@ TEST_P(Threed1AxisTest, CheckThreed1Axis) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const Sizes& s = vmec.s_;
@@ -1277,9 +1288,10 @@ TEST_P(Threed1BetasTest, CheckThreed1Betas) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const FlowControl& fc = vmec.fc_;
@@ -1340,9 +1352,10 @@ TEST_P(Threed1ShafranovIntegralsTest, CheckThreed1ShafranovIntegrals) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
   const FlowControl& fc = vmec.fc_;
@@ -1423,9 +1436,10 @@ TEST_P(CurrentDensityTest, CheckCurrentDensityFourierCoefficients) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   Vmec vmec(*vmec_indata);
 
@@ -1458,6 +1472,11 @@ TEST_P(CurrentDensityTest, CheckCurrentDensityFourierCoefficients) {
 
   for (int jF = 0; jF < ns; ++jF) {
     for (int mn = 0; mn < mnmax_nyq; ++mn) {
+      // Deviation from VMEC 8.52: odd m use the full-grid bsubsmns instead of
+      // the sqrt(s)-weighted average of the half-grid one.
+      if (wout.xm_nyq[mn] % 2 == 1) {
+        continue;
+      }
       // ref_currumnc[jF][mn] is Fortran ordering (ns, mnmax_nyq)
       // wout.currumnc(mn, jF) is C++ ordering (mnmax_nyq, ns)
       EXPECT_TRUE(
@@ -1495,9 +1514,10 @@ TEST(TestOutputQuantities, CheckVacuumPotential) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
   ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
   ASSERT_TRUE(vmec_indata->lfreeb);
 
   Vmec vmec(*vmec_indata);
@@ -1564,8 +1584,10 @@ TEST(Threed1FreeBoundary, MatchesEducationalVmec) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
   ASSERT_TRUE(indata_json.ok());
-  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(indata.ok());
+  // The reference restarts from the advanced state.
+  indata->backup_evaluated_state = false;
   ASSERT_TRUE(indata->lfreeb);
 
   auto maybe_vmec = Vmec::FromIndata(*indata);

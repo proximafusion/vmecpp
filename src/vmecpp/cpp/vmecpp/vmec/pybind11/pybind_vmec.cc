@@ -66,13 +66,59 @@ T &GetValueOrThrow(absl::StatusOr<T> &s) {
     // python exception types.
     // https://pybind11.readthedocs.io/en/stable/advanced/exceptions.html
     if (absl::IsInvalidArgument(s.status())) {
-      throw pybind11::attribute_error(std::string(s.status().message()));
+      throw pybind11::value_error(std::string(s.status().message()));
     } else {
       throw std::runtime_error(std::string(s.status().message()));
     }
   }
   return s.value();
 }
+
+// Adapts a Python iteration callback to vmecpp::IterationCallback: the hook
+// acquires the GIL, hands the callback a copy of the state that Python owns,
+// takes curr_h back from that copy, treats a None return as "keep going", and
+// stops the run on an exception, which Rethrow raises once the run has
+// returned. A return value that does not convert to a bool stops the run with
+// a TypeError.
+struct PythonIterationCallback {
+  py::object callable;
+  std::optional<py::error_already_set> error;
+
+  vmecpp::IterationCallback Hook() {
+    if (callable.is_none()) {
+      return nullptr;
+    }
+    return [this](vmecpp::SolverState &m_state) -> bool {
+      py::gil_scoped_acquire acquire;
+      try {
+        py::object state = py::cast(m_state, py::return_value_policy::copy);
+        py::object keep_going = callable(state);
+        m_state.curr_h = state.cast<const vmecpp::SolverState &>().curr_h;
+        if (keep_going.is_none()) {
+          return true;
+        }
+        try {
+          return py::cast<bool>(keep_going);
+        } catch (const py::cast_error &) {
+          PyErr_Format(PyExc_TypeError,
+                       "iteration_callback must return None or a bool, but "
+                       "returned an object of type %s",
+                       Py_TYPE(keep_going.ptr())->tp_name);
+          throw py::error_already_set();
+        }
+      } catch (py::error_already_set &e) {
+        error.emplace(std::move(e));
+        return false;
+      }
+    };
+  }
+
+  void Rethrow() {
+    if (error.has_value()) {
+      throw *error;
+    }
+  }
+};
 
 vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
                                             const vmecpp::VmecINDATA &indata) {
@@ -170,7 +216,8 @@ class VmecModel {
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state) {
+      const std::optional<vmecpp::HotRestartState> &initial_state,
+      bool always_fix_m1_gauge) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -179,6 +226,7 @@ class VmecModel {
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
     vmecpp::Vmec &v = *model->vmec_;
+    v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -228,9 +276,12 @@ class VmecModel {
   // lambda-constraint components. That raw gradient is what gradient-based
   // optimizers minimizing the MHD energy functional need; mhd_energy is already
   // set earlier in update(), so it is valid at the checkpoint too.
-  // The native iteration leaves the m=1 gauge free until the previous Z
-  // residual crosses its threshold. External evaluations fix it immediately so
-  // F(x) does not depend on the previously evaluated state.
+  // always_fix_m1_gauge selects the force system: with true the m=1 gauge
+  // force is zeroed (the system solve() iterates when the model's
+  // always_fix_m1_gauge property is set), with false the gauge force is
+  // kept until fsqz < 1e-6 as in the native iteration, so F(x) then also
+  // depends on the previously evaluated residual. The exact Hessian-vector
+  // products take the same flag and differentiate the same system.
   void Evaluate(int iter1, int iter2, bool precondition = true,
                 bool always_fix_m1_gauge = true) {
     bool need_restart = false;
@@ -292,6 +343,10 @@ class VmecModel {
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
+  }
+  // Back up the last state with a valid force evaluation.
+  void SaveEvaluatedBackup() const {
+    *vmec_->physical_x_backup_[0] = *vmec_->last_evaluated_x_[0];
   }
   void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
@@ -390,6 +445,11 @@ class VmecModel {
     last_full_update_nestor_ = 0;
   }
 
+  bool always_fix_m1_gauge() const { return vmec_->always_fix_m1_gauge_; }
+  void set_always_fix_m1_gauge(bool value) const {
+    vmec_->always_fix_m1_gauge_ = value;
+  }
+
   // Reference C++ inner iteration (the loop being ported), for verification.
   // Each call converges the *current* resolution ftol_array entry.
   // Exhausting the iteration budget does not raise here.
@@ -422,7 +482,7 @@ class VmecModel {
           "VmecModel.get_geometry: model is not initialized");
     }
     const vmecpp::VmecInternalResults internal = vmecpp::GatherDataFromThreads(
-        vmecpp::Vmec::kSignOfJacobian, vmec_->s_, vmec_->fc_, vmec_->constants_,
+        vmec_->indata_.signgs, vmec_->s_, vmec_->fc_, vmec_->constants_,
         vmec_->r_, vmec_->decomposed_x_, vmec_->m_, vmec_->p_);
     return vmecpp::MakeGeometry(vmec_->indata_, internal);
   }
@@ -503,6 +563,7 @@ class VmecModel {
       }
     };
 
+    const double sigma = -vmec_->indata_.signgs;
     auto add_m1_pair = [&](std::span<double> first, std::span<double> second,
                            int first_bar_block, int second_bar_block) {
       const int first_offset = first_bar_block * coefficient_size;
@@ -511,10 +572,12 @@ class VmecModel {
         for (int n = 0; n <= vmec_->s_.ntor; ++n) {
           const int index = (j * vmec_->s_.mpol + 1) * (vmec_->s_.ntor + 1) + n;
           const double scale = coefficient_scale(j, 1, n, false);
-          first[index] += scale * (coefficient_bar[first_offset + index] +
-                                   coefficient_bar[second_offset + index]);
-          second[index] += scale * (coefficient_bar[first_offset + index] -
-                                    coefficient_bar[second_offset + index]);
+          first[index] +=
+              scale * (coefficient_bar[first_offset + index] +
+                       sigma * coefficient_bar[second_offset + index]);
+          second[index] +=
+              scale * (sigma * coefficient_bar[first_offset + index] -
+                       coefficient_bar[second_offset + index]);
         }
       }
     };
@@ -542,28 +605,9 @@ class VmecModel {
     if (vmec_->indata_.ncurr != 0 && poloidal_flux_bar.size() != 0 &&
         poloidal_flux_bar.cwiseAbs().maxCoeff() != 0.0) {
 #ifdef VMECPP_ENABLE_ENZYME
-      // chi_j = sum_{k<j} c_k iotaH_k, c_k = signOfJacobian * 2 pi deltaS
-      // phipH_k (MakeGeometry's poloidal_flux recursion). iotaH_k =
-      // chipH_k / phipH_k, and for ncurr==1 chipH_k is the state-dependent
-      // prescribed-current chi' differentiated in local_force_composition.h.
-      const Eigen::VectorXd &phip_h = vmec_->p_[0]->phipH;
-      const int nHalf = vmec_->fc_.ns - 1;
-      Eigen::VectorXd chip_bar = Eigen::VectorXd::Zero(nHalf);
-      double tail = 0.0;
-      for (int j = vmec_->fc_.ns - 1; j >= 1; --j) {
-        tail += poloidal_flux_bar[j];
-        const int k = j - 1;
-        if (phip_h[k] == 0.0) {
-          throw std::runtime_error(
-              "VmecModel.geometry_state_vjp: invalid phipH for the ncurr=1 "
-              "flux cotangent");
-        }
-        const double c_k = static_cast<double>(vmecpp::Vmec::kSignOfJacobian) *
-                           2.0 * std::numbers::pi * vmec_->fc_.deltaS *
-                           phip_h[k];
-        chip_bar[k] = c_k * tail / phip_h[k];
-      }
-      result += ChipStateVjp(chip_bar);
+      // For ncurr==1 chipH_k is the state-dependent prescribed-current chi'
+      // differentiated in local_force_composition.h.
+      result += ChipStateVjp(ChipBarFromPoloidalFluxBar(poloidal_flux_bar));
 #else
       throw std::runtime_error(
           "VmecModel.geometry_state_vjp: a nonzero poloidal_flux_bar with "
@@ -571,6 +615,28 @@ class VmecModel {
 #endif  // VMECPP_ENABLE_ENZYME
     }
     return result;
+  }
+
+  // Cotangent of the half-grid chi' from one of MakeGeometry's poloidal_flux:
+  // chi_j = sum_{k<j} signOfJacobian * 2 pi deltaS phipH_k iotaH_k, with
+  // phipH_k iotaH_k = chipH_k where phipH_k != 0.
+  Eigen::VectorXd ChipBarFromPoloidalFluxBar(
+      const Eigen::VectorXd &poloidal_flux_bar) const {
+    Eigen::VectorXd chip_bar = Eigen::VectorXd::Zero(vmec_->fc_.ns - 1);
+    if (poloidal_flux_bar.size() == 0) {
+      return chip_bar;
+    }
+    if (poloidal_flux_bar.size() != vmec_->fc_.ns) {
+      throw std::runtime_error("VmecModel: poloidal_flux_bar has wrong length");
+    }
+    const double c = static_cast<double>(vmec_->indata_.signgs) * 2.0 *
+                     std::numbers::pi * vmec_->fc_.deltaS;
+    double tail = 0.0;
+    for (int j = vmec_->fc_.ns - 1; j >= 1; --j) {
+      tail += poloidal_flux_bar[j];
+      chip_bar[j - 1] = vmec_->p_[0]->phipH[j - 1] != 0.0 ? c * tail : 0.0;
+    }
+    return chip_bar;
   }
 
   // Hessian-vector product of VMEC's augmented functional, computed inside
@@ -619,8 +685,11 @@ class VmecModel {
   // of geometryFromFourier: T v = geom(x+v) - geom(x), so no finite-difference
   // step enters. The constraint multiplier tcon is recomputed from the geometry
   // inside the composition, as the raw force recomputes it from the state. The
-  // model state is restored to x on return.
-  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v) {
+  // model state is restored to x on return. always_fix_m1_gauge has the
+  // meaning it has in Evaluate: H is the Jacobian of the force that
+  // Evaluate returns for the same flag.
+  Eigen::VectorXd ExactHessianVectorProduct(const Eigen::VectorXd &v,
+                                            bool always_fix_m1_gauge = true) {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
@@ -643,7 +712,7 @@ class VmecModel {
                        dgeom.data(), gS, /*primal=*/false);
     model.applyExactForceJacobian(
         exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
-        *vmec_->decomposed_f_[0], /*fix_m1_gauge=*/true);
+        *vmec_->decomposed_f_[0], always_fix_m1_gauge);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
 
@@ -651,7 +720,8 @@ class VmecModel {
   // internal basis. The force Jacobian is non-symmetric (VMEC's force is a
   // scaled gradient), so the adjoint boundary gradient needs H^T, not H. Uses
   // the same cached primal geometry as ExactHessianVectorProduct.
-  Eigen::VectorXd ExactHessianVectorProductTranspose(const Eigen::VectorXd &w) {
+  Eigen::VectorXd ExactHessianVectorProductTranspose(
+      const Eigen::VectorXd &w, bool always_fix_m1_gauge = true) {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
@@ -668,7 +738,7 @@ class VmecModel {
     model.applyExactForceJacobianTranspose(
         exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
         *vmec_->physical_f_[0], *vmec_->physical_x_[0],
-        *vmec_->physical_x_backup_[0], /*fix_m1_gauge=*/true);
+        *vmec_->physical_x_backup_[0], always_fix_m1_gauge);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
   }
 
@@ -693,6 +763,42 @@ class VmecModel {
     model.chipStateVjp(exact_primal_.data(), gS, chip_bar.data(),
                        *vmec_->physical_x_[0], *vmec_->physical_x_backup_[0]);
     return FlattenActive(*vmec_->physical_x_backup_[0], vmec_->s_);
+  }
+
+  // Cotangents of the half-grid presH, iotaH and currH from a decomposed-force
+  // cotangent force_bar and a cotangent poloidal_flux_bar of MakeGeometry's
+  // poloidal_flux. presH is frozen in the force composition, so gamma == 0.
+  std::tuple<Eigen::VectorXd, Eigen::VectorXd, Eigen::VectorXd> ProfileVjp(
+      const Eigen::VectorXd &force_bar,
+      const Eigen::VectorXd &poloidal_flux_bar) {
+    RequireLforbalDisabledForExactDerivatives();
+    if (vmec_->indata_.gamma != 0.0 || vmec_->indata_.lasym) {
+      throw std::runtime_error(
+          "VmecModel.profile_vjp requires gamma == 0 and lasym == false");
+    }
+    vmecpp::IdealMhdModel &model = *vmec_->m_[0];
+    const int gS = static_cast<int>(model.r1_e.size());
+    if (!exact_primal_valid_ ||
+        exact_primal_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_primal_.setZero(20 * gS);
+      model.packGeometry(*vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
+                         exact_primal_.data(), gS, /*primal=*/true);
+      exact_primal_valid_ = true;
+    }
+    const Eigen::VectorXd chip_bar =
+        ChipBarFromPoloidalFluxBar(poloidal_flux_bar);
+    const int nHalf = vmec_->fc_.ns - 1;
+    Eigen::VectorXd pres_bar = Eigen::VectorXd::Zero(nHalf);
+    Eigen::VectorXd chip_profile_bar = Eigen::VectorXd::Zero(nHalf);
+    Eigen::VectorXd curr_bar = Eigen::VectorXd::Zero(nHalf);
+    vmec_->decomposed_f_[0]->setZero();
+    UnflattenActive(*vmec_->decomposed_f_[0], vmec_->s_, force_bar);
+    model.profileVjp(exact_primal_.data(), gS, *vmec_->decomposed_f_[0],
+                     *vmec_->physical_f_[0], chip_bar.data(), pres_bar.data(),
+                     chip_profile_bar.data(), curr_bar.data());
+    // chipH = iotaH * phipH for a prescribed iota
+    return {pres_bar, chip_profile_bar.cwiseProduct(vmec_->p_[0]->phipH),
+            curr_bar};
   }
 #endif  // VMECPP_ENABLE_ENZYME
 
@@ -747,6 +853,8 @@ class VmecModel {
   int ns() const { return vmec_->fc_.ns; }
   int mpol() const { return vmec_->s_.mpol; }
   int ntor() const { return vmec_->s_.ntor; }
+  int mpol_geometry() const { return vmec_->s_.mpolGeometry; }
+  int ntor_geometry() const { return vmec_->s_.ntorGeometry; }
   bool lthreed() const { return vmec_->s_.lthreed; }
   bool lasym() const { return vmec_->s_.lasym; }
   bool have_to_flip_theta() const { return vmec_->fc_.haveToFlipTheta; }
@@ -851,7 +959,13 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def("_set_mpol_ntor", &VmecINDATA::SetMpolNtor, py::arg("new_mpol"),
                py::arg("new_ntor"))
           .def("from_file", &VmecINDATA::FromFile)
-          .def("from_json", &VmecINDATA::FromJson)
+          .def_static(
+              "from_json",
+              [](const std::string &indata_json) {
+                auto maybe_indata = VmecINDATA::FromJson(indata_json);
+                return GetValueOrThrow(maybe_indata);
+              },
+              py::arg("indata_json"))
           .def("to_json", &VmecINDATA::ToJsonOrException)
           .def("copy", &VmecINDATA::Copy)
 
@@ -863,7 +977,9 @@ PYBIND11_MODULE(_vmecpp, m) {
           .def_readwrite("ntheta", &VmecINDATA::ntheta)
           .def_readwrite("nzeta", &VmecINDATA::nzeta)
           .def_readwrite("mpol_geometry", &VmecINDATA::mpol_geometry)
-          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry);
+          .def_readwrite("ntor_geometry", &VmecINDATA::ntor_geometry)
+          .def_readwrite("vacuum_mpol", &VmecINDATA::vacuum_mpol)
+          .def_readwrite("vacuum_ntor", &VmecINDATA::vacuum_ntor);
 
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
@@ -911,7 +1027,14 @@ PYBIND11_MODULE(_vmecpp, m) {
   DefEigenProperty(pyindata, "aphi", &VmecINDATA::aphi);
   pyindata.def_readwrite("delt", &VmecINDATA::delt)
       .def_readwrite("tcon0", &VmecINDATA::tcon0)
+      .def_readwrite("lgiveup", &VmecINDATA::lgiveup)
+      .def_readwrite("fgiveup", &VmecINDATA::fgiveup)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
+      .def_readwrite("lambda_preconditioner_scale",
+                     &VmecINDATA::lambda_preconditioner_scale)
+      .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
+      .def_readwrite("backup_evaluated_state",
+                     &VmecINDATA::backup_evaluated_state)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
@@ -1015,15 +1138,16 @@ PYBIND11_MODULE(_vmecpp, m) {
                     &vmecpp::MercierFileContents::toroidal_flux)
       .def_readonly("iota", &vmecpp::MercierFileContents::iota)
       .def_readonly("shear", &vmecpp::MercierFileContents::shear)
-      .def_readonly("d_volume_d_s", &vmecpp::MercierFileContents::d_volume_d_s)
+      .def_readonly("d_volume_d_phi",
+                    &vmecpp::MercierFileContents::d_volume_d_phi)
       .def_readonly("well", &vmecpp::MercierFileContents::well)
       .def_readonly("toroidal_current",
                     &vmecpp::MercierFileContents::toroidal_current)
-      .def_readonly("d_toroidal_current_d_s",
-                    &vmecpp::MercierFileContents::d_toroidal_current_d_s)
+      .def_readonly("d_toroidal_current_d_volume",
+                    &vmecpp::MercierFileContents::d_toroidal_current_d_volume)
       .def_readonly("pressure", &vmecpp::MercierFileContents::pressure)
-      .def_readonly("d_pressure_d_s",
-                    &vmecpp::MercierFileContents::d_pressure_d_s)
+      .def_readonly("d_pressure_d_volume",
+                    &vmecpp::MercierFileContents::d_pressure_d_volume)
       //
       .def_readonly("DMerc", &vmecpp::MercierFileContents::DMerc)
       .def_readonly("Dshear", &vmecpp::MercierFileContents::Dshear)
@@ -1353,7 +1477,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubumnc", &vmecpp::WOutFileContents::bsubumnc)
       .def_readwrite("bsubvmnc", &vmecpp::WOutFileContents::bsubvmnc)
       .def_readwrite("bsubsmns", &vmecpp::WOutFileContents::bsubsmns)
-      .def_readwrite("bsubsmns_full", &vmecpp::WOutFileContents::bsubsmns_full)
       .def_readwrite("bsupumnc", &vmecpp::WOutFileContents::bsupumnc)
       .def_readwrite("bsupvmnc", &vmecpp::WOutFileContents::bsupvmnc)
       //
@@ -1372,7 +1495,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("bsubumns", &vmecpp::WOutFileContents::bsubumns)
       .def_readwrite("bsubvmns", &vmecpp::WOutFileContents::bsubvmns)
       .def_readwrite("bsubsmnc", &vmecpp::WOutFileContents::bsubsmnc)
-      .def_readwrite("bsubsmnc_full", &vmecpp::WOutFileContents::bsubsmnc_full)
       .def_readwrite("bsupumns", &vmecpp::WOutFileContents::bsupumns)
       .def_readwrite("bsupvmns", &vmecpp::WOutFileContents::bsupvmns)
       //
@@ -1455,6 +1577,43 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("coefficients", &vmecpp::Geometry::coefficients)
       .def("evaluate", &vmecpp::EvaluateGeometry, py::arg("s"),
            py::arg("theta"), py::arg("zeta"));
+  py::class_<vmecpp::HalfGridFields>(m, "HalfGridFields")
+      .def_readonly("gsqrt", &vmecpp::HalfGridFields::gsqrt)
+      .def_readonly("bsupu", &vmecpp::HalfGridFields::bsupu)
+      .def_readonly("bsupv", &vmecpp::HalfGridFields::bsupv)
+      .def_readonly("bsubu", &vmecpp::HalfGridFields::bsubu)
+      .def_readonly("bsubv", &vmecpp::HalfGridFields::bsubv)
+      .def_readonly("weight", &vmecpp::HalfGridFields::weight)
+      .def_readonly("buco", &vmecpp::HalfGridFields::buco)
+      .def_readonly("bvco", &vmecpp::HalfGridFields::bvco)
+      .def_readonly("iota", &vmecpp::HalfGridFields::iota)
+      .def_readonly("phip", &vmecpp::HalfGridFields::phip)
+      .def_readonly("vp", &vmecpp::HalfGridFields::vp)
+      .def_readonly("ntheta_even", &vmecpp::HalfGridFields::ntheta_even)
+      .def_readonly("ntheta_eff", &vmecpp::HalfGridFields::ntheta_eff)
+      .def_readonly("nzeta", &vmecpp::HalfGridFields::nzeta)
+      .def_readonly("nfp", &vmecpp::HalfGridFields::nfp)
+      .def_readonly("signgs", &vmecpp::HalfGridFields::signgs);
+  py::class_<vmecpp::SolverState>(m, "SolverState")
+      .def_readonly("iteration", &vmecpp::SolverState::iteration)
+      .def_readonly("multigrid_step", &vmecpp::SolverState::multigrid_step)
+      .def_readonly("ns", &vmecpp::SolverState::ns)
+      .def_readonly("fsqr", &vmecpp::SolverState::fsqr)
+      .def_readonly("fsqz", &vmecpp::SolverState::fsqz)
+      .def_readonly("fsql", &vmecpp::SolverState::fsql)
+      .def_readonly("ftol", &vmecpp::SolverState::ftol)
+      .def_readonly("delt", &vmecpp::SolverState::delt)
+      .def_property_readonly("restart_reason",
+                             [](const vmecpp::SolverState &state) {
+                               return static_cast<int>(state.restart_reason);
+                             })
+      .def_readonly("jacobian_resets", &vmecpp::SolverState::jacobian_resets)
+      .def_readonly("vacuum_pressure_active",
+                    &vmecpp::SolverState::vacuum_pressure_active)
+      .def_readonly("mhd_energy", &vmecpp::SolverState::mhd_energy)
+      .def_readonly("geometry", &vmecpp::SolverState::geometry)
+      .def_readonly("half_grid", &vmecpp::SolverState::half_grid)
+      .def_readwrite("curr_h", &vmecpp::SolverState::curr_h);
   m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
     return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
                                 vmecpp::GeometryCoefficientState::kPhysical);
@@ -1469,8 +1628,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       "run",
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads,
-         vmecpp::OutputMode verbose) -> vmecpp::OutputQuantities {
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         bool always_fix_m1_gauge,
+         py::object iteration_callback) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) {
@@ -1483,12 +1643,16 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
           return false;
         };
+        PythonIterationCallback iteration_hook{iteration_callback,
+                                               std::nullopt};
         absl::StatusOr<vmecpp::OutputQuantities> ret;
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, std::move(initial_state), max_threads,
-                            verbose, interrupt_check);
+                            verbose, interrupt_check, always_fix_m1_gauge,
+                            iteration_hook.Hook());
         }
+        iteration_hook.Rethrow();
         if (was_interrupted) {
           throw py::error_already_set();
         }
@@ -1496,7 +1660,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       },
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("always_fix_m1_gauge") = false,
+      py::arg("iteration_callback") = py::none());
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
       .def(py::init<bool, bool, int, double, double, int, double, double, int,
@@ -1576,7 +1742,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
          std::optional<vmecpp::HotRestartState> initial_state,
-         std::optional<int> max_threads, vmecpp::OutputMode verbose) {
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         py::object iteration_callback) {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) return true;
@@ -1587,13 +1754,16 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
           return false;
         };
+        PythonIterationCallback iteration_hook{iteration_callback,
+                                               std::nullopt};
         absl::StatusOr<vmecpp::OutputQuantities> ret;
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, magnetic_response_table,
                             std::move(initial_state), max_threads, verbose,
-                            interrupt_check);
+                            interrupt_check, iteration_hook.Hook());
         }
+        iteration_hook.Rethrow();
         if (was_interrupted) {
           throw py::error_already_set();
         }
@@ -1602,14 +1772,18 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("indata"), py::arg("magnetic_response_table"),
       py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
-      py::arg("verbose") = vmecpp::OutputMode::kProgress);
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("iteration_callback") = py::none());
 
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
   // from Python (see vmecpp._iteration).
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
-                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt,
+                  py::arg("always_fix_m1_gauge") = false,
+                  "Create a model; set always_fix_m1_gauge here to pin the "
+                  "gauge during hot-restart initialization.")
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
            py::arg("always_fix_m1_gauge") = true)
@@ -1620,6 +1794,7 @@ PYBIND11_MODULE(_vmecpp, m) {
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
            py::arg("time_step"))
       .def("save_backup", &VmecModel::SaveBackup)
+      .def("save_evaluated_backup", &VmecModel::SaveEvaluatedBackup)
       .def("restore_backup", &VmecModel::RestoreBackup)
       .def("zero_velocity", &VmecModel::ZeroVelocity)
       .def("reset_to_initial_guess", &VmecModel::ResetToInitialGuess)
@@ -1628,6 +1803,17 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
+      .def_property("always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
+                    &VmecModel::set_always_fix_m1_gauge,
+                    "Zero the m=1 gauge force from the first iteration of "
+                    "solve() and set the gauge from the boundary in "
+                    "refine_to(). For a hot restart, pass the flag to create() "
+                    "so initialization pins the gauge. The converged gauge "
+                    "then equals the "
+                    "boundary gauge scaled by sqrt(s), independent of the "
+                    "iteration and multigrid history, and the exact "
+                    "Hessian-vector products with always_fix_m1_gauge=True "
+                    "are the Jacobian of the iterated system.")
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
@@ -1644,10 +1830,14 @@ PYBIND11_MODULE(_vmecpp, m) {
       // deflating the augmented Hessian's structural null space needs both a
       // row and a column probe.
       .def("exact_hessian_vector_product",
-           &VmecModel::ExactHessianVectorProduct, py::arg("v"))
+           &VmecModel::ExactHessianVectorProduct, py::arg("v"),
+           py::arg("always_fix_m1_gauge") = true)
       .def("exact_hessian_vector_product_transpose",
-           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"))
+           &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"),
+           py::arg("always_fix_m1_gauge") = true)
       .def("chip_state_vjp", &VmecModel::ChipStateVjp, py::arg("chip_bar"))
+      .def("profile_vjp", &VmecModel::ProfileVjp, py::arg("force_bar"),
+           py::arg("poloidal_flux_bar"))
 #endif  // VMECPP_ENABLE_ENZYME
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
@@ -1668,6 +1858,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ns", &VmecModel::ns)
       .def_property_readonly("mpol", &VmecModel::mpol)
       .def_property_readonly("ntor", &VmecModel::ntor)
+      .def_property_readonly("mpol_geometry", &VmecModel::mpol_geometry)
+      .def_property_readonly("ntor_geometry", &VmecModel::ntor_geometry)
       .def_property_readonly("lthreed", &VmecModel::lthreed)
       .def_property_readonly("lasym", &VmecModel::lasym)
       .def_property_readonly("has_exact_force_jacobian",

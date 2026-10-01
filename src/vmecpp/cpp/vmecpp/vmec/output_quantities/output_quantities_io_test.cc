@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>  // std::move
@@ -24,8 +25,10 @@ class OutputQuantitiesIO : public testing::Test {
     const absl::StatusOr<std::string> indata_json = file_io::ReadFile(filename);
     EXPECT_TRUE(indata_json.ok());
 
-    const auto indata = vmecpp::VmecINDATA::FromJson(*indata_json);
+    auto indata = vmecpp::VmecINDATA::FromJson(*indata_json);
     EXPECT_TRUE(indata.ok());
+    // A fixed-boundary input may carry coil currents, which the wout records.
+    indata->extcur = Eigen::VectorXd::LinSpaced(3, 1.0, 3.0);
 
     auto maybe_oq = vmecpp::run(*indata);
     EXPECT_TRUE(maybe_oq.ok());
@@ -184,4 +187,32 @@ TEST_F(OutputQuantitiesIO, OutputQuantities) {
             cth_output_quantities_->threed1_shafranov_integrals);
 
   CheckWOutEquality(read_oq.wout, cth_output_quantities_->wout);
+}
+
+// A file HDF5 cannot create, open or read is an error status, not an exception.
+TEST(OutputQuantitiesIOErrors, UnusablePathsAreReportedAsStatus) {
+  const fs::path test_dir =
+      fs::path(testing::TempDir()) / "output_quantities_io_errors";
+  fs::create_directories(test_dir);
+
+  // a path that names a directory
+  const fs::path directory = test_dir / "output.h5";
+  fs::create_directories(directory);
+  const absl::Status save_status = vmecpp::OutputQuantities().Save(directory);
+  EXPECT_EQ(save_status.code(), absl::StatusCode::kInternal) << save_status;
+  EXPECT_NE(save_status.message().find("could not write"), std::string::npos)
+      << save_status;
+
+  // a file that does not exist and a file that is not HDF5
+  const fs::path text_file = test_dir / "not_hdf5.h5";
+  std::ofstream(text_file) << "not an HDF5 file\n";
+  for (const fs::path& path : {test_dir / "missing.h5", text_file}) {
+    const absl::StatusOr<vmecpp::OutputQuantities> loaded =
+        vmecpp::OutputQuantities::Load(path);
+    EXPECT_EQ(loaded.status().code(), absl::StatusCode::kInternal)
+        << loaded.status();
+    EXPECT_NE(loaded.status().message().find("could not read"),
+              std::string::npos)
+        << loaded.status();
+  }
 }

@@ -36,6 +36,7 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.niter, wout2.niter);
   EXPECT_EQ(wout1.lfreeb, wout2.lfreeb);
   EXPECT_EQ(wout1.mgrid_file, wout2.mgrid_file);
+  EXPECT_EQ(wout1.nextcur, wout2.nextcur);
   EXPECT_EQ(wout1.extcur, wout2.extcur);
   EXPECT_EQ(wout1.mgrid_mode, wout2.mgrid_mode);
   EXPECT_EQ(wout1.wb, wout2.wb);
@@ -110,7 +111,6 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.bsubumnc, wout2.bsubumnc);
   EXPECT_EQ(wout1.bsubvmnc, wout2.bsubvmnc);
   EXPECT_EQ(wout1.bsubsmns, wout2.bsubsmns);
-  EXPECT_EQ(wout1.bsubsmns_full, wout2.bsubsmns_full);
   EXPECT_EQ(wout1.bsupumnc, wout2.bsupumnc);
   EXPECT_EQ(wout1.bsupvmnc, wout2.bsupvmnc);
   EXPECT_EQ(wout1.raxis_cs, wout2.raxis_cs);
@@ -124,7 +124,6 @@ inline void CheckWOutEquality(const vmecpp::WOutFileContents& wout1,
   EXPECT_EQ(wout1.bsubumns, wout2.bsubumns);
   EXPECT_EQ(wout1.bsubvmns, wout2.bsubvmns);
   EXPECT_EQ(wout1.bsubsmnc, wout2.bsubsmnc);
-  EXPECT_EQ(wout1.bsubsmnc_full, wout2.bsubsmnc_full);
   EXPECT_EQ(wout1.bsupumns, wout2.bsupumns);
   EXPECT_EQ(wout1.bsupvmns, wout2.bsupvmns);
 }

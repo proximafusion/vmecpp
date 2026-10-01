@@ -20,6 +20,9 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
   switch (vmec_status) {
     case VmecStatus::NORMAL_TERMINATION:
       return "NORMAL_TERMINATION";
+    case VmecStatus::MORE_ITERATIONS_NEEDED:
+      return "MORE_ITERATIONS_NEEDED: the iteration callback stopped the run "
+             "before convergence";
     case VmecStatus::BAD_JACOBIAN:
       return "BAD_JACOBIAN: the Jacobian of the flux-surface geometry "
              "changed sign, i.e. flux surfaces overlap. This can happen "
@@ -329,10 +332,8 @@ int vmec_adjust_num_threads(const int max_threads,
   int num_threads = std::min(max_threads, num_surfaces_to_distribute / 2);
 
 #ifdef _OPENMP
-  // This must be done _before_ the '#pragma omp parallel' is entered.
-  omp_set_num_threads(num_threads);
-
-  // Explicitly turn off dynamic threads.
+  // The parallel regions request their team size with a num_threads clause;
+  // without dynamic adjustment the runtime grants exactly that many threads.
   omp_set_dynamic(0);
 #endif
 
@@ -344,10 +345,37 @@ int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
   // (see TangentialPartitioning). There is no minimum-points-per-thread
   // constraint like the radial solve's shared half-grid point, so we can use up
   // to nZnT threads. In practice nZnT >> max_threads, so this returns
-  // max_threads. Deliberately does NOT call omp_set_num_threads: the vacuum
-  // solve runs in a nested parallel region with an explicit num_threads()
-  // clause.
+  // max_threads.
   return std::min(max_threads, n_znt);
+}
+
+int GrantedThreads(const int requested_threads) {
+  int granted_threads = 1;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(requested_threads)
+  {
+#pragma omp single
+    granted_threads = omp_get_num_threads();
+  }
+#else
+  (void)requested_threads;
+#endif  // _OPENMP
+  return granted_threads;
+}
+
+int GrantedNestedThreads(const int outer_threads, const int nested_threads) {
+  int granted_threads = 1;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(outer_threads)
+  {
+#pragma omp single
+    granted_threads = GrantedThreads(nested_threads);
+  }
+#else
+  (void)outer_threads;
+  (void)nested_threads;
+#endif  // _OPENMP
+  return granted_threads;
 }
 
 }  // namespace vmecpp

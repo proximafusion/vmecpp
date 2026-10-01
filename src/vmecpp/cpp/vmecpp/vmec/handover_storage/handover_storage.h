@@ -162,6 +162,11 @@ class HandoverStorage {
   Eigen::VectorXd rAxis;
   Eigen::VectorXd zAxis;
 
+  // Fourier cutoffs of the vacuum potential; the LCFS rows below are laid
+  // out as n * vacuum_mpol + m for NESTOR, which expands to these.
+  int vacuum_mpol;
+  int vacuum_ntor;
+
   // LCFS geometry for NESTOR
   Eigen::VectorXd rCC_LCFS;
   Eigen::VectorXd rSS_LCFS;
@@ -171,6 +176,10 @@ class HandoverStorage {
   Eigen::VectorXd zCS_LCFS;
   Eigen::VectorXd zCC_LCFS;
   Eigen::VectorXd zSS_LCFS;
+
+  // Size the LCFS rows for a vacuum potential expanded to (vacuum_mpol,
+  // vacuum_ntor); the constructor sizes them for the plasma's cutoffs.
+  void SetVacuumCutoffs(int vacuum_mpol, int vacuum_ntor);
 
   // [nZnT] vacuum magnetic pressure |B_vac^2|/2 at the plasma boundary
   Eigen::VectorXd vacuum_magnetic_pressure;
@@ -211,6 +220,10 @@ class HandoverStorage {
 
   // First error from the nested vacuum team; reset to OK before each solve.
   absl::Status vacuum_status = absl::OkStatus();
+
+  // Threads the runtime granted the last nested vacuum team, checked against
+  // the team the vacuum solvers are partitioned for.
+  int vacuum_team_size = 0;
 
  private:
   const Sizes& s_;

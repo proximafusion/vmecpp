@@ -39,7 +39,6 @@
 using vmecpp::vmec_algorithm_constants::kEvenParity;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
-using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
 using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerZeroGuard;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
@@ -47,7 +46,8 @@ namespace {
 
 // Set m_h.rCC_LCFS etc. to the corresponding values in the FourierGeometry
 // of the last surface, also transposing m and n dimensions to make the
-// data layout what Nestor expects.
+// data layout what Nestor expects: n * vacuum_mpol + m, where the vacuum
+// potential's cutoffs may exceed the plasma's, leaving the higher modes zero.
 void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
                               const vmecpp::FourierGeometry& physical_x,
                               const vmecpp::Sizes& sizes, int offset) {
@@ -55,7 +55,7 @@ void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
   for (int m = 0; m < sizes.mpol; ++m) {
     for (int n = 0; n < ntorp1; ++n) {
       const int idx_mn = m * ntorp1 + n;
-      const int idx_nm = n * sizes.mpol + m;
+      const int idx_nm = n * m_h.vacuum_mpol + m;
       m_h.rCC_LCFS[idx_nm] = physical_x.rmncc[offset + idx_mn];
       m_h.zSC_LCFS[idx_nm] = physical_x.zmnsc[offset + idx_mn];
 
@@ -374,8 +374,10 @@ IdealMhdModel::IdealMhdModel(
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0, bool lforbal) {
+                                  double tcon0, bool lforbal,
+                                  double lambda_preconditioner_scale) {
   this->ncurr = ncurr;
+  this->lambda_preconditioner_scale_ = lambda_preconditioner_scale;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
   // The m=1 trig weights below are built on the reduced poloidal grid, so the
@@ -424,7 +426,9 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
 #endif  // _OPENMP
   {
     // set new values
-    // TODO(jons): what is `r1scale`?
+    // 1 / (2 * r0scale)^2 with r0scale = mscale[0] * nscale[0] = 1: the
+    // reciprocal of the squared basis normalization a mode with both indices
+    // non-zero carries. Lambda is normalized by lamscale^2 instead.
     constexpr double r1scale = 0.25;
 
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
@@ -739,41 +743,52 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #endif  // _OPENMP
         {
           int vac_thread_id = 0;
+          int vac_team_size = 1;
 #ifdef _OPENMP
           vac_thread_id = omp_get_thread_num();
-          // Correctness depends on the nested team being granted exactly
-          // m_vac_num_threads_ threads: the tangential slices only cover the
-          // whole grid if every vac_thread_id runs. Fail loudly rather than
-          // silently under-cover the grid.
-          CHECK_EQ(omp_get_num_threads(), m_vac_num_threads_)
-              << "Nested vacuum parallel region was not granted the requested "
-                 "number of threads";
+          vac_team_size = omp_get_num_threads();
 #endif  // _OPENMP
-          const absl::StatusOr<bool> rc = (*m_fb_vac_)[vac_thread_id]->update(
-              m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
-              m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-              signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-              &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-              at_checkpoint_iteration);
-          // Reduced across the team; the first error wins.
-          if (!rc.ok()) {
+          if (vac_thread_id == 0) {
+            m_h_.vacuum_team_size = vac_team_size;
+          }
+          // The tangential slices only cover the whole grid if every
+          // vac_thread_id runs. Every thread of the team sees the same size,
+          // so a smaller team skips the solve as a whole.
+          if (vac_team_size == m_vac_num_threads_) {
+            const absl::StatusOr<bool> rc = (*m_fb_vac_)[vac_thread_id]->update(
+                m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
+                m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
+                signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
+                &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+                at_checkpoint_iteration);
+            // Reduced across the team; the first error wins.
+            if (!rc.ok()) {
 #ifdef _OPENMP
 #pragma omp critical
 #endif  // _OPENMP
-            {
-              if (m_h_.vacuum_status.ok()) {
-                m_h_.vacuum_status = rc.status();
+              {
+                if (m_h_.vacuum_status.ok()) {
+                  m_h_.vacuum_status = rc.status();
+                }
               }
             }
-          }
-          // All nested threads follow identical control flow and compute the
-          // same checkpoint result; record it once for the radial team.
-          if (vac_thread_id == 0) {
-            m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
+            // All nested threads follow identical control flow and compute the
+            // same checkpoint result; record it once for the radial team.
+            if (vac_thread_id == 0) {
+              m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
+            }
           }
         }
       }
-      // The 'omp single' barrier publishes the outputs, flag, and status.
+      // The 'omp single' barrier publishes the outputs, flag, status and team
+      // size. Vmec sizes the vacuum team to the grant it finds before each
+      // multigrid step; a different grant here ends the run with an error.
+      if (m_h_.vacuum_team_size != m_vac_num_threads_) {
+        return absl::ResourceExhaustedError(absl::StrFormat(
+            "the free-boundary vacuum solve is partitioned over %d threads, "
+            "but OpenMP granted %d",
+            m_vac_num_threads_, m_h_.vacuum_team_size));
+      }
       // Only a warning here: the boundary may leave the grid transiently while
       // the equilibrium is still moving. Vmec::run turns a still-outside
       // boundary into an error once the run has converged.
@@ -839,16 +854,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }
 
       if (r_.nsMaxF1 == m_fc_.ns) {
-        // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS PRECONDITIONER!
-        // double edgePressure = 1.5 * p.presH[r.nsMaxH-1 - r.nsMinH] - 0.5 *
-        // p.presH[r.nsMinH - r.nsMinH];
-        double edgePressure =
-            m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-        if (edgePressure != 0.0) {
-          edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
-                         m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
-        }
-
         for (int kl = 0; kl < s_.nZnT; ++kl) {
           // extrapolate total pressure (from inside) to LCFS; this is
           // bsqsav(:,3) in Fortran VMEC
@@ -856,15 +861,16 @@ absl::StatusOr<bool> IdealMhdModel::update(
               1.5 * totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl] -
               0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
 
-          // net pressure from outside on LCFS
+          // total pressure from outside on LCFS: the vacuum carries no kinetic
+          // pressure, so the boundary settles where B_vac^2/2 = p + B^2/2
           // FIXME(eguiraud) slow loop over Nestor output
           // NOTE: here is the interface between the fast-toroidal setup in
           // Nestor and fast-poloidal setup in VMEC
           const int k = kl / s_.nThetaEff;
           const int l = kl % s_.nThetaEff;
           const int idx_lk = l * s_.nZeta + k;
-          double outsideEdgePressure =
-              m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+          const double outsideEdgePressure =
+              m_h_.vacuum_magnetic_pressure[idx_lk];
 
           // term to enter MHD forces
           int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
@@ -973,6 +979,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // TODO(jurasic) the hard-coded 50 and 1e-6 are only here for backwards
   // compatibility, ideally vacuum-pressure should always part of the
   // force-balance
+  // iter1 is set at the start of a multigrid stage and at every bad-Jacobian
+  // restart, so the window counts iterations since whichever came last.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
   // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
   // wouldn't trigger without special handling for the hot-restart case.
@@ -2137,10 +2145,10 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // lambdaPreconditioner
 
   // 1/lamscale^2 converts the stiffness of the internally rescaled lambda
-  // coefficients; the remaining kLambdaPreconditionerDampingFactor / 4 = 0.5
-  // is an inherited, unexplained damping (see vmec_algorithm_constants.h).
-  const double pFactor = kLambdaPreconditionerDampingFactor /
-                         (4.0 * constants_.lamscale * constants_.lamscale);
+  // coefficients; lambda_preconditioner_scale_ scales the inverse stiffness,
+  // 0.5 being the damping inherited from VMEC.
+  const double pFactor = lambda_preconditioner_scale_ /
+                         (constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
@@ -2420,8 +2428,7 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Note that this needs to have the radial preconditioner updated.
  */
 double IdealMhdModel::constraintMultiplierScale() const {
-  // TODO(jons): some parabola in ns,
-  // but why these specific values of the parameters ?
+  // An empirically determined scaling.
   const double tcon_multiplier =
       tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
 
@@ -3052,11 +3059,9 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
 }
 
 #ifdef VMECPP_ENABLE_ENZYME
-void IdealMhdModel::applyExactForceJacobianTranspose(
-    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
-    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
-    FourierGeometry& m_decomposed_out, bool fix_m1_gauge) {
-  const int gS = geom_stride;
+std::vector<double> IdealMhdModel::forceDensityCotangentFromDecomposed(
+    FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+    bool fix_m1_gauge) {
   const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
 
   // C^T: transpose of [scatter -> forcesToFourier -> decompose -> m1 -> zeroZ].
@@ -3104,6 +3109,16 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
     gather(14, clmn_e);
     gather(15, clmn_o);
   }
+  return force_bar;
+}
+
+void IdealMhdModel::applyExactForceJacobianTranspose(
+    const double* geomP, int geom_stride, FourierForces& m_decomposed_in,
+    FourierForces& m_physical_f, FourierGeometry& m_physical_scratch,
+    FourierGeometry& m_decomposed_out, bool fix_m1_gauge) {
+  const int gS = geom_stride;
+  const std::vector<double> force_bar = forceDensityCotangentFromDecomposed(
+      m_decomposed_in, m_physical_f, fix_m1_gauge);
 
   // J_g^T: reverse-mode force-density kernel.
   std::vector<double> geom_bar(20 * gS, 0.0);
@@ -3229,6 +3244,35 @@ void IdealMhdModel::chipStateVjp(const double* geomP, int geom_stride,
   m_physical_scratch.extrapolateTowardsAxisTranspose();
   m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
+}
+
+void IdealMhdModel::profileVjp(const double* geomP, int geom_stride,
+                               FourierForces& m_decomposed_in,
+                               FourierForces& m_physical_f,
+                               const double* chip_bar, double* m_presH_bar,
+                               double* m_chipH_bar, double* m_currH_bar) {
+  const int nForce = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
+  const int nH = r_.nsMaxH - r_.nsMinH;
+  std::vector<double> force_bar = forceDensityCotangentFromDecomposed(
+      m_decomposed_in, m_physical_f, /*fix_m1_gauge=*/true);
+  if (ncurr == 1) {
+    for (int jH = 0; jH < nH; ++jH) {
+      force_bar[20 * nForce + jH] += chip_bar[jH];
+    }
+  }
+  LocalForceComposition comp = makeLocalForceComposition(geom_stride);
+  const int nWork = LocalForceWorkSize(comp);
+  std::vector<double> work(nWork, 0.0);
+  std::vector<double> work_bar(nWork, 0.0);
+  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
+  ExactForceDensityProfileVjp(geomP, work.data(), work_bar.data(), force.data(),
+                              force_bar.data(), &comp, m_presH_bar, m_chipH_bar,
+                              m_currH_bar);
+  if (ncurr != 1) {
+    for (int jH = 0; jH < nH; ++jH) {
+      m_chipH_bar[jH] += chip_bar[jH];
+    }
+  }
 }
 
 // Diagnostic: max |composed force density - production force density| at the
