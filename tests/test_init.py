@@ -471,6 +471,18 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
         )
 
 
+def test_run_reports_the_spectral_width_of_the_solver():
+    """vmecpp.run returns the spectral width the C++ solver computes."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_output = _vmecpp.run(
+        vmec_input._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+    )
+    np.testing.assert_array_equal(output.wout.specw, cpp_output.wout.specw)
+
+
 def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
     """Support for unknown fields in wout files."""
     cma_output_copy = cma_output.model_copy(deep=True)
