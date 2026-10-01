@@ -2740,12 +2740,12 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
 def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
     """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
 
-    Input echoes, solver diagnostics and the free-boundary vacuum potential come from
-    the C++ run; the mass profile too, so that every profile type is covered, and the
-    prescribed iota or, with ncurr = 1, the toroidal current profile. The flux
-    increments of the geometry reproduce iota only to roundoff that the cumulative sums
-    amplify; solving chi' from the enclosed current as the solver does keeps <B_u> at
-    the prescribed current to roundoff.
+    Input echoes, solver diagnostics such as the spectral width and the free-boundary
+    vacuum potential come from the C++ run; the mass profile too, so that every profile
+    type is covered, and the prescribed iota or, with ncurr = 1, the toroidal current
+    profile. The flux increments of the geometry reproduce iota only to roundoff that
+    the cumulative sums amplify; solving chi' from the enclosed current as the solver
+    does keeps <B_u> at the prescribed current to roundoff.
     """
     wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     if vmec_input.ncurr == 1:
@@ -2762,6 +2762,8 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
     # writable NumPy arrays and Python floats, as the C++ wout provides
     update = {}
     for name, value in quantities.items():
+        if name == "specw":
+            continue
         array = None if value is None else np.array(value)
         update[name] = array.item() if array is not None and array.ndim == 0 else array
     return wout.model_copy(update=update)
