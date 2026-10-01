@@ -310,6 +310,23 @@ _MISSING_FORTRAN_VARIABLES = [
 in wout files produced by VMEC++."""
 
 
+def _to_wout_version_9(varname, actual, desired, xm_nyq):
+    """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
+
+    VMEC++ writes wout version 9.0, with B_s on the full grid.
+    """
+    if varname == "version_":
+        return actual, np.full_like(desired, 9.0)
+    if varname in ("bsubsmns", "bsubsmnc"):
+        # the 8.52 half grid averaged to the interior full-grid surfaces
+        return actual[1:-1], 0.5 * (desired[1:-1] + desired[2:])
+    if varname in ("currumnc", "currvmnc", "currumns", "currvmns"):
+        # odd m use the full-grid B_s instead of its sqrt(s)-weighted average
+        even = xm_nyq % 2 == 0
+        return actual[:, even], desired[:, even]
+    return actual, desired
+
+
 def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
@@ -372,6 +389,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_wout_version_9(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -461,6 +481,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_wout_version_9(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -469,6 +492,19 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             atol=atol,
             equal_nan=True,
         )
+
+
+def test_from_wout_file_converts_8_52_bsubsmns():
+    """A version 8.52 wout loads with B_s on the full grid, as version 9.0."""
+    path = TEST_DATA_DIR / "wout_cma.nc"
+    with netCDF4.Dataset(path, "r") as fnc:
+        assert fnc["version_"][()] == 8.52
+        half = np.asarray(fnc["bsubsmns"][()]).T
+    wout = vmecpp.VmecWOut.from_wout_file(path)
+    assert wout.version_ == 9.0
+    np.testing.assert_allclose(
+        wout.bsubsmns[:, 1:-1], 0.5 * (half[:, 1:-1] + half[:, 2:]), rtol=1e-15
+    )
 
 
 def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):

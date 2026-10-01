@@ -781,7 +781,6 @@ TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
   // symmetric; its antisymmetric half is four orders below the rest.
   expect_asym(w.bsubvmns, w.mnmax_nyq, 1.0e-6, "bsubvmns");
   expect_asym(w.bsubsmnc, w.mnmax_nyq, 1.0e-3, "bsubsmnc");
-  expect_asym(w.bsubsmnc_full, w.mnmax_nyq, 1.0e-3, "bsubsmnc_full");
   expect_asym(w.bsupumns, w.mnmax_nyq, 1.0e-2, "bsupumns");
   expect_asym(w.bsupvmns, w.mnmax_nyq, 1.0e-3, "bsupvmns");
   expect_asym(w.currumns, w.mnmax_nyq, 1.0, "currumns");

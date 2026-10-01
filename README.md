@@ -370,6 +370,7 @@ VMEC++:
 - Stable recurrence for Neumann kernel integrals enables convergence of free-boundary solves at high mpol, ntor (see https://github.com/proximafusion/vmecpp/releases/tag/v0.5.3)
 - Uses FFT kernels optimized for small mode numbers [generated using FFTX](https://github.com/spiral-software/fftx) instead of DFT for supported resolutions. They give a 10-20% speedup relative to the DFT counterparts.
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
+- writes wout `version_ = 9.0`: `bsubsmns` (and `bsubsmnc`) hold the full-grid `B_s` as in VMEC 9.0 and PARVMEC, where VMEC 8.52 writes the half-grid `B_s`; `VmecWOut.from_wout_file` converts version 8.52 files to the full grid
 
 ### Limitations with respect to the Fortran implementations
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now

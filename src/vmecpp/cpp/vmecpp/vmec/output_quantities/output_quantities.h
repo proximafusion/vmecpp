@@ -1302,12 +1302,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmnc;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmns;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmns_full;
+  RowMatrixXd bsubsmns;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumnc;
@@ -1352,12 +1348,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmns;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmnc;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmnc_full;
+  RowMatrixXd bsubsmnc;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumns;
@@ -1526,6 +1518,14 @@ CovariantBDerivatives LowPassFilterCovariantB(
 void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                       BSubSFull& m_bsubs_full);
 
+// Forward Nyquist transform of B_s given in realspace on each row (radial
+// surface) of bsubs: the sin(mu-nv) coefficients into m_bsubsmns and, if
+// lasym, the cos(mu-nv) coefficients into m_bsubsmnc, both of shape
+// (mnmax_nyq, bsubs.rows()).
+void BSubSToFourierNyquist(const Sizes& s, const FourierBasisFastPoloidal& t,
+                           const FlowControl& fc, const RowMatrixXd& bsubs,
+                           RowMatrixXd& m_bsubsmns, RowMatrixXd& m_bsubsmnc);
+
 // Re-compute the full-grid covariant B_s on interior surfaces (jF = 1 .. ns-2)
 // by solving the radial force-balance equation
 //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
@@ -1633,9 +1633,8 @@ WOutFileContents ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     const std::vector<std::string>& coil_group_names,
-    VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
-    const JxBOutFileContents& jxbout,
+    VmecInternalResults& m_vmec_internal_results, const BSubSFull& bsubs_full,
+    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,

@@ -1328,12 +1328,10 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
-    :math:`B_{s}` on the half-grid, as written by VMEC 8.52.
+    :math:`B_{s}` on the full-grid, as written by VMEC 9.0.
 
-    Unlike the other half-grid quantities, the first column is not zero but
-    ``2 * bsubsmns[:, 1] - bsubsmns[:, 2]``. Fortran VMEC 9.0 and later write the
-    full-grid :math:`B_{s}` here instead; a wout file from those versions, loaded with
-    ``from_wout_file``, carries that full-grid array.
+    ``from_wout_file`` converts the half-grid array of a version 8.52 wout file to the
+    full grid.
     """
 
     bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
@@ -1415,7 +1413,7 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     """Fourier coefficients (cos) of the covariant magnetic field component
-    :math:`B_{s}` on the full- grid; non-stellarator-symmetric."""
+    :math:`B_{s}` on the full-grid; non-stellarator-symmetric."""
 
     bsupumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of the contravariant magnetic field component
@@ -1978,6 +1976,17 @@ class VmecWOut(BaseModelWithNumpy):
                 )
             else:
                 attrs[full] = np.zeros([attrs["mnmax"], attrs["ns"]])
+
+        # Version 8.52 stores B_s on the half grid.
+        if np.isclose(attrs["version_"], 8.52):
+            attrs["bsubsmns"] = autodiff_wout.half_to_full_grid_columns(
+                attrs["bsubsmns"]
+            )
+            if attrs["lasym__logical__"] and "bsubsmnc" in attrs:
+                attrs["bsubsmnc"] = autodiff_wout.half_to_full_grid_columns(
+                    attrs["bsubsmnc"]
+                )
+            attrs["version_"] = 9.0
 
         # Backwards compatibility: lrfp flag may not exist in older wout files
         attrs.setdefault("lrfp__logical__", 0)
@@ -2811,6 +2820,8 @@ def _run_traced(
         or not isinstance(vmec_input.ntor, int),
         "magnetic_field": magnetic_field is not None,
         "restart_from": restart_from is not None,
+        # the JAX output stage computes B_s from the metric only
+        "lbsubs=True": vmec_input.lbsubs,
     }
     for name, present in unsupported.items():
         if present:
@@ -3188,7 +3199,8 @@ def run(
             iteration_callback=cpp_iteration_callback,
         )
 
-    if _use_jax_output_stage.get():
+    # The JAX output stage computes B_s from the metric only, not lbsubs.
+    if _use_jax_output_stage.get() and not input.lbsubs:
         wout = _wout_from_output_stage(input, cpp_output_quantities)
     else:
         wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)

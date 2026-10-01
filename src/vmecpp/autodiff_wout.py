@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-from typing import Any
+from typing import Any, TypeVar, cast
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from vmecpp import geometry as vmec_geometry
+
+_ArrayT = TypeVar("_ArrayT", np.ndarray, jax.Array)
 
 MU_0 = 4.0e-7 * np.pi
 
@@ -489,9 +491,8 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     bsupumnc, bsupumns = _nyquist_half(setup, bsupu, cosine=True)
     bsupvmnc, bsupvmns = _nyquist_half(setup, bsupv, cosine=True)
     bsubsmns, bsubsmnc = _nyquist_half(setup, bsubs, cosine=False)
-    # The classic output extrapolates the half-grid B_s one full step beyond
-    # the innermost half-grid point.
-    bsubsmns = _extrapolate_axis_column(bsubsmns)
+    # B_s on the full grid (PutBSubSOnFullGrid, ExtrapolateBSubS).
+    bsubsmns = half_to_full_grid_columns(bsubsmns)
     currumnc, currvmnc = _currents(setup, bsubsmns, bsubumnc, bsubvmnc, sign=1.0)
 
     # Combined-basis coefficients of R, Z and lambda on the full grid.
@@ -523,7 +524,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
         assert bsubsmnc is not None
         assert bsubumns is not None
         assert bsubvmns is not None
-        bsubsmnc = _extrapolate_axis_column(bsubsmnc)
+        bsubsmnc = half_to_full_grid_columns(bsubsmnc)
         currumns, currvmns = _currents(setup, bsubsmnc, bsubumns, bsubvmns, sign=-1.0)
         lmnc_full = _to_combined(
             setup, geometry.lambda_cc, geometry.lambda_ss, cosine=True
@@ -651,7 +652,7 @@ def static_fields(vmec_input: Any) -> dict[str, Any]:
 
     extcur = np.asarray(vmec_input.extcur, dtype=np.float64).ravel()
     return {
-        "version_": 8.52,
+        "version_": 9.0,
         "input_extension": "",
         "signgs": sizes.signgs,
         "gamma": sizes.gamma,
@@ -1234,12 +1235,6 @@ def _currents(setup: _Setup, bsubs_mn, bsubu_mn, bsubv_mn, *, sign: float):
 
     inner = slice(1, ns - 1)
     outer = slice(2, ns)
-    t1_odd = (
-        0.5
-        * (sqrt_h_outer * bsubs_mn[:, outer] + sqrt_h_inner * bsubs_mn[:, inner])
-        / sqrt_f
-    )
-    t1_even = 0.5 * (bsubs_mn[:, outer] + bsubs_mn[:, inner])
 
     def radial_derivative(values):
         v0 = values[:, inner] / sqrt_h_inner
@@ -1248,7 +1243,7 @@ def _currents(setup: _Setup, bsubs_mn, bsubu_mn, bsubv_mn, *, sign: float):
         even_part = (values[:, outer] - values[:, inner]) / delta_s
         return jnp.where(odd, odd_part, even_part)
 
-    t1 = jnp.where(odd, t1_odd, t1_even)
+    t1 = bsubs_mn[:, inner]  # full-grid B_s
     t2 = radial_derivative(bsubu_mn)
     t3 = radial_derivative(bsubv_mn)
     curru = -sign * n_nfp * t1 - t3
@@ -1541,8 +1536,21 @@ def _extrapolate_both(values_interior: jax.Array) -> jax.Array:
     return jnp.concatenate([axis[None], values_interior, edge[None]])
 
 
-def _extrapolate_axis_column(coefficients: jax.Array) -> jax.Array:
-    return coefficients.at[:, 0].set(2.0 * coefficients[:, 1] - coefficients[:, 2])
+def half_to_full_grid_columns(coefficients: _ArrayT) -> _ArrayT:
+    """Full-grid coefficients from half-grid ones stored in columns 1 .. ns - 1.
+
+    Interior columns average the two neighboring half-grid columns, the axis and edge
+    columns are extrapolated linearly for all modes. NumPy input gives NumPy output.
+    """
+    xp = np if isinstance(coefficients, np.ndarray) else jnp
+    interior = 0.5 * (coefficients[:, 1:-1] + coefficients[:, 2:])
+    if interior.shape[1] < 2:
+        axis = edge = interior[:, 0]
+    else:
+        axis = 2.0 * interior[:, 0] - interior[:, 1]
+        edge = 2.0 * interior[:, -1] - interior[:, -2]
+    full = xp.concatenate([axis[:, None], interior, edge[:, None]], axis=1)
+    return cast(_ArrayT, full)
 
 
 __all__ = [
@@ -1551,6 +1559,7 @@ __all__ = [
     "UNKNOWN_DIAGNOSTICS",
     "WOUT_QUANTITIES",
     "half_grid_profiles",
+    "half_to_full_grid_columns",
     "mass_profile",
     "static_fields",
     "toroidal_flux_derivative",
