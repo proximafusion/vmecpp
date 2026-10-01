@@ -365,6 +365,8 @@ VMEC++:
 - reports issues via standard Python exceptions and has a zero crash policy
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
+- The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
+- The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes, but can utilize shared caches between threads
 - Reduces the force spikes between multi-grid stages in free-boundary, which should lead to faster and more robust free-boundary convergence (for details see https://github.com/proximafusion/vmecpp/releases/tag/v0.7.0)
 - Stable recurrence for Neumann kernel integrals enables convergence of free-boundary solves at high mpol, ntor (see https://github.com/proximafusion/vmecpp/releases/tag/v0.5.3)
@@ -380,8 +382,6 @@ VMEC++:
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
-- The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
-- The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 
 ## Roadmap
 
