@@ -310,6 +310,21 @@ _MISSING_FORTRAN_VARIABLES = [
 in wout files produced by VMEC++."""
 
 
+def _to_8_52_reference(varname, actual, desired, xm_nyq):
+    """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
+
+    VMEC++ writes B_s on the full grid.
+    """
+    if varname in ("bsubsmns", "bsubsmnc"):
+        # the 8.52 half grid averaged to the interior full-grid surfaces
+        return actual[1:-1], 0.5 * (desired[1:-1] + desired[2:])
+    if varname in ("currumnc", "currvmnc", "currumns", "currvmns"):
+        # odd m use the full-grid B_s instead of its sqrt(s)-weighted average
+        even = xm_nyq % 2 == 0
+        return actual[:, even], desired[:, even]
+    return actual, desired
+
+
 def test_vmecwout_io():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     # The reference restarts from the advanced state.
@@ -376,6 +391,9 @@ def test_vmecwout_io():
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -467,6 +485,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,

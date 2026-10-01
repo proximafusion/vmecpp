@@ -1472,6 +1472,11 @@ TEST_P(CurrentDensityTest, CheckCurrentDensityFourierCoefficients) {
 
   for (int jF = 0; jF < ns; ++jF) {
     for (int mn = 0; mn < mnmax_nyq; ++mn) {
+      // Deviation from VMEC 8.52: odd m use the full-grid bsubsmns instead of
+      // the sqrt(s)-weighted average of the half-grid one.
+      if (wout.xm_nyq[mn] % 2 == 1) {
+        continue;
+      }
       // ref_currumnc[jF][mn] is Fortran ordering (ns, mnmax_nyq)
       // wout.currumnc(mn, jF) is C++ ordering (mnmax_nyq, ns)
       EXPECT_TRUE(
