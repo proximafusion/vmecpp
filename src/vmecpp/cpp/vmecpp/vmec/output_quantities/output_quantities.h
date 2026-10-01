@@ -1302,12 +1302,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmnc;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmns;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmns_full;
+  RowMatrixXd bsubsmns;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumnc;
@@ -1352,12 +1348,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmns;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmnc;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmnc_full;
+  RowMatrixXd bsubsmnc;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumns;
@@ -1526,6 +1518,40 @@ CovariantBDerivatives LowPassFilterCovariantB(
 void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                       BSubSFull& m_bsubs_full);
 
+// Re-compute the full-grid covariant B_s on interior surfaces (jF = 1 .. ns-2)
+// by solving the radial force-balance equation
+//   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
+// in spectral space, where brho is the (sqrt(g)-weighted) radial-component
+// residual of the momentum equation. This is the lbsubs path of Fortran
+// VMEC's jxbforce + getbsubs; the call site invokes this when
+// VmecINDATA::lbsubs == true. The default lbsubs == false path keeps the
+// half->full interpolation already produced by PutBSubSOnFullGrid.
+//
+// On return:
+//   - m_bsubs_full.bsubs_full(jF, kl) is the radial-force-balance B_s on
+//     every interior full-grid surface jF in [1, ns-2]. Axis (jF = 0) and
+//     edge (jF = ns-1) are left untouched here and filled in the subsequent
+//     call to ExtrapolateBSubS.
+//   - m_covariant_b_derivatives.{bsubsu,bsubsv}(jF, kl) are the corresponding
+//     spectral derivatives, replacing the values left by
+//     LowPassFilterCovariantB on the interior surfaces.
+//
+// The flux-surface-averaged radial force balance is subtracted from the RHS
+// before the solve, since the local equation has no solution otherwise (the
+// integral of bsupu * dB_s/du + bsupv * dB_s/dv over the surface is zero).
+//
+// If the linear system is singular or its dimensions do not match the
+// Fourier basis, a warning is logged and the corresponding surface is left
+// in its half->full-interpolated state.
+//
+// Only the stellarator-symmetric (lasym = false) path is implemented. On a
+// lasym configuration the function logs a warning and leaves B_s as the
+// half->full interpolation.
+void RecomputeBSubSFromRadialForceBalance(
+    const Sizes& s, const FlowControl& fc, const FourierBasisFastPoloidal& t,
+    const VmecInternalResults& vmec_internal_results, BSubSFull& m_bsubs_full,
+    CovariantBDerivatives& m_covariant_b_derivatives);
+
 JxBOutFileContents ComputeJxBOutputFileContents(
     const Sizes& s, const FlowControl& fc,
     const VmecInternalResults& vmec_internal_results,
@@ -1599,9 +1625,8 @@ WOutFileContents ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     const std::vector<std::string>& coil_group_names,
-    VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
-    const JxBOutFileContents& jxbout,
+    VmecInternalResults& m_vmec_internal_results, const BSubSFull& bsubs_full,
+    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,

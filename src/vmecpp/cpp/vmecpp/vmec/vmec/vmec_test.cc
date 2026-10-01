@@ -781,7 +781,6 @@ TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
   // symmetric; its antisymmetric half is four orders below the rest.
   expect_asym(w.bsubvmns, w.mnmax_nyq, 1.0e-6, "bsubvmns");
   expect_asym(w.bsubsmnc, w.mnmax_nyq, 1.0e-3, "bsubsmnc");
-  expect_asym(w.bsubsmnc_full, w.mnmax_nyq, 1.0e-3, "bsubsmnc_full");
   expect_asym(w.bsupumns, w.mnmax_nyq, 1.0e-2, "bsupumns");
   expect_asym(w.bsupvmns, w.mnmax_nyq, 1.0e-3, "bsupvmns");
   expect_asym(w.currumns, w.mnmax_nyq, 1.0, "currumns");
@@ -996,8 +995,9 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // convergence path. 344 with the historical unbalanced stage entry; 321
   // since the vacuum state is seeded across multigrid transitions (the
   // second stage enters force-balanced instead of kicking the boundary); 328
-  // with the corrected cross-term sign in NESTOR's analytic add-back.
-  EXPECT_EQ(output->wout.niter, 328);
+  // with the corrected cross-term sign in NESTOR's analytic add-back; 329 with
+  // restart backups of the last evaluated state.
+  EXPECT_EQ(output->wout.niter, 329);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved

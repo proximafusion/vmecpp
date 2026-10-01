@@ -78,6 +78,19 @@ _TOLERANCE = {
 }
 _DEFAULT_TOLERANCE = 1.0e-10
 
+# The lbsubs collocation solve amplifies roundoff by its condition number in the
+# fields that depend on the force-balance B_s.
+_LBSUBS_FIELDS = {
+    "bsubsmns",
+    "currumnc",
+    "currvmnc",
+    "jdotb",
+    "DMerc",
+    "DCurr",
+    "DGeod",
+}
+_LBSUBS_TOLERANCE_FACTOR = 100.0
+
 # Input file and final ftol: stellarator-symmetric and asymmetric, 2D and 3D,
 # fixed and free boundary, prescribed iota and prescribed current. The C++
 # solver evaluates the spectral width on the state before the final time step,
@@ -90,10 +103,15 @@ _CASES = {
     "up_down_asym": 1.0e-14,
     "cth_like_fixed_bdy_asym": 1.0e-14,
     "cth_like_free_bdy": 1.0e-14,
+    "solovev_lbsubs": 1.0e-14,
+    "cth_like_fixed_bdy_lbsubs": 1.0e-14,
 }
 
 
 def _load_input(name: str, ftol: float) -> vmecpp.VmecInput:
+    if name.endswith("_lbsubs"):
+        indata = _load_input(name.removesuffix("_lbsubs"), ftol)
+        return indata.model_copy(update={"lbsubs": True})
     if name == "solovev_ns3":
         # the smallest radial grid: one interior full-grid surface
         indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
@@ -135,7 +153,9 @@ def _run_cpp(indata: vmecpp.VmecInput):
     )
 
 
-def _assert_field_close(name, actual, expected, reference_wout) -> None:
+def _assert_field_close(
+    name, actual, expected, reference_wout, *, lbsubs: bool = False
+) -> None:
     if expected is None or actual is None:
         assert actual is None, name
         assert expected is None, name
@@ -158,6 +178,8 @@ def _assert_field_close(name, actual, expected, reference_wout) -> None:
     if name == "ctor":
         scale = max(scale, abs(reference_wout.rbtor) / autodiff_wout.MU_0)
     tolerance = _TOLERANCE.get(name, _DEFAULT_TOLERANCE)
+    if lbsubs and name in _LBSUBS_FIELDS:
+        tolerance *= _LBSUBS_TOLERANCE_FACTOR
     np.testing.assert_allclose(
         actual[finite],
         expected[finite],
@@ -186,7 +208,11 @@ def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
     assert set(autodiff_wout.WOUT_QUANTITIES) <= set(fields)
     for name in fields:
         _assert_field_close(
-            name, getattr(actual, name), getattr(expected, name), expected
+            name,
+            getattr(actual, name),
+            getattr(expected, name),
+            expected,
+            lbsubs=indata.lbsubs,
         )
 
 
