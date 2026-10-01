@@ -528,6 +528,10 @@ class VmecInput(BaseModelWithNumpy):
     """If true, recompute the full-grid covariant B_s by solving radial force balance
     (lbsubs flag in Fortran VMEC)."""
 
+    backup_evaluated_state: bool = True
+    """If true, restart backups hold the state of the last force evaluation; if false,
+    they hold the advanced state, as in educational_VMEC and the reference files."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.
