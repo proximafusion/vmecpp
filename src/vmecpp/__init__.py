@@ -524,6 +524,10 @@ class VmecInput(BaseModelWithNumpy):
     above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
+    lbsubs: bool = False
+    """If true, recompute the full-grid covariant B_s by solving radial force balance
+    (lbsubs flag in Fortran VMEC)."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.
