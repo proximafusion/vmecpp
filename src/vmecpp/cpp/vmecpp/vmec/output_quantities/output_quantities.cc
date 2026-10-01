@@ -100,26 +100,6 @@ void ExtrapolateFullGridEnds(int ns, const Eigen::VectorXi& xm,
     m_coefficients(mn, ns - 1) = boundary;
   }  // mn
 }  // ExtrapolateFullGridEnds
-
-// Convert Fourier coefficients of a half-grid quantity, stored in columns
-// 1 .. ns-1, to the full grid: interior columns are the average of the two
-// neighboring half-grid columns, the axis and edge columns are extrapolated
-// linearly for all modes.
-void HalfToFullGridColumns(vmecpp::RowMatrixXd& m_coefficients) {
-  const int ns = static_cast<int>(m_coefficients.cols());
-  const vmecpp::RowMatrixXd half = m_coefficients;
-  for (int j = 1; j < ns - 1; ++j) {
-    m_coefficients.col(j) = 0.5 * (half.col(j) + half.col(j + 1));
-  }
-  if (ns < 4) {
-    m_coefficients.col(0) = m_coefficients.col(1);
-    m_coefficients.col(ns - 1) = m_coefficients.col(1);
-    return;
-  }
-  m_coefficients.col(0) = 2.0 * m_coefficients.col(1) - m_coefficients.col(2);
-  m_coefficients.col(ns - 1) =
-      2.0 * m_coefficients.col(ns - 2) - m_coefficients.col(ns - 3);
-}  // HalfToFullGridColumns
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -1269,25 +1249,6 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   }
   if (from_file.nameExists(absl::StrFormat("%s/currvmns", H5key))) {
     ReadAndTranspose2D(m_obj.currvmns, "currvmns");
-  }
-
-  // Version 8.52 files hold the half-grid B_s next to the full-grid one in
-  // bsubsmn[sc]_full; files without the latter are averaged to the full grid.
-  if (m_obj.version_ < 9.0) {
-    const auto to_full_grid = [&](RowMatrixXd& m_bsubs,
-                                  const std::string& full_name) {
-      const std::string path = absl::StrFormat("%s/%s", H5key, full_name);
-      if (from_file.nameExists(path)) {
-        ReadH5Dataset(m_bsubs, path, from_file);
-      } else {
-        HalfToFullGridColumns(m_bsubs);
-      }
-    };
-    to_full_grid(m_obj.bsubsmns, "bsubsmns_full");
-    if (m_obj.lasym) {
-      to_full_grid(m_obj.bsubsmnc, "bsubsmnc_full");
-    }
-    m_obj.version_ = 9.0;
   }
 
   return absl::OkStatus();
@@ -5099,8 +5060,10 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   WOutFileContents wout;
 
-  // 9.0: bsubsmns is on the full grid, as in VMEC 9.0 and PARVMEC.
-  wout.version_ = 9.0;
+  // take version from educational_VMEC for now
+  // TODO(jons): Upgrade VMEC++ to match PARVMEC and then change version to
+  // "9.0".
+  wout.version_ = 8.52;
 
   // We cannot provide a meaningful value for input_extension here, as we run
   // from a json input, but the input_extension indicates the existence of a
@@ -5800,8 +5763,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 #endif
 
   // -------------------
-  // Full-grid covariant B_s, as in jxbforce of VMEC 9.0 and PARVMEC (VMEC 8.52
-  // writes the half-grid B_s instead): the forward sine transform of bsubs_full
+  // Full-grid covariant B_s, as in jxbforce of PARVMEC (VMEC 8.52 writes the
+  // half-grid B_s instead): the forward sine transform of bsubs_full
   // (PutBSubSOnFullGrid or the lbsubs solve, then ExtrapolateBSubS).
   wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   if (s.lasym) {
@@ -6058,8 +6021,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs - dBzeta_cos/ds)
   //   currvmnc(m,n) = (1/mu0) * (-m     * Bs + dBtheta_cos/ds)
   //
-  // B_s is the full-grid bsubsmns, used as is (LIBSTELL read_wout_mod for wout
-  // version 9.0). Radial derivatives use sqrt(s) regularization for odd-m
+  // B_s is the full-grid bsubsmns, used as is (LIBSTELL read_wout_mod of
+  // VMEC 9.0). Radial derivatives use sqrt(s) regularization for odd-m
   // modes.
   {
     const double ohs = 1.0 / fc.deltaS;

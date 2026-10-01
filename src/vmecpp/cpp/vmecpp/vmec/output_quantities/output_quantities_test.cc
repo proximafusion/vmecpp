@@ -457,7 +457,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     }  // mn_nyq
   }  // jF
 
-  // Deviation from VMEC 8.52: bsubsmns is on the full grid (VMEC 9.0), the
+  // Deviation from VMEC 8.52: bsubsmns is on the full grid, the
   // reference holds the half grid. Compare with the reference averaged to the
   // interior full-grid surfaces.
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
