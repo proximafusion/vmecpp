@@ -53,6 +53,8 @@ namespace vmecpp {
 struct DataSource {
   std::string identifier;
   double tolerance = 0.0;
+  // itheta and jsupu3 in JxBOutputContentsTest, where set
+  double current_tolerance = 0.0;
 };
 
 class GatherDataFromThreadsTest : public TestWithParam<DataSource> {
@@ -438,6 +440,9 @@ class JxBOutputContentsTest : public TestWithParam<DataSource> {
 
 TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
   const double tolerance = data_source_.tolerance;
+  const double current_tolerance = data_source_.current_tolerance > 0.0
+                                       ? data_source_.current_tolerance
+                                       : tolerance;
 
   std::string filename =
       absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
@@ -477,7 +482,7 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
         // izeta
         EXPECT_TRUE(IsCloseRelAbs(jxbout["itheta"][jF][k][l],
                                   output_quantities.jxbout.itheta(idx_kl),
-                                  tolerance));
+                                  current_tolerance));
         EXPECT_TRUE(IsCloseRelAbs(jxbout["izeta"][jF][k][l],
                                   output_quantities.jxbout.izeta(idx_kl),
                                   tolerance));
@@ -487,7 +492,7 @@ TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
 
         EXPECT_TRUE(IsCloseRelAbs(jxbout["jsupu3"][jF][k][l],
                                   output_quantities.jxbout.jsupu3(idx_kl),
-                                  tolerance));
+                                  current_tolerance));
         EXPECT_TRUE(IsCloseRelAbs(jxbout["jsupv3"][jF][k][l],
                                   output_quantities.jxbout.jsupv3(idx_kl),
                                   tolerance));
@@ -555,9 +560,10 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-5},
            DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
                       .tolerance = 1.0e-5},
-           // jsupu3 deviates by up to 1.9e-4 at a point where it is 0.36,
-           // against 1e4 elsewhere
-           DataSource{.identifier = "cma", .tolerance = 1.0e-3},
+           // jsupu3 is 0.36 at one point and reaches 7e4 elsewhere
+           DataSource{.identifier = "cma",
+                      .tolerance = 1.0e-4,
+                      .current_tolerance = 1.0e-3},
            DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-5}));
 
 class MercierStabilityTest : public TestWithParam<DataSource> {
