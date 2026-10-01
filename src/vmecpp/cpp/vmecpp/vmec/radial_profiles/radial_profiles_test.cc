@@ -792,4 +792,38 @@ TEST_F(RadialProfilesTest, PolfluxIsIotaTimesTorfluxForConstantIota) {
   }
 }
 
+// With lrfp the radial coordinate is the poloidal flux and ai describes q, so
+// chi' = 1, phi' = q, iota = 1/q, and the profiles are evaluated at x itself.
+// For a linear q the trapezoid of torflux is exact, which gives the enclosed
+// toroidal flux and the normalization of phiedge in closed form.
+TEST_F(RadialProfilesTest, LrfpPrescribesQInThePoloidalFlux) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  indata_.lrfp = true;
+  indata_.phiedge = 0.2;
+  // q = 0.2 - 0.25 x reverses at x = 0.8
+  indata_.ai = Vec({0.2, -0.25});
+  // aphi reparameterizes the toroidal flux only without lrfp
+  indata_.aphi = Vec({0.0, 1.0});
+  profiles_->setupInputProfiles();
+
+  const auto q = [](double x) { return 0.2 - 0.25 * x; };
+  for (double x : {0.0, 0.3, 0.65, 1.0}) {
+    EXPECT_EQ(profiles_->polfluxDeriv(x), 1.0) << "at x=" << x;
+    EXPECT_NEAR(profiles_->torfluxDeriv(x), q(x), 1e-15) << "at x=" << x;
+    EXPECT_NEAR(profiles_->evalIotaProfile(x), 1.0 / q(x), 1e-12)
+        << "at x=" << x;
+    EXPECT_EQ(profiles_->profileCoordinate(x), x) << "at x=" << x;
+    EXPECT_NEAR(profiles_->torflux(x), 0.2 * x - 0.125 * x * x, 1e-15)
+        << "at x=" << x;
+    EXPECT_NEAR(profiles_->polflux(x), x, 1e-15) << "at x=" << x;
+  }
+
+  // the fixture's signOfJacobian is -1; phiedge is the toroidal flux enclosed
+  // by the boundary, and chi' = maxPoloidalFlux = maxToroidalFlux
+  EXPECT_NEAR(profiles_->maxToroidalFlux, -0.2 / (2.0 * M_PI) / 0.075, 1e-14);
+  EXPECT_NEAR(profiles_->maxPoloidalFlux, profiles_->maxToroidalFlux, 1e-14);
+}
+
 }  // namespace vmecpp

@@ -375,8 +375,10 @@ IdealMhdModel::IdealMhdModel(
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
                                   double tcon0, bool lforbal,
-                                  double lambda_preconditioner_scale) {
+                                  double lambda_preconditioner_scale,
+                                  bool lrfp) {
   this->ncurr = ncurr;
+  this->lrfp_ = lrfp;
   this->lambda_preconditioner_scale_ = lambda_preconditioner_scale;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
@@ -827,7 +829,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
         }  // fullUpdate printout
       }
 
-      if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
+      // In a reversed-field pinch the toroidal field reverses inside the
+      // boundary, so with lrfp neither check applies, as in Fortran VMEC's
+      // vacuum.f.
+      if (!lrfp_ && m_h_.rBtor * m_h_.bSubVVac < 0.0) {
         // A physical inconsistency, not a code bug: kFailedPrecondition (as
         // opposed to kInternal) marks this as a condition that
         // indata.return_outputs_even_if_not_converged can recover from by
@@ -836,7 +841,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
             "IdealMHDModel::update: rbtor and bsubvvac must have the same "
             "sign - maybe flip the sign of phiedge or the sign of the coil "
             "currents");
-      } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
+      } else if (!lrfp_ &&
+                 fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
         return absl::FailedPreconditionError(
             "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
             "ENCLOSE EXT. COIL");
@@ -1819,20 +1825,25 @@ void IdealMhdModel::computeBContra() {
         0.5 * m_p_.chipH[r_.nsMaxH - 2 - r_.nsMinH];
   }
 
-  // update full-grid iota
+  // update full-grid iota; with lrfp the average and the extrapolations act on
+  // q = 1/iota, as in Fortran VMEC's add_fluxes
+  const auto combine_iota = [this](double w0, double iota0, double w1,
+                                   double iota1) {
+    return lrfp_ ? 1.0 / (w0 / iota0 + w1 / iota1) : w0 * iota0 + w1 * iota1;
+  };
   if (r_.nsMinF1 == 0) {
-    m_p_.iotaF[0] = 1.5 * m_p_.iotaH[0] - 0.5 * m_p_.iotaH[1];
+    m_p_.iotaF[0] = combine_iota(1.5, m_p_.iotaH[0], -0.5, m_p_.iotaH[1]);
   }
   for (int jFi = r_.nsMinFi; jFi < r_.nsMaxFi; ++jFi) {
-    m_p_.iotaF[jFi - r_.nsMinF1] =
-        0.5 * (m_p_.iotaH[jFi - r_.nsMinH] + m_p_.iotaH[jFi - 1 - r_.nsMinH]);
+    m_p_.iotaF[jFi - r_.nsMinF1] = combine_iota(
+        0.5, m_p_.iotaH[jFi - r_.nsMinH], 0.5, m_p_.iotaH[jFi - 1 - r_.nsMinH]);
   }
   if (r_.nsMaxF1 == m_fc_.ns) {
     // The linear extrapolation of a half-grid array onto the boundary, the
     // same form used at the axis above and for chipF.
     m_p_.iotaF[r_.nsMaxF1 - 1 - r_.nsMinF1] =
-        1.5 * m_p_.iotaH[r_.nsMaxH - 1 - r_.nsMinH] -
-        0.5 * m_p_.iotaH[r_.nsMaxH - 2 - r_.nsMinH];
+        combine_iota(1.5, m_p_.iotaH[r_.nsMaxH - 1 - r_.nsMinH], -0.5,
+                     m_p_.iotaH[r_.nsMaxH - 2 - r_.nsMinH]);
   }
 
   // bsupu contains -dLambda/dZeta and now needs to get chip/sqrt(g) added,

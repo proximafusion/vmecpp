@@ -557,7 +557,10 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
             zaxis_cc=jnp.asarray(geometry.z_cc)[0, 0, :],
         )
 
-    iota_f = _half_to_full(iota_h)
+    # with lrfp the average and the extrapolations act on q = 1/iota
+    iota_f = (
+        1.0 / _half_to_full_inverse(iota_h) if setup.lrfp else _half_to_full(iota_h)
+    )
     betatotal = 2.0 * sump / sumbtot
     quantities.update(
         rmnc=rmnc,
@@ -674,7 +677,7 @@ def static_fields(vmec_input: Any) -> dict[str, Any]:
         "ns": sizes.ns,
         "ftolv": float(np.asarray(vmec_input.ftol_array)[-1]),
         "lfreeb": bool(vmec_input.lfreeb),
-        "lrfp": False,
+        "lrfp": bool(vmec_input.lrfp),
         "mgrid_file": vmec_input.mgrid_file,
         "nextcur": int(extcur.size),
         "extcur": extcur,
@@ -711,18 +714,51 @@ UNKNOWN_DIAGNOSTICS: dict[str, Any] = {
 
 
 def toroidal_flux_derivative(vmec_input: Any, s: np.ndarray) -> np.ndarray:
-    """``d phi / d s`` of the input flux profile, before the ``2 pi`` and sign
-    factors."""
+    """``d phi / d s`` of the input flux profile, before the ``2 pi`` and sign factors.
+
+    With ``lrfp``, s is the poloidal flux and ``d phi / d s`` is q times the
+    constant ``d chi / d s``, which is :func:`_flux_scale`.
+    """
+    if vmec_input.lrfp:
+        return _flux_scale(vmec_input) * _rfp_q(vmec_input, np.asarray(s))
     aphi = np.asarray(vmec_input.aphi, dtype=np.float64)
     if aphi.size == 0:
         aphi = np.asarray([1.0])
     powers = np.arange(1, aphi.size + 1)
     derivative = np.polyval((powers * aphi)[::-1], s)
-    edge_flux = np.polyval(np.concatenate([aphi[::-1], [0.0]]), 1.0)
+    return _flux_scale(vmec_input) * derivative
+
+
+def _rfp_q(vmec_input: Any, s: np.ndarray) -> np.ndarray:
+    """The safety factor q of ``lrfp``, as the C++ ``1 / evalIotaProfile`` at s."""
+    q = _evaluate_profile(
+        vmec_input.piota_type,
+        np.asarray(vmec_input.ai, dtype=np.float64),
+        np.asarray(vmec_input.ai_aux_s, dtype=np.float64),
+        np.asarray(vmec_input.ai_aux_f, dtype=np.float64),
+        s,
+    )
+    iota = np.where(q != 0.0, 1.0 / np.where(q != 0.0, q, 1.0), np.finfo(float).max)
+    return 1.0 / iota
+
+
+def _flux_scale(vmec_input: Any) -> float:
+    """``maxToroidalFlux`` of the C++ radial profiles: phiedge over the enclosed flux of
+    the profile, and with ``lrfp`` also ``d chi / d s``."""
+    if vmec_input.lrfp:
+        # the trapezoidal integral of q that the C++ torflux takes with lrfp
+        edge_flux = float(
+            np.trapezoid(_rfp_q(vmec_input, np.linspace(0.0, 1.0, 101)), dx=0.01)
+        )
+    else:
+        aphi = np.asarray(vmec_input.aphi, dtype=np.float64)
+        if aphi.size == 0:
+            aphi = np.asarray([1.0])
+        edge_flux = np.polyval(np.concatenate([aphi[::-1], [0.0]]), 1.0)
     scale = vmec_input.signgs * vmec_input.phiedge * vmec_input.bloat / (2.0 * np.pi)
     if edge_flux != 0.0:
         scale /= edge_flux
-    return scale * derivative
+    return scale
 
 
 def mass_profile(vmec_input: Any, s_half: np.ndarray) -> np.ndarray:
@@ -731,7 +767,13 @@ def mass_profile(vmec_input: Any, s_half: np.ndarray) -> np.ndarray:
     if aphi.size == 0:
         aphi = np.asarray([1.0])
     evaluation_position = np.minimum(s_half, vmec_input.spres_ped)
-    toroidal_flux = np.polyval(np.concatenate([aphi[::-1], [0.0]]), evaluation_position)
+    if vmec_input.lrfp:
+        # the profiles are given in the poloidal flux s itself
+        toroidal_flux = evaluation_position
+    else:
+        toroidal_flux = np.polyval(
+            np.concatenate([aphi[::-1], [0.0]]), evaluation_position
+        )
     normalized = np.minimum(
         np.abs(np.minimum(toroidal_flux, 1.0) * vmec_input.bloat), 1.0
     )
@@ -745,8 +787,13 @@ def mass_profile(vmec_input: Any, s_half: np.ndarray) -> np.ndarray:
     mass = MU_0 * vmec_input.pres_scale * pressure
     if vmec_input.gamma != 0.0:
         r00 = float(np.asarray(vmec_input.rbc)[0, vmec_input.ntor])
-        phip_half = toroidal_flux_derivative(vmec_input, s_half)
-        mass = mass * (np.abs(phip_half) * r00) ** vmec_input.gamma
+        # normalized by phi', or with lrfp by chi', as phi' passes through zero
+        vpnorm = (
+            _flux_scale(vmec_input)
+            if vmec_input.lrfp
+            else toroidal_flux_derivative(vmec_input, s_half)
+        )
+        mass = mass * (np.abs(vpnorm) * r00) ** vmec_input.gamma
     return mass
 
 
@@ -768,6 +815,10 @@ def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
         if kind != "power_series" or vmec_input.gamma != 0.0:
             msg = f"differentiating {name} needs power_series profiles and gamma = 0"
             raise NotImplementedError(msg)
+    if vmec_input.lrfp and "ai" in parameters:
+        # phi' is q times chi' there, and phi' is not differentiated
+        msg = "differentiating ai needs lrfp = False"
+        raise NotImplementedError(msg)
 
     def value(name):
         return jnp.asarray(parameters.get(name, getattr(vmec_input, name)), float)
@@ -782,12 +833,20 @@ def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
     s = (np.arange(ns - 1) + 0.5) / (ns - 1.0)
 
     def torflux(x):
+        # the flux the profiles are given in; with lrfp the poloidal flux x itself
+        if vmec_input.lrfp:
+            return x
         return np.minimum(np.polyval(np.concatenate([aphi[::-1], [0.0]]), x), 1.0)
 
     bloat = vmec_input.bloat
     x_mass = np.minimum(np.abs(torflux(np.minimum(s, vmec_input.spres_ped)) * bloat), 1)
     mass = MU_0 * value("pres_scale") * series(value("am"), jnp.asarray(x_mass))
     iota = series(value("ai"), jnp.asarray(torflux(s)))
+    if vmec_input.lrfp:
+        # ai describes q = 1 / iota
+        iota = jnp.where(
+            iota != 0.0, 1.0 / jnp.where(iota != 0.0, iota, 1.0), np.finfo(float).max
+        )
     current = jnp.zeros(ns - 1)
     if vmec_input.ncurr == 1 and value("ac").size:
         ac, curtor = value("ac"), value("curtor")
@@ -852,6 +911,7 @@ class _Setup:
     cos_kernel: jax.Array
     sin_kernel: jax.Array
     low_pass: dict[str, tuple[jax.Array, ...]]
+    lrfp: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -867,6 +927,7 @@ class _Sizes:
     gamma: float
     ntheta_even: int
     nzeta: int
+    lrfp: bool = False
 
     @property
     def ntheta_reduced(self) -> int:
@@ -911,6 +972,7 @@ def _sizes(vmec_input: Any, ns: int | None = None) -> _Sizes:
         gamma=float(vmec_input.gamma),
         ntheta_even=2 * (ntheta // 2),
         nzeta=nzeta,
+        lrfp=bool(vmec_input.lrfp),
     )
 
 
@@ -1025,6 +1087,7 @@ def _make_setup(sizes: _Sizes, profiles, kernels) -> _Setup:
         cos_kernel=kernels["cos_kernel"],
         sin_kernel=kernels["sin_kernel"],
         low_pass=kernels["low_pass"],
+        lrfp=sizes.lrfp,
     )
 
 
@@ -1316,7 +1379,7 @@ def _evaluate_profile(
         low = np.clip(np.searchsorted(knots[:n], x, side="right") - 1, 0, n - 2)
         t = (x - knots[low]) / (knots[low + 1] - knots[low])
         return (1.0 - t) * values[low] + t * values[low + 1]
-    error_message = f"mass_profile does not evaluate the '{kind}' mass profile"
+    error_message = f"the output stage does not evaluate the '{kind}' profile"
     raise NotImplementedError(error_message)
 
 
@@ -1513,6 +1576,14 @@ def _half_to_full(values_half: jax.Array) -> jax.Array:
     axis = 1.5 * values_half[0] - 0.5 * values_half[1]
     edge = 1.5 * values_half[-1] - 0.5 * values_half[-2]
     interior = 0.5 * (values_half[1:] + values_half[:-1])
+    return jnp.concatenate([axis[None], interior, edge[None]])
+
+
+def _half_to_full_inverse(values_half: jax.Array) -> jax.Array:
+    """:func:`_half_to_full` of ``1 / values_half``, in the C++ order of operations."""
+    axis = 1.5 / values_half[0] - 0.5 / values_half[1]
+    edge = 1.5 / values_half[-1] - 0.5 / values_half[-2]
+    interior = 0.5 / values_half[1:] + 0.5 / values_half[:-1]
     return jnp.concatenate([axis[None], interior, edge[None]])
 
 

@@ -303,14 +303,20 @@ def test_run_honors_iteration_style_flag():
     assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
-@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
+@pytest.mark.parametrize(
+    "case",
+    ["cth_like_fixed_bdy", "solovev", "rfp_gamma", "rfp_helical", "rfp_asym"],
+)
 def test_parvmec_matches_parvmec_reference(case):
     """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.
 
     The committed reference wouts match fresh output from the Fortran ORNL-
     Fusion/PARVMEC to machine precision (volume/aspect ~1e-15, geometry and iota ~1e-7
     for cth_like, ~0 for solovev), so this pins the new iteration style to the
-    independent parallel implementation, not only to the vmec_8_52 control.
+    independent parallel implementation, not only to the vmec_8_52 control. The rfp_*
+    cases are reversed-field pinches with lrfp, which educational_VMEC does not carry:
+    axisymmetric with pressure and gamma = 5/3, helical with nfp = 4, and up-down
+    asymmetric, matched to 1e-13, 2e-8 and 2e-11 in R and Z.
     """
     reference = vmecpp.VmecWOut.from_wout_file(TEST_DATA / f"wout_{case}.nc")
     base = vmecpp.VmecInput.from_file(TEST_DATA / f"{case}.json")

@@ -528,6 +528,14 @@ class VmecInput(BaseModelWithNumpy):
     """If true, recompute the full-grid covariant B_s by solving radial force balance
     (lbsubs flag in Fortran VMEC)."""
 
+    lrfp: bool = False
+    """If true, the radial coordinate is the normalized poloidal flux and ``ai``
+    describes q = 1/iota, as for a reversed-field pinch (lRFP flag in Fortran VMEC).
+
+    ``phiedge`` is still the toroidal flux enclosed by the boundary. Requires
+    ``ncurr = 0``.
+    """
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

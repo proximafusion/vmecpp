@@ -244,6 +244,12 @@ class VmecINDATA {
   // equilibrium iteration is unchanged.
   bool lbsubs;
 
+  // If true, the radial coordinate is the normalized poloidal flux and the ai
+  // coefficients describe q = 1/iota, as for a reversed-field pinch (lRFP
+  // flag in Fortran VMEC): chi' is constant, phi' = q chi', and phiedge is
+  // still the toroidal flux enclosed by the boundary. Requires ncurr = 0.
+  bool lrfp;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)
