@@ -71,9 +71,10 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
   ASSERT_TRUE(maybe_vmec.ok());
@@ -456,7 +457,7 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
     }  // mn_nyq
   }  // jF
 
-  // Deviation from VMEC 8.52: bsubsmns is on the full grid (VMEC 9.0), the
+  // Deviation from VMEC 8.52: bsubsmns is on the full grid, the
   // reference holds the half grid. Compare with the reference averaged to the
   // interior full-grid surfaces.
   for (int jF = 1; jF < fc.ns - 1; ++jF) {

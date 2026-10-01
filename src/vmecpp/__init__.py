@@ -527,6 +527,10 @@ class VmecInput(BaseModelWithNumpy):
     """If true, recompute the full-grid covariant B_s by solving radial force balance
     (lbsubs flag in Fortran VMEC)."""
 
+    backup_evaluated_state: bool = True
+    """If true, restart backups hold the state of the last force evaluation; if false,
+    they hold the advanced state, as in educational_VMEC and the reference files."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.
@@ -988,20 +992,6 @@ def _lambda_on_full_grid(
 # NOTE: in the future we want to change the C++ WOutFileContents layout so that it
 # matches the classic Fortran one, so most of the compatibility layer here could
 # disappear.
-def _half_to_full_grid_columns(coefficients: np.ndarray) -> np.ndarray:
-    """Full-grid coefficients from half-grid ones in columns 1 ..
-
-    ns - 1: interior
-    averages, axis and edge extrapolated linearly (ExtrapolateBSubS).
-    """
-    interior = 0.5 * (coefficients[:, 1:-1] + coefficients[:, 2:])
-    if interior.shape[1] < 2:
-        return np.repeat(interior, 3, axis=1)
-    axis = 2.0 * interior[:, :1] - interior[:, 1:2]
-    edge = 2.0 * interior[:, -1:] - interior[:, -2:-1]
-    return np.concatenate([axis, interior, edge], axis=1)
-
-
 class VmecWOut(BaseModelWithNumpy):
     """Python equivalent of a VMEC "wout file".
 
@@ -1341,11 +1331,7 @@ class VmecWOut(BaseModelWithNumpy):
 
     bsubsmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     """Fourier coefficients (sin) of the covariant magnetic field component
-    :math:`B_{s}` on the full-grid, as written by VMEC 9.0.
-
-    ``from_wout_file`` converts the half-grid array of a version 8.52 wout file to the
-    full grid.
-    """
+    :math:`B_{s}` on the full-grid; Fortran VMEC 8.52 writes the half-grid array."""
 
     bsupumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"]
     r"""Fourier coefficients (cos) of the contravariant magnetic field component
@@ -1989,13 +1975,6 @@ class VmecWOut(BaseModelWithNumpy):
                 )
             else:
                 attrs[full] = np.zeros([attrs["mnmax"], attrs["ns"]])
-
-        # Version 8.52 stores B_s on the half grid.
-        if np.isclose(attrs["version_"], 8.52):
-            for name in ("bsubsmns", "bsubsmnc"):
-                if attrs.get(name) is not None:
-                    attrs[name] = _half_to_full_grid_columns(attrs[name])
-            attrs["version_"] = 9.0
 
         # Backwards compatibility: lrfp flag may not exist in older wout files
         attrs.setdefault("lrfp__logical__", 0)
