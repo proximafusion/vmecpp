@@ -844,8 +844,9 @@ def half_grid_profiles(vmec_input: Any, ns: int, parameters: dict) -> jax.Array:
     iota = series(value("ai"), jnp.asarray(torflux(s)))
     if vmec_input.lrfp:
         # ai describes q = 1 / iota
+        q = jnp.asarray(iota)
         iota = jnp.where(
-            iota != 0.0, 1.0 / jnp.where(iota != 0.0, iota, 1.0), np.finfo(float).max
+            q != 0.0, 1.0 / jnp.where(q != 0.0, q, 1.0), np.finfo(float).max
         )
     current = jnp.zeros(ns - 1)
     if vmec_input.ncurr == 1 and value("ac").size:
