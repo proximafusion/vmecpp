@@ -1302,12 +1302,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmnc;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmns;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmns_full;
+  RowMatrixXd bsubsmns;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumnc;
@@ -1352,12 +1348,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmns;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmnc;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmnc_full;
+  RowMatrixXd bsubsmnc;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumns;
@@ -1633,9 +1625,8 @@ WOutFileContents ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     const std::vector<std::string>& coil_group_names,
-    VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
-    const JxBOutFileContents& jxbout,
+    VmecInternalResults& m_vmec_internal_results, const BSubSFull& bsubs_full,
+    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
