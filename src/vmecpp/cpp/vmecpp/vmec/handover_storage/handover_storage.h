@@ -226,6 +226,10 @@ class HandoverStorage {
   // check_step; 1 when the whole step does.
   double step_fraction = 1.0;
 
+  // Threads the runtime granted the last nested vacuum team, checked against
+  // the team the vacuum solvers are partitioned for.
+  int vacuum_team_size = 0;
+
  private:
   const Sizes& s_;
 
