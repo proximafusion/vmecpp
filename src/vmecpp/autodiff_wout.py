@@ -660,7 +660,7 @@ def static_fields(vmec_input: Any) -> dict[str, Any]:
 
     extcur = np.asarray(vmec_input.extcur, dtype=np.float64).ravel()
     return {
-        "version_": 9.0,
+        "version_": 8.52,
         "input_extension": "",
         "signgs": sizes.signgs,
         "gamma": sizes.gamma,
