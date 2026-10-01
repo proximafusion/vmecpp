@@ -101,6 +101,10 @@ vmec_output.wout.save("wout_w7x.nc")
 
 All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
 
+An optional `iteration_callback` is available to investigate the progress of the solver. It can be used to interactively debug
+and interact with `vmecpp`'s state from a Python repl, or generate animations of the convergence progress like in
+[`examples/watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py).
+
 ### With SIMSOPT
 
 [SIMSOPT](https://simsopt.readthedocs.io) is a popular stellarator optimization framework.
@@ -299,6 +303,41 @@ vmec_input.niter_array = vmec_input.niter_array[-1:]
 hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 ```
 
+## Differentiable runs
+
+> [!NOTE]
+> The autodiff API is not yet stable. We are planning to make autodiff the default
+> behaviour and to release a suitable pip wheel in the upcoming weeks.
+
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
+
+Leaves that change shape depending on iteration progress (`fsqt` trace for example)
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
+tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
+and diagnostics are `None`.
+
+```python
+import jax
+import jax.numpy as jnp
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
+
+
+def aspect(rbc, zbs):
+    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
+    return vmecpp.run(boundary, verbose=False).wout.aspect
+
+
+rbc = jnp.asarray(vmec_input.rbc)
+zbs = jnp.asarray(vmec_input.zbs)
+d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
+```
+
 ## Full tests and validation against the reference Fortran VMEC v8.52
 
 When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.
@@ -326,6 +365,8 @@ VMEC++:
 - reports issues via standard Python exceptions and has a zero crash policy
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
+- The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
+- The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 - employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes, but can utilize shared caches between threads
 - Reduces the force spikes between multi-grid stages in free-boundary, which should lead to faster and more robust free-boundary convergence (for details see https://github.com/proximafusion/vmecpp/releases/tag/v0.7.0)
 - Stable recurrence for Neumann kernel integrals enables convergence of free-boundary solves at high mpol, ntor (see https://github.com/proximafusion/vmecpp/releases/tag/v0.5.3)
@@ -333,35 +374,14 @@ VMEC++:
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
-- free-boundary works only for `ntor > 0` - axisymmetric (`ntor = 0`) free-boundary runs don't work yet
-- `lgiveup`/`fgiveup` logic for early termination of a multi-grid sequence is not implemented yet
-- `lbsubs` logic in computing outputs is not implemented yet
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
 - several profile parameterizations are not fully implemented yet:
-   * `gauss_trunc`
-   * `two_power_gs`
-   * `akima_spline`
-   * `akima_spline_i`
-   * `akima_spline_ip`
-   * `cubic_spline`
-   * `cubic_spline_i`
-   * `cubic_spline_ip`
-   * `pedestal`
-   * `rational`
-   * `nice_quadratic`
    * `sum_cossq_s`
    * `sum_cossq_sqrts`
    * `sum_cossq_s_free`
-- some (rarely used) free-boundary-related output quantities are not implemented yet:
-   * `curlabel` - declared but not populated yet
-   * `potvac` - declared but not populated yet
-   * `xmpot` - not declared yet
-   * `xnpot` - not declared yet
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
-- The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
-- The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
 
 ## Roadmap
 

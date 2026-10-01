@@ -13,6 +13,7 @@
 
 #include "H5Cpp.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/testing/numerical_comparison_lib.h"
 #include "vmecpp/common/util/util.h"
@@ -34,6 +35,71 @@ VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
     return VectorXd::Constant(1, val);
   }
 }  // NonEmptyVectorOr
+
+// Fill the axis and the boundary entry of a full-grid radial profile by linear
+// extrapolation from the two interior surfaces next to each end, reading only
+// interior values. At ns == 3 there is one interior surface and both ends take
+// its value.
+void ExtrapolateFullGridEnds(int ns, VectorXd& m_profile) {
+  if (ns < 4) {
+    const double interior = m_profile[1];
+    m_profile[0] = interior;
+    m_profile[ns - 1] = interior;
+    return;
+  }
+
+  const double axis = 2.0 * m_profile[1] - m_profile[2];
+  const double boundary = 2.0 * m_profile[ns - 2] - m_profile[ns - 3];
+  m_profile[0] = axis;
+  m_profile[ns - 1] = boundary;
+}  // ExtrapolateFullGridEnds
+
+// ExtrapolateFullGridEnds for a full-grid field of ns surfaces of n_znt
+// tangential points.
+void ExtrapolateFullGridEnds(int ns, int n_znt, vmecpp::RowMatrixXd& m_field) {
+  for (int kl = 0; kl < n_znt; ++kl) {
+    if (ns < 4) {
+      const double interior = m_field(1 * n_znt + kl);
+      m_field(0 * n_znt + kl) = interior;
+      m_field((ns - 1) * n_znt + kl) = interior;
+      continue;
+    }
+
+    const double axis = 2.0 * m_field(1 * n_znt + kl) - m_field(2 * n_znt + kl);
+    const double boundary =
+        2.0 * m_field((ns - 2) * n_znt + kl) - m_field((ns - 3) * n_znt + kl);
+    m_field(0 * n_znt + kl) = axis;
+    m_field((ns - 1) * n_znt + kl) = boundary;
+  }  // kl
+}  // ExtrapolateFullGridEnds
+
+// Fill the axis and the boundary column of a Fourier coefficient stored as one
+// row of ns full-grid columns per mode, reading interior columns only. The
+// axis column is written for m <= 1 and left at zero otherwise. At ns == 3 the
+// axis column is also the third-from-last column, and the single interior
+// column supplies both ends.
+void ExtrapolateFullGridEnds(int ns, const Eigen::VectorXi& xm,
+                             vmecpp::RowMatrixXd& m_coefficients) {
+  const int num_modes = static_cast<int>(m_coefficients.rows());
+  for (int mn = 0; mn < num_modes; ++mn) {
+    if (ns < 4) {
+      const double interior = m_coefficients(mn, 1);
+      if (xm[mn] <= 1) {
+        m_coefficients(mn, 0) = interior;
+      }
+      m_coefficients(mn, ns - 1) = interior;
+      continue;
+    }
+
+    const double axis = 2.0 * m_coefficients(mn, 1) - m_coefficients(mn, 2);
+    const double boundary =
+        2.0 * m_coefficients(mn, ns - 2) - m_coefficients(mn, ns - 3);
+    if (xm[mn] <= 1) {
+      m_coefficients(mn, 0) = axis;
+    }
+    m_coefficients(mn, ns - 1) = boundary;
+  }  // mn
+}  // ExtrapolateFullGridEnds
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -369,8 +435,8 @@ absl::Status vmecpp::MercierStabilityIntermediateQuantities::WriteTo(
   WRITEMEMBER(s);
   WRITEMEMBER(shear);
   WRITEMEMBER(vpp);
-  WRITEMEMBER(d_pressure_d_s);
-  WRITEMEMBER(d_toroidal_current_d_s);
+  WRITEMEMBER(d_pressure_d_phi);
+  WRITEMEMBER(d_toroidal_current_d_phi);
   WRITEMEMBER(phip_realH);
   WRITEMEMBER(phip_realF);
   WRITEMEMBER(vp_real);
@@ -391,8 +457,8 @@ absl::Status vmecpp::MercierStabilityIntermediateQuantities::LoadInto(
   READMEMBER(s);
   READMEMBER(shear);
   READMEMBER(vpp);
-  READMEMBER(d_pressure_d_s);
-  READMEMBER(d_toroidal_current_d_s);
+  READMEMBER(d_pressure_d_phi);
+  READMEMBER(d_toroidal_current_d_phi);
   READMEMBER(phip_realH);
   READMEMBER(phip_realF);
   READMEMBER(vp_real);
@@ -414,12 +480,12 @@ absl::Status vmecpp::MercierFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(toroidal_flux);
   WRITEMEMBER(iota);
   WRITEMEMBER(shear);
-  WRITEMEMBER(d_volume_d_s);
+  WRITEMEMBER(d_volume_d_phi);
   WRITEMEMBER(well);
   WRITEMEMBER(toroidal_current);
-  WRITEMEMBER(d_toroidal_current_d_s);
+  WRITEMEMBER(d_toroidal_current_d_volume);
   WRITEMEMBER(pressure);
-  WRITEMEMBER(d_pressure_d_s);
+  WRITEMEMBER(d_pressure_d_volume);
   WRITEMEMBER(DMerc);
   WRITEMEMBER(Dshear);
   WRITEMEMBER(Dwell);
@@ -434,12 +500,12 @@ absl::Status vmecpp::MercierFileContents::LoadInto(MercierFileContents& m_obj,
   READMEMBER(toroidal_flux);
   READMEMBER(iota);
   READMEMBER(shear);
-  READMEMBER(d_volume_d_s);
+  READMEMBER(d_volume_d_phi);
   READMEMBER(well);
   READMEMBER(toroidal_current);
-  READMEMBER(d_toroidal_current_d_s);
+  READMEMBER(d_toroidal_current_d_volume);
   READMEMBER(pressure);
-  READMEMBER(d_pressure_d_s);
+  READMEMBER(d_pressure_d_volume);
   READMEMBER(DMerc);
   READMEMBER(Dshear);
   READMEMBER(Dwell);
@@ -932,9 +998,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(phips);
   WRITEMEMBER(over_r);
   WRITEMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  WRITEMEMBER(bdotb);
+  WRITEMEMBER(bdotb);
   WRITEMEMBER(bdotgradv);
   WRITEMEMBER(DMerc);
   WRITEMEMBER(DShear);
@@ -961,7 +1025,6 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubumnc);
   WRITEMEMBER(bsubvmnc);
   WRITEMEMBER(bsubsmns);
-  WRITEMEMBER(bsubsmns_full);
   WRITEMEMBER(bsupumnc);
   WRITEMEMBER(bsupvmnc);
   WRITEMEMBER(currumnc);
@@ -977,7 +1040,6 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(bsubumns);
   WRITEMEMBER(bsubvmns);
   WRITEMEMBER(bsubsmnc);
-  WRITEMEMBER(bsubsmnc_full);
   WRITEMEMBER(bsupumns);
   WRITEMEMBER(bsupvmns);
   WRITEMEMBER(currumns);
@@ -1022,15 +1084,11 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER_COMPAT(niter, "maximum_iterations");
   READMEMBER(lfreeb);
   READMEMBER(mgrid_file);
-  // Compatibility with HDF5 files that do not have the nextcur and extcur
-  // fields yet (before v0.3.3)
-  if (m_obj.lfreeb) {
-    READMEMBER(nextcur);
-    READMEMBER(extcur);
-  } else {
-    m_obj.nextcur = 0;
-    m_obj.extcur = Eigen::Vector<double, 0>::Zero();
-  }
+  READMEMBER(extcur);
+  // Files written before v0.3.3 carry no nextcur, the number of extcur
+  // entries.
+  m_obj.nextcur = static_cast<int>(m_obj.extcur.size());
+  READMEMBER_OPTIONAL(nextcur);
   READMEMBER(mgrid_mode);
   READMEMBER(wb);
   READMEMBER(wp);
@@ -1102,9 +1160,8 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
     ReadHalfGridCompat(m_obj.over_r, "overr");
   }
   READMEMBER(jdotb);
-  // TODO(jurasic) We will deprecate HDF5 soon, regenerate large_cpp_tests
-  // reference files with all quantities once that is done
-  //  READMEMBER(bdotb);
+  // Files written before bdotb was serialized carry no such dataset.
+  READMEMBER_OPTIONAL(bdotb);
   READMEMBER(bdotgradv);
   READMEMBER(DMerc);
   READMEMBER_COMPAT(DShear, "Dshear");
@@ -1166,7 +1223,6 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   ReadAndTransposePadHalfGrid2D(m_obj.bsubumnc, "bsubumnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubvmnc, "bsubvmnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubsmns, "bsubsmns", m_obj.mnmax_nyq);
-  READMEMBER(bsubsmns_full);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupumnc, "bsupumnc", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupvmnc, "bsupvmnc", m_obj.mnmax_nyq);
   if (from_file.nameExists(absl::StrFormat("%s/currumnc", H5key))) {
@@ -1186,7 +1242,6 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   ReadAndTransposePadHalfGrid2D(m_obj.bsubumns, "bsubumns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubvmns, "bsubvmns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsubsmnc, "bsubsmnc", m_obj.mnmax_nyq);
-  READMEMBER(bsubsmnc_full);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupumns, "bsupumns", m_obj.mnmax_nyq);
   ReadAndTransposePadHalfGrid2D(m_obj.bsupvmns, "bsupvmns", m_obj.mnmax_nyq);
   if (from_file.nameExists(absl::StrFormat("%s/currumns", H5key))) {
@@ -1202,10 +1257,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
 #undef WRITEMEMBER
 #undef READMEMBER
 
-absl::Status vmecpp::OutputQuantities::Save(
-    const std::filesystem::path& path) const {
-  H5::H5File file(path, H5F_ACC_TRUNC);
-
+absl::Status vmecpp::OutputQuantities::WriteTo(H5::H5File& file) const {
   absl::Status status;
 
   status = vmec_internal_results.WriteTo(file);
@@ -1311,10 +1363,8 @@ absl::Status vmecpp::OutputQuantities::Save(
   return absl::OkStatus();
 }
 
-absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
-    const std::filesystem::path& path) {
-  H5::H5File file(path, H5F_ACC_RDONLY);
-
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::ReadFrom(
+    H5::H5File& file) {
   OutputQuantities oq;
   absl::Status status;
 
@@ -1431,6 +1481,30 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
   return oq;
 }
 
+absl::Status vmecpp::OutputQuantities::Save(
+    const std::filesystem::path& path) const {
+  try {
+    H5::H5File file(path, H5F_ACC_TRUNC);
+    return WriteTo(file);
+  } catch (const H5::Exception& exception) {
+    return absl::InternalError(
+        absl::StrFormat("could not write '%s': %s: %s", path.string(),
+                        exception.getFuncName(), exception.getDetailMsg()));
+  }
+}
+
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
+    const std::filesystem::path& path) {
+  try {
+    H5::H5File file(path, H5F_ACC_RDONLY);
+    return ReadFrom(file);
+  } catch (const H5::Exception& exception) {
+    return absl::InternalError(
+        absl::StrFormat("could not read '%s': %s: %s", path.string(),
+                        exception.getFuncName(), exception.getDetailMsg()));
+  }
+}
+
 vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
     const Sizes& s, const FlowControl& fc,
     const HandoverStorage& handover_storage,
@@ -1525,6 +1599,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
 
   if (vmec_status == VmecStatus::NORMAL_TERMINATION ||
       vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
+      vmec_status == VmecStatus::MORE_ITERATIONS_NEEDED ||
       indata.return_outputs_even_if_not_converged) {
     MeshBledingBSubZeta(
         s, fc,
@@ -1576,8 +1651,19 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
       return output_quantities;  // output_quantities partially uninitialized.
     }
 
-    // TODO(jons): optionally, re-compute B_s to solve radial force balance
-    // (lbsubs flag in Fortran VMEC)
+    // When VmecINDATA::lbsubs is true, re-derive the interior full-grid B_s
+    // (and its tangential derivatives) by solving the radial force-balance
+    // equation in spectral space. This is jxbforce.f90's `IF (lbsubs)` path
+    // and is independent of the equilibrium iteration; it only changes the
+    // jxbout diagnostic. ExtrapolateBSubS below then fills the axis/edge
+    // entries from the corrected interior values.
+    if (indata.lbsubs) {
+      RecomputeBSubSFromRadialForceBalance(
+          s, fc, t, output_quantities.vmec_internal_results,
+          /*m_bsubs_full=*/output_quantities.bsubs_full,
+          /*m_covariant_b_derivatives=*/
+          output_quantities.covariant_b_derivatives);
+    }
 
     ExtrapolateBSubS(s, fc, /*m_bsubs_full=*/output_quantities.bsubs_full);
 
@@ -1684,8 +1770,8 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     output_quantities.wout = ComputeWOutFileContents(
         indata, s, t, fc, constants, h, mgrid_mode, coil_group_names,
         /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
-        output_quantities.bsubs_half, output_quantities.bsubs_full,
-        output_quantities.mercier, output_quantities.jxbout,
+        output_quantities.bsubs_full, output_quantities.mercier,
+        output_quantities.jxbout,
         output_quantities.threed1_first_table_intermediate,
         output_quantities.threed1_first_table,
         output_quantities.threed1_geometric_magnetic,
@@ -1701,6 +1787,108 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
 
   return output_quantities;
 }  // ComputeOutputQuantities
+
+namespace {
+
+// size the spectral state of results for num_full full-grid surfaces
+void AllocateStateVector(const vmecpp::Sizes& s, int num_full,
+                         vmecpp::VmecInternalResults& m_results) {
+  m_results.rmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  m_results.zmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  m_results.lmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  if (s.lthreed) {
+    m_results.rmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.zmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.lmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+  }
+  if (s.lasym) {
+    m_results.rmnsc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.zmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    m_results.lmncc = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    if (s.lthreed) {
+      m_results.rmncs = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+      m_results.zmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+      m_results.lmnss = vmecpp::RowMatrixXd::Zero(num_full, s.mnsize);
+    }
+  }
+}
+
+// copy the spectral coefficients of full-grid surface jF from the thread that
+// holds it into the gathered results
+void GatherStateVectorOfSurface(const vmecpp::Sizes& s,
+                                const vmecpp::RadialPartitioning& r,
+                                const vmecpp::FourierGeometry& decomposed_x,
+                                int jF,
+                                vmecpp::VmecInternalResults& m_results) {
+  for (int n = 0; n < s.ntor + 1; ++n) {
+    for (int m = 0; m < s.mpol; ++m) {
+      const int source_index =
+          ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+      const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
+
+      m_results.rmncc(target_index) = decomposed_x.rmncc[source_index];
+      m_results.zmnsc(target_index) = decomposed_x.zmnsc[source_index];
+      m_results.lmnsc(target_index) = decomposed_x.lmnsc[source_index];
+      if (s.lthreed) {
+        m_results.rmnss(target_index) = decomposed_x.rmnss[source_index];
+        m_results.zmncs(target_index) = decomposed_x.zmncs[source_index];
+        m_results.lmncs(target_index) = decomposed_x.lmncs[source_index];
+      }
+      if (s.lasym) {
+        m_results.rmnsc(target_index) = decomposed_x.rmnsc[source_index];
+        m_results.zmncc(target_index) = decomposed_x.zmncc[source_index];
+        m_results.lmncc(target_index) = decomposed_x.lmncc[source_index];
+        if (s.lthreed) {
+          m_results.rmncs(target_index) = decomposed_x.rmncs[source_index];
+          m_results.zmnss(target_index) = decomposed_x.zmnss[source_index];
+          m_results.lmnss(target_index) = decomposed_x.lmnss[source_index];
+        }
+      }
+    }  // m
+  }  // n
+}
+
+}  // namespace
+
+vmecpp::VmecInternalResults vmecpp::GatherSpectralStateFromThreads(
+    const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
+    const VmecConstants& constants,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& radial_partitioning,
+    const std::vector<std::unique_ptr<FourierGeometry>>& decomposed_x,
+    const std::vector<std::unique_ptr<RadialProfiles>>& radial_profiles) {
+  VmecInternalResults results;
+
+  results.sign_of_jacobian = sign_of_jacobian;
+  results.lamscale = constants.lamscale;
+  results.num_half = fc.ns - 1;
+  results.num_full = fc.ns;
+
+  results.phipF = VectorXd::Zero(results.num_full);
+  results.phipH = VectorXd::Zero(results.num_half);
+  results.iotaH = VectorXd::Zero(results.num_half);
+  AllocateStateVector(s, results.num_full, results);
+
+  const std::size_t num_threads = radial_partitioning.size();
+  for (std::size_t thread_id = 0; thread_id < num_threads; ++thread_id) {
+    const RadialPartitioning& r = *radial_partitioning[thread_id];
+    const RadialProfiles& p = *radial_profiles[thread_id];
+
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      // half-grid points are overlapping --> only take unique ones !
+      if (jH < r.nsMaxH - 1 || jH == fc.ns - 2) {
+        results.phipH[jH] = p.phipH[jH - r.nsMinH];
+        results.iotaH[jH] = p.iotaH[jH - r.nsMinH];
+      }
+    }  // jH
+
+    for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
+      results.phipF[jF] = p.phipF[jF - r.nsMinF1];
+      GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
+    }  // jF
+  }  // thread_id
+
+  return results;
+}
 
 vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     const int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
@@ -1743,25 +1931,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
   results.iotaH = VectorXd::Zero(results.num_half);
   results.currH = VectorXd::Zero(results.num_half);
 
-  // state vector
-  results.rmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.zmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  results.lmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  if (s.lthreed) {
-    results.rmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-  }
-  if (s.lasym) {
-    results.rmnsc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.zmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    results.lmncc = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    if (s.lthreed) {
-      results.rmncs = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.zmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-      results.lmnss = RowMatrixXd::Zero(results.num_full, s.mnsize);
-    }
-  }
+  AllocateStateVector(s, results.num_full, results);
 
   // from inv-DFTs
   results.r_e = RowMatrixXd::Zero(results.num_full, s.nZnT);
@@ -1874,46 +2044,7 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
       results.iotaF[jF] = p.iotaF[jF - r.nsMinF1];
       results.spectral_width[jF] = p.spectral_width[jF - r.nsMinF1];
 
-      // state vector
-      for (int n = 0; n < s.ntor + 1; ++n) {
-        for (int m = 0; m < s.mpol; ++m) {
-          // FIXME(eguiraud) slow loop
-          const int source_index =
-              ((jF - nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
-          const int target_index = (jF * (s.ntor + 1) + n) * s.mpol + m;
-
-          results.rmncc(target_index) =
-              decomposed_x[thread_id]->rmncc[source_index];
-          results.zmnsc(target_index) =
-              decomposed_x[thread_id]->zmnsc[source_index];
-          results.lmnsc(target_index) =
-              decomposed_x[thread_id]->lmnsc[source_index];
-          if (s.lthreed) {
-            results.rmnss(target_index) =
-                decomposed_x[thread_id]->rmnss[source_index];
-            results.zmncs(target_index) =
-                decomposed_x[thread_id]->zmncs[source_index];
-            results.lmncs(target_index) =
-                decomposed_x[thread_id]->lmncs[source_index];
-          }
-          if (s.lasym) {
-            results.rmnsc(target_index) =
-                decomposed_x[thread_id]->rmnsc[source_index];
-            results.zmncc(target_index) =
-                decomposed_x[thread_id]->zmncc[source_index];
-            results.lmncc(target_index) =
-                decomposed_x[thread_id]->lmncc[source_index];
-            if (s.lthreed) {
-              results.rmncs(target_index) =
-                  decomposed_x[thread_id]->rmncs[source_index];
-              results.zmnss(target_index) =
-                  decomposed_x[thread_id]->zmnss[source_index];
-              results.lmnss(target_index) =
-                  decomposed_x[thread_id]->lmnss[source_index];
-            }
-          }
-        }  // m
-      }  // n
+      GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
 
       double unlamscale = 1.0;
       if (jF > 0) {
@@ -2681,23 +2812,419 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
 void vmecpp::ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                               BSubSFull& m_bsubs_full) {
-  for (int kl = 0; kl < s.nZnT; ++kl) {
-    // extrapolate towards axis from first two interior full-grid points
-    const int index_0 = 0 * s.nZnT + kl;
-    const int index_1 = 1 * s.nZnT + kl;
-    const int index_2 = 2 * s.nZnT + kl;
-    m_bsubs_full.bsubs_full(index_0) = 2.0 * m_bsubs_full.bsubs_full(index_1) -
-                                       m_bsubs_full.bsubs_full(index_2);
-
-    // extrapolate towards boundary from last two interior full-grid points
-    const int index_ns_1 = (fc.ns - 1) * s.nZnT + kl;
-    const int index_ns_2 = (fc.ns - 2) * s.nZnT + kl;
-    const int index_ns_3 = (fc.ns - 3) * s.nZnT + kl;
-    m_bsubs_full.bsubs_full(index_ns_1) =
-        2.0 * m_bsubs_full.bsubs_full(index_ns_2) -
-        m_bsubs_full.bsubs_full(index_ns_3);
-  }  // kl
+  ExtrapolateFullGridEnds(fc.ns, s.nZnT, m_bsubs_full.bsubs_full);
 }  // ExtrapolateBSubS
+
+void vmecpp::RecomputeBSubSFromRadialForceBalance(
+    const Sizes& s, const FlowControl& fc, const FourierBasisFastPoloidal& t,
+    const VmecInternalResults& vmec_internal_results, BSubSFull& m_bsubs_full,
+    CovariantBDerivatives& m_covariant_b_derivatives) {
+  // Port of jxbforce.f90 lines 368-515 (the `IF (lbsubs)` block) plus the
+  // collocation-based linear solve in getbsubs.f90. The pre-pass in jxbforce
+  // (the Fourier low-pass filter) is already handled upstream by
+  // LowPassFilterCovariantB, so this routine only does the radial-force-balance
+  // re-derivation of B_s on the interior full-grid surfaces.
+  //
+  // The math: on each interior surface jF the equation
+  //   bsupu_full * d(B_s)/du + bsupv_full * d(B_s)/dv = brho
+  // is solved by collocation. Both sides are multiplied through by
+  // sqrt(g_full); bsupu_full and bsupv_full below are accordingly sqrt(g) *
+  // B^u/v averaged between the two adjacent half-grid surfaces, matching the
+  // Fortran bsupu1/bsupv1.
+
+  // Dimension check from getbsubs.f90:49. mnyq + 1 should equal the half-period
+  // poloidal point count, and nnyq should equal nZeta/2 (== 0 for
+  // axisymmetric). If either condition fails we cannot reproduce the Fortran
+  // basis layout, so skip the re-derivation and keep the half->full
+  // interpolation in place.
+  const int mmax = s.mnyq;
+  const int nmax = s.nnyq;
+  if (mmax + 1 != s.nThetaReduced || nmax != s.nZeta / 2) {
+    LOG(WARNING) << "lbsubs: Nyquist resolution does not match the realspace "
+                    "grid (mnyq + 1 = "
+                 << (mmax + 1) << ", nThetaReduced = " << s.nThetaReduced
+                 << ", nnyq = " << nmax << ", nZeta / 2 = " << (s.nZeta / 2)
+                 << "); keeping half->full interpolated B_s.";
+    return;
+  }
+
+  // The lasym branch (spectral decomposition of brho into symmetric and
+  // antisymmetric pieces, solved on the half-period poloidal range carried
+  // by FourierBasisFastPoloidal) is not implemented; fall through to the
+  // half->full interpolation.
+  if (s.lasym && s.nThetaEff != s.nThetaReduced) {
+    LOG(WARNING) << "lbsubs: lasym path not implemented; "
+                    "keeping half->full interpolated B_s.";
+    return;
+  }
+
+  const int nmax1 = std::max(0, nmax - 1);
+  // Row count: ntheta3 * nzeta minus the (theta=0, theta=pi) X (v>pi)
+  // reflection-symmetric duplicates that drop out for stellarator-symmetric
+  // runs.
+  int itotal = s.nThetaEff * s.nZeta;
+  if (!s.lasym) {
+    itotal -= 2 * nmax1;
+  }
+
+  // Per-surface scratch buffers used both to build the RHS and to evaluate
+  // the inverse DFT after the solve.
+  std::vector<double> sqrtg_full(s.nZnT, 0.0);
+  std::vector<double> bsupu_full(s.nZnT, 0.0);
+  std::vector<double> bsupv_full(s.nZnT, 0.0);
+  std::vector<double> brho(s.nZnT, 0.0);
+
+  Eigen::MatrixXd amatrix(itotal, itotal);
+  Eigen::VectorXd brhs(itotal);
+
+  // Per-surface coefficient arrays. Storage: (mmax+1) x (nmax+1), with
+  // _cs/_ss only populated for n > 0 (the n=0 entries of those parities are
+  // always zero). For lasym=false, _cc and _ss are unused.
+  std::vector<double> bsubsmn_sc((mmax + 1) * (nmax + 1), 0.0);
+  std::vector<double> bsubsmn_cs((mmax + 1) * (nmax + 1), 0.0);
+  std::vector<double> bsubsmn_cc;
+  std::vector<double> bsubsmn_ss;
+  if (s.lasym) {
+    bsubsmn_cc.assign((mmax + 1) * (nmax + 1), 0.0);
+    bsubsmn_ss.assign((mmax + 1) * (nmax + 1), 0.0);
+  }
+
+  const double ohs = 1.0 / fc.deltaS;
+  const double sign_jacobian =
+      static_cast<double>(vmec_internal_results.sign_of_jacobian);
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    const int jHi = jF - 1;
+    const int jHo = jF;
+
+    // ----- Build the RHS brho on the full-grid surface jF -----
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      const int idx_o = jHo * s.nZnT + kl;
+      const int idx_i = jHi * s.nZnT + kl;
+      const double g_o = vmec_internal_results.gsqrt(idx_o);
+      const double g_i = vmec_internal_results.gsqrt(idx_i);
+
+      sqrtg_full[kl] = 0.5 * (g_o + g_i);
+      bsupu_full[kl] = 0.5 * (vmec_internal_results.bsupu(idx_o) * g_o +
+                              vmec_internal_results.bsupu(idx_i) * g_i);
+      bsupv_full[kl] = 0.5 * (vmec_internal_results.bsupv(idx_o) * g_o +
+                              vmec_internal_results.bsupv(idx_i) * g_i);
+
+      const double dbsubu = vmec_internal_results.bsubu(idx_o) -
+                            vmec_internal_results.bsubu(idx_i);
+      const double dbsubv = vmec_internal_results.bsubv(idx_o) -
+                            vmec_internal_results.bsubv(idx_i);
+
+      // brho carries the sqrt(g) factor, matching jxbforce.f90:382-384.
+      brho[kl] = ohs * (bsupu_full[kl] * dbsubu + bsupv_full[kl] * dbsubv) +
+                 (vmec_internal_results.presH[jHo] -
+                  vmec_internal_results.presH[jHi]) *
+                     ohs * sqrtg_full[kl];
+    }
+
+    // ----- Subtract flux-surface-average force balance -----
+    // The integral of (bsupu * dB_s/du + bsupv * dB_s/dv) over a flux surface
+    // is zero by integration by parts, so the local equation has no solution
+    // unless the same integral has been removed from the RHS. cf.
+    // jxbforce.f90:388-389.
+    double brho00 = 0.0;
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      const int l = kl % s.nThetaEff;
+      brho00 += brho[kl] * s.wInt[l];
+    }
+    const double vp_full = 0.5 * (vmec_internal_results.dVdsH[jHo] +
+                                  vmec_internal_results.dVdsH[jHi]);
+    if (vp_full == 0.0) {
+      LOG(WARNING) << "lbsubs: dVds = 0 at jF=" << jF
+                   << "; keeping half->full interpolated B_s on this surface.";
+      continue;
+    }
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      brho[kl] -= sign_jacobian * sqrtg_full[kl] * brho00 / vp_full;
+    }
+
+    // ----- Build the collocation matrix and RHS vector -----
+    amatrix.setZero();
+    brhs.setZero();
+
+    int ijtot = 0;
+    bool layout_consistent = true;
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      for (int k = 0; k < s.nZeta; ++k) {
+        // Skip the theta=0 and theta=pi rows that are toroidally reflected
+        // duplicates of earlier rows for stellarator-symmetric runs (see
+        // getbsubs.f90:68-69; the i.eq.1 / i.eq.ntheta2 Fortran indices map to
+        // l == 0 / l == nThetaReduced - 1 here).
+        const bool at_theta_edge = (l == 0) || (l == s.nThetaReduced - 1);
+        const bool at_v_reflected = (k > s.nZeta / 2);
+        if (at_theta_edge && at_v_reflected && !s.lasym) {
+          continue;
+        }
+
+        if (ijtot >= itotal) {
+          layout_consistent = false;
+          break;
+        }
+
+        const int kl = k * s.nThetaEff + l;
+        brhs(ijtot) = brho[kl];
+
+        int mntot = 0;
+        for (int m = 0; m <= mmax; ++m) {
+          for (int n = 0; n <= nmax; ++n) {
+            if (mntot >= itotal) {
+              break;
+            }
+            if (m == 0 && n == 0 && s.lasym) {
+              continue;
+            }
+
+            const int idx_ml = m * s.nThetaReduced + l;
+            const int idx_kn = k * (s.nnyq2 + 1) + n;
+
+            const double cosmu_val = t.cosmu[idx_ml];
+            const double sinmu_val = t.sinmu[idx_ml];
+            const double cosnv_val = t.cosnv[idx_kn];
+            const double sinnv_val = t.sinnv[idx_kn];
+
+            const double ccmn = cosmu_val * cosnv_val;
+            const double ssmn = sinmu_val * sinnv_val;
+            const double scmn = sinmu_val * cosnv_val;
+            const double csmn = cosmu_val * sinnv_val;
+
+            const double dm = m * bsupu_full[kl];
+            const double dn = n * bsupv_full[kl] * s.nfp;
+
+            // Coefficient of sin(mu)cos(nv) basis when acted on by
+            // bsupu * d/du + bsupv * d/dv.
+            const double termsc = dm * ccmn - dn * ssmn;
+            // Coefficient of cos(mu)sin(nv) basis.
+            const double termcs = -dm * ssmn + dn * ccmn;
+
+            // Column layout matches getbsubs.f90 exactly. Endpoints (m=0,
+            // n=0, m=mmax, n=nmax) collapse to a single component each
+            // because the other sin/cos vanishes identically there.
+            if (n == 0 || n == nmax) {
+              if (m > 0) {
+                amatrix(ijtot, mntot) = termsc;
+              } else if (n == 0) {
+                // Pedestal entry for the (m=0, n=0) mode: this fixes the
+                // (otherwise undetermined) average value of B_s. Should
+                // solve to zero given that brho00 was subtracted above.
+                amatrix(ijtot, mntot) = bsupv_full[kl];
+              } else {
+                amatrix(ijtot, mntot) = termcs;
+              }
+            } else if (m == 0 || m == mmax) {
+              amatrix(ijtot, mntot) = termcs;
+            } else {
+              amatrix(ijtot, mntot) = termsc;
+              mntot += 1;
+              if (mntot >= itotal) {
+                layout_consistent = false;
+                break;
+              }
+              amatrix(ijtot, mntot) = termcs;
+            }
+            mntot += 1;
+
+            if (s.lasym) {
+              if (m == 0 && (n == 0 || n == nmax)) {
+                continue;
+              }
+              if (mntot >= itotal) {
+                break;
+              }
+
+              const double termcc = -dm * scmn - dn * csmn;
+              const double termss = dm * csmn + dn * scmn;
+
+              if ((n == 0 || n == nmax) || (m == 0 || m == mmax)) {
+                amatrix(ijtot, mntot) = termcc;
+              } else {
+                amatrix(ijtot, mntot) = termcc;
+                mntot += 1;
+                if (mntot >= itotal) {
+                  layout_consistent = false;
+                  break;
+                }
+                amatrix(ijtot, mntot) = termss;
+              }
+              mntot += 1;
+            }
+          }  // n
+          if (!layout_consistent) {
+            break;
+          }
+        }  // m
+
+        ijtot += 1;
+      }  // k
+      if (!layout_consistent) {
+        break;
+      }
+    }  // l
+
+    if (!layout_consistent || ijtot != itotal) {
+      LOG(WARNING) << "lbsubs: collocation row count " << ijtot
+                   << " does not match expected " << itotal << " at jF=" << jF
+                   << "; keeping half->full interpolated B_s on this surface.";
+      continue;
+    }
+
+    // ----- Solve A x = b -----
+    // Match getbsubs.f90:145+ by solving and then checking that the recovered
+    // coefficients reproduce the RHS to within a tight tolerance; this guards
+    // both singular matrices (where Eigen's solve would return NaN/Inf) and
+    // any layout mismatch that slips past the static checks above.
+    Eigen::PartialPivLU<Eigen::MatrixXd> lu(amatrix);
+    const Eigen::VectorXd xsol = lu.solve(brhs);
+    if (!xsol.allFinite()) {
+      LOG(WARNING) << "lbsubs: solve returned non-finite values at jF=" << jF
+                   << "; keeping half->full interpolated B_s on this surface.";
+      continue;
+    }
+    const double brhs_scale = std::max(brhs.cwiseAbs().maxCoeff(), 1.0);
+    const double residual_inf = (amatrix * xsol - brhs).cwiseAbs().maxCoeff();
+    if (residual_inf > 1.0e-8 * brhs_scale) {
+      LOG(WARNING) << "lbsubs: large solve residual " << residual_inf
+                   << " (rhs scale " << brhs_scale << ") at jF=" << jF
+                   << "; keeping half->full interpolated B_s on this surface.";
+      continue;
+    }
+
+    // ----- Map xsol back to bsubsmn coefficients -----
+    std::fill(bsubsmn_sc.begin(), bsubsmn_sc.end(), 0.0);
+    std::fill(bsubsmn_cs.begin(), bsubsmn_cs.end(), 0.0);
+    if (s.lasym) {
+      std::fill(bsubsmn_cc.begin(), bsubsmn_cc.end(), 0.0);
+      std::fill(bsubsmn_ss.begin(), bsubsmn_ss.end(), 0.0);
+    }
+    {
+      int mntot = 0;
+      bool overflow = false;
+      for (int m = 0; m <= mmax && !overflow; ++m) {
+        for (int n = 0; n <= nmax && !overflow; ++n) {
+          if (mntot >= itotal) {
+            break;
+          }
+          if (m == 0 && n == 0 && s.lasym) {
+            continue;
+          }
+          const int idx_mn = m * (nmax + 1) + n;
+
+          if (n == 0 || n == nmax) {
+            // m > 0, or the (m=0, n=0) pedestal: the lone unknown captures the
+            // surface-average of B_s, which is forced to zero by the brho00
+            // subtraction. We store it in the (0,0) sin-cos slot for symmetry
+            // with the rest of the layout, even though sin(0) = 0 makes it
+            // inert in the inverse DFT below.
+            if (m > 0 || n == 0) {
+              bsubsmn_sc[idx_mn] = xsol(mntot);
+            } else {
+              bsubsmn_cs[idx_mn] = xsol(mntot);
+            }
+          } else if (m == 0 || m == mmax) {
+            bsubsmn_cs[idx_mn] = xsol(mntot);
+          } else {
+            bsubsmn_sc[idx_mn] = xsol(mntot);
+            mntot += 1;
+            if (mntot >= itotal) {
+              overflow = true;
+              break;
+            }
+            bsubsmn_cs[idx_mn] = xsol(mntot);
+          }
+          mntot += 1;
+
+          if (s.lasym) {
+            if (m == 0 && (n == 0 || n == nmax)) {
+              continue;
+            }
+            if (mntot >= itotal) {
+              break;
+            }
+            if ((n == 0 || n == nmax) || (m == 0 || m == mmax)) {
+              bsubsmn_cc[idx_mn] = xsol(mntot);
+            } else {
+              bsubsmn_cc[idx_mn] = xsol(mntot);
+              mntot += 1;
+              if (mntot >= itotal) {
+                overflow = true;
+                break;
+              }
+              bsubsmn_ss[idx_mn] = xsol(mntot);
+            }
+            mntot += 1;
+          }
+        }
+      }
+    }
+
+    // ----- Inverse DFT: fill bsubs_full, bsubsu, bsubsv at jF -----
+    // The interior surface is overwritten; the axis (jF = 0) and edge
+    // (jF = ns-1) are handled later by ExtrapolateBSubS.
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      const int target = jF * s.nZnT + kl;
+      m_bsubs_full.bsubs_full(target) = 0.0;
+      m_covariant_b_derivatives.bsubsu(target) = 0.0;
+      m_covariant_b_derivatives.bsubsv(target) = 0.0;
+    }
+
+    for (int m = 0; m <= mmax; ++m) {
+      for (int n = 0; n <= nmax; ++n) {
+        const int idx_mn = m * (nmax + 1) + n;
+        const double bsc = bsubsmn_sc[idx_mn];
+        const double bcs = bsubsmn_cs[idx_mn];
+        const double bcc = s.lasym ? bsubsmn_cc[idx_mn] : 0.0;
+        const double bss = s.lasym ? bsubsmn_ss[idx_mn] : 0.0;
+
+        for (int k = 0; k < s.nZeta; ++k) {
+          const int idx_kn = k * (s.nnyq2 + 1) + n;
+          const double cosnv_val = t.cosnv[idx_kn];
+          const double sinnv_val = t.sinnv[idx_kn];
+          const double cosnvn_val = t.cosnvn[idx_kn];
+          const double sinnvn_val = t.sinnvn[idx_kn];
+          for (int l = 0; l < s.nThetaEff; ++l) {
+            const int idx_ml = m * s.nThetaReduced + l;
+            const double cosmu_val = t.cosmu[idx_ml];
+            const double sinmu_val = t.sinmu[idx_ml];
+            const double cosmum_val = t.cosmum[idx_ml];
+            const double sinmum_val = t.sinmum[idx_ml];
+
+            const int target = jF * s.nZnT + k * s.nThetaEff + l;
+
+            // B_s = bsc * sin(mu)cos(nv) + bcs * cos(mu)sin(nv)
+            //       (+ bcc * cos(mu)cos(nv) + bss * sin(mu)sin(nv))
+            m_bsubs_full.bsubs_full(target) +=
+                bsc * sinmu_val * cosnv_val + bcs * cosmu_val * sinnv_val;
+            if (s.lasym) {
+              m_bsubs_full.bsubs_full(target) +=
+                  bcc * cosmu_val * cosnv_val + bss * sinmu_val * sinnv_val;
+            }
+
+            // d(B_s)/du. Conventions: cosmum = +m*cosmu, sinmum = -m*sinmu.
+            m_covariant_b_derivatives.bsubsu(target) +=
+                bsc * cosmum_val * cosnv_val + bcs * sinmum_val * sinnv_val;
+            if (s.lasym) {
+              m_covariant_b_derivatives.bsubsu(target) +=
+                  bcc * sinmum_val * cosnv_val + bss * cosmum_val * sinnv_val;
+            }
+
+            // d(B_s)/dv. Conventions: cosnvn = +n*nfp*cosnv,
+            // sinnvn = -n*nfp*sinnv.
+            m_covariant_b_derivatives.bsubsv(target) +=
+                bsc * sinmu_val * sinnvn_val + bcs * cosmu_val * cosnvn_val;
+            if (s.lasym) {
+              m_covariant_b_derivatives.bsubsv(target) +=
+                  bcc * cosmu_val * sinnvn_val + bss * sinmu_val * cosnvn_val;
+            }
+          }  // l
+        }  // k
+      }  // n
+    }  // m
+  }  // jF
+}  // RecomputeBSubSFromRadialForceBalance
 
 vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     const Sizes& s, const FlowControl& fc,
@@ -2744,6 +3271,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
   std::vector<double> pprim(fc.ns, 0.0);
 
+  // sqrt(g) * ((B^2/2 + mu_0 p) - mu_0 p) = sqrt(g) * B^2/2 on full grid
   std::vector<double> sqgb2(s.nZnT, 0.0);
 
   std::vector<double> kperpu(s.nZnT, 0.0);
@@ -2756,11 +3284,15 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   std::vector<double> bsupu1(s.nZnT, 0.0);
   std::vector<double> bsupv1(s.nZnT, 0.0);
 
+  // B_theta on full-grid
   std::vector<double> bsubu1(s.nZnT, 0.0);
+
+  // B_phi on full-grid
   std::vector<double> bsubv1(s.nZnT, 0.0);
 
   std::vector<double> jxb(s.nZnT, 0.0);
 
+  // (2 pi)^2
   static constexpr double dnorm1 = 4.0 * M_PI * M_PI;
 
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
@@ -2769,21 +3301,26 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
     // "over-vp"
     // 1/V' on full grid
-    // and 4 pi^2 divided out
+    // and 4 pi^2 divided out (dVdsH did contain a factor of (2 pi)^2)
     const double ovp =
         2.0 /
         (vmec_internal_results.dVdsH[jHo] + vmec_internal_results.dVdsH[jHi]) /
         dnorm1;
 
+    // signgs / V'
     const double tjnorm = ovp * vmec_internal_results.sign_of_jacobian;
 
-    // dp/ds here
+    // presH contains mu_0 * p
+    // --> pprime = dp/ds here
     double pprime =
         1.0 / MU_0 *
         (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
         fc.deltaS;
 
+    // dp/ds * 1/V' = dp/dV
     const double pprime_ovp = pprime * ovp;
+
+    // 1 / (|dp/dV| + 2.2e-16)
     const double pnorm = 1.0 / (std::abs(pprime_ovp) + DBL_EPSILON);
 
     double force_residual_max = -DBL_MAX;
@@ -3007,41 +3544,15 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
   }
 
   // extrapolate stuff to axis and boundary
-  for (int kl = 0; kl < s.nZnT; ++kl) {
-    // used to extrapolate towards axis from first two interior full-grid points
-    const int index_0 = 0 * s.nZnT + kl;
-    const int index_1 = 1 * s.nZnT + kl;
-    const int index_2 = 2 * s.nZnT + kl;
-
-    // used to extrapolate towards boundary from last two interior full-grid
-    // points
-    const int index_ns_1 = (fc.ns - 1) * s.nZnT + kl;
-    const int index_ns_2 = (fc.ns - 2) * s.nZnT + kl;
-    const int index_ns_3 = (fc.ns - 3) * s.nZnT + kl;
-
-    jxbout.izeta(index_0) = 2.0 * jxbout.izeta(index_1) - jxbout.izeta(index_2);
-    jxbout.izeta(index_ns_1) =
-        2.0 * jxbout.izeta(index_ns_2) - jxbout.izeta(index_ns_3);
-  }  // kl
-
-  jxbout.jdotb[0] = 2.0 * jxbout.jdotb[1] - jxbout.jdotb[2];
-  jxbout.jdotb[fc.ns - 1] =
-      2.0 * jxbout.jdotb[fc.ns - 2] - jxbout.jdotb[fc.ns - 3];
-
-  jxbout.bdotb[0] = 2.0 * jxbout.bdotb[1] - jxbout.bdotb[2];
-  jxbout.bdotb[fc.ns - 1] =
-      2.0 * jxbout.bdotb[fc.ns - 2] - jxbout.bdotb[fc.ns - 3];
-
-  jxbout.bdotgradv[0] = 2.0 * jxbout.bdotgradv[1] - jxbout.bdotgradv[2];
-  jxbout.bdotgradv[fc.ns - 1] =
-      2.0 * jxbout.bdotgradv[fc.ns - 2] - jxbout.bdotgradv[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, s.nZnT, jxbout.izeta);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.jdotb);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.bdotb);
+  ExtrapolateFullGridEnds(fc.ns, jxbout.bdotgradv);
 
   // Note that jpar2, jperp2 have been initialized to all-0 in the beginning,
   // so there is not need to set the axis and boundary entries to zero here.
 
-  jxbout.pprim[0] = 2.0 * jxbout.pprim[1] - jxbout.pprim[2];
-  jxbout.pprim[fc.ns - 1] =
-      2.0 * jxbout.pprim[fc.ns - 2] - jxbout.pprim[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, jxbout.pprim);
 
   return jxbout;
 }  // ComputeJxBOutputFileContents
@@ -3090,8 +3601,8 @@ vmecpp::ComputeIntermediateMercierQuantities(
   mercier_intermediate.s = VectorXd::Zero(fc.ns);
   mercier_intermediate.shear = VectorXd::Zero(fc.ns);
   mercier_intermediate.vpp = VectorXd::Zero(fc.ns);
-  mercier_intermediate.d_pressure_d_s = VectorXd::Zero(fc.ns);
-  mercier_intermediate.d_toroidal_current_d_s = VectorXd::Zero(fc.ns);
+  mercier_intermediate.d_pressure_d_phi = VectorXd::Zero(fc.ns);
+  mercier_intermediate.d_toroidal_current_d_phi = VectorXd::Zero(fc.ns);
   mercier_intermediate.phip_realH = VectorXd::Zero(fc.ns - 1);
   mercier_intermediate.phip_realF = VectorXd::Zero(fc.ns);
   mercier_intermediate.vp_real = VectorXd::Zero(fc.ns - 1);
@@ -3115,12 +3626,13 @@ vmecpp::ComputeIntermediateMercierQuantities(
         2.0 * M_PI * vmec_internal_results.phipH[jH] *
         vmec_internal_results.sign_of_jacobian;
 
-    // dV/d(PHI) on half mesh
+    // dV/ds / dPhi/ds = dV/d(PHI) on half mesh
     mercier_intermediate.vp_real[jH] =
         vmec_internal_results.sign_of_jacobian * (4.0 * M_PI * M_PI) *
         vmec_internal_results.dVdsH[jH] / mercier_intermediate.phip_realH[jH];
 
     // COMPUTE INTEGRATED TOROIDAL CURRENT
+    // I_tor = 2 pi * < B_theta >
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int idx_kl = jH * s.nZnT + kl;
       const int l = kl % s.nThetaEff;
@@ -3136,10 +3648,13 @@ vmecpp::ComputeIntermediateMercierQuantities(
     const int jHi = jF - 1;
     const int jHo = jF;
 
+    // real dPhi/ds on full-grid
     mercier_intermediate.phip_realF[jF] =
         (mercier_intermediate.phip_realH[jHo] +
          mercier_intermediate.phip_realH[jHi]) /
         2.0;
+
+    // dPhi/ds * ds = dPhi
     const double denom = mercier_intermediate.phip_realF[jF] * fc.deltaS;
 
     // d(iota)/d(PHI)
@@ -3147,18 +3662,18 @@ vmecpp::ComputeIntermediateMercierQuantities(
         (vmec_internal_results.iotaH[jHo] - vmec_internal_results.iotaH[jHi]) /
         denom;
 
-    // d(VP)/d(PHI)
+    // d(VP)/d(PHI) = d^2(V)/d(Phi)^2
     mercier_intermediate.vpp[jF] = (mercier_intermediate.vp_real[jHo] -
                                     mercier_intermediate.vp_real[jHi]) /
                                    denom;
 
     // d(p)/d(PHI)
-    mercier_intermediate.d_pressure_d_s[jF] =
+    mercier_intermediate.d_pressure_d_phi[jF] =
         (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) /
         denom;
 
     // d(Itor)/d(PHI)
-    mercier_intermediate.d_toroidal_current_d_s[jF] =
+    mercier_intermediate.d_toroidal_current_d_phi[jF] =
         (mercier_intermediate.torcur[jHo] - mercier_intermediate.torcur[jHi]) /
         denom;
 
@@ -3184,6 +3699,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
           jxbout.bdotk(index_full) * MU_0 /
           mercier_intermediate.gsqrt_full(index_full);
 
+      // make sqrt(g) into flux-based jacobian (s --> phi)
       mercier_intermediate.gsqrt_full(index_full) /=
           mercier_intermediate.phip_realF[jF];
     }  // kl
@@ -3217,19 +3733,26 @@ vmecpp::ComputeIntermediateMercierQuantities(
       // g_uu
       const double gtt = rtf * rtf + ztf * ztf;
 
+      // |grad s|^2 = [(R_theta R)^2 + (Z_theta R)^2 + (Z_theta R_phi - R_theta
+      // Z_phi)^2] / (sqrt(g))^2
+      // --> 1/|grad s|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 +
+      // (Z_theta R_phi - R_theta Z_phi)^2]
+
+      // flux-based (sqrt(g))^2
       const double gpp_numerator = mercier_intermediate.gsqrt_full(index_full) *
                                    mercier_intermediate.gsqrt_full(index_full);
 
-      // The denominator is |e_theta x e_zeta|^2. In the cylindrical frame
-      // e_theta x e_zeta = -R z_theta rhat + (r_zeta z_theta - r_theta z_zeta)
-      // phihat + R r_theta zhat, so its square is R^2 g_theta,theta plus the
-      // square of the toroidal component below. With grad(s) = (e_theta x
-      // e_zeta) / sqrt(g), the quotient formed here is sqrt(g)^2 /
-      // |e_theta x e_zeta|^2 = 1 / |grad(s)|^2.
-      const double gpp_denominator_ingredient = rtf * zzf - rzf * ztf;
-      const double gpp_denominator =
-          gtt * r1f * r1f +
-          gpp_denominator_ingredient * gpp_denominator_ingredient;
+      // negative toroidal component of grad s:
+      // -(Z_theta R_phi - R_theta Z_phi)
+      const double grad_s_phi = rtf * zzf - rzf * ztf;
+
+      // The denominator is |e_theta x e_zeta|^2
+      // (R_theta R)^2 + (Z_theta R)^2 = (R_theta^2 + Z_theta^2) * R^2 == g_uu *
+      // R^2
+      const double gpp_denominator = gtt * r1f * r1f + grad_s_phi * grad_s_phi;
+
+      // 1/|grad Phi|^2 = (sqrt(g))^2 / [(R_theta R)^2 + (Z_theta R)^2 +
+      // (Z_theta R_phi - R_theta Z_phi)^2]
       mercier_intermediate.gpp(index_full) = gpp_numerator / gpp_denominator;
     }  // kl
   }  // jF
@@ -3260,27 +3783,28 @@ vmecpp::ComputeIntermediateMercierQuantities(
       const int index_half_o = jHo * s.nZnT + kl;
       const int index_half_i = jHi * s.nZnT + kl;
 
+      // |B|^2 on full-grid
       const double b2i = (mercier_intermediate.b2(index_half_o) +
                           mercier_intermediate.b2(index_half_i)) /
                          2.0;
 
-      // <1/B**2>
+      // <1/B^2>
       const double ob2 = mercier_intermediate.gsqrt_full(index_full) / b2i;
       mercier_intermediate.tpp[jF] += ob2 * s.wInt[l];
 
-      // <b*b/|grad-phi|**3>
+      // <B.B/|grad-phi|^2> = <B^2/|grad-phi|^2>
       const double ob2_reused = b2i *
                                 mercier_intermediate.gsqrt_full(index_full) *
                                 mercier_intermediate.gpp(index_full);
       mercier_intermediate.tbb[jF] += ob2_reused * s.wInt[l];
 
-      // <j*b/|grad-phi|**3>
+      // <j.B/|grad-phi|^2>
       const double jdotb = mercier_intermediate.bdotj(index_full) *
                            mercier_intermediate.gpp(index_full) *
                            mercier_intermediate.gsqrt_full(index_full);
       mercier_intermediate.tjb[jF] += jdotb * s.wInt[l];
 
-      // <(j*b)2/b**2*|grad-phi|**3>
+      // <(j.B)^2/(B^2 * |grad-phi|^2)>
       const double jdotb_reused =
           jdotb * mercier_intermediate.bdotj(index_full) / b2i;
       mercier_intermediate.tjj[jF] += jdotb_reused * s.wInt[l];
@@ -3304,12 +3828,12 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
   mercier.toroidal_flux = VectorXd::Zero(fc.ns);
   mercier.iota = VectorXd::Zero(fc.ns);
   mercier.shear = VectorXd::Zero(fc.ns);
-  mercier.d_volume_d_s = VectorXd::Zero(fc.ns);
+  mercier.d_volume_d_phi = VectorXd::Zero(fc.ns);
   mercier.well = VectorXd::Zero(fc.ns);
   mercier.toroidal_current = VectorXd::Zero(fc.ns);
-  mercier.d_toroidal_current_d_s = VectorXd::Zero(fc.ns);
+  mercier.d_toroidal_current_d_volume = VectorXd::Zero(fc.ns);
   mercier.pressure = VectorXd::Zero(fc.ns);
-  mercier.d_pressure_d_s = VectorXd::Zero(fc.ns);
+  mercier.d_pressure_d_volume = VectorXd::Zero(fc.ns);
 
   // -------------------
 
@@ -3327,9 +3851,13 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     // S
     mercier.s[jF] = mercier_intermediate.s[jF];
 
+    // V' = dV/dPhi on full-grid
+    // mercier.f90 forms this as sqs = 0.5*(vp_real(i) + vp_real(i+1))*sign_jac
+    // and divides SHEAR, ITOR' and PRES' by it, so the Jacobian sign belongs
+    // here rather than only on WELL.
     const double vp_full = (mercier_intermediate.vp_real[jHo] +
                             mercier_intermediate.vp_real[jHi]) /
-                           2.0;
+                           2.0 * vmec_internal_results.sign_of_jacobian;
     if (vp_full == 0.0) {
       // skip this surface
       continue;
@@ -3347,13 +3875,13 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
         (vmec_internal_results.iotaH[jHo] + vmec_internal_results.iotaH[jHi]) /
         2.0;
 
-    // SHEAR
+    // SHEAR = d(iota)/dPhi / dV/dPhi = d(iota)/dV
     mercier.shear[jF] = mercier_intermediate.shear[jF] / vp_full;
 
-    // VP
-    mercier.d_volume_d_s[jF] = vp_full;
+    // VP = dV/dPhi
+    mercier.d_volume_d_phi[jF] = vp_full;
 
-    // WELL
+    // WELL = -signgs * d^2(V)/d(Phi)^2
     mercier.well[jF] =
         -mercier_intermediate.vpp[jF] * vmec_internal_results.sign_of_jacobian;
 
@@ -3362,18 +3890,18 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
         (mercier_intermediate.torcur[jHo] + mercier_intermediate.torcur[jHi]) /
         2.0;
 
-    // ITOR'
-    mercier.d_toroidal_current_d_s[jF] =
-        mercier_intermediate.d_toroidal_current_d_s[jF] / vp_full;
+    // ITOR' = d(I_tor)/ds / dV/dPhi = d(I_tor)/dV
+    mercier.d_toroidal_current_d_volume[jF] =
+        mercier_intermediate.d_toroidal_current_d_phi[jF] / vp_full;
 
     // PRES
     mercier.pressure[jF] =
         (vmec_internal_results.presH[jHo] + vmec_internal_results.presH[jHi]) /
         2.0;
 
-    // PRES'
-    mercier.d_pressure_d_s[jF] =
-        mercier_intermediate.d_pressure_d_s[jF] / vp_full;
+    // PRES' = dp/dPhi / dV/dPhi = dp/dV
+    mercier.d_pressure_d_volume[jF] =
+        mercier_intermediate.d_pressure_d_phi[jF] / vp_full;
   }  // jF
 
   // second table in Mercier output file
@@ -3384,18 +3912,23 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
     const double tbb = mercier_intermediate.tbb[jF];
     const double tjj = mercier_intermediate.tjj[jF];
 
+    // (iota')^2 / 4
     mercier.Dshear[jF] =
         mercier_intermediate.shear[jF] * mercier_intermediate.shear[jF] / 4.0;
 
+    // -iota' * [<j.B/|grad-phi|^2> - I' * <B^2/|grad-phi|^2>]
     mercier.Dcurr[jF] =
         -mercier_intermediate.shear[jF] *
-        (tjb - mercier_intermediate.d_toroidal_current_d_s[jF] * tbb);
+        (tjb - mercier_intermediate.d_toroidal_current_d_phi[jF] * tbb);
 
-    mercier.Dwell[jF] = mercier_intermediate.d_pressure_d_s[jF] *
+    // p' * [V'' - p' * <1/B^2>] * <B^2/|grad-phi|^2>
+    mercier.Dwell[jF] = mercier_intermediate.d_pressure_d_phi[jF] *
                         (mercier_intermediate.vpp[jF] -
-                         mercier_intermediate.d_pressure_d_s[jF] * tpp) *
+                         mercier_intermediate.d_pressure_d_phi[jF] * tpp) *
                         tbb;
 
+    // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 *
+    // |grad-phi|^2)>
     mercier.Dgeod[jF] = tjb * tjb - tbb * tjj;
 
     mercier.DMerc[jF] = mercier.Dshear[jF] + mercier.Dcurr[jF] +
@@ -3619,40 +4152,11 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       0.5 * threed1_first_table_intermediate.bvcoH[fc.ns - 3];
 
   // extrapolate full-grid quantites to axis and LCFS
-  threed1_first_table_intermediate.equif[0] =
-      2.0 * threed1_first_table_intermediate.equif[1] -
-      threed1_first_table_intermediate.equif[2];
-  threed1_first_table_intermediate.equif[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.equif[fc.ns - 2] -
-      threed1_first_table_intermediate.equif[fc.ns - 3];
-
-  threed1_first_table_intermediate.jcurv[0] =
-      2.0 * threed1_first_table_intermediate.jcurv[1] -
-      threed1_first_table_intermediate.jcurv[2];
-  threed1_first_table_intermediate.jcurv[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.jcurv[fc.ns - 2] -
-      threed1_first_table_intermediate.jcurv[fc.ns - 3];
-
-  threed1_first_table_intermediate.jcuru[0] =
-      2.0 * threed1_first_table_intermediate.jcuru[1] -
-      threed1_first_table_intermediate.jcuru[2];
-  threed1_first_table_intermediate.jcuru[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.jcuru[fc.ns - 2] -
-      threed1_first_table_intermediate.jcuru[fc.ns - 3];
-
-  threed1_first_table_intermediate.presgrad[0] =
-      2.0 * threed1_first_table_intermediate.presgrad[1] -
-      threed1_first_table_intermediate.presgrad[2];
-  threed1_first_table_intermediate.presgrad[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.presgrad[fc.ns - 2] -
-      threed1_first_table_intermediate.presgrad[fc.ns - 3];
-
-  threed1_first_table_intermediate.vpphi[0] =
-      2.0 * threed1_first_table_intermediate.vpphi[1] -
-      threed1_first_table_intermediate.vpphi[2];
-  threed1_first_table_intermediate.vpphi[fc.ns - 1] =
-      2.0 * threed1_first_table_intermediate.vpphi[fc.ns - 2] -
-      threed1_first_table_intermediate.vpphi[fc.ns - 3];
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.equif);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.jcurv);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.jcuru);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.presgrad);
+  ExtrapolateFullGridEnds(fc.ns, threed1_first_table_intermediate.vpphi);
 
   return threed1_first_table_intermediate;
 }  // ComputeIntermediateThreed1FirstTableQuantities
@@ -4542,9 +5046,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     const std::vector<std::string>& coil_group_names,
-    VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
-    const JxBOutFileContents& jxbout,
+    VmecInternalResults& m_vmec_internal_results, const BSubSFull& bsubs_full,
+    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,
@@ -4772,8 +5275,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // fixed-boundary run leaves it empty, as Fortran VMEC does.
   const Eigen::VectorXd& vacuum_potential = handover_storage.vacuum_potential;
   if (vacuum_potential.size() > 0) {
-    const int nf = s.ntor;
-    const int mf = s.mpol + 1;
+    const int nf = handover_storage.vacuum_ntor;
+    const int mf = handover_storage.vacuum_mpol + 1;
     const int mnpd = (2 * nf + 1) * (mf + 1);
     wout.potvac = VectorXd::Zero(2 * mnpd);
     if (vacuum_potential.size() <= wout.potvac.size()) {
@@ -4834,6 +5337,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // MUST CONVERT m=1 MODES... FROM INTERNAL TO PHYSICAL FORM
   // Extrapolation of m=0 Lambda (cs) modes, which are not evolved at j=1, done
   // in CONVERT
+  // same map as FourierCoeffs::m1Constraint with scaling factor 1
+  const double sigma = -m_vmec_internal_results.sign_of_jacobian;
   if (s.lthreed) {
     for (int jF = 0; jF < fc.ns; ++jF) {
       for (int n = 0; n < s.ntor + 1; ++n) {
@@ -4842,9 +5347,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
         const double old_rss = m_vmec_internal_results.rmnss(idx_fc);
         m_vmec_internal_results.rmnss(idx_fc) =
-            (old_rss + m_vmec_internal_results.zmncs(idx_fc));
+            (old_rss + sigma * m_vmec_internal_results.zmncs(idx_fc));
         m_vmec_internal_results.zmncs(idx_fc) =
-            (old_rss - m_vmec_internal_results.zmncs(idx_fc));
+            (sigma * old_rss - m_vmec_internal_results.zmncs(idx_fc));
       }  // n
     }  // jF
   }
@@ -4961,7 +5466,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // COMPUTE |B| = SQRT(|B|**2) and store in bsq, bsqa
   std::vector<double> magnetic_pressure((fc.ns - 1) * s.nZnT, 0.0);
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp parallel for num_threads(fc.max_threads())
 #endif
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -4976,11 +5481,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   // The Nyquist-grid forward transform below sums over the reduced poloidal
   // range [0, nThetaReduced) for both parities; the symmetric and antisymmetric
   // parts are split inline in the loop (symoutput). The 0.5 integration norm is
-  // therefore the same with or without lasym. educational_VMEC doubles it for
-  // lasym because it integrates over the full poloidal range; applying that
-  // doubling here, where the sum is over the reduced range, double-counts and
-  // made a symmetric case run in lasym=true mode report these coefficients at
-  // twice their value.
+  // therefore the same with or without lasym.
   const double tmult = 0.5;
 
   // -------------------
@@ -4992,13 +5493,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.bsubumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   wout.bsubvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
-  // Note: bsubsmns is a half-grid quantity,
-  // but stored in Fortran VMEC fashion offset by 1 index to the right,
-  // in order to also have the (wrong) extrapolation
-  // beyond the axis on the j=0 grid point
-  // for backwards compatibility.
-  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-
   wout.bsupumnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   wout.bsupvmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
 
@@ -5008,7 +5502,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     wout.bmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsubumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsubvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
-    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsupumns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
     wout.bsupvmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   }
@@ -5030,7 +5523,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   const int partial_sum_size = (s.mnyq + 1) * s.nZeta;
 
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(fc.max_threads())
   {
 #endif
     std::vector<double> Fc_gsqrt(partial_sum_size), Fs_gsqrt(partial_sum_size),
@@ -5038,8 +5531,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         Fc_bsubu(partial_sum_size), Fs_bsubu(partial_sum_size),
         Fc_bsubv(partial_sum_size), Fs_bsubv(partial_sum_size),
         Fc_bsupu(partial_sum_size), Fs_bsupu(partial_sum_size),
-        Fc_bsupv(partial_sum_size), Fs_bsupv(partial_sum_size),
-        Fc_bsubs(partial_sum_size), Fs_bsubs(partial_sum_size);
+        Fc_bsupv(partial_sum_size), Fs_bsupv(partial_sum_size);
     // Asymmetric partial sums (only populated when lasym=true).
     std::vector<double> Fc_gsqrt_a, Fs_gsqrt_a;
     std::vector<double> Fc_bmnc_a, Fs_bmnc_a;
@@ -5047,7 +5539,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     std::vector<double> Fc_bsubv_a, Fs_bsubv_a;
     std::vector<double> Fc_bsupu_a, Fs_bsupu_a;
     std::vector<double> Fc_bsupv_a, Fs_bsupv_a;
-    std::vector<double> Fc_bsubs_a, Fs_bsubs_a;
     if (s.lasym) {
       Fc_gsqrt_a.resize(partial_sum_size);
       Fs_gsqrt_a.resize(partial_sum_size);
@@ -5061,8 +5552,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       Fs_bsupu_a.resize(partial_sum_size);
       Fc_bsupv_a.resize(partial_sum_size);
       Fs_bsupv_a.resize(partial_sum_size);
-      Fc_bsubs_a.resize(partial_sum_size);
-      Fs_bsubs_a.resize(partial_sum_size);
     }
 
 #ifdef _OPENMP
@@ -5079,7 +5568,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double fc_bsubv = 0.0, fs_bsubv = 0.0;
           double fc_bsupu = 0.0, fs_bsupu = 0.0;
           double fc_bsupv = 0.0, fs_bsupv = 0.0;
-          double fc_bsubs = 0.0, fs_bsubs = 0.0;
 
           int k_rev = 0;
           double fc_gsqrt_a = 0.0, fs_gsqrt_a = 0.0;
@@ -5088,7 +5576,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double fc_bsubv_a = 0.0, fs_bsubv_a = 0.0;
           double fc_bsupu_a = 0.0, fs_bsupu_a = 0.0;
           double fc_bsupv_a = 0.0, fs_bsupv_a = 0.0;
-          double fc_bsubs_a = 0.0, fs_bsubs_a = 0.0;
           if (s.lasym) {
             k_rev = (s.nZeta - k) % s.nZeta;
           }
@@ -5105,14 +5592,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             double bv = m_vmec_internal_results.bsubv(idx_kl);
             double bpu = m_vmec_internal_results.bsupu(idx_kl);
             double bpv = m_vmec_internal_results.bsupv(idx_kl);
-            double bs = bsubs_half.bsubs_half(idx_kl);
 
             if (s.lasym) {
               // symoutput: on the reduced theta interval, the cos(mu-nv)
               // coefficients come from the stellarator-symmetric projection
               // 0.5 * (F(u,v) + F(-u,-v)) and the sin(mu-nv) coefficients
-              // from the antisymmetric projection 0.5 * (F(u,v) - F(-u,-v));
-              // for bsubs the parities are reversed.
+              // from the antisymmetric projection 0.5 * (F(u,v) - F(-u,-v)).
               const int l_rev = (s.nThetaEff - l) % s.nThetaEff;
               const int idx_kl_rev =
                   (jH * s.nZeta + k_rev) * s.nThetaEff + l_rev;
@@ -5123,7 +5608,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               const double bv_rev = m_vmec_internal_results.bsubv(idx_kl_rev);
               const double bpu_rev = m_vmec_internal_results.bsupu(idx_kl_rev);
               const double bpv_rev = m_vmec_internal_results.bsupv(idx_kl_rev);
-              const double bs_rev = bsubs_half.bsubs_half(idx_kl_rev);
 
               const double g_a = 0.5 * (g - g_rev);
               const double mp_a = 0.5 * (mp - mp_rev);
@@ -5131,8 +5615,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               const double bv_a = 0.5 * (bv - bv_rev);
               const double bpu_a = 0.5 * (bpu - bpu_rev);
               const double bpv_a = 0.5 * (bpv - bpv_rev);
-              // bsubs uses + (cos-parity asymmetric part).
-              const double bs_a = 0.5 * (bs + bs_rev);
 
               g = 0.5 * (g + g_rev);
               mp = 0.5 * (mp + mp_rev);
@@ -5140,8 +5622,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               bv = 0.5 * (bv + bv_rev);
               bpu = 0.5 * (bpu + bpu_rev);
               bpv = 0.5 * (bpv + bpv_rev);
-              // bsubs uses - (sin-parity symmetric part).
-              bs = 0.5 * (bs - bs_rev);
 
               fc_gsqrt_a += cmu * g_a;
               fs_gsqrt_a += smu * g_a;
@@ -5155,8 +5635,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               fs_bsupu_a += smu * bpu_a;
               fc_bsupv_a += cmu * bpv_a;
               fs_bsupv_a += smu * bpv_a;
-              fc_bsubs_a += cmu * bs_a;
-              fs_bsubs_a += smu * bs_a;
             }
 
             fc_gsqrt += cmu * g;
@@ -5171,8 +5649,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             fs_bsupu += smu * bpu;
             fc_bsupv += cmu * bpv;
             fs_bsupv += smu * bpv;
-            fc_bsubs += cmu * bs;
-            fs_bsubs += smu * bs;
           }  // l
 
           const int idx_mk = m_nzeta_p1 + k;
@@ -5188,8 +5664,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           Fs_bsupu[idx_mk] = fs_bsupu;
           Fc_bsupv[idx_mk] = fc_bsupv;
           Fs_bsupv[idx_mk] = fs_bsupv;
-          Fc_bsubs[idx_mk] = fc_bsubs;
-          Fs_bsubs[idx_mk] = fs_bsubs;
           if (s.lasym) {
             Fc_gsqrt_a[idx_mk] = fc_gsqrt_a;
             Fs_gsqrt_a[idx_mk] = fs_gsqrt_a;
@@ -5203,8 +5677,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             Fs_bsupu_a[idx_mk] = fs_bsupu_a;
             Fc_bsupv_a[idx_mk] = fc_bsupv_a;
             Fs_bsupv_a[idx_mk] = fs_bsupv_a;
-            Fc_bsubs_a[idx_mk] = fc_bsubs_a;
-            Fs_bsubs_a[idx_mk] = fs_bsubs_a;
           }
         }  // k
       }  // m
@@ -5222,8 +5694,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int m_nzeta = m * s.nZeta;
 
         double acc_gmnc = 0.0, acc_bmnc = 0.0, acc_bsubumnc = 0.0,
-               acc_bsubvmnc = 0.0, acc_bsubsmns = 0.0, acc_bsupumnc = 0.0,
-               acc_bsupvmnc = 0.0;
+               acc_bsubvmnc = 0.0, acc_bsupumnc = 0.0, acc_bsupvmnc = 0.0;
 
         for (int k = 0; k < s.nZeta; ++k) {
           const int kn = k * (s.nnyq2 + 1) + abs_n;
@@ -5242,16 +5713,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
               cnv * Fc_bsupu[idx_mk] + sign_n * snv * Fs_bsupu[idx_mk];
           acc_bsupvmnc +=
               cnv * Fc_bsupv[idx_mk] + sign_n * snv * Fs_bsupv[idx_mk];
-          // sin(mu-nv) kernel: cnv*Fs - sign_n*snv*Fc
-          acc_bsubsmns +=
-              cnv * Fs_bsubs[idx_mk] - sign_n * snv * Fc_bsubs[idx_mk];
         }  // k
 
         wout.gmnc(mn_nyq, jH + 1) = dmult * acc_gmnc;
         wout.bmnc(mn_nyq, jH + 1) = dmult * acc_bmnc;
         wout.bsubumnc(mn_nyq, jH + 1) = dmult * acc_bsubumnc;
         wout.bsubvmnc(mn_nyq, jH + 1) = dmult * acc_bsubvmnc;
-        wout.bsubsmns(mn_nyq, jH + 1) = dmult * acc_bsubsmns;
         wout.bsupumnc(mn_nyq, jH + 1) = dmult * acc_bsupumnc;
         wout.bsupvmnc(mn_nyq, jH + 1) = dmult * acc_bsupvmnc;
 
@@ -5260,7 +5727,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double acc_bmns = 0.0;
           double acc_bsubumns = 0.0;
           double acc_bsubvmns = 0.0;
-          double acc_bsubsmnc = 0.0;
           double acc_bsupumns = 0.0;
           double acc_bsupvmns = 0.0;
 
@@ -5283,16 +5749,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                 cnv * Fs_bsupu_a[idx_mk] - sign_n * snv * Fc_bsupu_a[idx_mk];
             acc_bsupvmns +=
                 cnv * Fs_bsupv_a[idx_mk] - sign_n * snv * Fc_bsupv_a[idx_mk];
-            // cos(mu-nv) kernel for bsubs_asym (cos-parity)
-            acc_bsubsmnc +=
-                cnv * Fc_bsubs_a[idx_mk] + sign_n * snv * Fs_bsubs_a[idx_mk];
           }  // k
 
           wout.gmns(mn_nyq, jH + 1) = dmult * acc_gmns;
           wout.bmns(mn_nyq, jH + 1) = dmult * acc_bmns;
           wout.bsubumns(mn_nyq, jH + 1) = dmult * acc_bsubumns;
           wout.bsubvmns(mn_nyq, jH + 1) = dmult * acc_bsubvmns;
-          wout.bsubsmnc(mn_nyq, jH + 1) = dmult * acc_bsubsmnc;
           wout.bsupumns(mn_nyq, jH + 1) = dmult * acc_bsupumns;
           wout.bsupvmns(mn_nyq, jH + 1) = dmult * acc_bsupvmns;
         }
@@ -5303,45 +5765,18 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   }  // omp parallel
 #endif
 
-  // Note that bsubs in wrout.f in Fortran VMEC is on the half-grid,
-  // as it is computed from bsup(u,v) (both of which are on the half-grid)
-  // and the metric elements g_su and g_sv, which are also on the half-grid.
-  // The wout file attributes document bsubsmns to be on the full-grid though,
-  // and an extrapolation towards the axis as if bsubsmns was on the full grid
-  // is done, in Fortran VMEC. For now, we replicate the axis extrapolation
-  // (which is wrong, because it extrapolates one full grid step further than
-  // the innermost half-grid point, i.e., from s=0.5 and s=1.5 to s=-0.5, i.e.,
-  // beyond the magnetic axis) to be consistent with Fortran VMEC, but will have
-  // to revisit this later. Also note that a full-grid version of bsubs is
-  // computed in jxbforce, and is available in the jxbout file contents in
-  // realspace as bsubs3.
-  for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-    wout.bsubsmns(mn_nyq, 0) =
-        2.0 * wout.bsubsmns(mn_nyq, 1) - wout.bsubsmns(mn_nyq, 2);
-  }  // mn_nyq
-  if (s.lasym) {
-    for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
-      wout.bsubsmnc(mn_nyq, 0) =
-          2.0 * wout.bsubsmnc(mn_nyq, 1) - wout.bsubsmnc(mn_nyq, 2);
-    }  // mn_nyq
-  }
-
   // -------------------
-  // Full-grid covariant B_s Fourier coefficients (bsubsmns_full).
-  // bsubsmns above is the on-grid (half-grid) B_s; bsubsmns_full is the forward
-  // sine transform of the full-grid realspace B_s (bsubs_full, interpolated to
-  // the full grid and extrapolated to axis/edge in PutBSubSOnFullGrid /
-  // ExtrapolateBSubS). Since the radial half->full interpolation is linear and
-  // commutes with the angular DFT, bsubsmns_full(:, jF) for interior jF equals
-  // 0.5 * (bsubsmns(:, jF+1) + bsubsmns(:, jF)).
-  wout.bsubsmns_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+  // Full-grid covariant B_s, as in jxbforce of PARVMEC (VMEC 8.52 writes the
+  // half-grid B_s instead): the forward sine transform of bsubs_full
+  // (PutBSubSOnFullGrid or the lbsubs solve, then ExtrapolateBSubS).
+  wout.bsubsmns = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   if (s.lasym) {
-    wout.bsubsmnc_full = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
+    wout.bsubsmnc = RowMatrixXd::Zero(s.mnmax_nyq, fc.ns);
   }
   // Use the same two-phase separable DFT as the half-grid loop above,
   // parallelised over full-grid surfaces jF.
 #ifdef _OPENMP
-#pragma omp parallel
+#pragma omp parallel num_threads(fc.max_threads())
   {
 #endif
     std::vector<double> Fc_bsubs_full(partial_sum_size),
@@ -5429,9 +5864,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                      sign_n * t.sinnv[kn] * Fs_bsubs_full_a[idx_mk];
           }
         }  // k
-        wout.bsubsmns_full(mn_nyq, jF) = dmult * acc;
+        wout.bsubsmns(mn_nyq, jF) = dmult * acc;
         if (s.lasym) {
-          wout.bsubsmnc_full(mn_nyq, jF) = dmult * acc_a;
+          wout.bsubsmnc(mn_nyq, jF) = dmult * acc_a;
         }
       }  // mn_nyq
     }  // jF
@@ -5455,9 +5890,9 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
         const double old_rsc = m_vmec_internal_results.rmnsc(idx_fc);
         m_vmec_internal_results.rmnsc(idx_fc) =
-            (old_rsc + m_vmec_internal_results.zmncc(idx_fc));
+            (old_rsc + sigma * m_vmec_internal_results.zmncc(idx_fc));
         m_vmec_internal_results.zmncc(idx_fc) =
-            (old_rsc - m_vmec_internal_results.zmncc(idx_fc));
+            (sigma * old_rsc - m_vmec_internal_results.zmncc(idx_fc));
       }  // n
     }  // jF
 
@@ -5488,6 +5923,19 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         // NOTE: R does not have m=0 contributions in 2D,
         // since sin(m * theta) == 0 for m = 0 and sin(n * zeta) == 0 for n = 0
       }  // n
+
+      // extrapolate to axis if 3D, as for lmns above
+      if (s.lthreed && jF == 0) {
+        int mn = -1;
+        for (int n = 0; n <= s.ntor; ++n) {
+          mn++;
+          const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
+          const double t1 = t.mscale[m_0] * t.nscale[n];
+          lmnc1[mn] = t1 * (2.0 * m_vmec_internal_results.lmncc(idx_ns_1) -
+                            m_vmec_internal_results.lmncc(idx_ns_2));
+        }  // n
+      }
 
       // now come the m>0, n=-ntor, ..., ntor entries
       for (int m = 1; m < s.mpol; ++m) {
@@ -5573,10 +6021,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   //   sqrt(g) * J^zeta  = (1/mu0) * (dB_theta/ds - dB_s/dtheta)
   //
   // In Fourier space (combined basis cos(m*theta - n*nfp*zeta)):
-  //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs_interp - dBzeta_cos/ds)
-  //   currvmnc(m,n) = (1/mu0) * (-m     * Bs_interp + dBtheta_cos/ds)
+  //   currumnc(m,n) = (1/mu0) * (-n_nfp * Bs - dBzeta_cos/ds)
+  //   currvmnc(m,n) = (1/mu0) * (-m     * Bs + dBtheta_cos/ds)
   //
-  // Radial derivatives use sqrt(s) regularization for odd-m modes.
+  // B_s is the full-grid bsubsmns, used as is (LIBSTELL read_wout_mod of
+  // VMEC 9.0). Radial derivatives use sqrt(s) regularization for odd-m
+  // modes.
   {
     const double ohs = 1.0 / fc.deltaS;
 
@@ -5589,7 +6039,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
     // Interior full-grid points: j_f = 1 .. ns-2
     // In the wout storage convention (Fortran-style offset by 1),
-    // bsub*(:, j_f) and bsub*(:, j_f+1) are the neighboring half-grid data.
+    // bsub[uv]*(:, j_f) and bsub[uv]*(:, j_f+1) are the neighboring half-grid
+    // data.
     // sqrtSH[j_f-1] and sqrtSH[j_f] are the corresponding sqrt(s) values.
     // sqrtSF[j_f] is the full-grid sqrt(s).
     for (int j_f = 1; j_f < fc.ns - 1; ++j_f) {
@@ -5601,17 +6052,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int m = wout.xm_nyq[mn];
         const double n_nfp = static_cast<double>(wout.xn_nyq[mn]);
 
-        double t1 = 0.0;
+        const double t1 = wout.bsubsmns(mn, j_f);
         double t2 = 0.0;
         double t3 = 0.0;
 
         if (m % 2 == 1) {
           // odd m: regularized derivatives
-          t1 = 0.5 *
-               (sqrt_s_half_outer * wout.bsubsmns(mn, j_f + 1) +
-                sqrt_s_half_inner * wout.bsubsmns(mn, j_f)) /
-               sqrt_s_full;
-
           const double bu0 = wout.bsubumnc(mn, j_f) / sqrt_s_half_inner;
           const double bu1 = wout.bsubumnc(mn, j_f + 1) / sqrt_s_half_outer;
           t2 = ohs * (bu1 - bu0) * sqrt_s_full +
@@ -5623,7 +6069,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
                0.25 * (bv0 + bv1) / sqrt_s_full;
         } else {
           // even m: simple finite differences
-          t1 = 0.5 * (wout.bsubsmns(mn, j_f + 1) + wout.bsubsmns(mn, j_f));
           t2 = ohs * (wout.bsubumnc(mn, j_f + 1) - wout.bsubumnc(mn, j_f));
           t3 = ohs * (wout.bsubvmnc(mn, j_f + 1) - wout.bsubvmnc(mn, j_f));
         }
@@ -5632,16 +6077,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         wout.currvmnc(mn, j_f) = -m * t1 + t2;
 
         if (s.lasym) {
-          double t1a = 0.0;
+          const double t1a = wout.bsubsmnc(mn, j_f);
           double t2a = 0.0;
           double t3a = 0.0;
 
           if (m % 2 == 1) {
-            t1a = 0.5 *
-                  (sqrt_s_half_outer * wout.bsubsmnc(mn, j_f + 1) +
-                   sqrt_s_half_inner * wout.bsubsmnc(mn, j_f)) /
-                  sqrt_s_full;
-
             const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_inner;
             const double bu1a = wout.bsubumns(mn, j_f + 1) / sqrt_s_half_outer;
             t2a = ohs * (bu1a - bu0a) * sqrt_s_full +
@@ -5652,7 +6092,6 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             t3a = ohs * (bv1a - bv0a) * sqrt_s_full +
                   0.25 * (bv0a + bv1a) / sqrt_s_full;
           } else {
-            t1a = 0.5 * (wout.bsubsmnc(mn, j_f + 1) + wout.bsubsmnc(mn, j_f));
             t2a = ohs * (wout.bsubumns(mn, j_f + 1) - wout.bsubumns(mn, j_f));
             t3a = ohs * (wout.bsubvmns(mn, j_f + 1) - wout.bsubvmns(mn, j_f));
           }
@@ -5664,44 +6103,17 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }  // j_f
 
     // Axis (j_f=0): extrapolate for m <= 1, zero for m > 1
-    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-      if (wout.xm_nyq[mn] <= 1) {
-        wout.currumnc(mn, 0) =
-            2.0 * wout.currumnc(mn, 1) - wout.currumnc(mn, 2);
-        wout.currvmnc(mn, 0) =
-            2.0 * wout.currvmnc(mn, 1) - wout.currvmnc(mn, 2);
-      }
-      // m > 1: already zero from initialization
-    }
-
     // Edge (j_f=ns-1): linear extrapolation
-    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-      wout.currumnc(mn, fc.ns - 1) =
-          2.0 * wout.currumnc(mn, fc.ns - 2) - wout.currumnc(mn, fc.ns - 3);
-      wout.currvmnc(mn, fc.ns - 1) =
-          2.0 * wout.currvmnc(mn, fc.ns - 2) - wout.currvmnc(mn, fc.ns - 3);
-    }
+    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currumnc);
+    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currvmnc);
 
     // Divide by mu_0 to convert to SI units (Amperes)
     wout.currumnc /= MU_0;
     wout.currvmnc /= MU_0;
 
     if (s.lasym) {
-      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-        if (wout.xm_nyq[mn] <= 1) {
-          wout.currumns(mn, 0) =
-              2.0 * wout.currumns(mn, 1) - wout.currumns(mn, 2);
-          wout.currvmns(mn, 0) =
-              2.0 * wout.currvmns(mn, 1) - wout.currvmns(mn, 2);
-        }
-      }
-
-      for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
-        wout.currumns(mn, fc.ns - 1) =
-            2.0 * wout.currumns(mn, fc.ns - 2) - wout.currumns(mn, fc.ns - 3);
-        wout.currvmns(mn, fc.ns - 1) =
-            2.0 * wout.currvmns(mn, fc.ns - 2) - wout.currvmns(mn, fc.ns - 3);
-      }
+      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currumns);
+      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currvmns);
 
       wout.currumns /= MU_0;
       wout.currvmns /= MU_0;

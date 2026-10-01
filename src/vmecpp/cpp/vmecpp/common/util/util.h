@@ -182,6 +182,9 @@ enum class VmecStatus : std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
+  // the iteration callback stopped the run before convergence; more_iter_flag
+  // in VMEC 8.52
+  MORE_ITERATIONS_NEEDED = 2,  // NOLINT(readability-identifier-naming)
   JACOBIAN_75_TIMES_BAD = 4,
   // A physical inconsistency was detected deep in the MHD model (e.g. a
   // degenerate flux-surface geometry or a free-boundary current mismatch)
@@ -274,8 +277,9 @@ void TridiagonalSolveOpenMP(
 // ----------------------
 // VMEC-specific
 
-// Compute the maximum allowed number of threads for a VMEC++ run with given
-// radial resolution and adjust the number of OpenMP threads accordingly.
+// Compute the number of threads for the radial solve at the given radial
+// resolution. The count is passed to the parallel region as a num_threads
+// clause; the process-wide OpenMP thread count is left alone.
 int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 
 // Compute the number of threads to use for the free-boundary (NESTOR) vacuum
@@ -283,11 +287,20 @@ int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 // (nZnT points), so - unlike the radial solve, which is capped at ns/2 - it can
 // use as many threads as there are tangential grid points. This count is
 // deliberately decoupled from the radial thread count so the vacuum solve can
-// use the full thread budget even at coarse multigrid steps (small ns).
-// Unlike vmec_adjust_num_threads, this does NOT call omp_set_num_threads: the
+// use the full thread budget even at coarse multigrid steps (small ns). The
 // vacuum solve runs in a nested parallel region with an explicit num_threads()
 // clause.
 int vmec_adjust_vacuum_num_threads(int max_threads, int n_znt);
+
+// Number of threads the OpenMP runtime grants a parallel region that requests
+// requested_threads from the calling context. OMP_THREAD_LIMIT and the active
+// nesting levels can make it smaller than the request; without OpenMP it is 1.
+int GrantedThreads(int requested_threads);
+
+// Number of threads the OpenMP runtime grants a parallel region that requests
+// nested_threads from the single thread of a team of outer_threads threads, as
+// IdealMhdModel::update opens the vacuum solve inside the radial solve.
+int GrantedNestedThreads(int outer_threads, int nested_threads);
 
 }  // namespace vmecpp
 

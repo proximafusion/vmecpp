@@ -113,7 +113,7 @@ TEST_P(FourierGeometryToStartWithFromWOutTest,
         vmec.t_, output_quantities.wout.rmnc, output_quantities.wout.zmns,
         output_quantities.wout.lmns_full, output_quantities.wout.rmns,
         output_quantities.wout.zmnc, output_quantities.wout.lmnc_full,
-        *vmec.p_[thread_id], vmec.constants_, &(vmec.b_));
+        *vmec.p_[thread_id], vmec.constants_, vmec.indata_.signgs, &(vmec.b_));
 
     for (int jF = nsMinF1; jF < nsMaxF1; ++jF) {
       for (int m = 0; m < s.mpol; ++m) {

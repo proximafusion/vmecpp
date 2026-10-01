@@ -364,8 +364,14 @@ struct CovariantBDerivatives {
 
 struct JxBOutFileContents {
   // (num_full, nZnT)
+  // sqrt(g) * j^theta
   RowMatrixXd itheta;
+
+  // (num_full, nZnT)
+  // sqrt(g) * j^phi
   RowMatrixXd izeta;
+
+  // sqrt(g) * (j^theta B_theta + j^phi * B_phi) = sqrt(g) * j.B
   RowMatrixXd bdotk;
 
   Eigen::VectorXd amaxfor;
@@ -420,17 +426,20 @@ struct MercierStabilityIntermediateQuantities {
   // normalized toroidal flux on full-grid
   Eigen::VectorXd s;
 
-  // magnetic shear == radial derivative of iota on full grid
+  // magnetic shear == radial derivative of iota
+  // d(iota)/dPhi on full grid
   Eigen::VectorXd shear;
 
-  // magnetic well == d^2V/ds^2 on full grid
+  // magnetic well
+  // d(VP)/d(PHI) = d^2(V)/d(Phi)^2 on full grid
   Eigen::VectorXd vpp;
 
-  // radial derivative of kinetic pressure on full grid
-  Eigen::VectorXd d_pressure_d_s;
+  // radial derivative of kinetic pressure
+  // dp/dPhi on full grid
+  Eigen::VectorXd d_pressure_d_phi;
 
-  // d(I_tor)/ds on full grid
-  Eigen::VectorXd d_toroidal_current_d_s;
+  // d(I_tor)/dPhi on full grid
+  Eigen::VectorXd d_toroidal_current_d_phi;
 
   // real, physical d(phi)/ds on half-grid
   Eigen::VectorXd phip_realH;
@@ -442,15 +451,15 @@ struct MercierStabilityIntermediateQuantities {
   // toroidal current on half-grid
   Eigen::VectorXd torcur;
 
-  // Jacobian on full-grid
+  // Jacobian on full-grid; first s-based, later flux-based (phi)
   // (num_full, nZnT)
   RowMatrixXd gsqrt_full;
 
-  // B \cdot j on full-grid
+  // mu_0 * j.B on full-grid
   // (num_full, nZnT)
   RowMatrixXd bdotj;
 
-  // 1 / |grad(s)|^2 on full-grid, formed as sqrt(g)^2 / |e_theta x e_zeta|^2
+  // 1.0 / |grad Phi|^2 on full-grid
   // (num_full, nZnT)
   RowMatrixXd gpp;
 
@@ -458,16 +467,16 @@ struct MercierStabilityIntermediateQuantities {
   // (num_half, nZnT)
   RowMatrixXd b2;
 
-  // <1/B**2> on full-grid
+  // <1/B^2> on full-grid
   Eigen::VectorXd tpp;
 
-  // <b*b/|grad-phi|**3> on full-grid
+  // <B.B/|grad-phi|^2> = <B^2/|grad-phi|^2> on full-grid
   Eigen::VectorXd tbb;
 
-  // <j*b/|grad-phi|**3>
+  // <j.B/|grad-phi|^2> on full-grid
   Eigen::VectorXd tjb;
 
-  // <(j*b)2/b**2*|grad-phi|**3>
+  // // <(j.B)^2/(B^2 * |grad-phi|^2)> on full-grid
   Eigen::VectorXd tjj;
 
   bool operator==(const MercierStabilityIntermediateQuantities&) const =
@@ -500,43 +509,51 @@ struct MercierFileContents {
   // rotational transform on full grid
   Eigen::VectorXd iota;
 
-  // magnetic shear == radial derivative of iota on full grid
+  // magnetic shear == radial derivative of iota
+  // d(iota)/dPhi / dV/dPhi = d(iota)/dV on full grid
   Eigen::VectorXd shear;
 
-  // dV/ds on full grid
-  Eigen::VectorXd d_volume_d_s;
+  // dV/dPhi on full grid
+  Eigen::VectorXd d_volume_d_phi;
 
-  // magnetic well == d^2V/ds^2 on full grid
+  // magnetic well
+  // -signgs * d^2(V)/d(Phi)^2 on full grid
   Eigen::VectorXd well;
 
   // I_tor on full grid
   Eigen::VectorXd toroidal_current;
 
-  // d(I_tor)/ds on full grid
-  Eigen::VectorXd d_toroidal_current_d_s;
+  // d(I_tor)/ds / dV/dPhi = d(I_tor)/dV on full grid
+  Eigen::VectorXd d_toroidal_current_d_volume;
 
   // kinetic pressure on full grid
   Eigen::VectorXd pressure;
 
-  // radial derivative of kinetic pressure on full grid
-  Eigen::VectorXd d_pressure_d_s;
+  // radial derivative of kinetic pressure
+  // dp/dPhi / dV/dPhi = dp/dV on full grid
+  Eigen::VectorXd d_pressure_d_volume;
 
   // -------------------
 
-  // Mercier criterion on full grid
-  Eigen::VectorXd DMerc;
-
-  // shear contribution to Mercier criterion on full grid
+  // shear contribution to Mercier criterion
+  // (iota')^2 / 4 on full grid
   Eigen::VectorXd Dshear;
 
-  // magnetic well contribution to Mercier criterion on full grid
-  Eigen::VectorXd Dwell;
-
-  // toroidal current contribution to Mercier criterion on full grid
+  // toroidal current contribution to Mercier criterion
+  // -iota' * [<j.B/|grad-phi|^2> - I' * <B^2/|grad-phi|^2>] on full grid
   Eigen::VectorXd Dcurr;
 
-  // geodesic curvature contribution to Mercier criterion on full grid
+  // magnetic well contribution to Mercier criterion
+  // p' * [V'' - p' * <1/B^2>] * <B^2/|grad-phi|^2> on full grid
+  Eigen::VectorXd Dwell;
+
+  // geodesic curvature contribution to Mercier criterion
+  // ( <j.B/|grad-phi|^2> )^2 - <B^2/|grad-phi|^2> * <(j.B)^2/(B^2 *
+  // |grad-phi|^2)> on full grid
   Eigen::VectorXd Dgeod;
+
+  // Mercier criterion on full grid
+  Eigen::VectorXd DMerc;
 
   bool operator==(const MercierFileContents&) const = default;
   bool operator!=(const MercierFileContents& o) const { return !(*this == o); }
@@ -1285,12 +1302,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmnc;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmns;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmns_full;
+  RowMatrixXd bsubsmns;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumnc;
@@ -1335,12 +1348,8 @@ struct WOutFileContents {
   // half-grid: covariant B_\zeta
   RowMatrixXd bsubvmns;
 
-  // half-grid: covariant B_s
-  RowMatrixXd bsubsmnc;
-
   // full-grid: covariant B_s
-  // NOTE: new with respect to Fortran VMEC
-  RowMatrixXd bsubsmnc_full;
+  RowMatrixXd bsubsmnc;
 
   // half-grid: contravariant B^\theta
   RowMatrixXd bsupumns;
@@ -1397,14 +1406,22 @@ struct OutputQuantities {
   bool operator!=(const OutputQuantities& o) const { return !(*this == o); }
 
   // Write the output quantities to the HDF5 file at the specified path.
-  // If a file already exists, it is overwritten.
+  // If a file already exists, it is overwritten. A file HDF5 cannot create or
+  // write is reported as kInternal.
   absl::Status Save(const std::filesystem::path& path) const;
 
   // Return a OutputQuantities instance populated with the contents of the
   // specified HDF5 file. The file is expected to have the same schema as the
-  // one produced by OutputQuantities::Save.
+  // one produced by OutputQuantities::Save. A file HDF5 cannot open or read is
+  // reported as kInternal.
   static absl::StatusOr<OutputQuantities> Load(
       const std::filesystem::path& path);
+
+ private:
+  // Save and Load on an open file; HDF5 reports a failure in them by throwing
+  // an H5::Exception.
+  absl::Status WriteTo(H5::H5File& file) const;
+  static absl::StatusOr<OutputQuantities> ReadFrom(H5::H5File& file);
 };
 
 // Compute the output quantities of VMEC++.
@@ -1440,6 +1457,16 @@ VmecInternalResults GatherDataFromThreads(
         radial_partitioning,
     const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
     const std::vector<std::unique_ptr<IdealMhdModel> >& models_from_threads,
+    const std::vector<std::unique_ptr<RadialProfiles> >& radial_profiles);
+
+// gather the spectral state and the flux profiles MakeGeometry needs, without
+// the real-space fields; a view of the state during the iteration
+VmecInternalResults GatherSpectralStateFromThreads(
+    int sign_of_jacobian, const Sizes& s, const FlowControl& fc,
+    const VmecConstants& constants,
+    const std::vector<std::unique_ptr<RadialPartitioning> >&
+        radial_partitioning,
+    const std::vector<std::unique_ptr<FourierGeometry> >& decomposed_x,
     const std::vector<std::unique_ptr<RadialProfiles> >& radial_profiles);
 
 // mesh blending for B_zeta back to half-grid
@@ -1490,6 +1517,40 @@ CovariantBDerivatives LowPassFilterCovariantB(
 // extarpolate B_s on full-grid to axis and boundary
 void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                       BSubSFull& m_bsubs_full);
+
+// Re-compute the full-grid covariant B_s on interior surfaces (jF = 1 .. ns-2)
+// by solving the radial force-balance equation
+//   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
+// in spectral space, where brho is the (sqrt(g)-weighted) radial-component
+// residual of the momentum equation. This is the lbsubs path of Fortran
+// VMEC's jxbforce + getbsubs; the call site invokes this when
+// VmecINDATA::lbsubs == true. The default lbsubs == false path keeps the
+// half->full interpolation already produced by PutBSubSOnFullGrid.
+//
+// On return:
+//   - m_bsubs_full.bsubs_full(jF, kl) is the radial-force-balance B_s on
+//     every interior full-grid surface jF in [1, ns-2]. Axis (jF = 0) and
+//     edge (jF = ns-1) are left untouched here and filled in the subsequent
+//     call to ExtrapolateBSubS.
+//   - m_covariant_b_derivatives.{bsubsu,bsubsv}(jF, kl) are the corresponding
+//     spectral derivatives, replacing the values left by
+//     LowPassFilterCovariantB on the interior surfaces.
+//
+// The flux-surface-averaged radial force balance is subtracted from the RHS
+// before the solve, since the local equation has no solution otherwise (the
+// integral of bsupu * dB_s/du + bsupv * dB_s/dv over the surface is zero).
+//
+// If the linear system is singular or its dimensions do not match the
+// Fourier basis, a warning is logged and the corresponding surface is left
+// in its half->full-interpolated state.
+//
+// Only the stellarator-symmetric (lasym = false) path is implemented. On a
+// lasym configuration the function logs a warning and leaves B_s as the
+// half->full interpolation.
+void RecomputeBSubSFromRadialForceBalance(
+    const Sizes& s, const FlowControl& fc, const FourierBasisFastPoloidal& t,
+    const VmecInternalResults& vmec_internal_results, BSubSFull& m_bsubs_full,
+    CovariantBDerivatives& m_covariant_b_derivatives);
 
 JxBOutFileContents ComputeJxBOutputFileContents(
     const Sizes& s, const FlowControl& fc,
@@ -1564,9 +1625,8 @@ WOutFileContents ComputeWOutFileContents(
     const FlowControl& fc, const VmecConstants& constants,
     const HandoverStorage& handover_storage, const std::string& mgrid_mode,
     const std::vector<std::string>& coil_group_names,
-    VmecInternalResults& m_vmec_internal_results, const BSubSHalf& bsubs_half,
-    const BSubSFull& bsubs_full, const MercierFileContents& mercier,
-    const JxBOutFileContents& jxbout,
+    VmecInternalResults& m_vmec_internal_results, const BSubSFull& bsubs_full,
+    const MercierFileContents& mercier, const JxBOutFileContents& jxbout,
     const Threed1FirstTableIntermediate& threed1_first_table_intermediate,
     const Threed1FirstTable& threed1_first_table,
     const Threed1GeometricAndMagneticQuantities& threed1_geomag,

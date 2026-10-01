@@ -13,9 +13,31 @@
 
 namespace vmecpp {
 
+namespace {
+// The vacuum potential's cutoff is the plasma's unless raised by the input.
+int VacuumCutoff(int vacuum, int plasma) {
+  return vacuum > plasma ? vacuum : plasma;
+}
+
+// The tangential grid has to resolve the larger of the plasma's and the
+// vacuum potential's cutoffs; these are the Nyquist minima computeDerivedSizes
+// applies for the plasma's, evaluated for the larger one.
+int NthetaForVacuum(const VmecINDATA& id) {
+  return std::max(id.ntheta, 2 * VacuumCutoff(id.vacuum_mpol, id.mpol) + 6);
+}
+
+int NzetaForVacuum(const VmecINDATA& id) {
+  const int ntor = VacuumCutoff(id.vacuum_ntor, id.ntor);
+  if (ntor > 0 && id.nzeta < 2 * ntor + 4) {
+    return 2 * ntor + 4;
+  }
+  return id.nzeta;
+}
+}  // namespace
+
 Sizes::Sizes(const VmecINDATA& id)
-    : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, id.ntheta, id.nzeta,
-            id.mpol_geometry, id.ntor_geometry) {}
+    : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, NthetaForVacuum(id),
+            NzetaForVacuum(id), id.mpol_geometry, id.ntor_geometry) {}
 
 Sizes::Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
              int mpol_geometry, int ntor_geometry)

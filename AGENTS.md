@@ -71,7 +71,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - **Free Boundary Support**: External magnetic field handling
 
 **Python-C++ Bridge** (`src/vmecpp/cpp/vmecpp/vmec/pybind11/`):
-- Automatic NumPy ↔ Eigen conversion
+- Automatic NumPy <-> Eigen conversion
 - Exception translation from C++ to Python
 - In-Memory data sharing
 
@@ -82,9 +82,9 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 ### Data Flow
 
-1. **Input**: JSON (VMEC++) or INDATA (Fortran) formats → VmecInput validation → C++ VmecINDATA
-2. **Computation**: Multigrid setup → Fourier decomposition → Force balance iteration → Convergence
-3. **Output**: C++ results → Python data structures → Multiple formats (HDF5, NetCDF, JSON)
+1. **Input**: JSON (VMEC++) or INDATA (Fortran) formats -> VmecInput validation -> C++ VmecINDATA
+2. **Computation**: Multigrid setup -> Fourier decomposition -> Force balance iteration -> Convergence
+3. **Output**: C++ results -> Python data structures -> Multiple formats (HDF5, NetCDF, JSON)
 
 ### Key Features
 
@@ -117,9 +117,11 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 
 **Pre-commit Validation**:
 - All C++ code must pass `clang-format` (Google style)
+- Files must end with newline (`end-of-file-fixer`)
+
+**clang-tidy Review** (pull requests that change `.h` or `.cc` files under `src/vmecpp/cpp/vmecpp/`, tests and benchmarks excluded; any finding fails the check):
 - Must pass `readability-identifier-naming` checks
 - Must pass `modernize-avoid-c-arrays` checks
-- Files must end with newline (`end-of-file-fixer`)
 
 **Incremental development**: Make small, focused changes that can be validated independently
 
@@ -132,7 +134,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - Reuse validated components before writing new ones
 
 **Validation**:
-- VMEC++ reproduces VMEC 8.52; the reference files are educational_VMEC output, which reports `version_ = 8.52`, and PARVMEC 10.0 differs in documented conventions such as the full-grid `bsubsmns` and the `chipf` endpoints
+- VMEC++ reproduces VMEC 8.52; the reference files are educational_VMEC output, which reports `version_ = 8.52`; VMEC++ writes the full-grid `bsubsmns` of PARVMEC instead of the half-grid one; PARVMEC 10.0 differs in documented conventions such as the `chipf` endpoints
 - Keep historical behavior for compatibility; fix a confirmed bug of the original and mark the deviation in the tests
 - Fix a Fortran-side bug in educational_VMEC first, with a test that fails before and passes after, then regenerate the reference files
 - A symmetric equilibrium run through the asymmetric code paths must reproduce the symmetric result to machine precision (`tests/test_lasym.py`)
@@ -154,6 +156,8 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 **Prose**:
 - Comments and pull request descriptions do not pre-empt objections; they state what is and stop
 - Comments carry the change or the measurement, without praise, deference, or defensive justification
+- Pull request descriptions and review replies open with the content, with no pleasantries, acknowledgements or other social filler
+- They are concise: each point is made once, in the fewest words that carry it
 
 **Configuration and errors**:
 - Toggle features through fields of `VmecInput`, not environment variables

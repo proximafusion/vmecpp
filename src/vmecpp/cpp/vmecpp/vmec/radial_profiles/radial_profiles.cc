@@ -528,8 +528,11 @@ double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
     case ProfileParameterization::NICE_QUADRATIC:
       return evalNiceQuadratic(coeffs, normX);
     case ProfileParameterization::SUM_COSSQ_S:
+      return evalSumCossqS(coeffs, normX);
     case ProfileParameterization::SUM_COSSQ_SQRTS:
+      return evalSumCossqSqrts(coeffs, normX);
     case ProfileParameterization::SUM_COSSQ_S_FREE:
+      return evalSumCossqSFree(coeffs, normX);
     default:
       std::cerr
           << absl::StrFormat(
@@ -1046,6 +1049,95 @@ double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
          4.0 * Coef(coeffs, 2) * x * (1.0 - x);
 }
 
+namespace {
+// Integral from lower to upper of cos^2(pi (t - center) / (2 half_width)), the
+// enclosed current of one cos^2 hump of the sum_cossq profiles.
+double CosSqHumpIntegral(double center, double half_width, double lower,
+                         double upper) {
+  const auto primitive = [center, half_width](double t) {
+    return 0.5 * (t - center) + half_width / (2.0 * M_PI) *
+                                    std::sin(M_PI * (t - center) / half_width);
+  };
+  return primitive(upper) - primitive(lower);
+}
+}  // namespace
+
+// Enclosed current of coeffs[0] cos^2 humps in s of half-width
+// delta = 1 / (coeffs[0] - 1), centred on (i - 1) delta with amplitude
+// coeffs[i] for i = 1, ..., coeffs[0]; the two end humps are cut at s = 0 and
+// s = 1. Ported from Fortran VMEC pcurr 'sum_cossq_s'.
+double RadialProfiles::evalSumCossqS(const Eigen::VectorXd& coeffs, double x) {
+  const int num_humps = static_cast<int>(Coef(coeffs, 0));
+  if (num_humps < 2) {
+    return 0.0;
+  }
+  const double delta = 1.0 / (num_humps - 1);
+  double current = 0.0;
+  for (int i = 1; i <= num_humps; ++i) {
+    const double center = (i - 1) * delta;
+    const double lower = std::max(0.0, center - delta);
+    const double upper = std::min(x, std::min(center + delta, 1.0));
+    if (upper > lower) {
+      current +=
+          Coef(coeffs, i) * CosSqHumpIntegral(center, delta, lower, upper);
+    }
+  }
+  return current;
+}
+
+// The same humps placed in rho = sqrt(s), so the enclosed current is the
+// integral of hump times rho up to sqrt(s). Ported from Fortran VMEC pcurr
+// 'sum_cossq_sqrts'.
+double RadialProfiles::evalSumCossqSqrts(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  const int num_humps = static_cast<int>(Coef(coeffs, 0));
+  if (num_humps < 2) {
+    return 0.0;
+  }
+  const double delta = 1.0 / (num_humps - 1);
+  const double rho = std::sqrt(std::max(x, 0.0));
+  double current = 0.0;
+  for (int i = 1; i <= num_humps; ++i) {
+    const double center = (i - 1) * delta;
+    const double lower = std::max(0.0, center - delta);
+    const double upper = std::min(rho, std::min(center + delta, 1.0));
+    if (upper <= lower) {
+      continue;
+    }
+    // antiderivative of t cos^2(pi (t - center) / (2 delta))
+    const auto primitive = [center, delta](double t) {
+      const double angle = M_PI * (t - center) / delta;
+      return 0.25 * t * t + delta * t / (2.0 * M_PI) * std::sin(angle) +
+             delta * delta / (2.0 * M_PI * M_PI) * std::cos(angle);
+    };
+    current += Coef(coeffs, i) * (primitive(upper) - primitive(lower));
+  }
+  return current;
+}
+
+// Up to seven cos^2 humps in s with their own amplitude coeffs[3 i], centre
+// coeffs[3 i + 1] and half-width coeffs[3 i + 2], each cut at s = 0 and
+// s = 1. Ported from Fortran VMEC pcurr 'sum_cossq_s_free'.
+double RadialProfiles::evalSumCossqSFree(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  double current = 0.0;
+  for (int i = 0; i < 7; ++i) {
+    const double amplitude = Coef(coeffs, 3 * i);
+    const double center = Coef(coeffs, 3 * i + 1);
+    const double half_width = Coef(coeffs, 3 * i + 2);
+    if (amplitude == 0.0 || half_width <= 0.0) {
+      continue;
+    }
+    const double lower = std::max(0.0, center - half_width);
+    const double upper = std::min(x, std::min(center + half_width, 1.0));
+    if (upper > lower) {
+      current +=
+          amplitude * CosSqHumpIntegral(center, half_width, lower, upper);
+    }
+  }
+  return current;
+}
+
 void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
                                         VmecConstants& m_vmecconst) {
   // R_00 of initial boundary is ~ major radius
@@ -1060,7 +1152,10 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
   // outermost value of enclosed current profile -->
   const double edgeCurrent = evalCurrProfile(1.0);
   Itor = 0.0;
-  // TODO(jons): eps*currv instead of eps*curtor?
+  // Fortran profil1d.f90 compares against EPSILON(pedge)*curtor in the same
+  // way. The guard exists to keep the division below from blowing up on a
+  // vanishing edge value; currv differs from curtor only by MU_0, so which of
+  // the two sets the scale makes no practical difference.
   if (std::abs(edgeCurrent) > std::abs(DBL_EPSILON * id_.curtor)) {
     // FACTOR OF SIGNGS NEEDED HERE, SINCE MATCH IS MADE TO LINE INTEGRAL OF
     // BSUBU (IN GETIOTA) ~ SIGNGS * CURTOR
@@ -1134,9 +1229,13 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     const double toroidalFlux = std::min(torflux(fullGridPos), 1.0);
     iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(toroidalFlux);
 
-    // TODO(jons): this is still weird
-    // TODO(jons): The particular amount of 2*pDamp can sometimes be adjusted in
-    // the range 0...1 to yield faster convergence.
+    // Fortran bdamp, from profil1d.f90. A linear ramp from 2*pDamp at the axis
+    // to 0 at the boundary, which with pDamp = 0.05 is 0.1 to 0. bcovar.f90
+    // uses it as lvv, the weight blending the two estimates of the covariant
+    // B_v on the full grid; hybridLambdaForce does the same here. That a
+    // time-step parameter sets a radial blending weight is odd, and the
+    // reference says so too. The amount can be adjusted in 0...1 to trade
+    // convergence speed.
     radialBlending[jF1 - r_.nsMinF1] = 2.0 * pDamp * (1.0 - fullGridPos);
 
     // even-m: no scaling

@@ -86,12 +86,21 @@ class VmecINDATA {
   int mpol_geometry;
   int ntor_geometry;
 
+  // Optional larger Fourier cutoffs for the vacuum potential of a
+  // free-boundary run. NESTOR expands the potential to (mpol, ntor) like
+  // the plasma, which limits the vacuum field on helically excursing
+  // boundaries; a value above mpol / ntor raises the potential's cutoff
+  // alone, with nzeta at least 2 * vacuum_ntor + 4. 0 (default) means
+  // "use mpol / ntor".
+  int vacuum_mpol;
+  int vacuum_ntor;
+
   // number of poloidal grid points; if odd: is rounded to next smaller even
   // number
   int ntheta;
 
-  // number of toroidal grid points; must match nzeta of mgrid file if using
-  // free-boundary
+  // number of toroidal grid points, raised to 2 * ntor + 4 when smaller; the
+  // mgrid file must carry the resulting number if using free-boundary
   int nzeta;
 
   // ---------------------------------
@@ -191,6 +200,11 @@ class VmecINDATA {
   // number of iterations between full vacuum calculations
   int nvacskip;
 
+  // sign of the Jacobian of the (s, theta, zeta) coordinates: -1 for the
+  // left-handed system of Fortran VMEC, +1 for a right-handed one; the input
+  // boundary is flipped in theta to match it
+  int signgs;
+
   // indicates which method to use
   // for the free-boundary force contribution
   FreeBoundaryMethod free_boundary_method;
@@ -214,6 +228,26 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Scale of the lambda preconditioner, which multiplies the inverse of the
+  // diagonal lambda stiffness. 1.0 applies the undamped inverse, values below
+  // 1.0 damp the lambda step and values above 1.0 accelerate it; the default
+  // 0.5 is the damping of VMEC 8.52.
+  double lambda_preconditioner_scale;
+
+  // If true, re-compute the full-grid covariant B_s by solving the radial
+  // force balance equation
+  //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
+  // in spectral space at every interior surface (lbsubs flag in Fortran VMEC).
+  // The default (false) keeps B_s as the linear half->full interpolation of
+  // the metric-element B_s plus the axis/edge extrapolation. Affects the
+  // jxbout diagnostic and the bsubsmn{s,c} coefficients in the wout file; the
+  // equilibrium iteration is unchanged.
+  bool lbsubs;
+
+  // If true, restart backups hold the state of the last force evaluation; if
+  // false, they hold the advanced state, as in educational_VMEC.
+  bool backup_evaluated_state;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)
@@ -224,6 +258,15 @@ class VmecINDATA {
   // returned quantities are computed from whatever internal state the solver
   // was in when it gave up, and can be arbitrarily unphysical.
   bool return_outputs_even_if_not_converged;
+
+  // Abandon the whole multigrid sequence when a step ends with any residual
+  // still above fgiveup times its tolerance, rather than carrying a state that
+  // far out onto a finer grid. Off by default.
+  bool lgiveup;
+
+  // Multiple of ftol_array a step's residuals must be under for the sequence to
+  // continue when lgiveup is set.
+  double fgiveup;
 
   // ---------------------------------
   // initial guess for magnetic axis
