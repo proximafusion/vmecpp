@@ -334,6 +334,7 @@ VmecINDATA::VmecINDATA() {
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;
+  lrfp = false;
   backup_evaluated_state = true;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
@@ -468,6 +469,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
+  WriteH5Dataset(lrfp, "/indata/lrfp", file);
   WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
                  file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
@@ -598,6 +600,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
     ReadH5Dataset(m_indata.lbsubs, "/indata/lbsubs", from_file);
   } else {
     m_indata.lbsubs = false;
+  }
+
+  // Older HDF5 files predate this field; fall back to the default if absent.
+  if (H5Lexists(from_file.getId(), "/indata/lrfp", 0) == 1) {
+    ReadH5Dataset(m_indata.lrfp, "/indata/lrfp", from_file);
+  } else {
+    m_indata.lrfp = false;
   }
 
   if (H5Lexists(from_file.getId(), "/indata/backup_evaluated_state", 0) == 1) {
@@ -1132,6 +1141,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lbsubs = maybe_lbsubs->value();
   }
 
+  auto maybe_lrfp = JsonReadBool(j, "lrfp");
+  if (!maybe_lrfp.ok()) {
+    return maybe_lrfp.status();
+  }
+  if (maybe_lrfp->has_value()) {
+    vmec_indata.lrfp = maybe_lrfp->value();
+  }
+
   auto maybe_backup_evaluated_state = JsonReadBool(j, "backup_evaluated_state");
   if (!maybe_backup_evaluated_state.ok()) {
     return maybe_backup_evaluated_state.status();
@@ -1488,6 +1505,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["lforbal"] = lforbal;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lbsubs"] = lbsubs;
+  output["lrfp"] = lrfp;
   output["backup_evaluated_state"] = backup_evaluated_state;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
@@ -1875,6 +1893,12 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
 
   // lbsubs
   // nothing to check here: lbsubs can be true or false and both are valid...
+
+  if (vmec_indata.lrfp && vmec_indata.ncurr == 1) {
+    return absl::InvalidArgumentError(
+        "input variable 'lrfp' takes a prescribed q profile (ncurr = 0), but "
+        "'ncurr' is 1\n");
+  }
 
   // iteration_style
   // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.

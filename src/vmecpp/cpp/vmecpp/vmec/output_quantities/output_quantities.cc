@@ -5128,6 +5128,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.niter = iter2;
 
   wout.lfreeb = indata.lfreeb;
+  wout.lrfp = indata.lrfp;
   wout.mgrid_file = indata.mgrid_file;
   // copy STL vector into Eigen vector
   wout.nextcur = static_cast<int>(indata.extcur.size());
