@@ -516,6 +516,15 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    return_vacuum_field: bool = False
+    """Return the boundary quantities of a free-boundary run in
+    ``VmecOutput.threed1_free_boundary``: the boundary geometry, the plasma-side and
+    vacuum-side pressures, and the cylindrical components of the vacuum field NESTOR
+    computes on the boundary.
+
+    ``freeb_data`` in Fortran VMEC.
+    """
+
     lambda_preconditioner_scale: float = 0.5
     """Scale of the lambda preconditioner, which multiplies the inverse of the diagonal
     lambda stiffness to turn the lambda force into the lambda step.
@@ -2637,6 +2646,71 @@ class JxBOut(BaseModelWithNumpy):
         return jxbout
 
 
+class Threed1FreeBoundary(BaseModelWithNumpy):
+    """The boundary quantities of a free-boundary run, ``freeb_data`` in Fortran VMEC.
+
+    Every array is (nzeta, ntheta) on the solver's grid: toroidal points
+    ``phib = 2 pi k / (nzeta nfp)`` over one field period and the poloidal points
+    of the reduced range (the full range when ``lasym``). The pressures are
+    VMEC's normalized ones, ``B^2/2 + mu0 p`` on the plasma side and ``B^2/2`` on
+    the vacuum side, so their difference is the jump in total pressure across
+    the boundary. Every array is zero for a fixed-boundary run.
+    """
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    rb: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Boundary R."""
+
+    phib: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Toroidal angle of each point."""
+
+    zb: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Boundary Z."""
+
+    bsqmhdi: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Plasma-side total pressure when the vacuum field was first established."""
+
+    bsqvaci: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum-side magnetic pressure when the vacuum field was first established."""
+
+    bsqmhdf: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Plasma-side total pressure at convergence."""
+
+    bsqvacf: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum-side magnetic pressure at convergence."""
+
+    bredge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Plasma-side B_R on the boundary, extrapolated from the two outermost half
+    points."""
+
+    bpedge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Plasma-side B_phi on the boundary."""
+
+    bzedge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Plasma-side B_Z on the boundary."""
+
+    brv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum B_R on the boundary, from the free-boundary solver."""
+
+    bphiv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum B_phi on the boundary."""
+
+    bzv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum B_Z on the boundary."""
+
+    @staticmethod
+    def _from_cpp_threed1_free_boundary(
+        cpp_threed1_free_boundary: _vmecpp.Threed1FreeBoundary,
+    ) -> Threed1FreeBoundary:
+        return Threed1FreeBoundary(
+            **{
+                attr: getattr(cpp_threed1_free_boundary, attr)
+                for attr in own_model_fields(Threed1FreeBoundary)
+            }
+        )
+
+
 class VmecOutput(BaseModelWithNumpy):
     """Container for the full output of a VMEC run."""
 
@@ -2680,6 +2754,10 @@ class VmecOutput(BaseModelWithNumpy):
     threed1_shafranov_integrals: Threed1ShafranovIntegrals
     """Python equivalent of the Shafranov surface integrals in VMEC's "threed1" file."""
 
+    threed1_free_boundary: Threed1FreeBoundary | None = None
+    """The boundary quantities of a free-boundary run, including the vacuum field on the
+    boundary; present when the input sets ``return_vacuum_field``."""
+
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""
 
@@ -2696,6 +2774,7 @@ for _model_type in (
     Threed1AxisGeometry,
     Threed1Betas,
     Threed1ShafranovIntegrals,
+    Threed1FreeBoundary,
     VmecOutput,
 ):
     _register_model_pytree(_model_type, own_model_fields(_model_type))
@@ -3192,9 +3271,14 @@ def run(
         wout = _wout_from_output_stage(input, cpp_output_quantities)
     else:
         wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
-    return VmecOutput(
-        input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
-    )
+    tables = _output_tables_from_cpp(cpp_output_quantities)
+    if input.return_vacuum_field:
+        tables["threed1_free_boundary"] = (
+            Threed1FreeBoundary._from_cpp_threed1_free_boundary(
+                cpp_output_quantities.threed1_free_boundary
+            )
+        )
+    return VmecOutput(input=input, wout=wout, **tables)
 
 
 def has_exact_force_jacobian() -> bool:
