@@ -49,6 +49,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 - [Usage](#usage)
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
+  - [With JAX for gradients](#differentiable-runs)
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -117,6 +118,40 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 print(f"Computed plasma volume: {vmec.volume()}")
 ```
 
+## Differentiable runs
+
+> [!NOTE]
+> The autodiff API is not yet stable. We are planning to make autodiff the default
+> behaviour and to release a suitable pip wheel in the upcoming weeks.
+
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
+
+Leaves that change shape depending on iteration progress (`fsqt` trace for example)
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
+tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
+and diagnostics are `None`.
+
+```python
+import jax
+import jax.numpy as jnp
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
+
+
+def aspect(rbc, zbs):
+    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
+    return vmecpp.run(boundary, verbose=False).wout.aspect
+
+
+rbc = jnp.asarray(vmec_input.rbc)
+zbs = jnp.asarray(vmec_input.zbs)
+d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
+```
 ### As a command line tool
 
 You can use VMEC++ directly as a CLI tool.
@@ -301,41 +336,6 @@ vmec_input.niter_array = vmec_input.niter_array[-1:]
 # the run starts already close to the equilibrium, so it will take
 # very few iterations to converge this time!
 hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
-```
-
-## Differentiable runs
-
-> [!NOTE]
-> The autodiff API is not yet stable. We are planning to make autodiff the default
-> behaviour and to release a suitable pip wheel in the upcoming weeks.
-
-The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
-in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
-When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
-force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
-Otherwise it returns NumPy arrays as before.
-
-Leaves that change shape depending on iteration progress (`fsqt` trace for example)
-are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
-tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
-and diagnostics are `None`.
-
-```python
-import jax
-import jax.numpy as jnp
-import vmecpp
-
-vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
-
-
-def aspect(rbc, zbs):
-    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
-    return vmecpp.run(boundary, verbose=False).wout.aspect
-
-
-rbc = jnp.asarray(vmec_input.rbc)
-zbs = jnp.asarray(vmec_input.zbs)
-d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
 ```
 
 ## Full tests and validation against the reference Fortran VMEC v8.52
