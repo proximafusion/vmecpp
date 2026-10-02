@@ -503,6 +503,15 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 0.5
     """Constraint force scaling factor for ns --> 0."""
 
+    axis_block_preconditioner: bool = False
+    """If true, R and Z at m = 0 to 2 and lambda at m = 1 to 4, all at n = 0, take their
+    step from the block of the force Jacobian that couples them, probed by finite
+    differences, in place of the separate R, Z and lambda preconditioners, once the
+    residuals are below 1e-4.
+
+    Fixed boundary only.
+    """
+
     lgiveup: bool = False
     """Abandon the whole multigrid sequence when a step ends with any residual still
     above ``fgiveup`` times its tolerance, rather than carrying a state that far out

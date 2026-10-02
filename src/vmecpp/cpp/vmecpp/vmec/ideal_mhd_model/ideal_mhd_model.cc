@@ -1001,6 +1001,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // PERFORM PRECONDITIONING AND COMPUTE RESIDUES
 
+  if (raw_force_observer_) {
+    raw_force_observer_(m_decomposed_f);
+  }
+
   applyM1Preconditioner(m_decomposed_f);
   if (checkpoint == VmecCheckpoint::APPLY_M1_PRECONDITIONER &&
       iter2 >= iterations_before_checkpointing) {
