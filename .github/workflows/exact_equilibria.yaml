@@ -8,8 +8,8 @@ name: V&V against exact equilibria
 #
 # - On every pull request and push to main: the quick suite, up to ns = 100, which
 #   fails when one of its checks on the member "sheared" fails.
-# - On release and on manual request: the full suite, up to ns = 1000, one job per
-#   member of the families, which reports the same checks.
+# - On every push to main, on release and on manual request: the full suite, up to
+#   ns = 1000, one job per member of the families, which reports the same checks.
 on:
   pull_request:
   push:
@@ -77,8 +77,8 @@ jobs:
           retention-days: 30
 
   full:
-    name: Exact equilibria up to ns = 1000, ${{ matrix.member }}
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    name: Exact equilibria up to ns = 1000
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 360
     permissions:
