@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790901139148,
+  "lastUpdate": 1790924940274,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -23511,6 +23511,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.40949920899998915,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cdc44ebd27f7af178e8d34c95defe568b1e87bf1",
+          "message": "initialize absl logging correctly (#946)\n\n* Write the full-grid bsubsmns and wout version 9.0\n\nBREAKING: wout bsubsmns/bsubsmnc hold the full-grid B_s of VMEC 9.0 and\nPARVMEC (jxbforce's bsubs, the lbsubs force-balance solution when\nlbsubs=True) instead of the VMEC 8.52 half-grid B_s, and version_ is 9.0.\nbsubsmns_full/bsubsmnc_full are removed. currumnc/currvmnc take the\nfull-grid B_s as is, as LIBSTELL Compute_Currents does for version 9.0.\nVersion 8.52 wout files (netCDF and HDF5) load converted to the full grid.\nThe JAX output stage is skipped for lbsubs=True, which it does not model.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n* Solve lbsubs in the JAX output stage\n\nThe JAX output stage solves the radial force balance for the full-grid B_s\nby collocation, as RecomputeBSubSFromRadialForceBalance does, so run() and\nthe traced path no longer fall back to the C++ wout for lbsubs = True. Its\nbsubsmns, currents, jdotb and Mercier terms match the C++ output to 1e-8 of\ntheir maxima (roundoff amplified by the condition number of the solve). The\nsolve is mapped over surfaces: the batched CPU LU of JAX is two orders slower.\n\nbsubsmns is the transform of the full-grid real-space B_s in both branches;\nthe C++ transform stays inline in ComputeWOutFileContents.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n* Keep wout version_ at 8.52 with the full-grid bsubsmns\n\nDrop the version bump, the 8.52-to-9.0 conversion on read, and the test helper branch that bridged the version.\n\n* initialize abs logging correctly\n\n---------\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+          "timestamp": "2026-10-02T09:00:25+02:00",
+          "tree_id": "5169ca8d890010a48e1b397322422de0f4cd4509",
+          "url": "https://github.com/proximafusion/vmecpp/commit/cdc44ebd27f7af178e8d34c95defe568b1e87bf1"
+        },
+        "date": 1790924935915,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6832055511999897,
+            "range": "stddev: 0.011755129698651638",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.660144441333349,
+            "range": "stddev: 0.016040900255315998",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0988221089999495,
+            "range": "stddev: 0.013944940042958666",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.702668921000016,
+            "range": "stddev: 0.034319961976976246",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4839244386666148,
+            "range": "stddev: 0.009105506646344195",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.799099190000031,
+            "range": "stddev: 0.013854652274838824",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.5454309429999284,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5076306109999678,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
