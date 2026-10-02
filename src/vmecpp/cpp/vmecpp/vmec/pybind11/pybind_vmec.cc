@@ -928,6 +928,8 @@ class VmecModel {
 PYBIND11_MODULE(_vmecpp, m) {
   m.doc() = "pybind11 VMEC++ plugin";
 
+  vmecpp::InitializeUserLogging();
+
   // Compile-time build feature: whether this wheel was built with the Enzyme
   // plugin (CMake option VMECPP_ENABLE_ENZYME). This is a static property of
   // the build, cheap to query, and does not require creating a VmecModel;
