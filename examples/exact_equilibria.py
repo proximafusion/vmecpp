@@ -21,9 +21,10 @@ points, quantities that do not depend on its poloidal angle:
 - the toroidal current enclosed by each half-grid surface (buco), and its radial
   derivative on the full grid (jcurv),
 
-with their observed orders of convergence, and plots them. Each run starts from the
-coarser grids of MULTIGRID below its ns and takes every grid to the residual ftol_for
-gives it.
+with their observed orders of convergence, and plots them. A member that
+converges climbs the radial scan as a ladder: every run restarts from the solution at
+the previous ns, interpolated, and takes it to the residual ftol_for gives it; the
+angular runs start from the coarser grids of MULTIGRID below their ns.
 
     python examples/exact_equilibria.py [--suite demo|quick|full] [--member NAME]
                                         [--out DIR] [--threads N] [--check]
@@ -512,11 +513,22 @@ def ftol_for(ns):
     return 1e-18 if ns <= 200 else 1e-16
 
 
-def run(member, ns, mpol, ntor, niter=20000, delt=0.9, max_threads=1, grids=()):
-    """VMEC++ on a member at one resolution, after the coarser radial grids given, if
-    any, each grid run to ftol_for its ns; the output is returned whether or not the
+def solve(
+    member,
+    ns,
+    mpol,
+    ntor,
+    niter=20000,
+    delt=0.9,
+    max_threads=1,
+    grids=(),
+    previous=None,
+):
+    """VMEC++ on a member at one resolution: after the coarser radial grids given, if
+    any, each grid run to ftol_for its ns, or from the solution previous, interpolated
+    to this resolution, when it is given; the output is returned whether or not the
     residual reached it."""
-    ns_array = [*grids, ns]
+    ns_array = [ns] if previous is not None else [*grids, ns]
     vmec_input = member.vmec_input(ns, mpol, ntor).model_copy(
         update={
             "ns_array": np.array(ns_array, dtype=np.int64),
@@ -526,7 +538,17 @@ def run(member, ns, mpol, ntor, niter=20000, delt=0.9, max_threads=1, grids=()):
             "return_outputs_even_if_not_converged": True,
         }
     )
-    return vmecpp.run(vmec_input, max_threads=max_threads, verbose=False).wout
+    restart_from = (
+        None if previous is None else vmecpp.interpolate_solution(previous, vmec_input)
+    )
+    return vmecpp.run(
+        vmec_input, max_threads=max_threads, verbose=False, restart_from=restart_from
+    )
+
+
+def run(member, ns, mpol, ntor, **kwargs):
+    """The wout of solve."""
+    return solve(member, ns, mpol, ntor, **kwargs).wout
 
 
 def _modes_first(array, count):
@@ -784,8 +806,10 @@ def checks(results, reference=None):
 class Scan:
     """A radial scan of a member at fixed mpol, ntor and an angular scan at fixed ns.
 
-    The runs of a member that converges start from the coarser grids of MULTIGRID below
-    their ns; the others run each grid to niter on its own.
+    A member that converges climbs the radial scan as a ladder, each run restarting from
+    the solution at the previous ns, and starts the angular runs from the coarser grids
+    of MULTIGRID below angular_ns, as the converged state depends on the initial axis;
+    the others run each grid to niter on its own.
     """
 
     member: str
@@ -819,12 +843,21 @@ SUITES = {
 }
 
 
-def _row(member, scan, ns, mpol, ntor, max_threads):
+def _row(member, scan, ns, mpol, ntor, max_threads, previous=None):
+    """The row of a run, and its output to restart the next rung of a ladder from."""
     grids = tuple(n for n in MULTIGRID if n < ns) if scan.multigrid else ()
     t0 = time.time()
-    wout = run(
-        member, ns, mpol, ntor, niter=scan.niter, max_threads=max_threads, grids=grids
+    output = solve(
+        member,
+        ns,
+        mpol,
+        ntor,
+        niter=scan.niter,
+        max_threads=max_threads,
+        grids=grids,
+        previous=previous,
     )
+    wout = output.wout
     row = {"ns": ns, "mpol": mpol, "ntor": ntor, **measure(member, wout)}
     row["seconds"] = time.time() - t0
     row["current profile"] = {
@@ -837,7 +870,20 @@ def _row(member, scan, ns, mpol, ntor, max_threads):
         + f", {row['seconds']:.0f} s",
         flush=True,
     )
-    return row
+    return row, output
+
+
+def _radial_ladder(member, scan, max_threads):
+    """The rows of the radial scan, each run restarting from the previous one when the
+    member's scan is a ladder."""
+    rows, previous = [], None
+    for ns in scan.ns:
+        row, output = _row(
+            member, scan, ns, scan.mpol, scan.ntor, max_threads, previous
+        )
+        rows.append(row)
+        previous = output if scan.multigrid else None
+    return rows
 
 
 def run_suite(suite, members=None, out_dir=None, max_threads=None, reference=None):
@@ -849,12 +895,9 @@ def run_suite(suite, members=None, out_dir=None, max_threads=None, reference=Non
             continue
         member = MEMBERS[scan.member]
         entry: dict[str, Any] = {
-            "radial": [
-                _row(member, scan, ns, scan.mpol, scan.ntor, max_threads)
-                for ns in scan.ns
-            ],
+            "radial": _radial_ladder(member, scan, max_threads),
             "angular": [
-                _row(member, scan, scan.angular_ns, mpol, ntor, max_threads)
+                _row(member, scan, scan.angular_ns, mpol, ntor, max_threads)[0]
                 for mpol, ntor in scan.angular_modes
             ],
         }
