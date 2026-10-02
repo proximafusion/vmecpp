@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790930183100,
+  "lastUpdate": 1790931026621,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -23751,6 +23751,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.5148403960000678,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "798714b8dd62666e786c4bbb641582c6c07c2c54",
+          "message": "Install the remaining CI jobs with uv and its cache (#952)\n\n* Cache the pip and uv downloads of the remaining CI jobs\n\n* Install the docs, pyright and V&V jobs with uv and its cache",
+          "timestamp": "2026-10-02T10:40:01+02:00",
+          "tree_id": "090f99d86d56eb0c25de940bc05fcb4f5f01cd8e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/798714b8dd62666e786c4bbb641582c6c07c2c54"
+        },
+        "date": 1790931018652,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7268856588000062,
+            "range": "stddev: 0.005702153550500038",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6638899886666727,
+            "range": "stddev: 0.011458869529009015",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0998331253333238,
+            "range": "stddev: 0.0012429814023133146",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6682606026666729,
+            "range": "stddev: 0.012208712114370955",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4832645380000145,
+            "range": "stddev: 0.004406577490046884",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.955517922666672,
+            "range": "stddev: 0.03956187664950549",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.622083738000015,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5102142169999979,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
