@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790924940274,
+  "lastUpdate": 1790925105163,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -71734,6 +71734,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004804023269082414,
             "unit": "seconds",
             "extra": "iterations: 294\ncpu: 0.004789612027210885 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cdc44ebd27f7af178e8d34c95defe568b1e87bf1",
+          "message": "initialize absl logging correctly (#946)\n\n* Write the full-grid bsubsmns and wout version 9.0\n\nBREAKING: wout bsubsmns/bsubsmnc hold the full-grid B_s of VMEC 9.0 and\nPARVMEC (jxbforce's bsubs, the lbsubs force-balance solution when\nlbsubs=True) instead of the VMEC 8.52 half-grid B_s, and version_ is 9.0.\nbsubsmns_full/bsubsmnc_full are removed. currumnc/currvmnc take the\nfull-grid B_s as is, as LIBSTELL Compute_Currents does for version 9.0.\nVersion 8.52 wout files (netCDF and HDF5) load converted to the full grid.\nThe JAX output stage is skipped for lbsubs=True, which it does not model.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n* Solve lbsubs in the JAX output stage\n\nThe JAX output stage solves the radial force balance for the full-grid B_s\nby collocation, as RecomputeBSubSFromRadialForceBalance does, so run() and\nthe traced path no longer fall back to the C++ wout for lbsubs = True. Its\nbsubsmns, currents, jdotb and Mercier terms match the C++ output to 1e-8 of\ntheir maxima (roundoff amplified by the condition number of the solve). The\nsolve is mapped over surfaces: the batched CPU LU of JAX is two orders slower.\n\nbsubsmns is the transform of the full-grid real-space B_s in both branches;\nthe C++ transform stays inline in ComputeWOutFileContents.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n* Keep wout version_ at 8.52 with the full-grid bsubsmns\n\nDrop the version bump, the 8.52-to-9.0 conversion on read, and the test helper branch that bridged the version.\n\n* initialize abs logging correctly\n\n---------\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+          "timestamp": "2026-10-02T09:00:25+02:00",
+          "tree_id": "5169ca8d890010a48e1b397322422de0f4cd4509",
+          "url": "https://github.com/proximafusion/vmecpp/commit/cdc44ebd27f7af178e8d34c95defe568b1e87bf1"
+        },
+        "date": 1790925104580,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00002408796908313415,
+            "unit": "seconds",
+            "extra": "iterations: 55199\ncpu: 2.4086480715230347e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000032230652168536895,
+            "unit": "seconds",
+            "extra": "iterations: 44158\ncpu: 3.222886568685176e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.000551970893814719,
+            "unit": "seconds",
+            "extra": "iterations: 2535\ncpu: 0.0005519309668639053 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014437167637119353,
+            "unit": "seconds",
+            "extra": "iterations: 969\ncpu: 0.0014436661702786372 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00015937781065122073,
+            "unit": "seconds",
+            "extra": "iterations: 8781\ncpu: 0.00015933051474775083 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013992519655364117,
+            "unit": "seconds",
+            "extra": "iterations: 10064\ncpu: 0.00013987716991255964 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003314552837815106,
+            "unit": "seconds",
+            "extra": "iterations: 4277\ncpu: 0.0003313218707037642 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00028430617270536635,
+            "unit": "seconds",
+            "extra": "iterations: 4913\ncpu: 0.0002841322715245267 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005265554266075443,
+            "unit": "seconds",
+            "extra": "iterations: 2684\ncpu: 0.0005263147339791361 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00043627642845922663,
+            "unit": "seconds",
+            "extra": "iterations: 2967\ncpu: 0.00043605367408156356 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017523801282104037,
+            "unit": "seconds",
+            "extra": "iterations: 801\ncpu: 0.0017519250998751573 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001949030102874374,
+            "unit": "seconds",
+            "extra": "iterations: 719\ncpu: 0.0019483952058414462 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000032449725962356595,
+            "unit": "seconds",
+            "extra": "iterations: 43109\ncpu: 3.248386508617735e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017449914100403318,
+            "unit": "seconds",
+            "extra": "iterations: 8016\ncpu: 0.00017460376796407323 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.000855200306700728,
+            "unit": "seconds",
+            "extra": "iterations: 1637\ncpu: 0.0008552376963958642 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027652401167533738,
+            "unit": "seconds",
+            "extra": "iterations: 51024\ncpu: 2.7676503312167962e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0001541091307720572,
+            "unit": "seconds",
+            "extra": "iterations: 9087\ncpu: 0.0001540824352371558 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.000780694135539319,
+            "unit": "seconds",
+            "extra": "iterations: 1748\ncpu: 0.0007806760526315814 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.0002984085334937116,
+            "unit": "seconds",
+            "extra": "iterations: 4694\ncpu: 0.00029838943971026845 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0011857976347713147,
+            "unit": "seconds",
+            "extra": "iterations: 1180\ncpu: 0.0011857422440677958 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.005243876087131786,
+            "unit": "seconds",
+            "extra": "iterations: 268\ncpu: 0.005243744749999995 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004528510065731086,
+            "unit": "seconds",
+            "extra": "iterations: 307\ncpu: 0.0045223391498371325 seconds\nthreads: 1"
           }
         ]
       }
