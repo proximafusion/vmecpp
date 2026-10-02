@@ -332,6 +332,7 @@ VmecINDATA::VmecINDATA() {
   delt = 1.0;
   tcon0 = 0.5;
   lforbal = false;
+  enable_force_source = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;
   backup_evaluated_state = true;
@@ -465,6 +466,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(enable_force_source, "/indata/enable_force_source", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
@@ -583,6 +585,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+  if (from_file.nameExists("/indata/enable_force_source")) {
+    ReadH5Dataset(m_indata.enable_force_source, "/indata/enable_force_source",
+                  from_file);
+  }
+
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(), "/indata/lambda_preconditioner_scale", 0) ==
       1) {
@@ -1114,6 +1121,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lforbal = maybe_lforbal->value();
   }
 
+  auto maybe_enable_force_source = JsonReadBool(j, "enable_force_source");
+  if (!maybe_enable_force_source.ok()) {
+    return maybe_enable_force_source.status();
+  }
+  if (maybe_enable_force_source->has_value()) {
+    vmec_indata.enable_force_source = maybe_enable_force_source->value();
+  }
+
   auto maybe_lambda_preconditioner_scale =
       JsonReadDouble(j, "lambda_preconditioner_scale");
   if (!maybe_lambda_preconditioner_scale.ok()) {
@@ -1486,6 +1501,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["delt"] = delt;
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
+  output["enable_force_source"] = enable_force_source;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
