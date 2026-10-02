@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790900979335,
+  "lastUpdate": 1790901139148,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -71498,6 +71498,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004515721721033897,
             "unit": "seconds",
             "extra": "iterations: 310\ncpu: 0.00450809009032258 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "de88e9c519bc71095582d5cf4322db5b8c8cfb6c",
+          "message": "Take the wout of a concrete run from the C++ output stage (#950)\n\n* Write the full-grid bsubsmns and wout version 9.0\n\nBREAKING: wout bsubsmns/bsubsmnc hold the full-grid B_s of VMEC 9.0 and\nPARVMEC (jxbforce's bsubs, the lbsubs force-balance solution when\nlbsubs=True) instead of the VMEC 8.52 half-grid B_s, and version_ is 9.0.\nbsubsmns_full/bsubsmnc_full are removed. currumnc/currvmnc take the\nfull-grid B_s as is, as LIBSTELL Compute_Currents does for version 9.0.\nVersion 8.52 wout files (netCDF and HDF5) load converted to the full grid.\nThe JAX output stage is skipped for lbsubs=True, which it does not model.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n* Solve lbsubs in the JAX output stage\n\nThe JAX output stage solves the radial force balance for the full-grid B_s\nby collocation, as RecomputeBSubSFromRadialForceBalance does, so run() and\nthe traced path no longer fall back to the C++ wout for lbsubs = True. Its\nbsubsmns, currents, jdotb and Mercier terms match the C++ output to 1e-8 of\ntheir maxima (roundoff amplified by the condition number of the solve). The\nsolve is mapped over surfaces: the batched CPU LU of JAX is two orders slower.\n\nbsubsmns is the transform of the full-grid real-space B_s in both branches;\nthe C++ transform stays inline in ComputeWOutFileContents.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n* Take the wout of a concrete run from the C++ output stage\n\nrun() returns the C++ wout; the JAX output stage runs only on the traced path.\nA concrete run computed every wout field twice and, with lbsubs, solved the\nforce balance for B_s twice. _use_jax_output_stage is removed.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+          "timestamp": "2026-10-02T02:06:05+02:00",
+          "tree_id": "ba770bf35ebbe3bcac643a8b6876baef2ba58b1d",
+          "url": "https://github.com/proximafusion/vmecpp/commit/de88e9c519bc71095582d5cf4322db5b8c8cfb6c"
+        },
+        "date": 1790901138555,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00002407192296084312,
+            "unit": "seconds",
+            "extra": "iterations: 47264\ncpu: 2.4066705484089367e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000030867142467236556,
+            "unit": "seconds",
+            "extra": "iterations: 45534\ncpu: 3.0858144946633284e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005698312854222777,
+            "unit": "seconds",
+            "extra": "iterations: 2454\ncpu: 0.0005697273541157292 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.001573138231647804,
+            "unit": "seconds",
+            "extra": "iterations: 891\ncpu: 0.0015729875746352416 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00015692312790997016,
+            "unit": "seconds",
+            "extra": "iterations: 8265\ncpu: 0.00015691161330913493 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00014206707175007933,
+            "unit": "seconds",
+            "extra": "iterations: 9850\ncpu: 0.00014205753390862948 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00031851549083388207,
+            "unit": "seconds",
+            "extra": "iterations: 4390\ncpu: 0.0003184909856492029 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002884811661191769,
+            "unit": "seconds",
+            "extra": "iterations: 4845\ncpu: 0.0002884565931888545 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005185176984335902,
+            "unit": "seconds",
+            "extra": "iterations: 2685\ncpu: 0.0005184823918063318 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00048493838701091835,
+            "unit": "seconds",
+            "extra": "iterations: 3050\ncpu: 0.0004814676875409838 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0018460160030520797,
+            "unit": "seconds",
+            "extra": "iterations: 759\ncpu: 0.0018459068063241112 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019936282082466082,
+            "unit": "seconds",
+            "extra": "iterations: 708\ncpu: 0.0019934939971751418 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00003378856298356511,
+            "unit": "seconds",
+            "extra": "iterations: 39990\ncpu: 3.382783065766459e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00018013080216680694,
+            "unit": "seconds",
+            "extra": "iterations: 7775\ncpu: 0.00018022556308681218 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0008878247304396197,
+            "unit": "seconds",
+            "extra": "iterations: 1584\ncpu: 0.0008879027398990007 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027428449037032047,
+            "unit": "seconds",
+            "extra": "iterations: 51071\ncpu: 2.7451197098156774e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.0001602127373661061,
+            "unit": "seconds",
+            "extra": "iterations: 8755\ncpu: 0.00016023368098230038 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0008227889365636296,
+            "unit": "seconds",
+            "extra": "iterations: 1634\ncpu: 0.0008228012172582825 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00029807624524642775,
+            "unit": "seconds",
+            "extra": "iterations: 4699\ncpu: 0.00029805699616939767 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001199820967137354,
+            "unit": "seconds",
+            "extra": "iterations: 1167\ncpu: 0.0011997001688089112 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.0046084805538779815,
+            "unit": "seconds",
+            "extra": "iterations: 304\ncpu: 0.00460825532894737 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004804023269082414,
+            "unit": "seconds",
+            "extra": "iterations: 294\ncpu: 0.004789612027210885 seconds\nthreads: 1"
           }
         ]
       }
