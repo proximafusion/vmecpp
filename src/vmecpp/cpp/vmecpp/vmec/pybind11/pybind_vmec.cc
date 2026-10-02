@@ -306,11 +306,9 @@ class VmecModel {
 #pragma omp parallel num_threads(1)
 #endif
     {
-      auto s = vmec_->m_[0]->update(
-          *vmec_->decomposed_x_[0], *vmec_->physical_x_[0],
-          *vmec_->decomposed_f_[0], *vmec_->physical_f_[0], need_restart,
-          last_preconditioner_update_, last_full_update_nestor_, vmec_->fc_,
-          iter1, iter2, checkpoint, checkpoint_after,
+      auto s = vmec_->UpdateModel(
+          /*thread_id=*/0, need_restart, last_preconditioner_update_,
+          last_full_update_nestor_, iter1, iter2, checkpoint, checkpoint_after,
           /*verbose=*/false, always_fix_m1_gauge);
       if (!s.ok()) {
         error_message = std::string(s.status().message());
@@ -343,6 +341,7 @@ class VmecModel {
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
     *vmec_->physical_x_backup_[0] = *vmec_->decomposed_x_[0];
+    vmec_->backup_holds_pending_step_ = vmec_->step_check_pending_;
   }
   // Back up the last state with a valid force evaluation.
   void SaveEvaluatedBackup() const {
@@ -351,11 +350,19 @@ class VmecModel {
   void RestoreBackup() const {
     vmec_->decomposed_v_[0]->setZero();
     *vmec_->decomposed_x_[0] = *vmec_->physical_x_backup_[0];
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
   }
-  void ZeroVelocity() const { vmec_->decomposed_v_[0]->setZero(); }
+  void ZeroVelocity() const {
+    vmec_->decomposed_v_[0]->setZero();
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
+  }
 
   // Reset to the (possibly re-guessed) initial profile; used on bad Jacobian.
   void ResetToInitialGuess() const {
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     vmec_->decomposed_x_[0]->setZero();
     vmec_->decomposed_x_[0]->interpFromBoundaryAndAxis(vmec_->t_, vmec_->b_,
                                                        *vmec_->p_[0]);
@@ -465,6 +472,8 @@ class VmecModel {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
   void SetState(const Eigen::VectorXd &flat) const {
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
     exact_primal_valid_ = false;  // primal geometry cache is stale
   }
@@ -647,6 +656,8 @@ class VmecModel {
   // the directional step is finite-differenced. The current state is restored.
   Eigen::VectorXd HessianVectorProduct(const Eigen::VectorXd &v,
                                        double eps_rel = 1e-7) {
+    vmec_->step_check_pending_ = false;
+    vmec_->backup_holds_pending_step_ = false;
     const Eigen::VectorXd x =
         FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
     const double vnorm = v.norm();
@@ -833,6 +844,9 @@ class VmecModel {
   double fsqz1() const { return vmec_->fc_.fsqz1; }
   double fsql1() const { return vmec_->fc_.fsql1; }
   double mhd_energy() const { return vmec_->h_.mhdEnergy; }
+  // Fraction of the last time step that jacobian_safe_step kept in the last
+  // evaluation; 1 when the step was not shortened.
+  double step_fraction() const { return vmec_->h_.step_fraction; }
 
   int restart_reason() const {
     return static_cast<int>(vmec_->fc_.restart_reason);
@@ -878,7 +892,7 @@ class VmecModel {
   }
   // Per-iteration restart-reason trace recorded alongside the residual traces
   // (one entry per recorded force iteration); NO_RESTART=1, BAD_JACOBIAN=2,
-  // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4.
+  // BAD_PROGRESS=3, HUGE_INITIAL_FORCES=4, SHORTENED_STEP=5.
   std::vector<int> restart_reasons() const {
     std::vector<int> out;
     out.reserve(vmec_->fc_.restart_reasons.size());
@@ -1032,6 +1046,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lgiveup", &VmecINDATA::lgiveup)
       .def_readwrite("fgiveup", &VmecINDATA::fgiveup)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
+      .def_readwrite("jacobian_safe_step", &VmecINDATA::jacobian_safe_step)
       .def_readwrite("lambda_preconditioner_scale",
                      &VmecINDATA::lambda_preconditioner_scale)
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
@@ -1850,6 +1865,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("fsqz1", &VmecModel::fsqz1)
       .def_property_readonly("fsql1", &VmecModel::fsql1)
       .def_property_readonly("mhd_energy", &VmecModel::mhd_energy)
+      .def_property_readonly("step_fraction", &VmecModel::step_fraction)
       .def_property("restart_reason", &VmecModel::restart_reason,
                     &VmecModel::set_restart_reason)
       .def_property_readonly("status", &VmecModel::status)

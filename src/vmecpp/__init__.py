@@ -515,6 +515,14 @@ class VmecInput(BaseModelWithNumpy):
     lforbal: bool = False
     """Hack: directly compute innermost flux surface geometry from radial force balance"""
 
+    jacobian_safe_step: bool = False
+    """Shorten every time step that would take the Jacobian below 1% of its value at
+    some grid point, so that flux surfaces cannot cross during the iteration.
+
+    False keeps the time step of VMEC 8.52. The iterations reached by a shortened step
+    are listed as ``RestartReason.SHORTENED_STEP`` in ``wout.restart_reasons``.
+    """
+
     lambda_preconditioner_scale: float = 0.5
     """Scale of the lambda preconditioner, which multiplies the inverse of the diagonal
     lambda stiffness to turn the lambda force into the lambda step.

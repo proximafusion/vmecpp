@@ -221,6 +221,11 @@ class HandoverStorage {
   // First error from the nested vacuum team; reset to OK before each solve.
   absl::Status vacuum_status = absl::OkStatus();
 
+  // Largest fraction of the last time step that keeps the Jacobian above
+  // kJacobianRetainedFraction of its value, from IdealMhdModel::update with
+  // check_step; 1 when the whole step does.
+  double step_fraction = 1.0;
+
   // Threads the runtime granted the last nested vacuum team, checked against
   // the team the vacuum solvers are partitioned for.
   int vacuum_team_size = 0;
