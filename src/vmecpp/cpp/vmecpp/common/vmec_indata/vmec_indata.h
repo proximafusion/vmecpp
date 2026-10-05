@@ -234,6 +234,10 @@ class VmecINDATA {
   // 0.5 is the damping of VMEC 8.52.
   double lambda_preconditioner_scale;
 
+  // Shift eps of the radially tridiagonal m = 0 lambda preconditioner
+  // M + eps diag(faclam); negative keeps the diagonal one of VMEC 8.52.
+  double lambda_m0_tridiagonal_eps;
+
   // If true, re-compute the full-grid covariant B_s by solving the radial
   // force balance equation
   //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho

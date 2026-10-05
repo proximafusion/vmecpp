@@ -333,6 +333,7 @@ VmecINDATA::VmecINDATA() {
   tcon0 = 1.0;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
+  lambda_m0_tridiagonal_eps = -1.0;
   lbsubs = false;
   backup_evaluated_state = true;
   iteration_style = IterationStyle::VMEC_8_52;
@@ -467,6 +468,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
+  WriteH5Dataset(lambda_m0_tridiagonal_eps, "/indata/lambda_m0_tridiagonal_eps",
+                 file);
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
   WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
                  file);
@@ -590,6 +593,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/lambda_preconditioner_scale", from_file);
   } else {
     m_indata.lambda_preconditioner_scale = 0.5;
+  }
+  if (H5Lexists(from_file.getId(), "/indata/lambda_m0_tridiagonal_eps", 0) ==
+      1) {
+    ReadH5Dataset(m_indata.lambda_m0_tridiagonal_eps,
+                  "/indata/lambda_m0_tridiagonal_eps", from_file);
+  } else {
+    m_indata.lambda_m0_tridiagonal_eps = -1.0;
   }
 
   // Legacy way of checking for dataset existence
@@ -1124,6 +1134,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         maybe_lambda_preconditioner_scale->value();
   }
 
+  auto maybe_lambda_m0_tridiagonal_eps =
+      JsonReadDouble(j, "lambda_m0_tridiagonal_eps");
+  if (!maybe_lambda_m0_tridiagonal_eps.ok()) {
+    return maybe_lambda_m0_tridiagonal_eps.status();
+  }
+  if (maybe_lambda_m0_tridiagonal_eps->has_value()) {
+    vmec_indata.lambda_m0_tridiagonal_eps =
+        maybe_lambda_m0_tridiagonal_eps->value();
+  }
+
   auto maybe_lbsubs = JsonReadBool(j, "lbsubs");
   if (!maybe_lbsubs.ok()) {
     return maybe_lbsubs.status();
@@ -1487,6 +1507,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
+  output["lambda_m0_tridiagonal_eps"] = lambda_m0_tridiagonal_eps;
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
   output["iteration_style"] = ToString(iteration_style);
@@ -1868,6 +1889,13 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         "input variable 'lambda_preconditioner_scale' has to be positive and "
         "finite, but is %g\n",
         vmec_indata.lambda_preconditioner_scale));
+  }
+
+  if (!std::isfinite(vmec_indata.lambda_m0_tridiagonal_eps)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'lambda_m0_tridiagonal_eps' has to be finite, but is "
+        "%g\n",
+        vmec_indata.lambda_m0_tridiagonal_eps));
   }
 
   // lforbal

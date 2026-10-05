@@ -79,9 +79,11 @@ def test_lasym_reduces_to_symmetric_2d():
     _assert_same_physics(sym, asym, vol_rtol=1e-9, beta_atol=1e-9, iota_atol=1e-8)
 
 
-def test_lasym_reduces_to_symmetric_3d():
+@pytest.mark.parametrize("lambda_m0_tridiagonal_eps", [-1.0, 1e-3])
+def test_lasym_reduces_to_symmetric_3d(lambda_m0_tridiagonal_eps):
     """3D: lasym=True with zero asymmetric content reproduces the symmetric run."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base.lambda_m0_tridiagonal_eps = lambda_m0_tridiagonal_eps
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
