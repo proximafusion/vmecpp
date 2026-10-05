@@ -1,6 +1,6 @@
 """Free-boundary QUASR scan of the tridiagonal m = 0 lambda preconditioner shift.
 
-    python quasr_lambda_m0_eps_scan.py <eps,eps,...> <ftol> <out.json> [config_id,...]
+    python quasr_lambda_m0_eps_scan.py <eps,eps,...> <ftol> <out.json> [config_id,...|all] [lambda_preconditioner_scale]
 
 eps < 0 is the diagonal VMEC 8.52 preconditioner. Uses the configurations, resolution and
 mgrid construction of tests/test_free_boundary_quasr.py.
@@ -36,7 +36,8 @@ for config_id in ids:
         for eps in eps_list:
             vmec_input = q._make_input(config, profile, q.NS_ARRAY)
             vmec_input.ftol_array = np.full(len(q.NS_ARRAY), ftol)
-            vmec_input.lambda_m0_tridiagonal_eps = eps
+            vmec_input.lambda_precondition_checkerboard_terms = eps
+            vmec_input.lambda_preconditioner_scale = scale
             t = time.time()
             row = {
                 "config": config_id,
