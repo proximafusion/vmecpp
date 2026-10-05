@@ -500,7 +500,7 @@ class VmecInput(BaseModelWithNumpy):
     delt: float = 1.0
     """Initial value for artificial time step in iterative solver."""
 
-    tcon0: float = 0.5
+    tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
 
     lgiveup: bool = False
@@ -3102,8 +3102,8 @@ def run(
         >>> path = "examples/data/solovev.json"
         >>> vmec_input = vmecpp.VmecInput.from_file(path)
         >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
-        >>> round(output.wout.b0, 6) # Exact value may differ by C library
-        0.203331
+        >>> round(output.wout.b0, 10) # Exact value may differ by C library
+        0.2033313711
     """
     input = VmecInput.model_validate(input)
 

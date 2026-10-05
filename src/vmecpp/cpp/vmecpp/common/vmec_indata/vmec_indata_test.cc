@@ -176,7 +176,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.nstep, 10);
   EXPECT_THAT(indata.aphi, ElementsAre(1.0));
   EXPECT_EQ(indata.delt, 1.0);
-  EXPECT_EQ(indata.tcon0, 0.5);
+  EXPECT_EQ(indata.tcon0, 1.0);
   EXPECT_EQ(indata.lforbal, false);
   EXPECT_EQ(indata.lbsubs, false);
   EXPECT_EQ(indata.backup_evaluated_state, true);
