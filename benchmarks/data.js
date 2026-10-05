@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791238703697,
+  "lastUpdate": 1791239107348,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -73386,6 +73386,162 @@ window.BENCHMARK_DATA = {
             "value": 0.0073655996773694015,
             "unit": "seconds",
             "extra": "iterations: 296\ncpu: 0.006935169895270271 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ee1e06bb49fe7a4987f2974fbce3b3f9a0805bec",
+          "message": "autodiff: vectorize the bookkeeping of the adjoint assembly (#956)\n\n* autodiff: solve the implicit adjoint with a block tridiagonal LU instead of GMRES\n\nThe transposed interior force operator is block tridiagonal in the surface\nindex. Assemble it exactly from 3 * (modes per surface) coloured Hessian-vector\nproducts and factor it by block Thomas elimination. Preconditioned GMRES needed\nthousands of transposed products and did not converge at ns >= 49 on W7-X and\nNCSX.\n\nBased on #857, adapted to the current adjoint (gauge, profiles) and with a\ndense block LU in place of the sparse one.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n* Fix Pyright NumPy scalar typing\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* Update test_autodiff_direct_adjoint.py\n\n* Update test_autodiff_direct_adjoint.py\n\n* autodiff: vectorize the bookkeeping of the adjoint assembly\n\nGroup the solved entries by (color, mode) once and map hit rows to their\nprobed column with an array lookup. The per-probe Python dict and list\ncomprehensions over every hit row cost about 30% of the assembly at W7-X\nresolution, on top of the Hessian-vector products themselves.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-10-06T00:10:46+02:00",
+          "tree_id": "59a8c227326850a38f24c8fac3546a532777e769",
+          "url": "https://github.com/proximafusion/vmecpp/commit/ee1e06bb49fe7a4987f2974fbce3b3f9a0805bec"
+        },
+        "date": 1791239106814,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00002409799853612498,
+            "unit": "seconds",
+            "extra": "iterations: 58091\ncpu: 2.409765139178186e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000031654975628566764,
+            "unit": "seconds",
+            "extra": "iterations: 44170\ncpu: 3.165469053656328e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005526287786118848,
+            "unit": "seconds",
+            "extra": "iterations: 2535\ncpu: 0.0005526223873767259 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0014488881586505902,
+            "unit": "seconds",
+            "extra": "iterations: 969\ncpu: 0.001448830862745098 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00015879884071367417,
+            "unit": "seconds",
+            "extra": "iterations: 8812\ncpu: 0.0001587955220154335 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00013955437866282032,
+            "unit": "seconds",
+            "extra": "iterations: 8585\ncpu: 0.00013952173651718113 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00032025648510854827,
+            "unit": "seconds",
+            "extra": "iterations: 4335\ncpu: 0.00032025202860438284 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00028382803284833415,
+            "unit": "seconds",
+            "extra": "iterations: 4917\ncpu: 0.0002838291956477528 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.000518002746548148,
+            "unit": "seconds",
+            "extra": "iterations: 2702\ncpu: 0.0005180002242783125 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0004479645937681198,
+            "unit": "seconds",
+            "extra": "iterations: 3200\ncpu: 0.0004475737265625002 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017595297128111876,
+            "unit": "seconds",
+            "extra": "iterations: 796\ncpu: 0.0017590667298994984 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.001949994848045286,
+            "unit": "seconds",
+            "extra": "iterations: 722\ncpu: 0.0019497023171745175 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00003266338989488801,
+            "unit": "seconds",
+            "extra": "iterations: 42806\ncpu: 3.2705723263094346e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017527600027797698,
+            "unit": "seconds",
+            "extra": "iterations: 7623\ncpu: 0.00017532199986882306 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0008498801012555783,
+            "unit": "seconds",
+            "extra": "iterations: 1643\ncpu: 0.0008498893524041357 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027518283024034784,
+            "unit": "seconds",
+            "extra": "iterations: 51166\ncpu: 2.7549415197590437e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00015506580979329353,
+            "unit": "seconds",
+            "extra": "iterations: 9017\ncpu: 0.00015507288965287637 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007808828797967665,
+            "unit": "seconds",
+            "extra": "iterations: 1718\ncpu: 0.000780893135040723 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00030069718466273606,
+            "unit": "seconds",
+            "extra": "iterations: 4661\ncpu: 0.0003006874632053208 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001186861379726513,
+            "unit": "seconds",
+            "extra": "iterations: 1184\ncpu: 0.0011868306900337845 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.00518920430463486,
+            "unit": "seconds",
+            "extra": "iterations: 269\ncpu: 0.005189030910780668 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004541950816051968,
+            "unit": "seconds",
+            "extra": "iterations: 307\ncpu: 0.004534319205211726 seconds\nthreads: 1"
           }
         ]
       }
