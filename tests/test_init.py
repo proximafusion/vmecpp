@@ -780,7 +780,7 @@ def test_ensure_vmec2000_input_noop():
 
 def test_ensure_vmec2000_input_with_null():
     # Test that the null values are handled gracefully and removed from the VMEC2000 input file
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     assert vmec_input.rbs is None
     with tempfile.TemporaryDirectory() as tmp_dir:
         vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
@@ -984,7 +984,7 @@ def test_aux_arrays_from_cpp_wout():
 
 
 def test_populate_raw_profile_knots():
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     vmec_input.ns_array = np.array([5, 9])
 
     def f(s):
@@ -1007,7 +1007,7 @@ def test_populate_raw_profile_knots():
 
 def test_default_preset():
     # Default construction doesn't throw an exception
-    default_preset = vmecpp.VmecInput.default()
+    default_preset = vmecpp.VmecInput()
     # Sample a few of the default values that should be set
     assert default_preset.nfp == 1
     assert default_preset.mpol == 6

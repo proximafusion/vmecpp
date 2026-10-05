@@ -316,7 +316,7 @@ def _make_input(
     """
     rbc, zbs, r_axis_guess = _boundary_coefficients(config.boundary, MPOL, NTOR)
 
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     vmec_input.lasym = False
     vmec_input.nfp = config.nfp
     vmec_input.mpol = MPOL
