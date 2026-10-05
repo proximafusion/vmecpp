@@ -1200,3 +1200,22 @@ def test_vmec_input_axis_aliases_read_write_the_axis_fields():
     np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
     np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
     np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+@pytest.mark.parametrize(
+    "name", ["cth_like_fixed_bdy.json", "input.cth_like_fixed_bdy"]
+)
+def test_modern_defaults_fill_only_unset_fields(name, tmp_path):
+    path = TEST_DATA_DIR / name
+    compatible = vmecpp.VmecInput.from_file(path)
+    modern = vmecpp.VmecInput.from_file(path, defaults="modern")
+    for field, value in vmecpp.MODERN_DEFAULTS.items():
+        assert getattr(compatible, field) == getattr(vmecpp.VmecInput.default(), field)
+        assert getattr(modern, field) == value
+        assert getattr(vmecpp.VmecInput.default("modern"), field) == value
+    # a value set in the file wins over the modern default
+    explicit = tmp_path / "explicit.json"
+    explicit.write_text(compatible.model_dump_json())
+    explicit_modern = vmecpp.VmecInput.from_file(explicit, defaults="modern")
+    for field in vmecpp.MODERN_DEFAULTS:
+        assert getattr(explicit_modern, field) == getattr(compatible, field)
