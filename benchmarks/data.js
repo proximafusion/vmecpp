@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791194392825,
+  "lastUpdate": 1791238703697,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24071,6 +24071,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4908935539999675,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ee1e06bb49fe7a4987f2974fbce3b3f9a0805bec",
+          "message": "autodiff: vectorize the bookkeeping of the adjoint assembly (#956)\n\n* autodiff: solve the implicit adjoint with a block tridiagonal LU instead of GMRES\n\nThe transposed interior force operator is block tridiagonal in the surface\nindex. Assemble it exactly from 3 * (modes per surface) coloured Hessian-vector\nproducts and factor it by block Thomas elimination. Preconditioned GMRES needed\nthousands of transposed products and did not converge at ns >= 49 on W7-X and\nNCSX.\n\nBased on #857, adapted to the current adjoint (gauge, profiles) and with a\ndense block LU in place of the sparse one.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n* Fix Pyright NumPy scalar typing\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* Update test_autodiff_direct_adjoint.py\n\n* Update test_autodiff_direct_adjoint.py\n\n* autodiff: vectorize the bookkeeping of the adjoint assembly\n\nGroup the solved entries by (color, mode) once and map hit rows to their\nprobed column with an array lookup. The per-probe Python dict and list\ncomprehensions over every hit row cost about 30% of the assembly at W7-X\nresolution, on top of the Hessian-vector products themselves.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-10-06T00:10:46+02:00",
+          "tree_id": "59a8c227326850a38f24c8fac3546a532777e769",
+          "url": "https://github.com/proximafusion/vmecpp/commit/ee1e06bb49fe7a4987f2974fbce3b3f9a0805bec"
+        },
+        "date": 1791238697362,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6853883267999891,
+            "range": "stddev: 0.005558343048850248",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.640168645000017,
+            "range": "stddev: 0.020739453700711206",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0998034850000142,
+            "range": "stddev: 0.004129599144715476",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6815292200000538,
+            "range": "stddev: 0.026511443529409543",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4807827263333213,
+            "range": "stddev: 0.004668992313829784",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.819789074666649,
+            "range": "stddev: 0.020867630229105365",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.314749658999972,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.48678074400004334,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
