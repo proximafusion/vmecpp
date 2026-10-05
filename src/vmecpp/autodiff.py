@@ -556,11 +556,12 @@ def _implicit_vjp(
     )
     # The interior rows of the same product are the residual of the direct solve:
     # a free check that the assembly and the factorization are sound.
-    residual = np.linalg.norm(transposed[interior] - state_bar[interior])
-    if residual > 1.0e-6 * max(np.linalg.norm(state_bar[interior]), 1.0e-300):
+    residual = float(np.linalg.norm(transposed[interior] - state_bar[interior]))
+    residual_scale = max(float(np.linalg.norm(state_bar[interior])), 1.0e-300)
+    if residual > 1.0e-6 * residual_scale:
         error_message = (
             "VMEC++ implicit adjoint solve failed: relative residual "
-            f"{residual / np.linalg.norm(state_bar[interior]):.3e}"
+            f"{residual / residual_scale:.3e}"
         )
         raise RuntimeError(error_message)
     full_state_bar = np.zeros(state_size)
