@@ -61,3 +61,30 @@ def test_preconditioner_state_invariant_after_assembly():
     m.evaluate(2, 2, False)
     mv1 = np.asarray(m.apply_preconditioner(v), float)
     assert np.linalg.norm(mv1 - mv0) <= 1e-12 * np.linalg.norm(mv0)
+
+
+CTH_LIKE = SOLOVEV.parent / "cth_like_fixed_bdy.json"
+
+
+def test_m0_lambda_tridiagonal_preconditioner_inverts_m0_lambda_block():
+    # With eps = 0 the m = 0 lambda preconditioner inverts the radial m = 0 lambda
+    # block of the force Jacobian H, scaled by lambda_preconditioner_scale:
+    # M^-1 H = -scale I on every row, the axis and LCFS rows included.
+    indata = _vmecpp.VmecINDATA.from_file(str(CTH_LIKE))
+    indata.lambda_m0_tridiagonal_eps = 0.0
+    ns = 15
+    m = _vmecpp.VmecModel.create(indata, ns)
+    m.evaluate(2, 2, True)
+    size = np.asarray(m.get_state()).size
+    lcs = np.arange(size).reshape(6, ns, indata.mpol, indata.ntor + 1)[5]
+    for n in range(1, indata.ntor + 1):
+        cols = lcs[1:, 0, n]
+        k = np.zeros((cols.size, cols.size))
+        for i, c in enumerate(cols):
+            v = np.zeros(size)
+            v[c] = 1.0
+            hv = np.asarray(m.hessian_vector_product(v, 1e-7), float)
+            k[:, i] = np.asarray(m.apply_preconditioner(hv), float)[cols]
+        np.testing.assert_allclose(
+            k / indata.lambda_preconditioner_scale, -np.eye(cols.size), atol=3e-2
+        )

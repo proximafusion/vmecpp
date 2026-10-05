@@ -526,6 +526,16 @@ class VmecInput(BaseModelWithNumpy):
     above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
+    lambda_m0_tridiagonal_eps: float = -1.0
+    """Shift ``eps`` of the radially tridiagonal m = 0 lambda preconditioner.
+
+    Non-negative values replace the diagonal m = 0 lambda preconditioner by the
+    tridiagonal radial block of the lambda force plus ``eps`` times its diagonal.
+    This converges the radial odd-even m = 0 lambda mode, which the half-grid
+    average leaves nearly force-free and which shows up as a sign-alternating
+    <J.B>. Negative values keep the diagonal preconditioner of VMEC 8.52.
+    """
+
     lbsubs: bool = False
     """If true, recompute the full-grid covariant B_s by solving radial force balance
     (lbsubs flag in Fortran VMEC)."""

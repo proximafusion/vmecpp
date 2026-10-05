@@ -773,7 +773,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
           &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
                                    indata_.lforbal,
-                                   indata_.lambda_preconditioner_scale);
+                                   indata_.lambda_preconditioner_scale,
+                                   indata_.lambda_m0_tridiagonal_eps);
     }  // thread_id
 
     absl::Status current_profile_status =
