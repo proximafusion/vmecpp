@@ -852,11 +852,6 @@ class VmecInput(BaseModelWithNumpy):
 
         return VmecInput.model_validate(vmec_input_dict)
 
-    @staticmethod
-    def default():
-        """Return a ``VmecInput`` with VMEC++ default values."""
-        return VmecInput()
-
     def _to_cpp_vmecindata(self) -> _vmecpp.VmecINDATA:
         cpp_indata = _vmecpp.VmecINDATA()
 
