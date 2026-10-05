@@ -234,9 +234,11 @@ class VmecINDATA {
   // 0.5 is the damping of VMEC 8.52.
   double lambda_preconditioner_scale;
 
-  // Shift eps of the radially tridiagonal m = 0 lambda preconditioner
-  // M + eps diag(faclam); negative keeps the diagonal one of VMEC 8.52.
-  double lambda_m0_tridiagonal_eps;
+  // Stiffness floor of the radial checkerboard (odd-even) mode of the m = 0
+  // lambda, as a fraction of a smooth mode's: the m = 0 lambda preconditioner
+  // is the tridiagonal radial block M + floor diag(faclam). Negative keeps the
+  // diagonal one of VMEC 8.52 (the default); 1e-3 is the modern default.
+  double lambda_precondition_checkerboard_terms;
 
   // If true, re-compute the full-grid covariant B_s by solving the radial
   // force balance equation

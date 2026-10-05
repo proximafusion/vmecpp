@@ -238,6 +238,13 @@ def _alias_property(target: str) -> property:
 # and this will become a Python wrapper around the one C++ VmecINDATA type.
 # This pure Python type could _also_ disappear if we can get proper autocompletion,
 # docstring peeking etc. for the one C++ VmecINDATA type bound via pybind11.
+MODERN_DEFAULTS: dict[str, typing.Any] = {
+    "lambda_precondition_checkerboard_terms": 1e-3,
+}
+"""Values that ``VmecInput.default("modern")`` and ``VmecInput.from_file(...,
+defaults="modern")`` use instead of the VMEC 8.52 compatible defaults."""
+
+
 class VmecInput(BaseModelWithNumpy):
     """The input to a VMEC++ run. Contains settings as well as the definition of the
     plasma boundary.
@@ -526,14 +533,20 @@ class VmecInput(BaseModelWithNumpy):
     above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
-    lambda_m0_tridiagonal_eps: float = -1.0
-    """Shift ``eps`` of the radially tridiagonal m = 0 lambda preconditioner.
+    lambda_precondition_checkerboard_terms: float = -1.0
+    """Stiffness floor with which the lambda preconditioner treats the radial
+    checkerboard (odd-even) mode of the m = 0 lambda, as a fraction of the stiffness of
+    a smooth mode.
 
-    Non-negative values replace the diagonal m = 0 lambda preconditioner by the
-    tridiagonal radial block of the lambda force plus ``eps`` times its diagonal.
-    This converges the radial odd-even m = 0 lambda mode, which the half-grid
-    average leaves nearly force-free and which shows up as a sign-alternating
-    <J.B>. Negative values keep the diagonal preconditioner of VMEC 8.52.
+    lambda enters B through its average over neighbouring surfaces, which cancels a
+    (-1)^j checkerboard of the full-grid m = 0 lambda, so the energy and the force
+    hardly see it; the diagonal lambda preconditioner of VMEC 8.52 then converges it
+    last, and it shows up as a sign-alternating <J.B> and DMerc. Non-negative values
+    precondition the m = 0 lambda with its tridiagonal radial block plus this fraction
+    of the diagonal, which enlarges the checkerboard step at most 1 / value times: 0
+    inverts the exact block. Negative values keep the diagonal preconditioner (the VMEC
+    8.52 compatible default); the modern default is 1e-3. The converged equilibrium does
+    not depend on it.
     """
 
     lbsubs: bool = False
@@ -841,9 +854,16 @@ class VmecInput(BaseModelWithNumpy):
             setattr(self, name, value)
 
     @staticmethod
-    def from_file(input_file: str | Path) -> VmecInput:
+    def from_file(
+        input_file: str | Path,
+        defaults: typing.Literal["vmec_8_52", "modern"] = "vmec_8_52",
+    ) -> VmecInput:
         """Build a VmecInput from either a VMEC++ JSON input file or a classic INDATA
-        file."""
+        file.
+
+        Fields the file does not set take the VMEC 8.52 compatible defaults, or with
+        ``defaults="modern"`` the values in ``MODERN_DEFAULTS``.
+        """
         absolute_input_path = Path(input_file).resolve()
 
         # we call this in a temporary directory because it produces the file in the current working directory
@@ -855,9 +875,15 @@ class VmecInput(BaseModelWithNumpy):
                 # `VmecINDATA` populates missing fields with default values, while `VmecInput` doesn't.
                 # Therefore we use `VmecINDATA` here to read the user input, before validating the model
                 vmecpp_indata = _vmecpp.VmecINDATA.from_file(vmecpp_input_file)
+                set_in_file = set(json.loads(Path(vmecpp_input_file).read_text()))
         # At this point all required fields are populated with user defined or default values.
         # Passing missing or extra fields to `VmecInput.model_validate` will otherwise raise an error.
-        return VmecInput._from_cpp_vmecindata(vmecpp_indata)
+        vmec_input = VmecInput._from_cpp_vmecindata(vmecpp_indata)
+        if defaults == "modern":
+            for name, value in MODERN_DEFAULTS.items():
+                if name not in set_in_file:
+                    setattr(vmec_input, name, value)
+        return vmec_input
 
     @staticmethod
     def _from_cpp_vmecindata(
@@ -3376,6 +3402,7 @@ populate_raw_profile = set_profile
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
     "HotRestartMismatchError",
+    "MODERN_DEFAULTS",
     "run",
     "interpolate_solution",
     "rescale",

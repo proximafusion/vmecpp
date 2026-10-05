@@ -373,13 +373,14 @@ IdealMhdModel::IdealMhdModel(
   }
 }
 
-void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0, bool lforbal,
-                                  double lambda_preconditioner_scale,
-                                  double lambda_m0_tridiagonal_eps) {
+void IdealMhdModel::setFromINDATA(
+    int ncurr, double adiabaticIndex, double tcon0, bool lforbal,
+    double lambda_preconditioner_scale,
+    double lambda_precondition_checkerboard_terms) {
   this->ncurr = ncurr;
   this->lambda_preconditioner_scale_ = lambda_preconditioner_scale;
-  this->lambda_m0_tridiagonal_eps_ = lambda_m0_tridiagonal_eps;
+  this->lambda_precondition_checkerboard_terms_ =
+      lambda_precondition_checkerboard_terms;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
   // The m=1 trig weights below are built on the reduced poloidal grid, so the
@@ -2176,7 +2177,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   }  // jH
 
   // half-grid values for the tridiagonal m = 0 lambda preconditioner
-  if (lambda_m0_tridiagonal_eps_ >= 0.0) {
+  if (lambda_precondition_checkerboard_terms_ >= 0.0) {
     for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
       m_h_.lambda_b_half[jH + 1] = bLambda[jH + 1 - r_.nsMinH];
     }
@@ -4023,7 +4024,8 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
  */
 void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   // m = 0 lambda lives in lmncs (and lmncc for lasym), so only in 3D
-  const bool m0_tridiagonal = lambda_m0_tridiagonal_eps_ >= 0.0 && s_.lthreed;
+  const bool m0_tridiagonal =
+      lambda_precondition_checkerboard_terms_ >= 0.0 && s_.lthreed;
   const int num_m0_basis = s_.lasym ? 2 : 1;
   if (m0_tridiagonal) {
     for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
@@ -4068,14 +4070,14 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   // B^v on the half grid as (lambda_j + lambda_{j+1}) / 2, so with
   // A_h = (n nfp)^2 <g_uu / sqrt g>_h
   //   M_{j,j-1} = A_{j-1/2} / 4,  M_{j,j+1} = A_{j+1/2} / 4,
-  //   M_jj = (A_{j-1/2} + A_{j+1/2}) / 4 + eps faclam_j,
-  // with faclam_j = (A_{j-1/2} + A_{j+1/2}) / 2 the diagonal of VMEC 8.52.
+  //   M_jj = (A_{j-1/2} + A_{j+1/2}) / 4 + floor faclam_j,
+  // with faclam_j = (A_{j-1/2} + A_{j+1/2}) / 2 the diagonal of VMEC 8.52 and
+  // floor = lambda_precondition_checkerboard_terms.
   // The axis copies lambda_1 (FourierGeometry::extrapolateTowardsAxis), which
   // adds A_{1/2} / 4 to M_11; there is no half cell outside the LCFS.
   // The step is lambda_preconditioner_scale / lamscale^2 M^-1 F.
   if (r_.get_thread_id() == 0) {
     const int ns = m_fc_.ns;
-    const double eps = lambda_m0_tridiagonal_eps_;
     const double step_scale = lambda_preconditioner_scale_ /
                               (constants_.lamscale * constants_.lamscale);
     for (int n = 1; n <= s_.ntor; ++n) {
@@ -4085,7 +4087,9 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
         const double a_out = tnn * m_h_.lambda_b_half[jF + 1];
         m_h_.lambda_m0_b[jF] = 0.25 * a_in;
         m_h_.lambda_m0_a[jF] = 0.25 * a_out;
-        m_h_.lambda_m0_d[jF] = (0.25 + 0.5 * eps) * (a_in + a_out);
+        m_h_.lambda_m0_d[jF] =
+            (0.25 + 0.5 * lambda_precondition_checkerboard_terms_) *
+            (a_in + a_out);
       }  // jF
       m_h_.lambda_m0_d[1] += 0.25 * tnn * m_h_.lambda_b_half[1];
       TridiagonalSolveSerial(std::span<double>(m_h_.lambda_m0_a.data(), ns),
