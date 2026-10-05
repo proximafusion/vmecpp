@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790946754937,
+  "lastUpdate": 1791192747951,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -23911,6 +23911,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.2677370119999978,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f377f847f17fad47520089163e83e6f57378034a",
+          "message": "autodiff: solve the implicit adjoint with a block tridiagonal LU instead of GMRES (#955)\n\n* autodiff: solve the implicit adjoint with a block tridiagonal LU instead of GMRES\n\nThe transposed interior force operator is block tridiagonal in the surface\nindex. Assemble it exactly from 3 * (modes per surface) coloured Hessian-vector\nproducts and factor it by block Thomas elimination. Preconditioned GMRES needed\nthousands of transposed products and did not converge at ns >= 49 on W7-X and\nNCSX.\n\nBased on #857, adapted to the current adjoint (gauge, profiles) and with a\ndense block LU in place of the sparse one.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n\n* Fix Pyright NumPy scalar typing\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* Update test_autodiff_direct_adjoint.py\n\n* Update test_autodiff_direct_adjoint.py\n\n---------\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-10-05T11:24:45+02:00",
+          "tree_id": "253f7bd98c187b4ba81d4dd7cbc9bef858db947b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f377f847f17fad47520089163e83e6f57378034a"
+        },
+        "date": 1791192743476,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6926236206000113,
+            "range": "stddev: 0.004025868486420488",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6078877916666556,
+            "range": "stddev: 0.014897177072653662",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1003030433333265,
+            "range": "stddev: 0.012972429175431212",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6789669793333246,
+            "range": "stddev: 0.019812278482093538",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4813569956666772,
+            "range": "stddev: 0.0006275715923721984",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.901354091666652,
+            "range": "stddev: 0.007639267766570301",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.580706991999989,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.49893770699998186,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
