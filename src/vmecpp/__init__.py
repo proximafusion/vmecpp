@@ -500,8 +500,10 @@ class VmecInput(BaseModelWithNumpy):
     delt: float = 1.0
     """Initial value for artificial time step in iterative solver."""
 
-    tcon0: float = 1.0
-    """Constraint force scaling factor for ns --> 0."""
+    tcon0: float = 0.5
+    """Constraint force scaling factor for ns --> 0. With tcon0 < 1, a multigrid step
+    that has to restart twice for a bad Jacobian or growing residuals after its first
+    50 iterations is redone from its initial state with tcon0 = 1."""
 
     lgiveup: bool = False
     """Abandon the whole multigrid sequence when a step ends with any residual still
@@ -3103,7 +3105,7 @@ def run(
         >>> vmec_input = vmecpp.VmecInput.from_file(path)
         >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
         >>> round(output.wout.b0, 10) # Exact value may differ by C library
-        0.2033313711
+        0.2033305335
     """
     input = VmecInput.model_validate(input)
 

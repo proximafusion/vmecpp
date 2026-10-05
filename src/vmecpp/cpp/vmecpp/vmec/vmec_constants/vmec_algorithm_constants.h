@@ -179,6 +179,13 @@ static constexpr int kMaxIterationDeltaForEdgeForces = 50;
 static constexpr int kJacobianIterationThreshold = 75;
 
 /**
+ * Bad-Jacobian restarts after the first 2 * kPreconditionerUpdateInterval
+ * iterations of a multigrid step at which a step run with tcon0 < 1 is redone
+ * from its initial state with tcon0 = 1.
+ */
+static constexpr int kFullConstraintRedoRestarts = 2;
+
+/**
  * Preconditioner update frequency.
  * Used in: flow_control.h for preconditioner refresh timing
  * Context: Update preconditioner every N iterations for efficiency
