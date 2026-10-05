@@ -22,8 +22,11 @@ eps_list = [float(e) for e in sys.argv[1].split(",")]
 ftol = float(sys.argv[2])
 out_path = Path(sys.argv[3])
 ids = (
-    [int(i) for i in sys.argv[4].split(",")] if len(sys.argv) > 4 else list(q.QUASR_IDS)
+    [int(i) for i in sys.argv[4].split(",")]
+    if len(sys.argv) > 4 and sys.argv[4] != "all"
+    else list(q.QUASR_IDS)
 )
+scale = float(sys.argv[5]) if len(sys.argv) > 5 else 0.5
 profiles = [
     q.Profile(name="vacuum", target_beta=0.0),
     q.Profile(name="beta1", target_beta=0.01),
