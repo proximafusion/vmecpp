@@ -116,7 +116,8 @@ def test_gradient_matches_finite_differences_of_resolved_equilibria() -> None:
     The tolerance is the noise floor of the reference, not of the adjoint: re-solves
     converged to ftol = 1e-20 still differ by more than the O(h^2) truncation at
     smaller steps, and the adjoint agrees with the forward sensitivity to 1e-6 in
-    test_autodiff.py."""
+    test_autodiff.py.
+    """
     indata = _3d_input(ftol=1.0e-20)
     solver = autodiff.make_solver(indata)
     boundary = _boundary(indata)
