@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791193133745,
+  "lastUpdate": 1791193988922,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -23991,6 +23991,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.49893770699998186,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a4150a4e2101bd47868d040f3adee5d0304ce89b",
+          "message": "Revert \"Default tcon0 to 0.5\" (#958)\n\nRevert \"Default tcon0 to 0.5 (#822)\"\n\nThis reverts commit 01002269f1eb7caee097c0459dd9bf64fb43df7a.",
+          "timestamp": "2026-10-05T11:37:31+02:00",
+          "tree_id": "26af66309951e67a7fa81d745fbb1cc61f180ed9",
+          "url": "https://github.com/proximafusion/vmecpp/commit/a4150a4e2101bd47868d040f3adee5d0304ce89b"
+        },
+        "date": 1791193983939,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6906889724000053,
+            "range": "stddev: 0.013489506310388436",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6326920539999983,
+            "range": "stddev: 0.03507346517084037",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1006052496666523,
+            "range": "stddev: 0.0019537250465084975",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6547719113333603,
+            "range": "stddev: 0.017719183930881666",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4879678139999821,
+            "range": "stddev: 0.018510106948517454",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.88712233133333,
+            "range": "stddev: 0.0177106810017334",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.3915552980000143,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4908935539999675,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
