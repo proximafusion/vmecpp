@@ -501,9 +501,12 @@ class VmecInput(BaseModelWithNumpy):
     """Initial value for artificial time step in iterative solver."""
 
     tcon0: float = 0.5
-    """Constraint force scaling factor for ns --> 0. With tcon0 < 1, a multigrid step
-    that has to restart twice for a bad Jacobian or growing residuals after its first
-    50 iterations is redone from its initial state with tcon0 = 1."""
+    """Constraint force scaling factor for ns --> 0.
+
+    With tcon0 < 1, a multigrid step that has to restart twice for a bad Jacobian or
+    growing residuals after its first 50 iterations is redone from its initial state
+    with tcon0 = 1.
+    """
 
     lgiveup: bool = False
     """Abandon the whole multigrid sequence when a step ends with any residual still
