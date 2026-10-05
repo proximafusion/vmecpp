@@ -244,8 +244,8 @@ MODERN_DEFAULTS: dict[str, typing.Any] = {
     # (https://github.com/proximafusion/vmecpp/pull/820)
     "lambda_preconditioner_scale": 1.0,
 }
-"""Values that ``VmecInput.default("modern")`` and ``VmecInput.from_file(...,
-defaults="modern")`` use instead of the VMEC 8.52 compatible defaults."""
+"""Values that ``VmecInput.with_modern_defaults()`` gives to the fields an input does
+not set, instead of the VMEC 8.52 compatible defaults."""
 
 
 class VmecInput(BaseModelWithNumpy):
@@ -858,15 +858,12 @@ class VmecInput(BaseModelWithNumpy):
             setattr(self, name, value)
 
     @staticmethod
-    def from_file(
-        input_file: str | Path,
-        defaults: typing.Literal["vmec_8_52", "modern"] = "vmec_8_52",
-    ) -> VmecInput:
+    def from_file(input_file: str | Path) -> VmecInput:
         """Build a VmecInput from either a VMEC++ JSON input file or a classic INDATA
         file.
 
-        Fields the file does not set take the VMEC 8.52 compatible defaults, or with
-        ``defaults="modern"`` the values in ``MODERN_DEFAULTS``.
+        Fields the file does not set take the VMEC 8.52 compatible defaults and are
+        left out of ``model_fields_set``, so ``with_modern_defaults()`` can replace them.
         """
         absolute_input_path = Path(input_file).resolve()
 
@@ -883,11 +880,24 @@ class VmecInput(BaseModelWithNumpy):
         # At this point all required fields are populated with user defined or default values.
         # Passing missing or extra fields to `VmecInput.model_validate` will otherwise raise an error.
         vmec_input = VmecInput._from_cpp_vmecindata(vmecpp_indata)
-        if defaults == "modern":
-            for name, value in MODERN_DEFAULTS.items():
-                if name not in set_in_file:
-                    setattr(vmec_input, name, value)
+        object.__setattr__(
+            vmec_input,
+            "__pydantic_fields_set__",
+            set_in_file & set(own_model_fields(VmecInput)),
+        )
         return vmec_input
+
+    def with_modern_defaults(self) -> VmecInput:
+        """Return a copy in which every field that was not set explicitly (in the input
+        file, as a constructor argument or by assignment) takes its value from
+        ``MODERN_DEFAULTS`` instead of the VMEC 8.52 compatible default."""
+        return self.model_copy(
+            update={
+                name: value
+                for name, value in MODERN_DEFAULTS.items()
+                if name not in self.model_fields_set
+            }
+        )
 
     @staticmethod
     def _from_cpp_vmecindata(

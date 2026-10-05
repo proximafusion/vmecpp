@@ -1235,16 +1235,27 @@ def test_resize_keeps_a_fourier_continuation_schedule():
     "name", ["cth_like_fixed_bdy.json", "input.cth_like_fixed_bdy"]
 )
 def test_modern_defaults_fill_only_unset_fields(name, tmp_path):
-    path = TEST_DATA_DIR / name
-    compatible = vmecpp.VmecInput.from_file(path)
-    modern = vmecpp.VmecInput.from_file(path, defaults="modern")
+    compatible = vmecpp.VmecInput.from_file(TEST_DATA_DIR / name)
+    modern = compatible.with_modern_defaults()
     for field, value in vmecpp.MODERN_DEFAULTS.items():
-        assert getattr(compatible, field) == getattr(vmecpp.VmecInput.default(), field)
+        assert getattr(compatible, field) == getattr(vmecpp.VmecInput(), field)
         assert getattr(modern, field) == value
-        assert getattr(vmecpp.VmecInput.default("modern"), field) == value
-    # a value set in the file wins over the modern default
+        assert getattr(vmecpp.VmecInput().with_modern_defaults(), field) == value
+    # a value set in the file, as an argument or by assignment wins
     explicit = tmp_path / "explicit.json"
     explicit.write_text(compatible.model_dump_json())
-    explicit_modern = vmecpp.VmecInput.from_file(explicit, defaults="modern")
+    assigned = vmecpp.VmecInput.from_file(TEST_DATA_DIR / name)
     for field in vmecpp.MODERN_DEFAULTS:
-        assert getattr(explicit_modern, field) == getattr(compatible, field)
+        setattr(assigned, field, getattr(compatible, field))
+    by_argument = vmecpp.VmecInput(
+        **{field: getattr(compatible, field) for field in vmecpp.MODERN_DEFAULTS}
+    )
+    for vmec_input in (
+        vmecpp.VmecInput.from_file(explicit),
+        assigned,
+        by_argument,
+    ):
+        for field in vmecpp.MODERN_DEFAULTS:
+            assert getattr(vmec_input.with_modern_defaults(), field) == getattr(
+                compatible, field
+            )
