@@ -1,0 +1,45 @@
+name: QUASR free-boundary scan of lambda_m0_tridiagonal_eps
+
+# Experiment for the radially tridiagonal m = 0 lambda preconditioner: does the
+# eps shift keep the free-boundary QUASR configurations converging?
+on:
+  push:
+    branches:
+      - lambda-m0-eps-quasr-scan
+
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
+jobs:
+  scan:
+    name: eps ${{ matrix.eps }}, ftol ${{ matrix.ftol }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        eps: ["-1", "0", "1e-3", "1e-2"]
+        ftol: ["1e-9", "1e-13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install required packages for Ubuntu
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            build-essential cmake zlib1g-dev libopenmpi-dev \
+            libomp-dev libeigen3-dev nlohmann-json3-dev
+      - name: Install package
+        run: python -m pip install -v .[test]
+      - name: Run scan
+        run: python examples/quasr_lambda_m0_eps_scan.py ${{ matrix.eps }} ${{ matrix.ftol }} scan_eps${{ matrix.eps }}_ftol${{ matrix.ftol }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scan_eps${{ matrix.eps }}_ftol${{ matrix.ftol }}
+          path: scan_eps${{ matrix.eps }}_ftol${{ matrix.ftol }}.json
