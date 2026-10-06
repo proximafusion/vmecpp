@@ -780,7 +780,7 @@ def test_ensure_vmec2000_input_noop():
 
 def test_ensure_vmec2000_input_with_null():
     # Test that the null values are handled gracefully and removed from the VMEC2000 input file
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     assert vmec_input.rbs is None
     with tempfile.TemporaryDirectory() as tmp_dir:
         vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
@@ -984,7 +984,7 @@ def test_aux_arrays_from_cpp_wout():
 
 
 def test_populate_raw_profile_knots():
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     vmec_input.ns_array = np.array([5, 9])
 
     def f(s):
@@ -1007,7 +1007,7 @@ def test_populate_raw_profile_knots():
 
 def test_default_preset():
     # Default construction doesn't throw an exception
-    default_preset = vmecpp.VmecInput.default()
+    default_preset = vmecpp.VmecInput()
     # Sample a few of the default values that should be set
     assert default_preset.nfp == 1
     assert default_preset.mpol == 6
@@ -1200,3 +1200,32 @@ def test_vmec_input_axis_aliases_read_write_the_axis_fields():
     np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
     np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
     np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+def test_hot_restart_mismatch_raises_dedicated_error():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    base_output = vmecpp.run(vmec_input, verbose=False)
+    mismatched = vmec_input.model_copy(update={"ns_array": vmec_input.ns_array + 2})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ns_array") as info:
+        vmecpp.run(mismatched, restart_from=base_output, verbose=False)
+    assert isinstance(info.value, ValueError)
+
+
+def test_resize_is_in_place():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.resize(4, 3)
+    assert (vmec_input.mpol, vmec_input.ntor) == (4, 3)
+    assert np.asarray(vmec_input.rbc).shape == (4, 7)
+
+
+def test_resize_keeps_a_fourier_continuation_schedule():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    ntor = vmec_input.ntor_max
+    vmec_input.mpol = np.array([4, 6])
+    vmec_input.resize(6, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 6]
+    vmec_input.resize(5, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
+    vmec_input.resize(3, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
