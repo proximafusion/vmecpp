@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791315254780,
+  "lastUpdate": 1791327201747,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24711,6 +24711,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.27999643599997626,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fe5ca12c7cac90cf427bf65415d4070aefe3121b",
+          "message": "Precondition the radial checkerboard mode of the m = 0 lambda (#959)\n\n* Radially tridiagonal m = 0 lambda preconditioner\n\nNew VmecInput field lambda_m0_tridiagonal_eps (default -1, off). For eps >= 0\nthe m = 0 lambda forces are preconditioned with the tridiagonal radial block of\nthe lambda force plus eps times VMEC's diagonal, instead of the diagonal alone.\nThe block includes the axis copy of m = 0 lambda (extrapolateTowardsAxis).\n\n* Rename to lambda_precondition_checkerboard_terms; add modern defaults\n\nThe option is the stiffness floor of the radial checkerboard mode of the\nm = 0 lambda. VmecInput.default() and VmecInput.from_file() take\ndefaults=\"modern\", which applies MODERN_DEFAULTS (checkerboard floor 1e-3)\nto fields the input does not set; the plain defaults stay VMEC 8.52\ncompatible.\n\n* Add the undamped lambda preconditioner scale to the modern defaults\n\n* Apply modern defaults with VmecInput.with_modern_defaults()\n\ndefault() is gone (#961). with_modern_defaults() gives the MODERN_DEFAULTS\nvalues to every field not set explicitly; from_file records the fields\npresent in the file in model_fields_set.\n\n* Keep lambda_preconditioner_scale out of the modern defaults\n\nAt production resolution (mpol 10-14, ns 99) scale 1.0 takes 29-58 % more\niterations than 0.5 on three fixed-boundary stellarators.\n\n* Precondition the checkerboard by default; 8.52 references use -1\n\nlambda_precondition_checkerboard_terms defaults to 1e-3, replacing the\nmodern-defaults mechanism. The reference-case inputs, whose outputs come\nfrom VMEC 8.52 / PARVMEC, set -1 (the diagonal preconditioner). The\nMultiGridFreeBoundary iteration pin becomes an upper bound. The autodiff\ncheck measures <J.B> per surface against sqrt(<j_par^2> <B^2>): the surface\naverage cancels its integrand to ~1e-6, so roundoff scales with the\nintegrand, not with <J.B>.\n\n* Restrict lambda handoff writes to owner\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-10-06T22:48:49Z",
+          "tree_id": "b102fec4b20ef55f926c107a4ddc2c27061cdced",
+          "url": "https://github.com/proximafusion/vmecpp/commit/fe5ca12c7cac90cf427bf65415d4070aefe3121b"
+        },
+        "date": 1791327195917,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.35656110899999477,
+            "range": "stddev: 0.0035815059526778646",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 1.4974024343333288,
+            "range": "stddev: 0.013323444201502927",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.610448025666661,
+            "range": "stddev: 0.010707098427072032",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.9121204173333505,
+            "range": "stddev: 0.030134833179320475",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.9530576546666415,
+            "range": "stddev: 0.011802013916006741",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 4.225184918333355,
+            "range": "stddev: 0.0428654606030927",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.984530286999984,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.20253925200000822,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
