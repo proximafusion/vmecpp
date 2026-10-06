@@ -1200,3 +1200,22 @@ def test_vmec_input_axis_aliases_read_write_the_axis_fields():
     np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
     np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
     np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+def test_resize_is_in_place():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.resize(4, 3)
+    assert (vmec_input.mpol, vmec_input.ntor) == (4, 3)
+    assert np.asarray(vmec_input.rbc).shape == (4, 7)
+
+
+def test_resize_keeps_a_fourier_continuation_schedule():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    ntor = vmec_input.ntor_max
+    vmec_input.mpol = np.array([4, 6])
+    vmec_input.resize(6, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 6]
+    vmec_input.resize(5, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
+    vmec_input.resize(3, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
