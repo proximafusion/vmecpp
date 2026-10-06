@@ -1200,3 +1200,13 @@ def test_vmec_input_axis_aliases_read_write_the_axis_fields():
     np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
     np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
     np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+def test_hot_restart_mismatch_raises_dedicated_error():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    base_output = vmecpp.run(vmec_input, verbose=False)
+    mismatched = vmec_input.model_copy(update={"ns_array": vmec_input.ns_array + 2})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ns_array") as info:
+        vmecpp.run(mismatched, restart_from=base_output, verbose=False)
+    assert isinstance(info.value, ValueError)

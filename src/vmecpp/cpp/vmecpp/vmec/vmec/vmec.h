@@ -35,6 +35,11 @@
 
 namespace vmecpp {
 
+// Payload type URL attached to the InvalidArgument status returned when the
+// hot restart state does not match the indata.
+inline constexpr char kHotRestartMismatchPayload[] =
+    "vmecpp/hot_restart_mismatch";
+
 enum class MultigridInterpolationScheme : std::uint8_t {
   // 2-point linear interpolation in s (VMEC 8.52 behavior)
   kLinear,
