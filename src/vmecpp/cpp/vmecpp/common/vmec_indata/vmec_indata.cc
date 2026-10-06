@@ -331,6 +331,7 @@ VmecINDATA::VmecINDATA() {
   aphi[0] = 1.0;
   delt = 1.0;
   tcon0 = 1.0;
+  axis_block_preconditioner = false;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;
@@ -464,6 +465,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(nstep, "/indata/nstep", file);
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
+  WriteH5Dataset(axis_block_preconditioner, "/indata/axis_block_preconditioner",
+                 file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
@@ -582,6 +585,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.nstep, "/indata/nstep", from_file);
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
+  if (from_file.nameExists("/indata/axis_block_preconditioner")) {
+    ReadH5Dataset(m_indata.axis_block_preconditioner,
+                  "/indata/axis_block_preconditioner", from_file);
+  }
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(), "/indata/lambda_preconditioner_scale", 0) ==
@@ -1106,6 +1113,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.tcon0 = maybe_tcon0->value();
   }
 
+  auto maybe_axis_block_preconditioner =
+      JsonReadBool(j, "axis_block_preconditioner");
+  if (!maybe_axis_block_preconditioner.ok()) {
+    return maybe_axis_block_preconditioner.status();
+  }
+  if (maybe_axis_block_preconditioner->has_value()) {
+    vmec_indata.axis_block_preconditioner =
+        maybe_axis_block_preconditioner->value();
+  }
+
   auto maybe_lforbal = JsonReadBool(j, "lforbal");
   if (!maybe_lforbal.ok()) {
     return maybe_lforbal.status();
@@ -1485,6 +1502,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["aphi"] = aphi;
   output["delt"] = delt;
   output["tcon0"] = tcon0;
+  output["axis_block_preconditioner"] = axis_block_preconditioner;
   output["lforbal"] = lforbal;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lbsubs"] = lbsubs;
@@ -1846,6 +1864,12 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'delt' has to be in the range ]0.0, 10.0], but is %g\n",
         vmec_indata.delt));
+  }
+
+  if (vmec_indata.axis_block_preconditioner && vmec_indata.lfreeb) {
+    return absl::InvalidArgumentError(
+        "input variable 'axis_block_preconditioner' applies to fixed-boundary "
+        "runs only, but 'lfreeb' is set\n");
   }
 
   if (vmec_indata.lgiveup && vmec_indata.fgiveup <= 0.0) {

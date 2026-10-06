@@ -1042,6 +1042,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   DefEigenProperty(pyindata, "aphi", &VmecINDATA::aphi);
   pyindata.def_readwrite("delt", &VmecINDATA::delt)
       .def_readwrite("tcon0", &VmecINDATA::tcon0)
+      .def_readwrite("axis_block_preconditioner",
+                     &VmecINDATA::axis_block_preconditioner)
       .def_readwrite("lgiveup", &VmecINDATA::lgiveup)
       .def_readwrite("fgiveup", &VmecINDATA::fgiveup)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
