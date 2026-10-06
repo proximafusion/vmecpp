@@ -240,9 +240,6 @@ def _alias_property(target: str) -> property:
 # docstring peeking etc. for the one C++ VmecINDATA type bound via pybind11.
 MODERN_DEFAULTS: dict[str, typing.Any] = {
     "lambda_precondition_checkerboard_terms": 1e-3,
-    # undamped lambda step: 13 % fewer iterations over QUASR, 7 % over the test suite
-    # (https://github.com/proximafusion/vmecpp/pull/820)
-    "lambda_preconditioner_scale": 1.0,
 }
 """Values that ``VmecInput.with_modern_defaults()`` gives to the fields an input does
 not set, instead of the VMEC 8.52 compatible defaults."""
@@ -533,8 +530,7 @@ class VmecInput(BaseModelWithNumpy):
     lambda stiffness to turn the lambda force into the lambda step.
 
     1.0 applies the undamped inverse, values below 1.0 damp the lambda step and values
-    above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52; the modern
-    default is 1.0.
+    above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
     lambda_precondition_checkerboard_terms: float = -1.0
