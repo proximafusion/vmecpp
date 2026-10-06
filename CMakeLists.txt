@@ -240,6 +240,7 @@ function(vmecpp_add_core target)
   target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
   target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
+    absl::log_initialize absl::log_globals
     absl::string_view absl::check absl::status absl::statusor)
 
   if(VMECPP_USE_FFTX)
