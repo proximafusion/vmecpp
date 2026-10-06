@@ -181,9 +181,9 @@ void ComputeMHDForcesCuda(const RadialPartitioning& r, const Sizes& s,
                           Eigen::VectorXd& czmn_e, Eigen::VectorXd& czmn_o);
 
 void UpdateLambdaPreconditionerCuda(const RadialPartitioning& r, const Sizes& s,
-                                    double dampingFactor, double lamscale,
-                                    double* bLambda_out, double* dLambda_out,
-                                    double* cLambda_out,
+                                    double lambdaPreconditionerScale,
+                                    double lamscale, double* bLambda_out,
+                                    double* dLambda_out, double* cLambda_out,
                                     double* lambdaPreconditioner_host);
 
 // CUDA port of IdealMhdModel::computePreconditioningMatrix. Computes the

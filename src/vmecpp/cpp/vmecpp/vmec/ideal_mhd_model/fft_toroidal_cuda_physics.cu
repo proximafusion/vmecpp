@@ -906,7 +906,7 @@ void ComputePreconditioningMatrixCuda(
 // ============================================================================
 void UpdateLambdaPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s,
-    double dampingFactor, double lamscale,
+    double lambdaPreconditionerScale, double lamscale,
     double* bLambda_out, double* dLambda_out, double* cLambda_out,
     double* lambdaPreconditioner_host) {
   auto& S = State();
@@ -969,7 +969,7 @@ void UpdateLambdaPreconditionerCuda(
   }
 
   // Stage 4: per-(cfg, jF, n, m) assembly.
-  double pFactor = dampingFactor / (4.0 * lamscale * lamscale);
+  double pFactor = lambdaPreconditionerScale / (lamscale * lamscale);
   {
     int jMin = (r.nsMinF == 0) ? 1 : 0;
     int sqrtSF_off = r.nsMinF - r.nsMinF1;
