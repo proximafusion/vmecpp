@@ -56,6 +56,9 @@ from vmecpp._pydantic_numpy import (
 from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
+HotRestartMismatchError = _vmecpp.HotRestartMismatchError
+"""Raised (a ValueError) when the ``restart_from`` state does not match the input."""
+
 logger = logging.getLogger(__name__)
 
 
@@ -3362,6 +3365,7 @@ populate_raw_profile = set_profile
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
+    "HotRestartMismatchError",
     "run",
     "interpolate_solution",
     "rescale",
