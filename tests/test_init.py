@@ -1229,3 +1229,25 @@ def test_resize_keeps_a_fourier_continuation_schedule():
     assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
     vmec_input.resize(3, ntor)
     assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
+
+
+def test_vmec_input_keys():
+    vmec_input = vmecpp.VmecInput.from_file(Path("examples/data/solovev.json"))
+    keys = vmec_input.keys()
+    assert "ns_array" in keys
+    assert set(keys) == set(vmecpp.VmecInput.model_fields)
+
+
+def test_axis_guess_longer_than_ntor_is_truncated():
+    vmec_input = vmecpp.VmecInput.from_file(Path("examples/data/solovev.json"))
+    ntor = vmec_input.ntor_max
+    long_axis = np.arange(1.0, ntor + 6.0)
+    rebuilt = vmecpp.VmecInput.model_validate(
+        {
+            **vmec_input.model_dump(mode="json"),
+            "raxis_c": long_axis,
+            "zaxis_s": long_axis,
+        }
+    )
+    np.testing.assert_array_equal(rebuilt.raxis_c, long_axis[: ntor + 1])
+    np.testing.assert_array_equal(rebuilt.zaxis_s, long_axis[: ntor + 1])

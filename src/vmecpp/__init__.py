@@ -653,8 +653,8 @@ class VmecInput(BaseModelWithNumpy):
                 )
 
         # The 1D magnetic-axis arrays must have length ntor+1. Shorter arrays
-        # simply omit trailing (zero) coefficients and are silently zero-padded;
-        # longer arrays are rejected rather than silently truncated.
+        # simply omit trailing (zero) coefficients and are zero-padded; longer
+        # arrays are truncated.
         ntor_plus_one_fields = ["raxis_c", "zaxis_s"]
         if self.lasym:
             ntor_plus_one_fields.extend(["raxis_s", "zaxis_c"])
@@ -697,7 +697,7 @@ class VmecInput(BaseModelWithNumpy):
 
         Arrays shorter than ntor_new+1 are zero-padded (the omitted trailing
         coefficients are implicitly zero). Arrays longer than ntor_new+1 are
-        rejected to avoid silently truncating user-data.
+        truncated.
 
         Args:
             coeff: A 1D NumPy array of axis coefficients (length ntor+1).
@@ -706,18 +706,15 @@ class VmecInput(BaseModelWithNumpy):
         Examples:
             >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0]), ntor_new=3)
             array([1., 2., 0., 0.])
+            >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0, 3.0]), ntor_new=1)
+            array([1., 2.])
         """
         assert ntor_new >= 0
         coeff = np.asarray(coeff, dtype=float).ravel()
         new_len = ntor_new + 1
-        if coeff.size > new_len:
-            msg = (
-                f"length of axis coefficient array ({coeff.size}) exceeds ntor+1 ({new_len}). "
-                f"Please truncate r_axis_c and zaxis_s to a size consistent with ntor={ntor_new}."
-            )
-            raise ValueError(msg)
         resized_coeff = np.zeros(new_len)
-        resized_coeff[: coeff.size] = coeff
+        n = min(coeff.size, new_len)
+        resized_coeff[:n] = coeff[:n]
         return resized_coeff
 
     @staticmethod
