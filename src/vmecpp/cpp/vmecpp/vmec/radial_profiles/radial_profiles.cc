@@ -343,10 +343,10 @@ void RadialProfiles::computeMagneticFluxes() {
     maxToroidalFlux /= edgeToroidalFluxFromProfile;
   }
 
-  // maxPoloidalFlux is set here and then never read: chips and chipf are built
-  // from maxToroidalFlux * polfluxDeriv, so nothing in the solver consumes it,
-  // and only the reference comparison of profil1d does. Scaling it from
-  // maxToroidalFlux assumes phiedge scales both phi' and chi'.
+  // chips and chipf are built from maxToroidalFlux * polfluxDeriv, so only the
+  // lrfp mass normalization and the reference comparison of profil1d read
+  // maxPoloidalFlux. Scaling it from maxToroidalFlux assumes phiedge scales
+  // both phi' and chi'.
   maxPoloidalFlux = maxToroidalFlux;
   double edgePoloidalFluxFromProfile = polflux(1.0);
   if (edgePoloidalFluxFromProfile != 0.0) {
@@ -360,6 +360,10 @@ void RadialProfiles::computeMagneticFluxes() {
  * @return d(aphi)/dx at x
  */
 double RadialProfiles::torfluxDeriv(double x) {
+  if (id_.lrfp) {
+    // x is the poloidal flux: d(phi)/dx = q * d(chi)/dx
+    return polfluxDeriv(x) / evalIotaProfile(x);
+  }
   double torflux_deriv = 0.0;
   for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
     torflux_deriv = x * torflux_deriv + (i + 1) * id_.aphi[i];
@@ -374,6 +378,17 @@ double RadialProfiles::torfluxDeriv(double x) {
  * @return
  */
 double RadialProfiles::torflux(double x) {
+  if (id_.lrfp) {
+    // the trapezoidal integral of q, as in Fortran VMEC's torflux
+    const int N = 100;
+    const double delta_x = x / N;
+    double torflux = 0.0;
+    for (int i = 0; i <= N; ++i) {
+      const double contribution = torfluxDeriv(i * delta_x);
+      torflux += (i == 0 || i == N) ? 0.5 * contribution : contribution;
+    }
+    return torflux * delta_x;
+  }
   //  Analytic evaluation of the polynomial (0 at x=0) using Horner's method.
   //  This is the exact integral of torfluxDeriv, which is what keeps the
   //  normalization consistent: phipf is built from torfluxDeriv and
@@ -395,6 +410,10 @@ double RadialProfiles::torflux(double x) {
  * @return
  */
 double RadialProfiles::polfluxDeriv(double x) {
+  if (id_.lrfp) {
+    // RFP: x is the normalized poloidal flux
+    return 1.0;
+  }
   // figure out what toroidal flux x corresponds to
   double tf = std::min(torflux(x), 1.0);
 
@@ -448,7 +467,16 @@ double RadialProfiles::evalIotaProfile(double x) {
   double p = evalProfileFunction(piotaType, id_.ai, id_.ai_aux_s, id_.ai_aux_f,
                                  /*shouldIntegrate=*/false, x);
 
+  if (id_.lrfp) {
+    // ai describes q = 1 / iota, as in Fortran VMEC's piota
+    return p != 0.0 ? 1.0 / p : std::numeric_limits<double>::max();
+  }
   return p;
+}
+
+double RadialProfiles::profileCoordinate(double x) {
+  // with lrfp the profiles are given in the poloidal flux x itself
+  return id_.lrfp ? x : std::min(torflux(x), 1.0);
 }
 
 double RadialProfiles::evalCurrProfile(double x) {
@@ -1174,9 +1202,9 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     phipH[jH - r_.nsMinH] = maxToroidalFlux * torfluxDeriv(halfGridPos);
     chipH[jH - r_.nsMinH] = maxToroidalFlux * polfluxDeriv(halfGridPos);
 
-    const double toroidalFlux = std::min(torflux(halfGridPos), 1.0);
-    iotaH[jH - r_.nsMinH] = evalIotaProfile(toroidalFlux);
-    currH[jH - r_.nsMinH] = evalCurrProfile(toroidalFlux);
+    const double profileFlux = profileCoordinate(halfGridPos);
+    iotaH[jH - r_.nsMinH] = evalIotaProfile(profileFlux);
+    currH[jH - r_.nsMinH] = evalCurrProfile(profileFlux);
 
     if (haveToFlipTheta) {
       chipH[jH - r_.nsMinH] *= -1.0;
@@ -1191,14 +1219,16 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
     // mass profile
 
-    // effectively vpnorm == phipH[jH]
-    const double vpnorm = maxToroidalFlux * torfluxDeriv(halfGridPos);
+    // effectively vpnorm == phipH[jH], or chipH[jH] with lrfp, where phi'
+    // passes through zero at the reversal
+    const double vpnorm = id_.lrfp
+                              ? maxPoloidalFlux * polfluxDeriv(halfGridPos)
+                              : maxToroidalFlux * torfluxDeriv(halfGridPos);
     const double massEvalPos = std::min(halfGridPos, id_.spres_ped);
     // if (massEvalPos > id_.spres_ped) {
     //     massEvalPos = id_.spres_ped;
     // }
-    const double massEvalTorFlux = std::min(torflux(massEvalPos), 1.0);
-    const double mass = evalMassProfile(massEvalTorFlux);
+    const double mass = evalMassProfile(profileCoordinate(massEvalPos));
     massH[jH - r_.nsMinH] = mass * std::pow(std::abs(vpnorm) * r00, id_.gamma);
 
     // This must be done over UNIQUE half-grid points !!!
@@ -1226,8 +1256,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     phipF[jF1 - r_.nsMinF1] = maxToroidalFlux * torfluxDeriv(fullGridPos);
     chipF[jF1 - r_.nsMinF1] = maxToroidalFlux * polfluxDeriv(fullGridPos);
 
-    const double toroidalFlux = std::min(torflux(fullGridPos), 1.0);
-    iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(toroidalFlux);
+    iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(profileCoordinate(fullGridPos));
 
     // Fortran bdamp, from profil1d.f90. A linear ramp from 2*pDamp at the axis
     // to 0 at the boundary, which with pDamp = 0.05 is 0.1 to 0. bcovar.f90

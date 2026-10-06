@@ -66,7 +66,8 @@ class IdealMhdModel {
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
-                     bool lforbal, double lambda_preconditioner_scale);
+                     bool lforbal, double lambda_preconditioner_scale,
+                     bool lrfp);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -635,6 +636,10 @@ class IdealMhdModel {
   // from INDATA: flag to select between constrained-iota and
   // constrained-toroidal-current
   int ncurr;
+
+  // from INDATA: the radial coordinate is the poloidal flux and the prescribed
+  // profile is q = 1/iota
+  bool lrfp_ = false;
 
   // from INDATA: adiabatic index == gamma
   double adiabaticIndex;

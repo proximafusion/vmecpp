@@ -1048,6 +1048,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lambda_preconditioner_scale",
                      &VmecINDATA::lambda_preconditioner_scale)
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
+      .def_readwrite("lrfp", &VmecINDATA::lrfp)
       .def_readwrite("backup_evaluated_state",
                      &VmecINDATA::backup_evaluated_state)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)

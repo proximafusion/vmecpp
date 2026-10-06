@@ -153,6 +153,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.spres_ped, 1.0);
 
   // (initial guess for) iota profile
+  EXPECT_EQ(indata.lrfp, false);
   EXPECT_EQ(indata.piota_type, "power_series");
   EXPECT_EQ(indata.ai.size(), 0);
   EXPECT_EQ(indata.ai_aux_s.size(), 0);
@@ -220,6 +221,17 @@ TEST(TestVmecINDATA, CheckDeltBounds) {
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
   indata.delt = -0.5;
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// With lrfp the prescribed profile is q, so the current constraint is refused,
+// as Fortran VMEC's profil1d stops on it.
+TEST(TestVmecINDATA, CheckLrfpNeedsPrescribedQ) {
+  VmecINDATA indata;
+  indata.lrfp = true;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.ncurr = 1;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 // An unusable profile parameterization silently evaluates to zero in the
