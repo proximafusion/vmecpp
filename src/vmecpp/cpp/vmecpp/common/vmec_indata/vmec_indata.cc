@@ -332,6 +332,7 @@ VmecINDATA::VmecINDATA() {
   delt = 1.0;
   tcon0 = 1.0;
   lforbal = false;
+  return_vacuum_field = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;
   backup_evaluated_state = true;
@@ -465,6 +466,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(return_vacuum_field, "/indata/return_vacuum_field", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
@@ -583,6 +585,11 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+  if (from_file.nameExists("/indata/return_vacuum_field")) {
+    ReadH5Dataset(m_indata.return_vacuum_field, "/indata/return_vacuum_field",
+                  from_file);
+  }
+
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(), "/indata/lambda_preconditioner_scale", 0) ==
       1) {
@@ -1114,6 +1121,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lforbal = maybe_lforbal->value();
   }
 
+  auto maybe_return_vacuum_field = JsonReadBool(j, "return_vacuum_field");
+  if (!maybe_return_vacuum_field.ok()) {
+    return maybe_return_vacuum_field.status();
+  }
+  if (maybe_return_vacuum_field->has_value()) {
+    vmec_indata.return_vacuum_field = maybe_return_vacuum_field->value();
+  }
+
   auto maybe_lambda_preconditioner_scale =
       JsonReadDouble(j, "lambda_preconditioner_scale");
   if (!maybe_lambda_preconditioner_scale.ok()) {
@@ -1486,6 +1501,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["delt"] = delt;
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
+  output["return_vacuum_field"] = return_vacuum_field;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
