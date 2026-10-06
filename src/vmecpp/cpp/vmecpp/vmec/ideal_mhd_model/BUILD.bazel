@@ -87,7 +87,7 @@ cc_library(
     # this branch so the bazel sandbox can see them. The Enzyme JVP entry point
     # (exact_force_jvp.cc) is built only by the CMake VMECPP_ENABLE_ENZYME path,
     # not by bazel; its use in ideal_mhd_model.cc is guarded by that define.
-    hdrs = ["ideal_mhd_model.h", "dft_data.h"] + glob([
+    hdrs = ["ideal_mhd_model.h", "dft_data.h", "phase_timer.h", "nestor_async.h"] + glob([
         "*_kernel.h",
         "local_force_composition.h",
         "exact_force_jvp.h",

@@ -3061,6 +3061,18 @@ class SolverState:
         )
 
 
+def _vmec_output_from_cpp(input: VmecInput, cpp_output_quantities) -> VmecOutput:
+    """Assemble a VmecOutput from a configuration's VmecInput and the C++
+    OutputQuantities produced for it.
+
+    Shared by run() and run_batch().
+    """
+    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
+    return VmecOutput(
+        input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
+    )
+
+
 def run(
     input: VmecInput,
     magnetic_field: MagneticFieldResponseTable | None = None,
@@ -3187,10 +3199,60 @@ def run(
             iteration_callback=cpp_iteration_callback,
         )
 
-    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
-    return VmecOutput(
-        input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
+    return _vmec_output_from_cpp(input, cpp_output_quantities)
+
+
+def run_batch(
+    inputs: list[VmecInput],
+    *,
+    distinct: bool = True,
+    max_threads: int | None = None,
+    verbose: bool | int | OutputMode = OutputMode.SILENT,
+) -> list[VmecOutput]:
+    """Solve several fixed-boundary equilibria in one CUDA-resident batched run.
+
+    Requires a CUDA-enabled build (-DVMECPP_USE_CUDA=ON) and an NVIDIA GPU. All
+    inputs must share mpol, ntor, nfp, lasym, and ns_array[0]. The
+    per-configuration boundary, magnetic axis, and plasma profiles are honored;
+    the convergence controls (ns_array, ftol_array, niter_array) are taken from
+    the first input.
+
+    Args:
+        inputs: the VmecInput instances to solve.
+        distinct: when True (the default) every input is solved as its own
+            equilibrium and one VmecOutput is returned per input. When False the
+            first input is broadcast across the batch and a single-element list
+            is returned (a measurement mode; passing more than one input with
+            distinct=False is rejected by the solver).
+        max_threads: maximum number of threads VMEC++ may spawn, as in run().
+        verbose: output mode, defaulting to silent for batched runs.
+
+    Returns:
+        A list of VmecOutput, one per solved configuration.
+    """
+    validated = [VmecInput.model_validate(i) for i in inputs]
+    if not validated:
+        msg = "run_batch requires at least one input"
+        raise ValueError(msg)
+    if max_threads is not None and max_threads <= 0:
+        msg = (
+            "The number of threads must be >=1. To automatically use all "
+            "available threads, pass max_threads=None"
+        )
+        raise RuntimeError(msg)
+
+    _verbose = OutputMode(verbose)
+    cpp_indatas = [i._to_cpp_vmecindata() for i in validated]
+    cpp_outputs = _vmecpp.run_batched_gpu(
+        cpp_indatas,
+        max_threads=max_threads,
+        verbose=_verbose.value,
+        distinct=distinct,
     )
+    return [
+        _vmec_output_from_cpp(inp, oq)
+        for inp, oq in zip(validated, cpp_outputs, strict=False)
+    ]
 
 
 def has_exact_force_jacobian() -> bool:
@@ -3204,6 +3266,16 @@ def has_exact_force_jacobian() -> bool:
     force-balance formulation and can be false even when this function is true.
     """
     return bool(_vmecpp.VMECPP_ENABLE_ENZYME)
+
+
+def has_cuda() -> bool:
+    """Returns true if this build runs the iteration body on an NVIDIA GPU.
+
+    A static build feature (`-DVMECPP_USE_CUDA=ON`), cheap to query. A CUDA
+    build rejects non-stellarator-symmetric (`lasym`) and `lforbal` inputs
+    with an error, so callers that need those inputs can check ahead of time.
+    """
+    return bool(_vmecpp.VMECPP_USE_CUDA)
 
 
 def is_vmec2000_input(input_file: Path) -> bool:
@@ -3368,6 +3440,7 @@ populate_raw_profile = set_profile
 __all__ = [  # noqa: RUF022
     "HotRestartMismatchError",
     "run",
+    "run_batch",
     "interpolate_solution",
     "rescale",
     "VmecInput",
@@ -3389,4 +3462,5 @@ __all__ = [  # noqa: RUF022
     "SolverState",
     "HalfGridFields",
     "has_exact_force_jacobian",
+    "has_cuda",
 ]
