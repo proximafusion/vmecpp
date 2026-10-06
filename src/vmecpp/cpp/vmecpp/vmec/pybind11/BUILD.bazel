@@ -10,6 +10,7 @@ pybind_extension(
     srcs = ["pybind_vmec.cc"],
     deps = [
         "//vmecpp/common/util",
+        "//vmecpp/common/util:os_compat",
         "//vmecpp/common/vmec_indata",
         "//vmecpp/common/magnetic_configuration_lib",
         "//vmecpp/vmec/geometry",
