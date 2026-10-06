@@ -771,9 +771,11 @@ class VmecInput(BaseModelWithNumpy):
 
         return resized_coeff
 
-    def resize(self, mpol_new: int, ntor_new: int) -> VmecInput:
-        """Return a copy of this input resampled to a new (mpol, ntor) Fourier
-        resolution.
+    def resize(self, mpol_new: int, ntor_new: int) -> None:
+        """Resample this input in place to a new (mpol, ntor) Fourier resolution.
+
+        An ``mpol``/``ntor`` continuation schedule keeps its length: the last entry
+        becomes the new size and earlier entries are clamped to it.
 
         Boundary coefficients are zero-padded or truncated to match, discarding
         higher modes with a warning; see :meth:`resize_2d_coeff`. Axis
@@ -794,8 +796,14 @@ class VmecInput(BaseModelWithNumpy):
             return self.resize_1d_axis_coeff(coeff, ntor_new)
 
         updated_fields: dict[str, typing.Any] = {}
-        updated_fields["mpol"] = mpol_new
-        updated_fields["ntor"] = ntor_new
+
+        def resize_schedule(value: int | np.ndarray, new: int) -> int | np.ndarray:
+            if isinstance(value, int):
+                return new
+            return np.append(np.minimum(value[:-1], new), new).astype(np.int64)
+
+        updated_fields["mpol"] = resize_schedule(self.mpol, mpol_new)
+        updated_fields["ntor"] = resize_schedule(self.ntor, ntor_new)
         updated_fields["rbc"] = self.resize_2d_coeff(
             np.asarray(self.rbc), mpol_new, ntor_new
         )
@@ -819,7 +827,8 @@ class VmecInput(BaseModelWithNumpy):
             updated_fields["raxis_s"] = resize_axis(self.raxis_s)
             updated_fields["zaxis_c"] = resize_axis(self.zaxis_c)
 
-        return self.model_copy(update=updated_fields)
+        for name, value in updated_fields.items():
+            setattr(self, name, value)
 
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
