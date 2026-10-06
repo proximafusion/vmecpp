@@ -322,9 +322,6 @@ class Vmec {
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_backup_;
   // decomposed_x_ as of the last valid force evaluation.
   std::vector<std::unique_ptr<FourierGeometry>> last_evaluated_x_;
-  // decomposed_x_ at the start of the current multigrid step, which the step
-  // restarts from when it is redone with tcon0 = 1.
-  std::vector<std::unique_ptr<FourierGeometry>> step_initial_x_;
   std::vector<std::unique_ptr<FourierGeometry>> physical_x_;
   std::vector<std::unique_ptr<FourierForces>> decomposed_f_;
   std::vector<std::unique_ptr<FourierForces>> physical_f_;
@@ -394,12 +391,6 @@ class Vmec {
   // set when SolveEquilibriumLoop hands a bad Jacobian that the axis guess did
   // not fix back to run(), which then retries from a three-surface mesh
   bool retry_from_three_surfaces_ = false;
-
-  // bad-Jacobian restarts of the current multigrid step after its first
-  // 2 * kPreconditionerUpdateInterval iterations, and whether the step has
-  // been redone with tcon0 = 1
-  int late_bad_jacobian_restarts_ = 0;
-  bool redone_with_full_constraint_ = false;
 
   // optional callback that receives every force iteration
   IterationCallback iteration_callback_;

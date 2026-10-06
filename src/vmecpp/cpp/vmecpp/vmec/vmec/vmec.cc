@@ -37,9 +37,6 @@
 #include "vmecpp/vmec/geometry/vmec_geometry.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
-#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
-
-using vmecpp::vmec_algorithm_constants::kFullConstraintRedoRestarts;
 
 namespace {
 
@@ -113,7 +110,7 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     return maybe_vmec.status();
   }
   Vmec& v = **maybe_vmec;
-  v.always_fix_m1_gauge_ = always_fix_m1_gauge;
+  v.always_fix_m1_gauge_ = always_fix_m1_gauge || indata.always_fix_m1_gauge;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -232,6 +229,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       invTau_(kNDamp),
       last_preconditioner_update_(0),
       last_full_update_nestor_(0) {
+  always_fix_m1_gauge_ = indata_.always_fix_m1_gauge;
+
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
@@ -731,7 +730,6 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     decomposed_x_.resize(num_threads_);
     physical_x_backup_.resize(num_threads_);
     last_evaluated_x_.resize(num_threads_);
-    step_initial_x_.resize(num_threads_);
     physical_x_.resize(num_threads_);
     decomposed_f_.resize(num_threads_);
     physical_f_.resize(num_threads_);
@@ -803,8 +801,6 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       physical_x_backup_[thread_id] =
           std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
       last_evaluated_x_[thread_id] =
-          std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
-      step_initial_x_[thread_id] =
           std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
 
       // even/odd-m decomposed coefficients
@@ -918,11 +914,7 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
 
       // RestartIteration does not modify the time step when NO_RESTART.
       RestartIteration(indata_.delt, thread_id);
-
-      *step_initial_x_[thread_id] = *decomposed_x_[thread_id];
     }
-    late_bad_jacobian_restarts_ = 0;
-    redone_with_full_constraint_ = false;
 
     fc_.ns_old = fc_.ns;
     fc_.neqs_old = fc_.neqs;
@@ -1096,11 +1088,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 
     // In the first multigrid iteration (OFF IN v8.50)
     RestartIteration(fc_.delt0r, thread_id);
-
-    if (m_lreset_internal) {
-      // the step now starts from the improved axis guess
-      *step_initial_x_[thread_id] = *decomposed_x_[thread_id];
-    }
   }  // restart_reason == BAD_JACOBIAN
 
 #ifdef _OPENMP
@@ -1473,36 +1460,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 #endif  // _OPENMP
 
   if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
-    // A multigrid step run with tcon0 < 1 that keeps restarting after its
-    // transient is redone from its initial state with tcon0 = 1. Every thread
-    // reads the same shared state here, behind the barrier above.
-    const bool late = iter2_ > 2 * fc_.kPreconditionerUpdateInterval;
-    const bool redo_with_full_constraint =
-        late && indata_.tcon0 < 1.0 && !redone_with_full_constraint_ &&
-        late_bad_jacobian_restarts_ + 1 >= kFullConstraintRedoRestarts;
-    if (redo_with_full_constraint) {
-      m_[thread_id]->setTcon0(1.0);
-      decomposed_v_[thread_id]->setZero();
-      *decomposed_x_[thread_id] = *step_initial_x_[thread_id];
-      *physical_x_backup_[thread_id] = *step_initial_x_[thread_id];
-
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
-
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-      {
-        redone_with_full_constraint_ = true;
-        m_delt0r = indata_.delt;
-        fc_.ijacob = 0;
-        iter1_ = iter2_;
-        fc_.restart_reason = RestartReason::NO_RESTART;
-      }
-      return;
-    }
-
     // restore previous good state
 
     // zero velocity
@@ -1524,9 +1481,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 
       // count occurence of bad Jacobian
       fc_.ijacob = fc_.ijacob + 1;
-      if (late) {
-        ++late_bad_jacobian_restarts_;
-      }
 
       // update marker
       iter1_ = iter2_;

@@ -68,10 +68,6 @@ class IdealMhdModel {
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
                      bool lforbal, double lambda_preconditioner_scale);
 
-  // Replaces the tcon0 of setFromINDATA; the constraint multiplier follows at
-  // the next radial preconditioner update.
-  void setTcon0(double tCon0) { tcon0 = tCon0; }
-
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
   void evalFResInvar(const Eigen::Vector3d& localFResInvar);

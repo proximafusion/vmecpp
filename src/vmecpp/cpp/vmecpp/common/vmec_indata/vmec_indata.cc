@@ -330,11 +330,12 @@ VmecINDATA::VmecINDATA() {
   aphi.resize(1);
   aphi[0] = 1.0;
   delt = 1.0;
-  tcon0 = 0.5;
+  tcon0 = 1.0;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;
   backup_evaluated_state = true;
+  always_fix_m1_gauge = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
@@ -470,6 +471,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
   WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
                  file);
+  WriteH5Dataset(always_fix_m1_gauge, "/indata/always_fix_m1_gauge", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
@@ -605,6 +607,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/backup_evaluated_state", from_file);
   } else {
     m_indata.backup_evaluated_state = true;
+  }
+
+  if (H5Lexists(from_file.getId(), "/indata/always_fix_m1_gauge", 0) == 1) {
+    ReadH5Dataset(m_indata.always_fix_m1_gauge, "/indata/always_fix_m1_gauge",
+                  from_file);
+  } else {
+    m_indata.always_fix_m1_gauge = false;
   }
 
   // Legacy way of checking for dataset existence
@@ -1140,6 +1149,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.backup_evaluated_state = maybe_backup_evaluated_state->value();
   }
 
+  auto maybe_always_fix_m1_gauge = JsonReadBool(j, "always_fix_m1_gauge");
+  if (!maybe_always_fix_m1_gauge.ok()) {
+    return maybe_always_fix_m1_gauge.status();
+  }
+  if (maybe_always_fix_m1_gauge->has_value()) {
+    vmec_indata.always_fix_m1_gauge = maybe_always_fix_m1_gauge->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1489,6 +1506,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
+  output["always_fix_m1_gauge"] = always_fix_m1_gauge;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;

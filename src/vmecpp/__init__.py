@@ -500,13 +500,8 @@ class VmecInput(BaseModelWithNumpy):
     delt: float = 1.0
     """Initial value for artificial time step in iterative solver."""
 
-    tcon0: float = 0.5
-    """Constraint force scaling factor for ns --> 0.
-
-    With tcon0 < 1, a multigrid step that has to restart twice for a bad Jacobian or
-    growing residuals after its first 50 iterations is redone from its initial state
-    with tcon0 = 1.
-    """
+    tcon0: float = 1.0
+    """Constraint force scaling factor for ns --> 0."""
 
     lgiveup: bool = False
     """Abandon the whole multigrid sequence when a step ends with any residual still
@@ -535,6 +530,11 @@ class VmecInput(BaseModelWithNumpy):
     backup_evaluated_state: bool = True
     """If true, restart backups hold the state of the last force evaluation; if false,
     they hold the advanced state, as in educational_VMEC and the reference files."""
+
+    always_fix_m1_gauge: bool = False
+    """If true, the m = 1 gauge of R and Z is set from the boundary at the start of
+    every multigrid step and held there; if false, it is held only in the first
+    iteration of a multigrid step and while fsqz < 1e-6, as in VMEC 8.52."""
 
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
@@ -3108,7 +3108,7 @@ def run(
         >>> vmec_input = vmecpp.VmecInput.from_file(path)
         >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
         >>> round(output.wout.b0, 10) # Exact value may differ by C library
-        0.2033305335
+        0.2033313711
     """
     input = VmecInput.model_validate(input)
 

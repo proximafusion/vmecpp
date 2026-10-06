@@ -176,10 +176,11 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.nstep, 10);
   EXPECT_THAT(indata.aphi, ElementsAre(1.0));
   EXPECT_EQ(indata.delt, 1.0);
-  EXPECT_EQ(indata.tcon0, 0.5);
+  EXPECT_EQ(indata.tcon0, 1.0);
   EXPECT_EQ(indata.lforbal, false);
   EXPECT_EQ(indata.lbsubs, false);
   EXPECT_EQ(indata.backup_evaluated_state, true);
+  EXPECT_EQ(indata.always_fix_m1_gauge, false);
 
   // initial guess for magnetic axis
   EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
@@ -712,6 +713,7 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.lbsubs, indata_from_file.lbsubs);
   EXPECT_EQ(indata.backup_evaluated_state,
             indata_from_file.backup_evaluated_state);
+  EXPECT_EQ(indata.always_fix_m1_gauge, indata_from_file.always_fix_m1_gauge);
   EXPECT_EQ(indata.raxis_c, indata_from_file.raxis_c);
   EXPECT_EQ(indata.zaxis_s, indata_from_file.zaxis_s);
   EXPECT_EQ(indata.raxis_s, indata_from_file.raxis_s);
@@ -926,6 +928,7 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.lforbal, indata.lforbal);
   EXPECT_EQ(copy.lbsubs, indata.lbsubs);
   EXPECT_EQ(copy.backup_evaluated_state, indata.backup_evaluated_state);
+  EXPECT_EQ(copy.always_fix_m1_gauge, indata.always_fix_m1_gauge);
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);

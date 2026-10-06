@@ -5,6 +5,7 @@
     "ai": [],
     "ai_aux_f": [],
     "ai_aux_s": [],
+    "always_fix_m1_gauge": true,
     "am": [
         1.0,
         -1.0
@@ -276,6 +277,7 @@
     "return_outputs_even_if_not_converged": false,
     "signgs": -1,
     "spres_ped": 1.0,
+    "tcon0": 0.5,
     "vacuum_mpol": 0,
     "vacuum_ntor": 0,
     "zaxis_s": [

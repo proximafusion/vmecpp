@@ -226,7 +226,7 @@ class VmecModel {
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
     vmecpp::Vmec &v = *model->vmec_;
-    v.always_fix_m1_gauge_ = always_fix_m1_gauge;
+    v.always_fix_m1_gauge_ = always_fix_m1_gauge || indata.always_fix_m1_gauge;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -1037,6 +1037,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
       .def_readwrite("backup_evaluated_state",
                      &VmecINDATA::backup_evaluated_state)
+      .def_readwrite("always_fix_m1_gauge", &VmecINDATA::always_fix_m1_gauge)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
