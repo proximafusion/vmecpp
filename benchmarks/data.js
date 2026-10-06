@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791240733300,
+  "lastUpdate": 1791280405265,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24231,6 +24231,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4789431560000139,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "437564281a64a53bf6e8d240d92f3262228d9b6a",
+          "message": "VmecInput.resize: update in place, keep mpol/ntor schedule (#963)\n\nVmecInput.resize: update in place and keep the mpol/ntor schedule length",
+          "timestamp": "2026-10-06T11:46:56+02:00",
+          "tree_id": "5a77fa48ae55e3dc55a8cc8915affa02cde33522",
+          "url": "https://github.com/proximafusion/vmecpp/commit/437564281a64a53bf6e8d240d92f3262228d9b6a"
+        },
+        "date": 1791280397758,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.548360150800022,
+            "range": "stddev: 0.01944755545966074",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.200110997333354,
+            "range": "stddev: 0.018271589139366048",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.9012713543333462,
+            "range": "stddev: 0.01654766159494375",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.3679818119999823,
+            "range": "stddev: 0.03873808083259057",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2781254736666672,
+            "range": "stddev: 0.006722120672726303",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.709900057999998,
+            "range": "stddev: 0.06533342785896666",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.471145494999973,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.31206448699998646,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
