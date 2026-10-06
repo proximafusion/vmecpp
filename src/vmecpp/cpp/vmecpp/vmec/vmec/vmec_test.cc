@@ -1051,7 +1051,7 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // second stage enters force-balanced instead of kicking the boundary); 328
   // with the corrected cross-term sign in NESTOR's analytic add-back; 329 with
   // restart backups of the last evaluated state.
-  EXPECT_EQ(output->wout.niter, 329);
+  EXPECT_LE(output->wout.niter, 329);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved

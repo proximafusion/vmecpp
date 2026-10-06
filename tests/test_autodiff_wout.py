@@ -55,9 +55,6 @@ _SCALE_OF = {
 # amplifies the roundoff of the latter by 1 / (mu_0 ds); the Mercier terms are
 # products of such differences.
 _TOLERANCE = {
-    # a difference of two O(1 / mu_0) terms, the least well-conditioned field;
-    # 2e-5 of its maximum matches the atol of the Fortran reference test
-    "jdotb": 2.0e-5,
     "jcuru": 1.0e-6,
     "jcurv": 1.0e-6,
     "ctor": 1.0e-6,
@@ -75,6 +72,11 @@ _TOLERANCE = {
     "specw": 1.0e-6,
 }
 _DEFAULT_TOLERANCE = 1.0e-10
+
+# <J.B> is the surface average of K.B, which cancels to ~1e-6 of its magnitude, so its
+# roundoff is measured per surface against the Cauchy-Schwarz bound
+# sqrt(<j_par^2> <B^2>) of the integrand rather than against <J.B> itself.
+_JDOTB_TOLERANCE = 1.0e-9
 
 # The lbsubs collocation solve amplifies roundoff by its condition number in the
 # fields that depend on the force-balance B_s.
@@ -205,6 +207,11 @@ def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
     fields = own_model_fields(vmecpp.VmecWOut)
     assert set(autodiff_wout.WOUT_QUANTITIES) <= set(fields)
     for name in fields:
+        if name == "jdotb":
+            _assert_jdotb_close(
+                actual.jdotb, expected.jdotb, output.jxbout, indata.lbsubs
+            )
+            continue
         _assert_field_close(
             name,
             getattr(actual, name),
@@ -212,6 +219,17 @@ def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
             expected,
             lbsubs=indata.lbsubs,
         )
+
+
+def _assert_jdotb_close(actual, expected, jxbout, lbsubs):
+    bound = np.sqrt(np.abs(np.asarray(jxbout.jpar2) * np.asarray(jxbout.bdotb)))
+    # the end values are extrapolated from their two neighbours
+    bound[[0, -1]] = 3.0 * np.maximum(bound[[1, -2]], bound[[2, -3]])
+    tolerance = _JDOTB_TOLERANCE
+    if lbsubs:
+        tolerance *= _LBSUBS_TOLERANCE_FACTOR
+    error = np.abs(np.asarray(actual) - np.asarray(expected))
+    assert np.all(error <= tolerance * bound), ("jdotb", (error / bound).max())
 
 
 def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:

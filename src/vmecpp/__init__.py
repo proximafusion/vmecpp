@@ -539,6 +539,21 @@ class VmecInput(BaseModelWithNumpy):
     above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
+    lambda_precondition_checkerboard_terms: float = 1e-3
+    """Stiffness floor with which the lambda preconditioner treats the radial
+    checkerboard (odd-even) mode of the m = 0 lambda, as a fraction of the stiffness of
+    a smooth mode.
+
+    lambda enters B through its average over neighbouring surfaces, which cancels a
+    (-1)^j checkerboard of the full-grid m = 0 lambda, so the energy and the force
+    hardly see it; a diagonal lambda preconditioner converges it last, and it shows up
+    as a sign-alternating <J.B> and DMerc. Non-negative values precondition the m = 0
+    lambda with its tridiagonal radial block plus this fraction of the diagonal, which
+    enlarges the checkerboard step at most 1 / value times: 0 inverts the exact block.
+    Negative values keep the diagonal preconditioner of VMEC 8.52, which the reference
+    tests use. The converged equilibrium does not depend on it.
+    """
+
     lbsubs: bool = False
     """If true, recompute the full-grid covariant B_s by solving radial force balance
     (lbsubs flag in Fortran VMEC)."""
