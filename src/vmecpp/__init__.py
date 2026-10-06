@@ -282,6 +282,10 @@ class VmecInput(BaseModelWithNumpy):
     May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
     """
 
+    def keys(self) -> list[str]:
+        """The input field names, as for the dict-like INDATA objects of SIMSOPT."""
+        return list(type(self).model_fields)
+
     @property
     def mpol_max(self) -> int:
         """The final mpol resolution, if a multigrid sequence is used."""
