@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791327201747,
+  "lastUpdate": 1791327447208,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -75274,6 +75274,162 @@ window.BENCHMARK_DATA = {
             "value": 0.004183348067506345,
             "unit": "seconds",
             "extra": "iterations: 334\ncpu: 0.004175550586826349 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fe5ca12c7cac90cf427bf65415d4070aefe3121b",
+          "message": "Precondition the radial checkerboard mode of the m = 0 lambda (#959)\n\n* Radially tridiagonal m = 0 lambda preconditioner\n\nNew VmecInput field lambda_m0_tridiagonal_eps (default -1, off). For eps >= 0\nthe m = 0 lambda forces are preconditioned with the tridiagonal radial block of\nthe lambda force plus eps times VMEC's diagonal, instead of the diagonal alone.\nThe block includes the axis copy of m = 0 lambda (extrapolateTowardsAxis).\n\n* Rename to lambda_precondition_checkerboard_terms; add modern defaults\n\nThe option is the stiffness floor of the radial checkerboard mode of the\nm = 0 lambda. VmecInput.default() and VmecInput.from_file() take\ndefaults=\"modern\", which applies MODERN_DEFAULTS (checkerboard floor 1e-3)\nto fields the input does not set; the plain defaults stay VMEC 8.52\ncompatible.\n\n* Add the undamped lambda preconditioner scale to the modern defaults\n\n* Apply modern defaults with VmecInput.with_modern_defaults()\n\ndefault() is gone (#961). with_modern_defaults() gives the MODERN_DEFAULTS\nvalues to every field not set explicitly; from_file records the fields\npresent in the file in model_fields_set.\n\n* Keep lambda_preconditioner_scale out of the modern defaults\n\nAt production resolution (mpol 10-14, ns 99) scale 1.0 takes 29-58 % more\niterations than 0.5 on three fixed-boundary stellarators.\n\n* Precondition the checkerboard by default; 8.52 references use -1\n\nlambda_precondition_checkerboard_terms defaults to 1e-3, replacing the\nmodern-defaults mechanism. The reference-case inputs, whose outputs come\nfrom VMEC 8.52 / PARVMEC, set -1 (the diagonal preconditioner). The\nMultiGridFreeBoundary iteration pin becomes an upper bound. The autodiff\ncheck measures <J.B> per surface against sqrt(<j_par^2> <B^2>): the surface\naverage cancels its integrand to ~1e-6, so roundoff scales with the\nintegrand, not with <J.B>.\n\n* Restrict lambda handoff writes to owner\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n---------\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>",
+          "timestamp": "2026-10-06T22:48:49Z",
+          "tree_id": "b102fec4b20ef55f926c107a4ddc2c27061cdced",
+          "url": "https://github.com/proximafusion/vmecpp/commit/fe5ca12c7cac90cf427bf65415d4070aefe3121b"
+        },
+        "date": 1791327446866,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.00001368150856935223,
+            "unit": "seconds",
+            "extra": "iterations: 97410\ncpu: 1.3681098182938096e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000017070436215980795,
+            "unit": "seconds",
+            "extra": "iterations: 82364\ncpu: 1.7070042057209465e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0002859231262708038,
+            "unit": "seconds",
+            "extra": "iterations: 4873\ncpu: 0.0002859119946644777 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.0007992987013195064,
+            "unit": "seconds",
+            "extra": "iterations: 1724\ncpu: 0.0007992738851508118 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.00008288447318853542,
+            "unit": "seconds",
+            "extra": "iterations: 17091\ncpu: 8.287258346498156e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00007782778880022816,
+            "unit": "seconds",
+            "extra": "iterations: 18380\ncpu: 7.781786218716e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.00016315423705604639,
+            "unit": "seconds",
+            "extra": "iterations: 8544\ncpu: 0.00016308938319288383 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.00015165619725068086,
+            "unit": "seconds",
+            "extra": "iterations: 9263\ncpu: 0.0001516268481053655 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0003151212496098291,
+            "unit": "seconds",
+            "extra": "iterations: 4463\ncpu: 0.000315073605870491 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.0002534150209392165,
+            "unit": "seconds",
+            "extra": "iterations: 5769\ncpu: 0.0002511534720055469 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0010696680945862138,
+            "unit": "seconds",
+            "extra": "iterations: 1329\ncpu: 0.0010696359209932283 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0008872511730933751,
+            "unit": "seconds",
+            "extra": "iterations: 1573\ncpu: 0.0008871253973299424 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.000018117111301438297,
+            "unit": "seconds",
+            "extra": "iterations: 76627\ncpu: 1.8121537760841484e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00010382529248156377,
+            "unit": "seconds",
+            "extra": "iterations: 13712\ncpu: 0.00010383301327304486 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.000516414208372246,
+            "unit": "seconds",
+            "extra": "iterations: 2747\ncpu: 0.0005164222868583981 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.00001499822221140717,
+            "unit": "seconds",
+            "extra": "iterations: 93082\ncpu: 1.4999004200596602e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00009367316654496929,
+            "unit": "seconds",
+            "extra": "iterations: 15057\ncpu: 9.368062177060474e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0004946975367767239,
+            "unit": "seconds",
+            "extra": "iterations: 2859\ncpu: 0.0004946574711437573 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00015167392720089268,
+            "unit": "seconds",
+            "extra": "iterations: 9336\ncpu: 0.00015166861396743786 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.0006183586835223155,
+            "unit": "seconds",
+            "extra": "iterations: 2242\ncpu: 0.0006183407185548615 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.0026841881078317627,
+            "unit": "seconds",
+            "extra": "iterations: 545\ncpu: 0.0026838230587155985 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.0023057544708251954,
+            "unit": "seconds",
+            "extra": "iterations: 625\ncpu: 0.0023031891072 seconds\nthreads: 1"
           }
         ]
       }
