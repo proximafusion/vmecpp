@@ -749,15 +749,15 @@ def checks(results, reference=None):
     out.append(
         (
             "B and its derivatives",
-            "B for s >= 1/4 converges at fitted order >= 1.5, and jcurv, the radial "
-            "derivative of the current, at a lower order than the current, over the "
-            "whole profile and for s >= 1/4",
-            f"B, s >= 1/4 {fit['B, s >= 1/4']:.2f}; jcurv {fit['jcurv']:.2f} against "
-            f"the current's {fit['current']:.2f}, for s >= 1/4 "
-            f"{fit['jcurv, s >= 1/4']:.2f} against {fit['current, s >= 1/4']:.2f}",
+            "B and jcurv, the radial derivative of the current, converge for s >= 1/4 "
+            "at fitted order >= 1.5, and jcurv converges at a lower order than the "
+            "current over the whole profile",
+            f"B, s >= 1/4 {fit['B, s >= 1/4']:.2f}, jcurv, s >= 1/4 "
+            f"{fit['jcurv, s >= 1/4']:.2f}; jcurv {fit['jcurv']:.2f} against the "
+            f"current's {fit['current']:.2f}",
             fit["B, s >= 1/4"] >= 1.5
-            and fit["jcurv"] < fit["current"]
-            and fit["jcurv, s >= 1/4"] < fit["current, s >= 1/4"],
+            and fit["jcurv, s >= 1/4"] >= 1.5
+            and fit["jcurv"] < fit["current"],
         )
     )
 
