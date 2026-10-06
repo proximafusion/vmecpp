@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791281759901,
+  "lastUpdate": 1791296951390,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24391,6 +24391,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.30972280099996397,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "bonauer@proximafusion.com",
+            "name": "Lukas Bonauer",
+            "username": "bonauer-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e0a509a85cc141dfc7a1521067cc09282bf22493",
+          "message": "Fix warning when other wrap validators are added around VmecppWOut fields (#965)\n\n`_wrap_int_as_float` was annotated with a return type of `list[float]`, causing pydantic to print a warning when `default(handler)` actually returns something that is not a `list[float]`.",
+          "timestamp": "2026-10-06T16:21:40+02:00",
+          "tree_id": "0e450aaae08ecfc6b9a0a2c8dd80f66aabe0376e",
+          "url": "https://github.com/proximafusion/vmecpp/commit/e0a509a85cc141dfc7a1521067cc09282bf22493"
+        },
+        "date": 1791296946881,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6929568851999874,
+            "range": "stddev: 0.003779346463211765",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6575813220000177,
+            "range": "stddev: 0.022283167399444206",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1145609489999895,
+            "range": "stddev: 0.02198461810303259",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6827336399999808,
+            "range": "stddev: 0.030682091872642238",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4854385316666783,
+            "range": "stddev: 0.005404461260619969",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.857275497666667,
+            "range": "stddev: 0.038571943557192304",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.4803415000000086,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4919453379999368,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
