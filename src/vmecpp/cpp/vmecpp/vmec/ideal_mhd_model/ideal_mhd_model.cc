@@ -3033,7 +3033,7 @@ void IdealMhdModel::updateRadialPreconditioner() {
 void IdealMhdModel::updateLambdaPreconditioner() {
 #ifdef VMECPP_USE_CUDA
   {
-    UpdateLambdaPreconditionerCuda(r_, s_, kLambdaPreconditionerDampingFactor,
+    UpdateLambdaPreconditionerCuda(r_, s_, lambda_preconditioner_scale_,
                                    constants_.lamscale, bLambda.data(),
                                    dLambda.data(), cLambda.data(),
                                    lambdaPreconditioner.data());
