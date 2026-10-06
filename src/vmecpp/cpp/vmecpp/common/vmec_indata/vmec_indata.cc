@@ -330,7 +330,7 @@ VmecINDATA::VmecINDATA() {
   aphi.resize(1);
   aphi[0] = 1.0;
   delt = 1.0;
-  tcon0 = 0.5;
+  tcon0 = 1.0;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
   lbsubs = false;

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import dataclasses
 import enum
 import json
@@ -57,6 +56,9 @@ from vmecpp._pydantic_numpy import (
 from vmecpp._rescale import rescale
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
+HotRestartMismatchError = _vmecpp.HotRestartMismatchError
+"""Raised (a ValueError) when the ``restart_from`` state does not match the input."""
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,7 +88,7 @@ def _wrap_int_as_float(
     value: typing.Any,
     handler: pydantic.SerializerFunctionWrapHandler,
     _: pydantic.FieldSerializationInfo,
-) -> list[float]:
+) -> typing.Any:
     if isinstance(value, (np.ndarray, list)):
         return np.array(value).astype(np.float64).tolist()
     return handler(value)
@@ -279,6 +281,10 @@ class VmecInput(BaseModelWithNumpy):
 
     May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
     """
+
+    def keys(self) -> list[str]:
+        """The input field names, as for the dict-like INDATA objects of SIMSOPT."""
+        return list(type(self).model_fields)
 
     @property
     def mpol_max(self) -> int:
@@ -510,7 +516,7 @@ class VmecInput(BaseModelWithNumpy):
     delt: float = 1.0
     """Initial value for artificial time step in iterative solver."""
 
-    tcon0: float = 0.5
+    tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
 
     lgiveup: bool = False
@@ -656,8 +662,8 @@ class VmecInput(BaseModelWithNumpy):
                 )
 
         # The 1D magnetic-axis arrays must have length ntor+1. Shorter arrays
-        # simply omit trailing (zero) coefficients and are silently zero-padded;
-        # longer arrays are rejected rather than silently truncated.
+        # simply omit trailing (zero) coefficients and are zero-padded; longer
+        # arrays are truncated.
         ntor_plus_one_fields = ["raxis_c", "zaxis_s"]
         if self.lasym:
             ntor_plus_one_fields.extend(["raxis_s", "zaxis_c"])
@@ -700,7 +706,7 @@ class VmecInput(BaseModelWithNumpy):
 
         Arrays shorter than ntor_new+1 are zero-padded (the omitted trailing
         coefficients are implicitly zero). Arrays longer than ntor_new+1 are
-        rejected to avoid silently truncating user-data.
+        truncated.
 
         Args:
             coeff: A 1D NumPy array of axis coefficients (length ntor+1).
@@ -709,18 +715,15 @@ class VmecInput(BaseModelWithNumpy):
         Examples:
             >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0]), ntor_new=3)
             array([1., 2., 0., 0.])
+            >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0, 3.0]), ntor_new=1)
+            array([1., 2.])
         """
         assert ntor_new >= 0
         coeff = np.asarray(coeff, dtype=float).ravel()
         new_len = ntor_new + 1
-        if coeff.size > new_len:
-            msg = (
-                f"length of axis coefficient array ({coeff.size}) exceeds ntor+1 ({new_len}). "
-                f"Please truncate r_axis_c and zaxis_s to a size consistent with ntor={ntor_new}."
-            )
-            raise ValueError(msg)
         resized_coeff = np.zeros(new_len)
-        resized_coeff[: coeff.size] = coeff
+        n = min(coeff.size, new_len)
+        resized_coeff[:n] = coeff[:n]
         return resized_coeff
 
     @staticmethod
@@ -778,9 +781,11 @@ class VmecInput(BaseModelWithNumpy):
 
         return resized_coeff
 
-    def resize(self, mpol_new: int, ntor_new: int) -> VmecInput:
-        """Return a copy of this input resampled to a new (mpol, ntor) Fourier
-        resolution.
+    def resize(self, mpol_new: int, ntor_new: int) -> None:
+        """Resample this input in place to a new (mpol, ntor) Fourier resolution.
+
+        An ``mpol``/``ntor`` continuation schedule keeps its length: the last entry
+        becomes the new size and earlier entries are clamped to it.
 
         Boundary coefficients are zero-padded or truncated to match, discarding
         higher modes with a warning; see :meth:`resize_2d_coeff`. Axis
@@ -801,8 +806,14 @@ class VmecInput(BaseModelWithNumpy):
             return self.resize_1d_axis_coeff(coeff, ntor_new)
 
         updated_fields: dict[str, typing.Any] = {}
-        updated_fields["mpol"] = mpol_new
-        updated_fields["ntor"] = ntor_new
+
+        def resize_schedule(value: int | np.ndarray, new: int) -> int | np.ndarray:
+            if isinstance(value, int):
+                return new
+            return np.append(np.minimum(value[:-1], new), new).astype(np.int64)
+
+        updated_fields["mpol"] = resize_schedule(self.mpol, mpol_new)
+        updated_fields["ntor"] = resize_schedule(self.ntor, ntor_new)
         updated_fields["rbc"] = self.resize_2d_coeff(
             np.asarray(self.rbc), mpol_new, ntor_new
         )
@@ -826,7 +837,8 @@ class VmecInput(BaseModelWithNumpy):
             updated_fields["raxis_s"] = resize_axis(self.raxis_s)
             updated_fields["zaxis_c"] = resize_axis(self.zaxis_c)
 
-        return self.model_copy(update=updated_fields)
+        for name, value in updated_fields.items():
+            setattr(self, name, value)
 
     @staticmethod
     def from_file(input_file: str | Path) -> VmecInput:
@@ -861,11 +873,6 @@ class VmecInput(BaseModelWithNumpy):
         vmec_input_dict["niter_array"] = vmec_input_dict["niter_array"].astype(np.int64)
 
         return VmecInput.model_validate(vmec_input_dict)
-
-    @staticmethod
-    def default():
-        """Return a ``VmecInput`` with VMEC++ default values."""
-        return VmecInput()
 
     def _to_cpp_vmecindata(self) -> _vmecpp.VmecINDATA:
         cpp_indata = _vmecpp.VmecINDATA()
@@ -2710,14 +2717,6 @@ for _model_type in (
     _register_model_pytree(_model_type, own_model_fields(_model_type))
 
 
-_use_jax_output_stage = contextvars.ContextVar("_use_jax_output_stage", default=True)
-"""Whether run() computes the wout physics fields with the JAX output stage.
-
-The CLI turns it off: a one-shot process would pay the stage's compilation on
-every run, and nothing there differentiates the result.
-"""
-
-
 def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
     """The VmecOutput members besides input and wout, from a C++ run."""
     return {
@@ -3120,8 +3119,8 @@ def run(
         >>> path = "examples/data/solovev.json"
         >>> vmec_input = vmecpp.VmecInput.from_file(path)
         >>> output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
-        >>> round(output.wout.b0, 6) # Exact value may differ by C library
-        0.203331
+        >>> round(output.wout.b0, 10) # Exact value may differ by C library
+        0.2033313711
     """
     input = VmecInput.model_validate(input)
 
@@ -3197,10 +3196,7 @@ def run(
             iteration_callback=cpp_iteration_callback,
         )
 
-    if _use_jax_output_stage.get():
-        wout = _wout_from_output_stage(input, cpp_output_quantities)
-    else:
-        wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
+    wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     return VmecOutput(
         input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
     )
@@ -3379,6 +3375,7 @@ populate_raw_profile = set_profile
 # Ordered this way to ensure run, VmecInput, and VmecOutput are the first three
 # items in the generated documentation.
 __all__ = [  # noqa: RUF022
+    "HotRestartMismatchError",
     "run",
     "interpolate_solution",
     "rescale",

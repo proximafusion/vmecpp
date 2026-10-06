@@ -302,6 +302,11 @@ int GrantedThreads(int requested_threads);
 // IdealMhdModel::update opens the vacuum solve inside the radial solve.
 int GrantedNestedThreads(int outer_threads, int nested_threads);
 
+// Initializes absl logging for the standalone and Python entry points: all
+// messages down to INFO go to stderr as plain text, without prefixes.
+// Must be called once, before any logging.
+void InitializeUserLogging();
+
 }  // namespace vmecpp
 
 #endif  // VMECPP_COMMON_UTIL_UTIL_H_

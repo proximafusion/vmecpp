@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/globals.h"
+#include "absl/log/initialize.h"
+
 namespace vmecpp {
 
 int VmecStatusCode(const VmecStatus vmec_status) {
@@ -376,6 +379,12 @@ int GrantedNestedThreads(const int outer_threads, const int nested_threads) {
   (void)nested_threads;
 #endif  // _OPENMP
   return granted_threads;
+}
+
+void InitializeUserLogging() {
+  absl::InitializeLog();
+  absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
+  absl::EnableLogPrefix(false);
 }
 
 }  // namespace vmecpp

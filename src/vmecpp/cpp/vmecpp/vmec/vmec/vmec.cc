@@ -28,6 +28,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -94,6 +95,11 @@ void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
       absl::StrCat(m_status_of_all_threads.message(), thread_msg));
 }
 
+absl::Status HotRestartMismatch(absl::Status status) {
+  status.SetPayload(vmecpp::kHotRestartMismatchPayload, absl::Cord());
+  return status;
+}
+
 // Check preconditions on (initial_state, indata) pair passed to Vmec::run
 // in order to make sure that the state to hot-restart from can be copied over
 // 1:1.
@@ -107,26 +113,28 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
   // check for match in `lasym`, since that determines whether
   // non-stellarator-symmetric terms are expected or not
   if (initial_state.indata.lasym != indata.lasym) {
-    return absl::InvalidArgumentError(
-        absl::StrCat(msg_start, "lasym", msg_end));
+    return HotRestartMismatch(
+        absl::InvalidArgumentError(absl::StrCat(msg_start, "lasym", msg_end)));
   }
 
   // check for `mpol` and `ntor` match, since they determine the expected array
   // size in tangential direction
   if (initial_state.indata.mpol != indata.mpol) {
-    return absl::InvalidArgumentError(absl::StrCat(msg_start, "mpol", msg_end));
+    return HotRestartMismatch(
+        absl::InvalidArgumentError(absl::StrCat(msg_start, "mpol", msg_end)));
   }
   if (initial_state.indata.ntor != indata.ntor) {
-    return absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end));
+    return HotRestartMismatch(
+        absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end)));
   }
 
   // check for matching `ns`: the state is read from the wout, one column per
   // flux surface
   if (initial_state.wout.ns != indata.ns_array[0]) {
-    return absl::InvalidArgumentError(absl::StrFormat(
+    return HotRestartMismatch(absl::InvalidArgumentError(absl::StrFormat(
         "%sns_array%s The wout of the initial state has ns = %d, but "
         "ns_array[0] = %d.",
-        msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0]));
+        msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0])));
   }
 
   return absl::OkStatus();
