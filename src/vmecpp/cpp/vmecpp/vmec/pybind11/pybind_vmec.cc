@@ -12,7 +12,9 @@
 #include <Eigen/Dense>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <tuple>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
 
@@ -204,6 +206,17 @@ void UnflattenActive(FourierObject &m_x, const vmecpp::Sizes &s,
     const Eigen::Index n = static_cast<Eigen::Index>(sp.size());
     Eigen::Map<Eigen::VectorXd>(sp.data(), n) = flat.segment(offset, n);
     offset += n;
+  }
+}
+
+inline void CheckFourierShape(const vmecpp::RowMatrixXd &m, const char *name,
+                              int mnmax, int ns) {
+  if (m.rows() != mnmax || m.cols() != ns) {
+    throw std::runtime_error(std::string("VmecModel.set_state_from_fourier: ") +
+                             name + " has shape (" + std::to_string(m.rows()) +
+                             ", " + std::to_string(m.cols()) + "), expected (" +
+                             std::to_string(mnmax) + ", " + std::to_string(ns) +
+                             ")");
   }
 }
 
@@ -470,6 +483,12 @@ class VmecModel {
   }
 
   // Flat decision vector (decomposed, i.e. preconditioner-scaled coefficients).
+  void SetForceSource(const Eigen::VectorXd &source) {
+    const absl::Status s = vmec_->SetForceSource(source);
+    if (!s.ok()) {
+      throw std::runtime_error(std::string(s.message()));
+    }
+  }
   Eigen::VectorXd GetState() const {
     return FlattenActive(*vmec_->decomposed_x_[0], vmec_->s_);
   }
@@ -477,6 +496,40 @@ class VmecModel {
     UnflattenActive(*vmec_->decomposed_x_[0], vmec_->s_, flat);
     exact_primal_valid_ = false;  // primal geometry cache is stale
   }
+
+  // Set the state from Fourier coefficients in the combined basis the wout
+  // file uses, R = sum rmnc cos(m u - n v) [+ rmns sin(m u - n v)] and likewise
+  // for Z and lambda, each an [mnmax, ns] array in the standard mode ordering.
+  // The conversion is FourierGeometry::InitFromState, the routine a hot restart
+  // already uses, so the basis normalization, the m = 1 poloidal-origin gauge
+  // and lambda's phip / lamscale scaling have a single implementation. The
+  // asymmetric arrays are ignored for a stellarator-symmetric run and required
+  // for a lasym one.
+  void SetStateFromFourier(const vmecpp::RowMatrixXd &rmnc,
+                           const vmecpp::RowMatrixXd &zmns,
+                           const vmecpp::RowMatrixXd &lmns,
+                           const vmecpp::RowMatrixXd &rmns,
+                           const vmecpp::RowMatrixXd &zmnc,
+                           const vmecpp::RowMatrixXd &lmnc) const {
+    const vmecpp::Sizes &s = vmec_->s_;
+    const int ns = vmec_->fc_.ns;
+    CheckFourierShape(rmnc, "rmnc", s.mnmax, ns);
+    CheckFourierShape(zmns, "zmns", s.mnmax, ns);
+    CheckFourierShape(lmns, "lmns", s.mnmax, ns);
+    if (s.lasym) {
+      CheckFourierShape(rmns, "rmns", s.mnmax, ns);
+      CheckFourierShape(zmnc, "zmnc", s.mnmax, ns);
+      CheckFourierShape(lmnc, "lmnc", s.mnmax, ns);
+    }
+    // A null Boundaries pointer makes InitFromState take the last surface from
+    // the given state rather than from the input boundary, which is what a
+    // free-boundary run needs and what a fixed-boundary one already agrees
+    // with.
+    vmec_->decomposed_x_[0]->InitFromState(
+        vmec_->t_, rmnc, zmns, lmns, rmns, zmnc, lmnc, *vmec_->p_[0],
+        vmec_->constants_, vmec_->indata_.signgs, nullptr);
+  }
+
   // Flat force vector (decomposed/preconditioned), valid after Evaluate().
   Eigen::VectorXd GetForces() const {
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
@@ -1045,6 +1098,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lgiveup", &VmecINDATA::lgiveup)
       .def_readwrite("fgiveup", &VmecINDATA::fgiveup)
       .def_readwrite("lforbal", &VmecINDATA::lforbal)
+      .def_readwrite("enable_force_source", &VmecINDATA::enable_force_source)
+      .def_readwrite("return_vacuum_field", &VmecINDATA::return_vacuum_field)
       .def_readwrite("lambda_preconditioner_scale",
                      &VmecINDATA::lambda_preconditioner_scale)
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
@@ -1311,6 +1366,21 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("raxis_asym", &vmecpp::Threed1AxisGeometry::raxis_asym)
       .def_readonly("zaxis_asym", &vmecpp::Threed1AxisGeometry::zaxis_asym);
 
+  py::class_<vmecpp::Threed1FreeBoundary>(m, "Threed1FreeBoundary")
+      .def_readonly("rb", &vmecpp::Threed1FreeBoundary::rb)
+      .def_readonly("phib", &vmecpp::Threed1FreeBoundary::phib)
+      .def_readonly("zb", &vmecpp::Threed1FreeBoundary::zb)
+      .def_readonly("bsqmhdi", &vmecpp::Threed1FreeBoundary::bsqmhdi)
+      .def_readonly("bsqvaci", &vmecpp::Threed1FreeBoundary::bsqvaci)
+      .def_readonly("bsqmhdf", &vmecpp::Threed1FreeBoundary::bsqmhdf)
+      .def_readonly("bsqvacf", &vmecpp::Threed1FreeBoundary::bsqvacf)
+      .def_readonly("bredge", &vmecpp::Threed1FreeBoundary::bredge)
+      .def_readonly("bpedge", &vmecpp::Threed1FreeBoundary::bpedge)
+      .def_readonly("bzedge", &vmecpp::Threed1FreeBoundary::bzedge)
+      .def_readonly("brv", &vmecpp::Threed1FreeBoundary::brv)
+      .def_readonly("bphiv", &vmecpp::Threed1FreeBoundary::bphiv)
+      .def_readonly("bzv", &vmecpp::Threed1FreeBoundary::bzv);
+
   py::class_<vmecpp::Threed1Betas>(m, "Threed1Betas")
       .def_readonly("betatot", &vmecpp::Threed1Betas::betatot)
       .def_readonly("betapol", &vmecpp::Threed1Betas::betapol)
@@ -1529,6 +1599,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("threed1_betas", &vmecpp::OutputQuantities::threed1_betas)
       .def_readonly("threed1_shafranov_integrals",
                     &vmecpp::OutputQuantities::threed1_shafranov_integrals)
+      .def_readonly("threed1_free_boundary",
+                    &vmecpp::OutputQuantities::threed1_free_boundary)
       .def_readonly("wout", &vmecpp::OutputQuantities::wout)
       .def_readonly("indata", &vmecpp::OutputQuantities::indata)
       .def(
@@ -1831,7 +1903,13 @@ PYBIND11_MODULE(_vmecpp, m) {
                     "are the Jacobian of the iterated system.")
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
+      .def("set_state_from_fourier", &VmecModel::SetStateFromFourier,
+           py::arg("rmnc"), py::arg("zmns"), py::arg("lmns"),
+           py::arg("rmns") = vmecpp::RowMatrixXd(),
+           py::arg("zmnc") = vmecpp::RowMatrixXd(),
+           py::arg("lmnc") = vmecpp::RowMatrixXd())
       .def("get_forces", &VmecModel::GetForces)
+      .def("set_force_source", &VmecModel::SetForceSource, py::arg("source"))
       .def("get_geometry", &VmecModel::GetGeometry)
       .def("geometry_state_vjp", &VmecModel::GeometryStateVjp,
            py::arg("coefficient_bar"),
