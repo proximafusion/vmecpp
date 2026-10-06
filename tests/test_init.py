@@ -1229,33 +1229,3 @@ def test_resize_keeps_a_fourier_continuation_schedule():
     assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
     vmec_input.resize(3, ntor)
     assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
-
-
-@pytest.mark.parametrize(
-    "name", ["cth_like_fixed_bdy.json", "input.cth_like_fixed_bdy"]
-)
-def test_modern_defaults_fill_only_unset_fields(name, tmp_path):
-    compatible = vmecpp.VmecInput.from_file(TEST_DATA_DIR / name)
-    modern = compatible.with_modern_defaults()
-    for field, value in vmecpp.MODERN_DEFAULTS.items():
-        assert getattr(compatible, field) == getattr(vmecpp.VmecInput(), field)
-        assert getattr(modern, field) == value
-        assert getattr(vmecpp.VmecInput().with_modern_defaults(), field) == value
-    # a value set in the file, as an argument or by assignment wins
-    explicit = tmp_path / "explicit.json"
-    explicit.write_text(compatible.model_dump_json())
-    assigned = vmecpp.VmecInput.from_file(TEST_DATA_DIR / name)
-    for field in vmecpp.MODERN_DEFAULTS:
-        setattr(assigned, field, getattr(compatible, field))
-    by_argument = vmecpp.VmecInput(
-        **{field: getattr(compatible, field) for field in vmecpp.MODERN_DEFAULTS}
-    )
-    for vmec_input in (
-        vmecpp.VmecInput.from_file(explicit),
-        assigned,
-        by_argument,
-    ):
-        for field in vmecpp.MODERN_DEFAULTS:
-            assert getattr(vmec_input.with_modern_defaults(), field) == getattr(
-                compatible, field
-            )

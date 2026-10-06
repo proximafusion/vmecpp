@@ -333,7 +333,7 @@ VmecINDATA::VmecINDATA() {
   tcon0 = 1.0;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
-  lambda_precondition_checkerboard_terms = -1.0;
+  lambda_precondition_checkerboard_terms = 1e-3;
   lbsubs = false;
   backup_evaluated_state = true;
   iteration_style = IterationStyle::VMEC_8_52;
@@ -599,7 +599,7 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
     ReadH5Dataset(m_indata.lambda_precondition_checkerboard_terms,
                   "/indata/lambda_precondition_checkerboard_terms", from_file);
   } else {
-    m_indata.lambda_precondition_checkerboard_terms = -1.0;
+    m_indata.lambda_precondition_checkerboard_terms = 1e-3;
   }
 
   // Legacy way of checking for dataset existence

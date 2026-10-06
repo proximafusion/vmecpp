@@ -531,7 +531,7 @@ class IdealMhdModel {
   Eigen::VectorXd cLambda;
   Eigen::VectorXd lambdaPreconditioner;
   double lambda_preconditioner_scale_ = 0.5;
-  double lambda_precondition_checkerboard_terms_ = -1.0;
+  double lambda_precondition_checkerboard_terms_ = 1e-3;
 
   // R,Z preconditioner
   Eigen::VectorXd ax;
