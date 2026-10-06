@@ -182,6 +182,9 @@ enum class VmecStatus : std::uint8_t {
   // no fatal error but convergence was not reached
   NORMAL_TERMINATION = 0,
   BAD_JACOBIAN = 1,
+  // the iteration callback stopped the run before convergence; more_iter_flag
+  // in VMEC 8.52
+  MORE_ITERATIONS_NEEDED = 2,  // NOLINT(readability-identifier-naming)
   JACOBIAN_75_TIMES_BAD = 4,
   // A physical inconsistency was detected deep in the MHD model (e.g. a
   // degenerate flux-surface geometry or a free-boundary current mismatch)
@@ -288,6 +291,21 @@ int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 // vacuum solve runs in a nested parallel region with an explicit num_threads()
 // clause.
 int vmec_adjust_vacuum_num_threads(int max_threads, int n_znt);
+
+// Number of threads the OpenMP runtime grants a parallel region that requests
+// requested_threads from the calling context. OMP_THREAD_LIMIT and the active
+// nesting levels can make it smaller than the request; without OpenMP it is 1.
+int GrantedThreads(int requested_threads);
+
+// Number of threads the OpenMP runtime grants a parallel region that requests
+// nested_threads from the single thread of a team of outer_threads threads, as
+// IdealMhdModel::update opens the vacuum solve inside the radial solve.
+int GrantedNestedThreads(int outer_threads, int nested_threads);
+
+// Initializes absl logging for the standalone and Python entry points: all
+// messages down to INFO go to stderr as plain text, without prefixes.
+// Must be called once, before any logging.
+void InitializeUserLogging();
 
 }  // namespace vmecpp
 

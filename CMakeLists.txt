@@ -3,6 +3,8 @@ project(vmecpp C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# No C++ modules are used; the scan's flags break ccache with GCC 14.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -44,6 +46,7 @@ add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=32 EIGEN_MAX_STATIC_ALIGN_BYTES=32
 find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
 if(EXISTS ${CCACHE_COMMAND})
   message(STATUS "Found ccache: ${CCACHE_COMMAND}")
+  set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_COMMAND})
   set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_COMMAND})
 else()
   message(STATUS "Could NOT find ccache")
@@ -89,7 +92,9 @@ set(_native_deps_cmake_args
   -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
   -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-  -DBUILD_TESTING=OFF)
+  -DBUILD_TESTING=OFF
+  -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+  -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER})
 
 if(APPLE)
   # CC=brew's gcc-14 (set by some CI jobs) chokes on Apple's SDK math.h for
@@ -102,6 +107,11 @@ endif()
 ExternalProject_Add(hdf5_native
   URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz"
   URL_HASH SHA256=df5ee33c74d5efb59738075ef96f4201588e1f1eeb233f047ac7fd1072dee1f6
+  LOG_DOWNLOAD ON
+  LOG_CONFIGURE ON
+  LOG_BUILD ON
+  LOG_INSTALL ON
+  LOG_OUTPUT_ON_FAILURE ON
   CMAKE_ARGS
     ${_native_deps_cmake_args}
     -DHDF5_BUILD_CPP_LIB=ON
@@ -119,6 +129,11 @@ ExternalProject_Add(netcdf_native
   DEPENDS hdf5_native
   URL "https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.3.tar.gz"
   URL_HASH SHA256=990f46d49525d6ab5dc4249f8684c6deeaf54de6fec63a187e9fb382cc0ffdff
+  LOG_DOWNLOAD ON
+  LOG_CONFIGURE ON
+  LOG_BUILD ON
+  LOG_INSTALL ON
+  LOG_OUTPUT_ON_FAILURE ON
   CMAKE_ARGS
     ${_native_deps_cmake_args}
     -DNETCDF_ENABLE_DAP=OFF
@@ -339,6 +354,7 @@ function(vmecpp_add_core target)
   target_link_libraries(${target} PUBLIC nlohmann_json::nlohmann_json)
   target_link_libraries(${target} PUBLIC absl::algorithm absl::base
     absl::synchronization absl::strings absl::str_format absl::log
+    absl::log_initialize absl::log_globals
     absl::string_view absl::check absl::status absl::statusor)
 
   if(VMECPP_USE_CUDA)

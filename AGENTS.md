@@ -134,7 +134,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - Reuse validated components before writing new ones
 
 **Validation**:
-- VMEC++ reproduces VMEC 8.52; the reference files are educational_VMEC output, which reports `version_ = 8.52`, and PARVMEC 10.0 differs in documented conventions such as the full-grid `bsubsmns` and the `chipf` endpoints
+- VMEC++ reproduces VMEC 8.52; the reference files are educational_VMEC output, which reports `version_ = 8.52`; VMEC++ writes the full-grid `bsubsmns` of PARVMEC instead of the half-grid one; PARVMEC 10.0 differs in documented conventions such as the `chipf` endpoints
 - Keep historical behavior for compatibility; fix a confirmed bug of the original and mark the deviation in the tests
 - Fix a Fortran-side bug in educational_VMEC first, with a test that fails before and passes after, then regenerate the reference files
 - A symmetric equilibrium run through the asymmetric code paths must reproduce the symmetric result to machine precision (`tests/test_lasym.py`)
@@ -156,6 +156,8 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 **Prose**:
 - Comments and pull request descriptions do not pre-empt objections; they state what is and stop
 - Comments carry the change or the measurement, without praise, deference, or defensive justification
+- Pull request descriptions and review replies open with the content, with no pleasantries, acknowledgements or other social filler
+- They are concise: each point is made once, in the fewest words that carry it
 
 **Configuration and errors**:
 - Toggle features through fields of `VmecInput`, not environment variables

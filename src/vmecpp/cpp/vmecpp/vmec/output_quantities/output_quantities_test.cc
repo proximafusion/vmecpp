@@ -71,9 +71,10 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
   absl::StatusOr<std::string> indata_json = ReadFile(filename);
   ASSERT_TRUE(indata_json.ok());
 
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
 
   auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
   ASSERT_TRUE(maybe_vmec.ok());
@@ -449,12 +450,22 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
                                 wout.bsubumnc(mn_nyq, jF), tolerance));
       EXPECT_TRUE(IsCloseRelAbs(reference_bsubvmnc[jF][mn_nyq],
                                 wout.bsubvmnc(mn_nyq, jF), tolerance));
-      EXPECT_TRUE(IsCloseRelAbs(reference_bsubsmns[jF][mn_nyq],
-                                wout.bsubsmns(mn_nyq, jF), tolerance));
       EXPECT_TRUE(IsCloseRelAbs(reference_bsupumnc[jF][mn_nyq],
                                 wout.bsupumnc(mn_nyq, jF), tolerance));
       EXPECT_TRUE(IsCloseRelAbs(reference_bsupvmnc[jF][mn_nyq],
                                 wout.bsupvmnc(mn_nyq, jF), tolerance));
+    }  // mn_nyq
+  }  // jF
+
+  // Deviation from VMEC 8.52: bsubsmns is on the full grid, the
+  // reference holds the half grid. Compare with the reference averaged to the
+  // interior full-grid surfaces.
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
+      const double reference_full = 0.5 * (reference_bsubsmns[jF][mn_nyq] +
+                                           reference_bsubsmns[jF + 1][mn_nyq]);
+      EXPECT_TRUE(
+          IsCloseRelAbs(reference_full, wout.bsubsmns(mn_nyq, jF), tolerance));
     }  // mn_nyq
   }  // jF
 
@@ -479,59 +490,6 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
 }  // CheckWOutFileContents
-
-// bsubsmns_full holds the full-grid covariant B_s Fourier coefficients. It is
-// the forward transform of the full-grid realspace B_s, which is the radial
-// half->full interpolation (in PutBSubSOnFullGrid) of the half-grid B_s that
-// underlies bsubsmns. Since that radial interpolation is linear and commutes
-// with the angular DFT, on the interior full-grid surfaces (where the full-grid
-// value is the average of the two neighboring half-grid values) the transforms
-// must satisfy
-//   bsubsmns_full(:, jF) == 0.5 * (bsubsmns(:, jF+1) + bsubsmns(:, jF)).
-// The axis (jF=0) and edge (jF=ns-1) are extrapolated in realspace
-// (ExtrapolateBSubS), so they are excluded. This also guards the regression
-// where bsubsmns_full was never assigned and was emitted as an empty (0, 0)
-// array.
-TEST_P(WOutFileContentsTest, BSubSFullMatchesInterpolatedBSubSHalf) {
-  const std::string filename =
-      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
-  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
-  ASSERT_TRUE(indata_json.ok());
-
-  const absl::StatusOr<VmecINDATA> vmec_indata =
-      VmecINDATA::FromJson(*indata_json);
-  ASSERT_TRUE(vmec_indata.ok());
-
-  auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
-  ASSERT_TRUE(maybe_vmec.ok());
-  Vmec& vmec = **maybe_vmec;
-
-  const bool reached_checkpoint = vmec.run().value();
-  ASSERT_FALSE(reached_checkpoint);
-
-  const WOutFileContents& wout = vmec.output_quantities_.wout;
-
-  // Both arrays must be fully sized on the Nyquist mode set over all surfaces;
-  // in particular bsubsmns_full must not be the empty matrix it used to default
-  // to.
-  ASSERT_EQ(wout.bsubsmns_full.rows(), wout.mnmax_nyq);
-  ASSERT_EQ(wout.bsubsmns_full.cols(), wout.ns);
-  ASSERT_EQ(wout.bsubsmns.rows(), wout.mnmax_nyq);
-  ASSERT_EQ(wout.bsubsmns.cols(), wout.ns);
-
-  // The identity is mathematical (up to round-off), so use a tight tolerance
-  // independent of the case-specific reference tolerance.
-  constexpr double kInterpolationTolerance = 1.0e-10;
-  for (int jF = 1; jF < wout.ns - 1; ++jF) {
-    for (int mn_nyq = 0; mn_nyq < wout.mnmax_nyq; ++mn_nyq) {
-      const double interpolated =
-          0.5 * (wout.bsubsmns(mn_nyq, jF + 1) + wout.bsubsmns(mn_nyq, jF));
-      EXPECT_TRUE(IsCloseRelAbs(interpolated, wout.bsubsmns_full(mn_nyq, jF),
-                                kInterpolationTolerance))
-          << "jF = " << jF << ", mn_nyq = " << mn_nyq;
-    }  // mn_nyq
-  }  // jF
-}  // BSubSFullMatchesInterpolatedBSubSHalf
 
 INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantities, WOutFileContentsTest,
@@ -1061,6 +1019,46 @@ TEST(SolovevFreeBoundaryLforbal, MatchesEducationalVmecGolden) {
   std::cout << "[lforbal-vs-Fortran-golden] worst abs dev = " << worst_abs
             << ", worst dev normalized by field peak = " << worst_norm << " ("
             << worst_norm_field << ")" << std::endl;
+}
+
+// At ns == 3 the axis entry is also the third-from-last entry, so both ends
+// come from the single interior surface.
+TEST(ExtrapolateBSubS, EndsAreIndependentAtTheSmallestRadialResolution) {
+  const Sizes sizes(/*lasym=*/false, /*nfp=*/1, /*mpol=*/2, /*ntor=*/0,
+                    /*ntheta=*/10, /*nzeta=*/1);
+  FlowControl flow_control(/*lfreeb=*/false, /*delt=*/1.0, /*num_grids=*/1,
+                           /*max_threads=*/1);
+
+  // ns == 3 leaves a single interior full-grid surface, so both ends take its
+  // value.
+  flow_control.ns = 3;
+  BSubSFull three;
+  three.bsubs_full = RowMatrixXd::Zero(flow_control.ns, sizes.nZnT);
+  for (int kl = 0; kl < sizes.nZnT; ++kl) {
+    three.bsubs_full(1 * sizes.nZnT + kl) = 1.0 + kl;
+  }
+  ExtrapolateBSubS(sizes, flow_control, /*m_bsubs_full=*/three);
+  for (int kl = 0; kl < sizes.nZnT; ++kl) {
+    const double interior = 1.0 + kl;
+    EXPECT_EQ(three.bsubs_full(0 * sizes.nZnT + kl), interior);
+    EXPECT_EQ(three.bsubs_full(2 * sizes.nZnT + kl), interior);
+  }
+
+  // From ns == 4 on, each end is the two-point extrapolation of the two
+  // interior surfaces next to it.
+  flow_control.ns = 5;
+  BSubSFull five;
+  five.bsubs_full = RowMatrixXd::Zero(flow_control.ns, sizes.nZnT);
+  for (int jF = 1; jF < flow_control.ns - 1; ++jF) {
+    for (int kl = 0; kl < sizes.nZnT; ++kl) {
+      five.bsubs_full(jF * sizes.nZnT + kl) = jF + 0.5 * kl;
+    }
+  }
+  ExtrapolateBSubS(sizes, flow_control, /*m_bsubs_full=*/five);
+  for (int kl = 0; kl < sizes.nZnT; ++kl) {
+    EXPECT_EQ(five.bsubs_full(0 * sizes.nZnT + kl), 0.0 + 0.5 * kl);
+    EXPECT_EQ(five.bsubs_full(4 * sizes.nZnT + kl), 4.0 + 0.5 * kl);
+  }
 }
 
 }  // namespace vmecpp

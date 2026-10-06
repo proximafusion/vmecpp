@@ -53,7 +53,6 @@ std::vector<double>& MutableFsqrPerCfgCache();
 using vmecpp::vmec_algorithm_constants::kEvenParity;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingMaxPower;
 using vmecpp::vmec_algorithm_constants::kLambdaHighMDampingReferenceM;
-using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerDampingFactor;
 using vmecpp::vmec_algorithm_constants::kLambdaPreconditionerZeroGuard;
 using vmecpp::vmec_algorithm_constants::kOddParity;
 
@@ -406,8 +405,10 @@ IdealMhdModel::IdealMhdModel(
 }
 
 void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
-                                  double tcon0, bool lforbal) {
+                                  double tcon0, bool lforbal,
+                                  double lambda_preconditioner_scale) {
   this->ncurr = ncurr;
+  this->lambda_preconditioner_scale_ = lambda_preconditioner_scale;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
   // The m=1 trig weights below are built on the reduced poloidal grid, so the
@@ -1348,41 +1349,52 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #endif  // _OPENMP
         {
           int vac_thread_id = 0;
+          int vac_team_size = 1;
 #ifdef _OPENMP
           vac_thread_id = omp_get_thread_num();
-          // Correctness depends on the nested team being granted exactly
-          // m_vac_num_threads_ threads: the tangential slices only cover the
-          // whole grid if every vac_thread_id runs. Fail loudly rather than
-          // silently under-cover the grid.
-          CHECK_EQ(omp_get_num_threads(), m_vac_num_threads_)
-              << "Nested vacuum parallel region was not granted the requested "
-                 "number of threads";
+          vac_team_size = omp_get_num_threads();
 #endif  // _OPENMP
-          const absl::StatusOr<bool> rc = (*m_fb_vac_)[vac_thread_id]->update(
-              m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
-              m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-              signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-              &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-              at_checkpoint_iteration);
-          // Reduced across the team; the first error wins.
-          if (!rc.ok()) {
+          if (vac_thread_id == 0) {
+            m_h_.vacuum_team_size = vac_team_size;
+          }
+          // The tangential slices only cover the whole grid if every
+          // vac_thread_id runs. Every thread of the team sees the same size,
+          // so a smaller team skips the solve as a whole.
+          if (vac_team_size == m_vac_num_threads_) {
+            const absl::StatusOr<bool> rc = (*m_fb_vac_)[vac_thread_id]->update(
+                m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
+                m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
+                signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
+                &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+                at_checkpoint_iteration);
+            // Reduced across the team; the first error wins.
+            if (!rc.ok()) {
 #ifdef _OPENMP
 #pragma omp critical
 #endif  // _OPENMP
-            {
-              if (m_h_.vacuum_status.ok()) {
-                m_h_.vacuum_status = rc.status();
+              {
+                if (m_h_.vacuum_status.ok()) {
+                  m_h_.vacuum_status = rc.status();
+                }
               }
             }
-          }
-          // All nested threads follow identical control flow and compute the
-          // same checkpoint result; record it once for the radial team.
-          if (vac_thread_id == 0) {
-            m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
+            // All nested threads follow identical control flow and compute the
+            // same checkpoint result; record it once for the radial team.
+            if (vac_thread_id == 0) {
+              m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
+            }
           }
         }
       }
-      // The 'omp single' barrier publishes the outputs, flag, and status.
+      // The 'omp single' barrier publishes the outputs, flag, status and team
+      // size. Vmec sizes the vacuum team to the grant it finds before each
+      // multigrid step; a different grant here ends the run with an error.
+      if (m_h_.vacuum_team_size != m_vac_num_threads_) {
+        return absl::ResourceExhaustedError(absl::StrFormat(
+            "the free-boundary vacuum solve is partitioned over %d threads, "
+            "but OpenMP granted %d",
+            m_vac_num_threads_, m_h_.vacuum_team_size));
+      }
       // Only a warning here: the boundary may leave the grid transiently while
       // the equilibrium is still moving. Vmec::run turns a still-outside
       // boundary into an error once the run has converged.
@@ -3032,10 +3044,10 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // lambdaPreconditioner
 
   // 1/lamscale^2 converts the stiffness of the internally rescaled lambda
-  // coefficients; the remaining kLambdaPreconditionerDampingFactor / 4 = 0.5
-  // is an inherited, unexplained damping (see vmec_algorithm_constants.h).
-  const double pFactor = kLambdaPreconditionerDampingFactor /
-                         (4.0 * constants_.lamscale * constants_.lamscale);
+  // coefficients; lambda_preconditioner_scale_ scales the inverse stiffness,
+  // 0.5 being the damping inherited from VMEC.
+  const double pFactor = lambda_preconditioner_scale_ /
+                         (constants_.lamscale * constants_.lamscale);
 
   // evaluate preconditioning matrix elements on half-grid
   // on every accessible half-grid point
