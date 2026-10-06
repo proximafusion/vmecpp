@@ -2179,7 +2179,9 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // half-grid values for the tridiagonal m = 0 lambda preconditioner
   if (lambda_precondition_checkerboard_terms_ >= 0.0) {
     for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-      m_h_.lambda_b_half[jH + 1] = bLambda[jH + 1 - r_.nsMinH];
+      if (jH >= r_.nsMinF && jH < r_.nsMaxF) {
+        m_h_.lambda_b_half[jH + 1] = bLambda[jH + 1 - r_.nsMinH];
+      }
     }
   }
 
