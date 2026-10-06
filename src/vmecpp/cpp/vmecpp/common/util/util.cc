@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/globals.h"
+#include "absl/log/initialize.h"
+
 namespace vmecpp {
 
 int VmecStatusCode(const VmecStatus vmec_status) {
@@ -20,6 +23,9 @@ std::string VmecStatusAsString(const VmecStatus vmec_status) {
   switch (vmec_status) {
     case VmecStatus::NORMAL_TERMINATION:
       return "NORMAL_TERMINATION";
+    case VmecStatus::MORE_ITERATIONS_NEEDED:
+      return "MORE_ITERATIONS_NEEDED: the iteration callback stopped the run "
+             "before convergence";
     case VmecStatus::BAD_JACOBIAN:
       return "BAD_JACOBIAN: the Jacobian of the flux-surface geometry "
              "changed sign, i.e. flux surfaces overlap. This can happen "
@@ -344,6 +350,41 @@ int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
   // to nZnT threads. In practice nZnT >> max_threads, so this returns
   // max_threads.
   return std::min(max_threads, n_znt);
+}
+
+int GrantedThreads(const int requested_threads) {
+  int granted_threads = 1;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(requested_threads)
+  {
+#pragma omp single
+    granted_threads = omp_get_num_threads();
+  }
+#else
+  (void)requested_threads;
+#endif  // _OPENMP
+  return granted_threads;
+}
+
+int GrantedNestedThreads(const int outer_threads, const int nested_threads) {
+  int granted_threads = 1;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(outer_threads)
+  {
+#pragma omp single
+    granted_threads = GrantedThreads(nested_threads);
+  }
+#else
+  (void)outer_threads;
+  (void)nested_threads;
+#endif  // _OPENMP
+  return granted_threads;
+}
+
+void InitializeUserLogging() {
+  absl::InitializeLog();
+  absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
+  absl::EnableLogPrefix(false);
 }
 
 }  // namespace vmecpp
