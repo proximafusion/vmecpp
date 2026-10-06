@@ -1211,6 +1211,7 @@ def test_hot_restart_mismatch_raises_dedicated_error():
         vmecpp.run(mismatched, restart_from=base_output, verbose=False)
     assert isinstance(info.value, ValueError)
 
+
 def test_resize_is_in_place():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     vmec_input.resize(4, 3)
