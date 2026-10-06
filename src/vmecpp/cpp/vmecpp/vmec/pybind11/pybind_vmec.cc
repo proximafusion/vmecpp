@@ -59,12 +59,21 @@ void DefEigenProperty(PywrapperClass &pywrapper, const std::string &name,
   pywrapper.def_property(name.c_str(), getter, setter);
 }
 
+// Raised for a mismatch between the hot restart state and the indata; a
+// subclass of ValueError, which these errors used to be.
+py::handle hot_restart_mismatch_error;
+
 template <typename T>
 T &GetValueOrThrow(absl::StatusOr<T> &s) {
   if (!s.ok()) {
     // Could handle more exceptions, but only some are translated to meaningful
     // python exception types.
     // https://pybind11.readthedocs.io/en/stable/advanced/exceptions.html
+    if (s.status().GetPayload(vmecpp::kHotRestartMismatchPayload)) {
+      PyErr_SetString(hot_restart_mismatch_error.ptr(),
+                      std::string(s.status().message()).c_str());
+      throw py::error_already_set();
+    }
     if (absl::IsInvalidArgument(s.status())) {
       throw pybind11::value_error(std::string(s.status().message()));
     } else {
@@ -929,6 +938,10 @@ PYBIND11_MODULE(_vmecpp, m) {
   m.doc() = "pybind11 VMEC++ plugin";
 
   vmecpp::InitializeUserLogging();
+
+  static py::exception<std::invalid_argument> hot_restart_mismatch(
+      m, "HotRestartMismatchError", PyExc_ValueError);
+  hot_restart_mismatch_error = hot_restart_mismatch;
 
   // Compile-time build feature: whether this wheel was built with the Enzyme
   // plugin (CMake option VMECPP_ENABLE_ENZYME). This is a static property of
