@@ -88,7 +88,7 @@ def _wrap_int_as_float(
     value: typing.Any,
     handler: pydantic.SerializerFunctionWrapHandler,
     _: pydantic.FieldSerializationInfo,
-) -> list[float]:
+) -> typing.Any:
     if isinstance(value, (np.ndarray, list)):
         return np.array(value).astype(np.float64).tolist()
     return handler(value)
