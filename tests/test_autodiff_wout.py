@@ -1,7 +1,5 @@
 """The JAX output stage against the C++ one, the VmecWOut pytree, and gradients."""
 
-import subprocess
-import sys
 from pathlib import Path
 
 import jax
@@ -231,17 +229,26 @@ def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:
         _assert_field_close(name, value, getattr(expected, name), expected)
 
 
-def test_run_returns_the_output_stage_wout() -> None:
+def test_run_returns_the_cpp_output_stage_wout(monkeypatch) -> None:
+    """A concrete run takes its wout from the C++ output stage; the JAX stage is for
+    traced runs only."""
+
+    def fail(*_):
+        message = "run() evaluated the JAX output stage"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(vmecpp, "_wout_from_output_stage", fail)
+    monkeypatch.setattr(autodiff_wout, "wout_quantities", fail)
     indata = _load_input("solovev", 1.0e-12)
     wout = vmecpp.run(indata, max_threads=1, verbose=False).wout
     output = _vmecpp.run(
         indata._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT, max_threads=1
     )
-    reference = vmecpp._wout_from_output_stage(indata, output)
+    reference = vmecpp.VmecWOut._from_cpp_wout(output.wout)
     for name in autodiff_wout.WOUT_QUANTITIES:
-        value = getattr(wout, name)
-        assert value is None or isinstance(value, float | np.ndarray), name
-        np.testing.assert_array_equal(value, getattr(reference, name), err_msg=name)
+        np.testing.assert_array_equal(
+            getattr(wout, name), getattr(reference, name), err_msg=name
+        )
 
 
 def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
@@ -265,21 +272,6 @@ def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
     np.testing.assert_allclose(
         actual.rmnc, expected.rmnc, rtol=0.0, atol=1.0e-12 * np.abs(expected.rmnc).max()
     )
-
-
-def test_cli_uses_the_cpp_output_stage(tmp_path) -> None:
-    script = (
-        "import runpy, sys\n"
-        "import vmecpp\n"
-        "def fail(*args):\n"
-        "    raise AssertionError('the CLI evaluated the JAX output stage')\n"
-        "vmecpp._wout_from_output_stage = fail\n"
-        f"sys.argv = ['vmecpp', {str(TEST_DATA_DIR / 'solovev.json')!r}, '--quiet']\n"
-        "runpy.run_module('vmecpp', run_name='__main__')\n"
-    )
-    subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)
-    wout = vmecpp.VmecWOut.from_wout_file(tmp_path / "wout_solovev.nc")
-    assert wout.ns == 55
 
 
 def test_wout_quantities_accept_a_prescribed_iota(solved_case) -> None:

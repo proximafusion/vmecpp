@@ -33,7 +33,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, gmres
+import scipy.linalg
 
 from vmecpp import autodiff_wout, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
@@ -366,6 +366,149 @@ def _structural_nullfree_interior(
     return np.asarray(keep, dtype=np.int64)
 
 
+class _BlockTridiagonal:
+    """A matrix that is block tridiagonal in the surface index, solved by block LU.
+
+    ``surface[k]`` is the surface of unknown ``k``. Unknowns on the same surface
+    form one diagonal block; ``lower[j]`` and ``upper[j]`` couple surface ``j`` to
+    ``j - 1`` and ``j + 1``. Blocks are stored dense and padded to the largest
+    surface.
+    """
+
+    def __init__(self, surface: np.ndarray) -> None:
+        self.surface = surface
+        self.ns = int(surface.max()) + 1
+        self.members = [np.nonzero(surface == j)[0] for j in range(self.ns)]
+        self.local = np.zeros(surface.size, dtype=np.int64)
+        for members in self.members:
+            self.local[members] = np.arange(members.size)
+        width = max(members.size for members in self.members)
+        self.diagonal = np.zeros((self.ns, width, width))
+        self.lower = np.zeros((self.ns, width, width))
+        self.upper = np.zeros((self.ns, width, width))
+        self.pivots: list[np.ndarray] = []
+
+    def set_entries(self, rows: np.ndarray, columns: np.ndarray, values) -> None:
+        offset = self.surface[columns] - self.surface[rows]
+        if np.any(np.abs(offset) > 1):
+            error_message = "entry outside the block tridiagonal band"
+            raise ValueError(error_message)
+        for band, blocks in ((-1, self.lower), (0, self.diagonal), (1, self.upper)):
+            mask = offset == band
+            blocks[
+                self.surface[rows[mask]],
+                self.local[rows[mask]],
+                self.local[columns[mask]],
+            ] = values[mask]
+
+    def _block(self, blocks: np.ndarray, j: int, k: int) -> np.ndarray:
+        return blocks[j, : self.members[j].size, : self.members[k].size]
+
+    def matvec(self, vector: np.ndarray) -> np.ndarray:
+        result = np.zeros_like(vector)
+        for j, members in enumerate(self.members):
+            result[members] = self._block(self.diagonal, j, j) @ vector[members]
+            if j > 0:
+                result[members] += (
+                    self._block(self.lower, j, j - 1) @ vector[self.members[j - 1]]
+                )
+            if j + 1 < self.ns:
+                result[members] += (
+                    self._block(self.upper, j, j + 1) @ vector[self.members[j + 1]]
+                )
+        return result
+
+    def factorize(self) -> None:
+        """Block Thomas elimination: LU-factor each Schur complement in place."""
+        self.pivots = []
+        for j in range(self.ns):
+            schur = self._block(self.diagonal, j, j)
+            if j > 0:
+                # upper[j-1] <- D'[j-1]^{-1} upper[j-1], then D'[j] = D[j] - L[j] U'[j-1]
+                coupling = scipy.linalg.lu_solve(
+                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
+                    self._block(self.upper, j - 1, j),
+                )
+                self._block(self.upper, j - 1, j)[...] = coupling
+                schur -= self._block(self.lower, j, j - 1) @ coupling
+            factor, pivots = scipy.linalg.lu_factor(schur, check_finite=False)
+            self._block(self.diagonal, j, j)[...] = factor
+            self.pivots.append(pivots)
+
+    def solve(self, rhs: np.ndarray) -> np.ndarray:
+        forward = np.zeros_like(rhs)
+        for j, members in enumerate(self.members):
+            forward[members] = rhs[members]
+            if j > 0:
+                forward[members] -= self._block(
+                    self.lower, j, j - 1
+                ) @ scipy.linalg.lu_solve(
+                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
+                    forward[self.members[j - 1]],
+                )
+        result = np.zeros_like(rhs)
+        for j in range(self.ns - 1, -1, -1):
+            members = self.members[j]
+            result[members] = scipy.linalg.lu_solve(
+                (self._block(self.diagonal, j, j), self.pivots[j]), forward[members]
+            )
+            if j + 1 < self.ns:
+                result[members] -= (
+                    self._block(self.upper, j, j + 1) @ result[self.members[j + 1]]
+                )
+        return result
+
+
+def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
+    """``H^T`` restricted to ``solved``, exactly, from coloured Hessian products.
+
+    The force on surface ``j`` depends only on the state on surfaces ``j - 1``,
+    ``j`` and ``j + 1``, so the operator is block tridiagonal in the surface index.
+    One product ``H p`` with ``p`` the indicator of every solved entry of one
+    mode on the surfaces ``j % 3 == c`` recovers all of those columns at once:
+    rows on surface ``i`` can only come from the one probed surface among
+    ``i - 1, i, i + 1``. That is ``3 * (modes per surface)`` products in total,
+    independent of ``ns``. ``H`` rather than ``H^T`` is probed because the
+    forward product is several times cheaper; the transpose is taken on storage.
+    """
+    state_size = int(np.asarray(model.get_state()).size)
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    surface = np.zeros(state_size, dtype=np.int64)
+    mode = np.zeros(state_size, dtype=np.int64)
+    for index, span in enumerate(_span_slices(model).values()):
+        local = np.arange(span.stop - span.start)
+        surface[span] = local // modes_per_surface
+        mode[span] = index * modes_per_surface + local % modes_per_surface
+    solved_surface = surface[solved]
+    matrix = _BlockTridiagonal(solved_surface)
+    # One probe per (color, mode): group the solved entries once by that key.
+    n_modes = int(mode.max()) + 1
+    group_key = (solved_surface % 3) * n_modes + mode[solved]
+    order = np.argsort(group_key, kind="stable")
+    boundaries = np.flatnonzero(np.diff(group_key[order])) + 1
+    # probed_position[j + 1]: position in solved of the probed entry on surface j,
+    # padded so the neighbours j = -1 and j = ns of the edge surfaces read -1.
+    probed_position = np.full(matrix.ns + 2, -1, dtype=np.int64)
+    for group in np.split(order, boundaries):
+        color = int(group_key[group[0]]) // n_modes
+        probe = np.zeros(state_size)
+        probe[solved[group]] = 1.0
+        product = np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(probe)),
+            dtype=np.float64,
+        )[solved]
+        hit = np.flatnonzero(product)
+        hit_surface = solved_surface[hit]
+        column_surface = hit_surface - ((hit_surface - color + 1) % 3 - 1)
+        probed_position[solved_surface[group] + 1] = group
+        column = probed_position[column_surface + 1]
+        probed_position[solved_surface[group] + 1] = -1
+        found = column >= 0
+        # (H^T)[column, row] = H[row, column]
+        matrix.set_entries(column[found], hit[found], product[hit[found]])
+    return matrix
+
+
 def _implicit_vjp(
     model, geometry_bar: np.ndarray, with_profiles: bool = False
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -403,48 +546,26 @@ def _implicit_vjp(
     # Deflate the structural null space; without this the transposed
     # interior system is singular and inconsistent in 3D.
     interior = _structural_nullfree_interior(model, interior)
-
-    def transpose(value: np.ndarray) -> np.ndarray:
-        return np.asarray(
-            model.exact_hessian_vector_product_transpose(np.ascontiguousarray(value)),
-            dtype=np.float64,
-        )
-
-    def matvec(value: np.ndarray) -> np.ndarray:
-        embedded = np.zeros(state_size)
-        embedded[interior] = value
-        return transpose(embedded)[interior]
-
-    def precondition(value: np.ndarray) -> np.ndarray:
-        embedded = np.zeros(state_size)
-        embedded[interior] = value
-        return np.asarray(
-            model.apply_preconditioner(np.ascontiguousarray(embedded)),
-            dtype=np.float64,
-        )[interior]
-
-    operator_factory: Any = LinearOperator
-    operator = operator_factory(
-        (interior.size, interior.size), matvec=matvec, dtype=np.float64
-    )
-    preconditioner = operator_factory(
-        (interior.size, interior.size), matvec=precondition, dtype=np.float64
-    )
-    adjoint, info = gmres(
-        operator,
-        state_bar[interior],
-        M=preconditioner,
-        rtol=1.0e-8,
-        restart=200,
-        maxiter=400,
-    )
-    if info != 0:
-        error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
-        raise RuntimeError(error_message)
+    matrix = _assemble_block_tridiagonal(model, interior)
+    matrix.factorize()
     embedded = np.zeros(state_size)
-    embedded[interior] = adjoint
+    embedded[interior] = matrix.solve(state_bar[interior])
+    transposed = np.asarray(
+        model.exact_hessian_vector_product_transpose(np.ascontiguousarray(embedded)),
+        dtype=np.float64,
+    )
+    # The interior rows of the same product are the residual of the direct solve:
+    # a free check that the assembly and the factorization are sound.
+    residual = float(np.linalg.norm(transposed[interior] - state_bar[interior]))
+    residual_scale = max(float(np.linalg.norm(state_bar[interior])), 1.0e-300)
+    if residual > 1.0e-6 * residual_scale:
+        error_message = (
+            "VMEC++ implicit adjoint solve failed: relative residual "
+            f"{residual / residual_scale:.3e}"
+        )
+        raise RuntimeError(error_message)
     full_state_bar = np.zeros(state_size)
-    full_state_bar[prescribed] = state_bar[prescribed] - transpose(embedded)[prescribed]
+    full_state_bar[prescribed] = state_bar[prescribed] - transposed[prescribed]
     full_state_bar = _pull_gauge_back_to_boundary(model, full_state_bar, gauge)
     profile_bar = np.zeros((3, model.ns - 1))
     if with_profiles:

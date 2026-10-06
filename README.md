@@ -49,6 +49,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 - [Usage](#usage)
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
+  - [With JAX for gradients](#differentiable-runs)
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -117,6 +118,40 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 print(f"Computed plasma volume: {vmec.volume()}")
 ```
 
+## Differentiable runs
+
+> [!NOTE]
+> The autodiff API is not yet stable. We are planning to make autodiff the default
+> behaviour and to release a suitable pip wheel in the upcoming weeks.
+
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
+
+Leaves that change shape depending on iteration progress (`fsqt` trace for example)
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
+tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
+and diagnostics are `None`.
+
+```python
+import jax
+import jax.numpy as jnp
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
+
+
+def aspect(rbc, zbs):
+    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
+    return vmecpp.run(boundary, verbose=False).wout.aspect
+
+
+rbc = jnp.asarray(vmec_input.rbc)
+zbs = jnp.asarray(vmec_input.zbs)
+d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
+```
 ### As a command line tool
 
 You can use VMEC++ directly as a CLI tool.
@@ -303,41 +338,6 @@ vmec_input.niter_array = vmec_input.niter_array[-1:]
 hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
 ```
 
-## Differentiable runs
-
-> [!NOTE]
-> The autodiff API is not yet stable. We are planning to make autodiff the default
-> behaviour and to release a suitable pip wheel in the upcoming weeks.
-
-The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
-in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
-When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
-force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
-Otherwise it returns NumPy arrays as before.
-
-Leaves that change shape depending on iteration progress (`fsqt` trace for example)
-are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
-tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
-and diagnostics are `None`.
-
-```python
-import jax
-import jax.numpy as jnp
-import vmecpp
-
-vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
-
-
-def aspect(rbc, zbs):
-    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
-    return vmecpp.run(boundary, verbose=False).wout.aspect
-
-
-rbc = jnp.asarray(vmec_input.rbc)
-zbs = jnp.asarray(vmec_input.zbs)
-d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
-```
-
 ## Full tests and validation against the reference Fortran VMEC v8.52
 
 When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.
@@ -382,20 +382,6 @@ VMEC++:
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
-
-## Roadmap
-
-Some of the things we are planning for VMEC++'s future:
-- [x] free-boundary hot-restart in Python
-- [X] open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
-- [x] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
-- [x] VMEC++ usable as a C++ bazel module
-
-Some items we do not plan to work on, but where community ownership is welcome:
-- [ ] packaging VMEC++ for platforms or package managers other than pip (e.g. conda, homebrew, ...)
-- [ ] native Windows support
-- [x] ARM support
-- [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## Related repositories
 
