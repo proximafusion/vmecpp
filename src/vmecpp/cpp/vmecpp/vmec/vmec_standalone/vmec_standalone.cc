@@ -5,9 +5,11 @@
 #include <iostream>
 #include <string>
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "util/file_io/file_io.h"
+#include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
@@ -18,6 +20,8 @@ using vmecpp::VmecINDATA;
 using file_io::ReadFile;
 
 int main(int argc, char **argv) {
+  vmecpp::InitializeUserLogging();
+
   if (argc < 2 || argc > 3) {
     std::cerr << "usage: " << argv[0] << " input_file.json [n_max_threads]\n";
     return 1;
@@ -40,7 +44,14 @@ int main(int argc, char **argv) {
 
   std::optional<int> max_threads = std::nullopt;
   if (argc == 3) {
-    max_threads = std::atoi(argv[2]);
+    int parsed_max_threads = 0;
+    if (!absl::SimpleAtoi(argv[2], &parsed_max_threads) ||
+        parsed_max_threads < 1) {
+      std::cerr << "n_max_threads must be a positive integer, but is '"
+                << argv[2] << "'\n";
+      return 1;
+    }
+    max_threads = parsed_max_threads;
   }
 
   const absl::StatusOr<OutputQuantities> out =

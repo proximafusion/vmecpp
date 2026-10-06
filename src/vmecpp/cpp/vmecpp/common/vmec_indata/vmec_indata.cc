@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -127,6 +128,36 @@ absl::Status CheckProfile(const std::string& type_key,
     }
   }
 
+  return absl::OkStatus();
+}
+
+// The sum_cossq_s and sum_cossq_sqrts current profiles take the number of
+// cos^2 humps from ac[0], which sets their spacing 1 / (ac[0] - 1), and
+// sum_cossq_s_free takes a half-width per hump from ac[3 i + 2]; a hump count
+// below two or a non-positive half-width cannot be evaluated.
+absl::Status CheckSumCossqCoefficients(const std::string& pcurr_type,
+                                       const Eigen::VectorXd& ac) {
+  const auto coefficient = [&ac](int i) { return i < ac.size() ? ac[i] : 0.0; };
+  if (pcurr_type == "sum_cossq_s" || pcurr_type == "sum_cossq_sqrts") {
+    const double num_humps = coefficient(0);
+    if (num_humps != std::floor(num_humps) || num_humps < 2.0 ||
+        num_humps > 20.0) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variable 'pcurr_type' is '%s', so 'ac[0]' must be the "
+          "number of cos^2 humps, an integer from 2 to 20, but is %g\n",
+          pcurr_type, num_humps));
+    }
+  } else if (pcurr_type == "sum_cossq_s_free") {
+    for (int i = 0; i < 7; ++i) {
+      if (coefficient(3 * i) != 0.0 && coefficient(3 * i + 2) <= 0.0) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "input variable 'pcurr_type' is 'sum_cossq_s_free', so 'ac[%d]' "
+            "must be the positive half-width of the hump with amplitude "
+            "'ac[%d]' = %g, but is %g\n",
+            3 * i + 2, 3 * i, coefficient(3 * i), coefficient(3 * i + 2)));
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -299,10 +330,15 @@ VmecINDATA::VmecINDATA() {
   aphi.resize(1);
   aphi[0] = 1.0;
   delt = 1.0;
-  tcon0 = 0.5;
+  tcon0 = 1.0;
   lforbal = false;
+  lambda_preconditioner_scale = 0.5;
+  lbsubs = false;
+  backup_evaluated_state = true;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
+  lgiveup = false;
+  fgiveup = 30.0;
 
   // zero-initialized magnetic axis
   raxis_c.setZero(ntor + 1);
@@ -429,8 +465,15 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(lambda_preconditioner_scale,
+                 "/indata/lambda_preconditioner_scale", file);
+  WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
+  WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
+                 file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
+  WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
+  WriteH5Dataset(fgiveup, "/indata/fgiveup", file);
 
   // 1D arrays
   WriteH5Dataset(ns_array, "/indata/ns_array", file);
@@ -540,6 +583,29 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   ReadH5Dataset(m_indata.delt, "/indata/delt", from_file);
   ReadH5Dataset(m_indata.tcon0, "/indata/tcon0", from_file);
   ReadH5Dataset(m_indata.lforbal, "/indata/lforbal", from_file);
+  // Legacy way of checking for dataset existence
+  if (H5Lexists(from_file.getId(), "/indata/lambda_preconditioner_scale", 0) ==
+      1) {
+    ReadH5Dataset(m_indata.lambda_preconditioner_scale,
+                  "/indata/lambda_preconditioner_scale", from_file);
+  } else {
+    m_indata.lambda_preconditioner_scale = 0.5;
+  }
+
+  // Legacy way of checking for dataset existence
+  // Older HDF5 files predate this field; fall back to the default if absent.
+  if (H5Lexists(from_file.getId(), "/indata/lbsubs", 0) == 1) {
+    ReadH5Dataset(m_indata.lbsubs, "/indata/lbsubs", from_file);
+  } else {
+    m_indata.lbsubs = false;
+  }
+
+  if (H5Lexists(from_file.getId(), "/indata/backup_evaluated_state", 0) == 1) {
+    ReadH5Dataset(m_indata.backup_evaluated_state,
+                  "/indata/backup_evaluated_state", from_file);
+  } else {
+    m_indata.backup_evaluated_state = true;
+  }
 
   // Legacy way of checking for dataset existence
   if (H5Lexists(from_file.getId(),
@@ -548,6 +614,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/return_outputs_even_if_not_converged", from_file);
   } else {
     m_indata.return_outputs_even_if_not_converged = false;
+  }
+  if (from_file.nameExists("/indata/lgiveup")) {
+    ReadH5Dataset(m_indata.lgiveup, "/indata/lgiveup", from_file);
+    ReadH5Dataset(m_indata.fgiveup, "/indata/fgiveup", from_file);
   }
 
   // 1D arrays
@@ -1044,6 +1114,32 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.lforbal = maybe_lforbal->value();
   }
 
+  auto maybe_lambda_preconditioner_scale =
+      JsonReadDouble(j, "lambda_preconditioner_scale");
+  if (!maybe_lambda_preconditioner_scale.ok()) {
+    return maybe_lambda_preconditioner_scale.status();
+  }
+  if (maybe_lambda_preconditioner_scale->has_value()) {
+    vmec_indata.lambda_preconditioner_scale =
+        maybe_lambda_preconditioner_scale->value();
+  }
+
+  auto maybe_lbsubs = JsonReadBool(j, "lbsubs");
+  if (!maybe_lbsubs.ok()) {
+    return maybe_lbsubs.status();
+  }
+  if (maybe_lbsubs->has_value()) {
+    vmec_indata.lbsubs = maybe_lbsubs->value();
+  }
+
+  auto maybe_backup_evaluated_state = JsonReadBool(j, "backup_evaluated_state");
+  if (!maybe_backup_evaluated_state.ok()) {
+    return maybe_backup_evaluated_state.status();
+  }
+  if (maybe_backup_evaluated_state->has_value()) {
+    vmec_indata.backup_evaluated_state = maybe_backup_evaluated_state->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1066,6 +1162,22 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   if (maybe_return_outputs_even_if_not_converged->has_value()) {
     vmec_indata.return_outputs_even_if_not_converged =
         maybe_return_outputs_even_if_not_converged->value();
+  }
+
+  auto maybe_lgiveup = JsonReadBool(j, "lgiveup");
+  if (!maybe_lgiveup.ok()) {
+    return maybe_lgiveup.status();
+  }
+  if (maybe_lgiveup->has_value()) {
+    vmec_indata.lgiveup = maybe_lgiveup->value();
+  }
+
+  auto maybe_fgiveup = JsonReadDouble(j, "fgiveup");
+  if (!maybe_fgiveup.ok()) {
+    return maybe_fgiveup.status();
+  }
+  if (maybe_fgiveup->has_value()) {
+    vmec_indata.fgiveup = maybe_fgiveup->value();
   }
 
   // -----------------------------------------------
@@ -1374,9 +1486,14 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["delt"] = delt;
   output["tcon0"] = tcon0;
   output["lforbal"] = lforbal;
+  output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
+  output["lbsubs"] = lbsubs;
+  output["backup_evaluated_state"] = backup_evaluated_state;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
+  output["lgiveup"] = lgiveup;
+  output["fgiveup"] = fgiveup;
 
   // Initial Guess for Magnetic Axis Geometry
   output["raxis_c"] = raxis_c;
@@ -1660,6 +1777,11 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
       !status.ok()) {
     return status;
   }
+  if (absl::Status status =
+          CheckSumCossqCoefficients(vmec_indata.pcurr_type, vmec_indata.ac);
+      !status.ok()) {
+    return status;
+  }
 
   if (vmec_indata.ncurr == 0) {
     if (vmec_indata.bloat != 1.0) {
@@ -1726,6 +1848,13 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.delt));
   }
 
+  if (vmec_indata.lgiveup && vmec_indata.fgiveup <= 0.0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'fgiveup' is a multiple of ftol and must be positive "
+        "when 'lgiveup' is set, but is %g\n",
+        vmec_indata.fgiveup));
+  }
+
   // tcon0
   if (vmec_indata.tcon0 < 0.0 || vmec_indata.tcon0 > 1.0) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -1733,8 +1862,19 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         vmec_indata.tcon0));
   }
 
+  if (!(vmec_indata.lambda_preconditioner_scale > 0.0) ||
+      !std::isfinite(vmec_indata.lambda_preconditioner_scale)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'lambda_preconditioner_scale' has to be positive and "
+        "finite, but is %g\n",
+        vmec_indata.lambda_preconditioner_scale));
+  }
+
   // lforbal
   // nothing to check here: lforbal can be true or false and both are valid...
+
+  // lbsubs
+  // nothing to check here: lbsubs can be true or false and both are valid...
 
   // iteration_style
   // VMEC_8_52 and PARVMEC are both implemented in Vmec::SolveEquilibriumLoop.

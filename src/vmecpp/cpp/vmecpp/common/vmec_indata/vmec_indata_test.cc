@@ -176,8 +176,10 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.nstep, 10);
   EXPECT_THAT(indata.aphi, ElementsAre(1.0));
   EXPECT_EQ(indata.delt, 1.0);
-  EXPECT_EQ(indata.tcon0, 0.5);
+  EXPECT_EQ(indata.tcon0, 1.0);
   EXPECT_EQ(indata.lforbal, false);
+  EXPECT_EQ(indata.lbsubs, false);
+  EXPECT_EQ(indata.backup_evaluated_state, true);
 
   // initial guess for magnetic axis
   EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
@@ -278,6 +280,38 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
   // empty polynomial coefficients stay acceptable
   indata.pmass_type = "power_series";
   indata.am = Eigen::VectorXd();
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// The sum_cossq current profiles read their hump layout from ac: a hump count
+// in ac[0] for the equidistant forms and a half-width per hump for the free
+// form.
+TEST(TestVmecINDATA, CheckSumCossqProfilesNeedAValidHumpLayout) {
+  VmecINDATA indata;
+  indata.ncurr = 1;
+  for (const std::string type : {"sum_cossq_s", "sum_cossq_sqrts"}) {
+    indata.pcurr_type = type;
+    for (double num_humps : {1.0, 2.5, 21.0}) {
+      indata.ac = Eigen::VectorXd::Constant(4, 1.0);
+      indata.ac[0] = num_humps;
+      EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+                absl::StatusCode::kInvalidArgument)
+          << type << " with ac[0] = " << num_humps;
+    }
+    indata.ac[0] = 3.0;
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << type;
+  }
+
+  indata.pcurr_type = "sum_cossq_s_free";
+  indata.ac = Eigen::VectorXd(3);
+  indata.ac << 1.0, 0.5, 0.0;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ac << 1.0, 0.5, 0.1;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  // a hump of zero amplitude may have zero width
+  indata.ac << 0.0, 0.5, 0.0;
   EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
@@ -675,6 +709,9 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.delt, indata_from_file.delt);
   EXPECT_EQ(indata.tcon0, indata_from_file.tcon0);
   EXPECT_EQ(indata.lforbal, indata_from_file.lforbal);
+  EXPECT_EQ(indata.lbsubs, indata_from_file.lbsubs);
+  EXPECT_EQ(indata.backup_evaluated_state,
+            indata_from_file.backup_evaluated_state);
   EXPECT_EQ(indata.raxis_c, indata_from_file.raxis_c);
   EXPECT_EQ(indata.zaxis_s, indata_from_file.zaxis_s);
   EXPECT_EQ(indata.raxis_s, indata_from_file.raxis_s);
@@ -887,6 +924,8 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.delt, indata.delt);
   EXPECT_EQ(copy.tcon0, indata.tcon0);
   EXPECT_EQ(copy.lforbal, indata.lforbal);
+  EXPECT_EQ(copy.lbsubs, indata.lbsubs);
+  EXPECT_EQ(copy.backup_evaluated_state, indata.backup_evaluated_state);
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);

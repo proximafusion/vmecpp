@@ -85,6 +85,35 @@ def test_get_outputs_if_non_converged_if_wanted():
     assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
 
 
+def test_bad_initial_jacobian_is_retried_from_three_surfaces():
+    # ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ: its initial Jacobian stays
+    # bad at ns = 25 after the axis guess, and it converges from a solve at ns = 3
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_bad_initial_jacobian.json"
+    )
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+    # the non-stellarator-symmetric path retries the same way and reproduces the
+    # symmetric result
+    zeros = np.zeros_like(np.asarray(vmec_input.rbc))
+    axis_zeros = np.zeros(vmec_input.ntor + 1)
+    lasym_input = vmec_input.model_copy(
+        update={
+            "lasym": True,
+            "rbs": zeros.copy(),
+            "zbc": zeros.copy(),
+            "raxis_s": axis_zeros.copy(),
+            "zaxis_c": axis_zeros.copy(),
+        }
+    )
+    lasym_wout = vmecpp.run(lasym_input, verbose=False).wout
+    assert lasym_wout.ier_flag == 0
+    np.testing.assert_allclose(lasym_wout.rmnc, wout.rmnc, rtol=0.0, atol=2e-11)
+    np.testing.assert_allclose(lasym_wout.zmns, wout.zmns, rtol=0.0, atol=2e-11)
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
@@ -155,6 +184,59 @@ def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
     assert loaded_wout is not None
     assert loaded_wout.mgrid_file == ""
     assert "mgrid_file" in caplog.text
+
+
+def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
+    """An mgrid file whose mode is "N" runs, and the mode reads as unset, also after a
+    round trip through a wout file."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    # the response table written as an mgrid file whose mode is "N"
+    grid = {
+        "phi": makegrid_params.number_of_phi_grid_points,
+        "zee": makegrid_params.number_of_z_grid_points,
+        "rad": makegrid_params.number_of_r_grid_points,
+    }
+    header = {
+        "ir": grid["rad"],
+        "jz": grid["zee"],
+        "kp": grid["phi"],
+        "nfp": makegrid_params.number_of_field_periods,
+        "nextcur": len(response.b_r),
+        "rmin": makegrid_params.r_grid_minimum,
+        "rmax": makegrid_params.r_grid_maximum,
+        "zmin": makegrid_params.z_grid_minimum,
+        "zmax": makegrid_params.z_grid_maximum,
+    }
+    mgrid_file = tmp_path / "mgrid_mode_none.nc"
+    with netCDF4.Dataset(mgrid_file, "w") as fnc:
+        for name, size in {**grid, "dim_00001": 1}.items():
+            fnc.createDimension(name, size)
+        for name, value in header.items():
+            fnc.createVariable(name, "i4" if isinstance(value, int) else "f8")
+            fnc.variables[name].assignValue(value)
+        fnc.createVariable("mgrid_mode", "S1", ("dim_00001",))[:] = np.array([b"N"])
+        fields = {"br": response.b_r, "bp": response.b_p, "bz": response.b_z}
+        for i in range(len(response.b_r)):
+            for name, b in fields.items():
+                variable = fnc.createVariable(f"{name}_{i + 1:03d}", "f8", tuple(grid))
+                variable[:] = b[i].reshape(tuple(grid.values()))
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.mgrid_file = str(mgrid_file)
+
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.mgrid_mode == ""
+
+    wout_filename = tmp_path / "wout_mgrid_mode_none.nc"
+    wout.save(wout_filename)
+    assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == ""
 
 
 def test_vmecinput_io():
@@ -228,7 +310,26 @@ _MISSING_FORTRAN_VARIABLES = [
 in wout files produced by VMEC++."""
 
 
-def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
+def _to_8_52_reference(varname, actual, desired, xm_nyq):
+    """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
+
+    VMEC++ writes B_s on the full grid.
+    """
+    if varname in ("bsubsmns", "bsubsmnc"):
+        # the 8.52 half grid averaged to the interior full-grid surfaces
+        return actual[1:-1], 0.5 * (desired[1:-1] + desired[2:])
+    if varname in ("currumnc", "currvmnc", "currumns", "currvmns"):
+        # odd m use the full-grid B_s instead of its sqrt(s)-weighted average
+        even = xm_nyq % 2 == 0
+        return actual[:, even], desired[:, even]
+    return actual, desired
+
+
+def test_vmecwout_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    # The reference restarts from the advanced state.
+    vmec_input.backup_evaluated_state = False
+    cma_output = vmecpp.run(vmec_input, verbose=False)
     with tempfile.NamedTemporaryFile() as tmp_file:
         cma_output.wout.save(tmp_file.name)
 
@@ -290,6 +391,9 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -313,6 +417,8 @@ def test_vmecwout_io(cma_output: vmecpp.VmecOutput):
 )
 def test_against_reference_wout(indata_file, reference_wout_file, path_type):
     indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
     if indata.lfreeb:
         indata.mgrid_file = str(
             REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
@@ -379,6 +485,9 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             # computeBContra.
             actual = actual[..., 1:-1]
             desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
         np.testing.assert_allclose(
             actual,
             desired,
@@ -387,6 +496,18 @@ def test_against_reference_wout(indata_file, reference_wout_file, path_type):
             atol=atol,
             equal_nan=True,
         )
+
+
+def test_run_reports_the_spectral_width_of_the_solver():
+    """vmecpp.run returns the spectral width the C++ solver computes."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_output = _vmecpp.run(
+        vmec_input._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+    )
+    np.testing.assert_array_equal(output.wout.specw, cpp_output.wout.specw)
 
 
 def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
@@ -425,11 +546,12 @@ def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
 def test_vmecwout_holds_jax_arrays(cma_output: vmecpp.VmecOutput):
     jnp = pytest.importorskip("jax.numpy")
     wout = cma_output.wout
-    array_fields = {
-        name: jnp.asarray(value)
-        for name, value in wout.model_dump().items()
-        if isinstance(value, np.ndarray)
-    }
+    with vmecpp.enable_x64(True):
+        array_fields = {
+            name: jnp.asarray(value)
+            for name, value in wout.model_dump().items()
+            if isinstance(value, np.ndarray)
+        }
     jax_wout = vmecpp.VmecWOut.model_validate({**wout.model_dump(), **array_fields})
     assert isinstance(jax_wout.rmnc, type(array_fields["rmnc"]))
 
@@ -658,7 +780,7 @@ def test_ensure_vmec2000_input_noop():
 
 def test_ensure_vmec2000_input_with_null():
     # Test that the null values are handled gracefully and removed from the VMEC2000 input file
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     assert vmec_input.rbs is None
     with tempfile.TemporaryDirectory() as tmp_dir:
         vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
@@ -717,6 +839,61 @@ def test_raise_invalid_threadcount():
         vmecpp.run(vmec_input, max_threads=-1)
     with pytest.raises(RuntimeError):
         vmecpp.run(vmec_input, max_threads=0)
+
+
+def test_run_under_an_openmp_thread_limit():
+    """Runs under OMP_THREAD_LIMIT=2 get fewer threads than they request.
+
+    The fixed-boundary run requests four radial threads and gets two, which makes it the
+    run with two threads. The free-boundary run requests two radial threads with a
+    nested vacuum team of two, which the limit leaves one thread.
+    """
+    script = f"""\
+from pathlib import Path
+
+import vmecpp
+
+data = Path({str(TEST_DATA_DIR)!r})
+fixed = vmecpp.VmecInput.from_file(data / "solovev.json")
+print("fixed", repr(vmecpp.run(fixed, max_threads=4, verbose=False).wout.volume))
+grid = vmecpp.MakegridParameters.from_file(data / "makegrid_parameters_cth_like.json")
+grid.number_of_r_grid_points = 31
+grid.number_of_phi_grid_points = 36
+grid.number_of_z_grid_points = 20
+field = vmecpp.MagneticFieldResponseTable.from_coils_file(data / "coils.cth_like", grid)
+free = vmecpp.VmecInput.from_file(data / "cth_like_free_bdy.json")
+print("free", repr(vmecpp.run(free, field, max_threads=2, verbose=False).wout.volume))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "OMP_THREAD_LIMIT": "2"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    volumes = {}
+    for line in result.stdout.splitlines():
+        words = line.split()
+        if len(words) == 2 and words[0] in ("fixed", "free"):
+            volumes[words[0]] = float(words[1])
+
+    fixed = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    two_threads = vmecpp.run(fixed, max_threads=2, verbose=False)
+    assert volumes["fixed"] == two_threads.wout.volume
+
+    grid = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    grid.number_of_r_grid_points = 31
+    grid.number_of_phi_grid_points = 36
+    grid.number_of_z_grid_points = 20
+    field = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", grid
+    )
+    free = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    two_vacuum_threads = vmecpp.run(free, field, max_threads=2, verbose=False)
+    assert volumes["free"] == pytest.approx(two_vacuum_threads.wout.volume, rel=1e-10)
 
 
 def test_vmec_input_validation():
@@ -807,7 +984,7 @@ def test_aux_arrays_from_cpp_wout():
 
 
 def test_populate_raw_profile_knots():
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     vmec_input.ns_array = np.array([5, 9])
 
     def f(s):
@@ -830,7 +1007,7 @@ def test_populate_raw_profile_knots():
 
 def test_default_preset():
     # Default construction doesn't throw an exception
-    default_preset = vmecpp.VmecInput.default()
+    default_preset = vmecpp.VmecInput()
     # Sample a few of the default values that should be set
     assert default_preset.nfp == 1
     assert default_preset.mpol == 6
@@ -995,3 +1172,60 @@ def test_hot_restart_from_a_wout_without_full_grid_lambda(tmp_path):
     hot = vmecpp.run(hot_input, restart_from=restart_from, max_threads=1, verbose=False)
 
     assert hot.wout.niter < 10
+
+
+def test_vmec_input_decodes_bytes_string_fields():
+    vmec_input = vmecpp.VmecInput.model_validate(
+        {
+            "mgrid_file": b"mgrid.nc  ",
+            "pmass_type": b"power_series ",
+            "pcurr_type": "power_series",
+        }
+    )
+
+    assert vmec_input.mgrid_file == "mgrid.nc"
+    assert vmec_input.pmass_type == "power_series"
+    assert vmec_input.pcurr_type == "power_series"
+
+
+def test_vmec_input_axis_aliases_read_write_the_axis_fields():
+    vmec_input = vmecpp.VmecInput(lasym=True)
+
+    vmec_input.raxis_cc = np.array([3.0])
+    vmec_input.zaxis_cs = np.array([0.5])
+    vmec_input.raxis_cs = np.array([0.1])
+    vmec_input.zaxis_cc = np.array([0.2])
+
+    np.testing.assert_array_equal(vmec_input.raxis_c, [3.0])
+    np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
+    np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
+    np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+def test_hot_restart_mismatch_raises_dedicated_error():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    base_output = vmecpp.run(vmec_input, verbose=False)
+    mismatched = vmec_input.model_copy(update={"ns_array": vmec_input.ns_array + 2})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ns_array") as info:
+        vmecpp.run(mismatched, restart_from=base_output, verbose=False)
+    assert isinstance(info.value, ValueError)
+
+
+def test_resize_is_in_place():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.resize(4, 3)
+    assert (vmec_input.mpol, vmec_input.ntor) == (4, 3)
+    assert np.asarray(vmec_input.rbc).shape == (4, 7)
+
+
+def test_resize_keeps_a_fourier_continuation_schedule():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    ntor = vmec_input.ntor_max
+    vmec_input.mpol = np.array([4, 6])
+    vmec_input.resize(6, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 6]
+    vmec_input.resize(5, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
+    vmec_input.resize(3, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
