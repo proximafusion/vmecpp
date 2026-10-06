@@ -480,33 +480,33 @@ def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
         local = np.arange(span.stop - span.start)
         surface[span] = local // modes_per_surface
         mode[span] = index * modes_per_surface + local % modes_per_surface
-    position = np.full(state_size, -1, dtype=np.int64)
-    position[solved] = np.arange(solved.size)
-    matrix = _BlockTridiagonal(surface[solved])
-    for color in range(3):
-        in_color = np.zeros(state_size, dtype=bool)
-        in_color[solved[surface[solved] % 3 == color]] = True
-        for probed_mode in np.unique(mode[in_color]):
-            probed = np.nonzero(in_color & (mode == probed_mode))[0]
-            probe = np.zeros(state_size)
-            probe[probed] = 1.0
-            product = np.asarray(
-                model.exact_hessian_vector_product(np.ascontiguousarray(probe)),
-                dtype=np.float64,
-            )
-            hit = solved[product[solved] != 0.0]
-            if hit.size == 0:
-                continue
-            column_surface = surface[hit] - ((surface[hit] - color + 1) % 3 - 1)
-            probed_at = {int(surface[entry]): int(entry) for entry in probed}
-            column = np.asarray(
-                [probed_at.get(int(j), -1) for j in column_surface], dtype=np.int64
-            )
-            found = column >= 0
-            # (H^T)[column, row] = H[row, column]
-            matrix.set_entries(
-                position[column[found]], position[hit[found]], product[hit[found]]
-            )
+    solved_surface = surface[solved]
+    matrix = _BlockTridiagonal(solved_surface)
+    # One probe per (color, mode): group the solved entries once by that key.
+    n_modes = int(mode.max()) + 1
+    group_key = (solved_surface % 3) * n_modes + mode[solved]
+    order = np.argsort(group_key, kind="stable")
+    boundaries = np.flatnonzero(np.diff(group_key[order])) + 1
+    # probed_position[j + 1]: position in solved of the probed entry on surface j,
+    # padded so the neighbours j = -1 and j = ns of the edge surfaces read -1.
+    probed_position = np.full(matrix.ns + 2, -1, dtype=np.int64)
+    for group in np.split(order, boundaries):
+        color = int(group_key[group[0]]) // n_modes
+        probe = np.zeros(state_size)
+        probe[solved[group]] = 1.0
+        product = np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(probe)),
+            dtype=np.float64,
+        )[solved]
+        hit = np.flatnonzero(product)
+        hit_surface = solved_surface[hit]
+        column_surface = hit_surface - ((hit_surface - color + 1) % 3 - 1)
+        probed_position[solved_surface[group] + 1] = group
+        column = probed_position[column_surface + 1]
+        probed_position[solved_surface[group] + 1] = -1
+        found = column >= 0
+        # (H^T)[column, row] = H[row, column]
+        matrix.set_entries(column[found], hit[found], product[hit[found]])
     return matrix
 
 
