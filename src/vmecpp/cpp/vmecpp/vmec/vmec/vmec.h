@@ -145,7 +145,6 @@ absl::StatusOr<OutputQuantities> run(
     std::optional<int> max_threads = std::nullopt,
     OutputMode verbose = OutputMode::kLegacy,
     InterruptCallback interrupt_callback = nullptr,
-    bool always_fix_m1_gauge = false,
     IterationCallback iteration_callback = nullptr);
 
 // This overload enables free-boundary runs with an in-memory mgrid file.

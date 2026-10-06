@@ -392,12 +392,13 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
     """A traced boundary solves through the differentiable path; under jax.jit the
     forward solve is not observable, so only the wout physics fields are set."""
     indata = _cth_like_input()
+    cpp_indata = indata._to_cpp_vmecindata()
+    cpp_indata.always_fix_m1_gauge = True
     reference = vmecpp.VmecWOut._from_cpp_wout(
         _vmecpp.run(
-            indata._to_cpp_vmecindata(),
+            cpp_indata,
             max_threads=1,
             verbose=_vmecpp.OutputMode.SILENT,
-            always_fix_m1_gauge=True,
         ).wout
     )
 
@@ -506,11 +507,12 @@ def test_run_with_a_traced_boundary_fills_the_cpp_outputs() -> None:
     """Under jax.grad the forward solve runs eagerly, so the non-differentiable members
     of the output come from its C++ output stage."""
     indata = _cth_like_input()
+    cpp_indata = indata._to_cpp_vmecindata()
+    cpp_indata.always_fix_m1_gauge = True
     reference = _vmecpp.run(
-        indata._to_cpp_vmecindata(),
+        cpp_indata,
         max_threads=1,
         verbose=_vmecpp.OutputMode.SILENT,
-        always_fix_m1_gauge=True,
     )
     captured = {}
 
@@ -579,11 +581,11 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
 
     def pinned_objective(value):
         cpp_input = _with_boundary(indata, value)._to_cpp_vmecindata()
+        cpp_input.always_fix_m1_gauge = True
         wout = vmecpp.VmecWOut._from_cpp_wout(
             _vmecpp.run(
                 cpp_input,
                 verbose=_vmecpp.OutputMode.SILENT,
-                always_fix_m1_gauge=True,
             ).wout
         )
         return wout.aspect if objective_name == "aspect" else _quasisymmetry_proxy(wout)
