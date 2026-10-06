@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791280733389,
+  "lastUpdate": 1791281457425,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24311,6 +24311,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.31206448699998646,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f00cf1b40091b9c0aee4d269ee5850e9abb002c4",
+          "message": "Raise HotRestartMismatchError on hot restart mismatch (#964)\n\n* Raise HotRestartMismatchError when the hot restart state does not match the input\n\n* Update test_init.py",
+          "timestamp": "2026-10-06T12:01:18+02:00",
+          "tree_id": "f94a22962795a1fa6f1d0e07e5665f1b943846fc",
+          "url": "https://github.com/proximafusion/vmecpp/commit/f00cf1b40091b9c0aee4d269ee5850e9abb002c4"
+        },
+        "date": 1791281453246,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5097312728000134,
+            "range": "stddev: 0.006969614344465379",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.084435472666655,
+            "range": "stddev: 0.02533398751659876",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8923556323333628,
+            "range": "stddev: 0.0028570721279876808",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.3812047976666502,
+            "range": "stddev: 0.05352104633300708",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2728159366666698,
+            "range": "stddev: 0.003998619106252222",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.622626966333352,
+            "range": "stddev: 0.015929411876932437",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.9695616939999923,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.30972280099996397,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
