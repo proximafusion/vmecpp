@@ -125,8 +125,8 @@ def _cosine_series(values_of_phi, count):
 
 
 def _sine_series(values_of_phi, count):
-    """Coefficients c of f = -sum c[n] sin(n NFP phi) of a function f of phi, n < count:
-    zaxis_s of Z and raxis_s of R."""
+    """Coefficients c of f = -sum c[n] sin(n NFP phi), n < count, of a function f of
+    phi: zaxis_s of Z and raxis_s of R."""
     phi = 2.0 * np.pi * np.arange(64) / (64 * NFP)
     values = values_of_phi(phi)
     return np.array(
