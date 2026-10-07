@@ -1,10 +1,11 @@
 name: V&V against exact equilibria
 
 # Runs examples/exact_equilibria.py, which compares VMEC++ with Landreman's exact
-# three-dimensional equilibria (arXiv:2609.26742) over radial and angular resolutions
-# and plots the deviations and their observed orders, and compares its formulas with
-# the functions of landreman/analytic_3d_equilibria at the commit REFERENCE_COMMIT of
-# the script names.
+# three-dimensional equilibria (arXiv:2609.26742) and their generalization without
+# stellarator symmetry by Issan et al. (arXiv:2610.07304) over radial and angular
+# resolutions and plots the deviations and their observed orders, and compares its
+# formulas with the functions of landreman/analytic_3d_equilibria at the commit
+# REFERENCE_COMMIT of the script names.
 #
 # - On every pull request and push to main: the quick suite, up to ns = 100, which
 #   fails when one of its checks on the member "sheared" fails.
@@ -86,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        member: [sheared, sheared-near-3.5, sheared-A, iota2]
+        member: [sheared, sheared-asym, sheared-near-3.5, sheared-A, iota2, iota2-asym]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

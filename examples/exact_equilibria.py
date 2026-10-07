@@ -9,7 +9,12 @@ https://github.com/landreman/analytic_3d_equilibria), gives two families of smoo
 equilibria with exact nested flux surfaces and no continuous symmetry, the field, the
 flux label psi and the pressure being elementary functions of the Cartesian position:
 one with iota = 2 on every surface (the paper's section 2) and one with sheared iota
-(section 3). Both have two field periods and stellarator symmetry.
+(section 3). Both have two field periods and stellarator symmetry. Issan, Citrin,
+Landreman and Tracey, "Analytic non-axisymmetric 3D MHD equilibria without stellarator
+symmetry" (arXiv:2610.07304), add to each family a parameter that breaks stellarator
+symmetry, tau0 to the first (their section 2) and tau1 to the second (their section
+3), Landreman's families being those at zero; members with a nonzero one run with
+lasym.
 
 This file writes VMEC++ inputs for members of both families from the formulas, runs
 VMEC++ over sequences of radial and angular resolutions, and measures, at VMEC++'s own
@@ -34,23 +39,27 @@ The members are:
 - "sheared" (eps = 0.6, S = 2.2, lambda = 2.97, k_b = 0.2): iota from 4.34 to 4.37,
   midway between the resonances at 4 of m = 1 and at 9/2 of m = 4, and beta 1.9 per
   cent; tests/test_exact_equilibrium.py uses it;
+- "sheared-asym", "sheared" with tau1 = 0.15: iota from 4.30 to 4.32, beta 1.9 per
+  cent, and rbs up to 15 per cent of the largest m = 1 rbc; the tests use it too;
 - "sheared-near-3.5" (eps = 1, S = 1.75, lambda = 2.65, k_b = 0.2): iota from 3.43
   to 3.44, 0.06 below the resonance at 7/2 of m = 4, n = 14, and beta 1.8 per cent;
 - "sheared-A", the configuration A of the paper's supplement (eps = 1.08, S = 3,
   lambda = 3.5, k_b = 0.7): iota from 5.69 to 6.22, which crosses 6, and beta 20 per
   cent;
-- "iota2" (eps = 0.25, delta = 1/64): every surface rational.
+- "iota2" (eps = 0.25, delta = 1/64): every surface rational;
+- "iota2-asym", "iota2" with tau0 = 0.5, whose axis, centred at Z = -1/3, has no
+  stellarator symmetry.
 
 The demo suite runs "sheared" at two radial resolutions; the quick suite runs every
-member up to ns = 100, with an angular scan of "sheared" at ns = 100; the full suite
-runs them up to ns = 1000, with an angular scan at ns = 400. With --out the results go
-to DIR as JSON, markdown tables and plots of the deviations against h and mpol and of
-the enclosed current over s. The summary ends with checks on the scans of "sheared":
-convergence in ns at O(h) and in mpol and ntor, the magnetic axis, B against its
-derivative jcurv, and the enclosed current at O(h^2) with its limit at the axis; with
---check a failed check fails the run. With --reference DIR, a checkout of the
-repository at REFERENCE_COMMIT, a further check compares the formulas here with the
-repository's own functions.
+member but "iota2-asym" up to ns = 100, with an angular scan of "sheared" at ns = 100;
+the full suite runs every member up to ns = 1000, with an angular scan at ns = 400.
+With --out the results go to DIR as JSON, markdown tables and plots of the deviations
+against h and mpol and of the enclosed current over s. The summary ends with checks on
+the scans of "sheared": convergence in ns at O(h) and in mpol and ntor, the magnetic
+axis, B against its derivative jcurv, and the enclosed current at O(h^2) with its
+limit at the axis; with --check a failed check fails the run. With --reference DIR, a
+checkout of the repository at REFERENCE_COMMIT, a further check compares the formulas
+here with the repository's own functions.
 
 The paper's units have mu0 = 1: B is in tesla and lengths in metres, so the pressure
 is p / mu0 in pascals. The paper's poloidal angles turn clockwise in an (R, Z)
@@ -81,15 +90,14 @@ NFP = 2
 
 
 def _dft_boundary(section, mpol, ntor):
-    """Rbc and zbs of a stellarator-symmetric boundary given by section(theta, phi) ->
-    (R, Z), from its values on a grid that resolves the retained modes."""
+    """Rbc, zbs, rbs and zbc of a boundary given by section(theta, phi) -> (R, Z), from
+    its values on a grid that resolves the retained modes."""
     nth, nph = 2 * mpol + 6, 2 * ntor + 6
     theta = 2.0 * np.pi * np.arange(nth) / nth
     phi = 2.0 * np.pi * np.arange(nph) / (nph * NFP)
     th, ph = np.meshgrid(theta, phi, indexing="ij")
     r, z = section(th, ph)
-    rbc = np.zeros((mpol, 2 * ntor + 1))
-    zbs = np.zeros((mpol, 2 * ntor + 1))
+    rbc, zbs, rbs, zbc = (np.zeros((mpol, 2 * ntor + 1)) for _ in range(4))
     for m in range(mpol):
         for n in range(-ntor, ntor + 1):
             if m == 0 and n < 0:
@@ -98,11 +106,14 @@ def _dft_boundary(section, mpol, ntor):
             weight = 1.0 if m == 0 and n == 0 else 2.0
             rbc[m, n + ntor] = weight * np.mean(r * np.cos(arg))
             zbs[m, n + ntor] = weight * np.mean(z * np.sin(arg))
-    return rbc, zbs
+            rbs[m, n + ntor] = weight * np.mean(r * np.sin(arg))
+            zbc[m, n + ntor] = weight * np.mean(z * np.cos(arg))
+    return rbc, zbs, rbs, zbc
 
 
 def _cosine_series(values_of_phi, count):
-    """Cosine coefficients in n NFP phi of a function of phi, n < count."""
+    """Cosine coefficients in n NFP phi of a function of phi, n < count: raxis_c of R
+    and zaxis_c of Z."""
     phi = 2.0 * np.pi * np.arange(64) / (64 * NFP)
     values = values_of_phi(phi)
     return np.array(
@@ -114,7 +125,8 @@ def _cosine_series(values_of_phi, count):
 
 
 def _sine_series(values_of_phi, count):
-    """Coefficients zaxis_s of Z = -sum zaxis_s[n] sin(n NFP phi), n < count."""
+    """Coefficients c of f = -sum c[n] sin(n NFP phi) of a function f of phi, n < count:
+    zaxis_s of Z and raxis_s of R."""
     phi = 2.0 * np.pi * np.arange(64) / (64 * NFP)
     values = values_of_phi(phi)
     return np.array(
@@ -123,12 +135,35 @@ def _sine_series(values_of_phi, count):
     )
 
 
+def _geometry(section, axis, mpol, ntor, lasym):
+    """The boundary and axis fields of a VmecInput, from section(theta, phi) -> (R, Z)
+    on the boundary and axis(phi) -> (R, Z), with the coefficients that break
+    stellarator symmetry when lasym is set."""
+    rbc, zbs, rbs, zbc = _dft_boundary(section, mpol, ntor)
+    fields = {
+        "lasym": lasym,
+        "rbc": rbc,
+        "zbs": zbs,
+        "raxis_c": _cosine_series(lambda ph: axis(ph)[0], ntor + 1),
+        "zaxis_s": _sine_series(lambda ph: axis(ph)[1], ntor + 1),
+    }
+    if lasym:
+        fields |= {
+            "rbs": rbs,
+            "zbc": zbc,
+            "raxis_s": _sine_series(lambda ph: axis(ph)[0], ntor + 1),
+            "zaxis_c": _cosine_series(lambda ph: axis(ph)[1], ntor + 1),
+        }
+    return fields
+
+
 @dataclasses.dataclass(frozen=True)
 class Sheared:
-    """A member of the sheared-iota family, the paper's section 3.
+    """A member of the sheared-iota family, Landreman's section 3, with the parameter
+    tau1 of Issan et al.'s section 3.
 
-    Its parameters are eps, S, lambda and the boundary k_b, and its surfaces are the
-    circles of constant psi = k^2 / 2 in the paper's (X, Y) plane.
+    Its parameters are eps, S, lambda, the boundary k_b and tau1, and its surfaces are
+    the circles of constant psi = k^2 / 2 in the paper's (X, Y) plane.
     """
 
     name: str
@@ -136,6 +171,7 @@ class Sheared:
     S: float
     lam: float
     k_b: float
+    tau1: float = 0.0
 
     def _h(self, sigma):
         return np.sqrt(4.0 * sigma * sigma + self.eps * self.eps)
@@ -146,36 +182,40 @@ class Sheared:
         return sigma / b, b
 
     def field(self, x, y, z):
-        """The Cartesian field and psi, the paper's equations 3.2 and 3.3."""
+        """The Cartesian field and psi, Landreman's equations 3.2 and 3.3 with Xi
+        shifted by i tau1 (Issan et al.'s equations 15 to 17)."""
         w = x + 1j * y
         wb = x - 1j * y
         k = wb * np.sqrt(1.0 + self.eps / wb**2)
-        xi = w * k + np.pi / 2.0 - self.S
+        xi = w * k + np.pi / 2.0 - self.S + 1j * self.tau1
         e = np.exp(-1j * self.lam * z)
         bxy = e * 1j * np.sin(xi) / (2.0 * k)
         bz = np.real(e * np.cos(xi)) / self.lam
         psi = (np.sin(self.lam * z) ** 2 + (self.lam * bz) ** 2) / 2.0
         return np.real(bxy), np.imag(bxy), bz, psi
 
+    def _sigma(self, p, y, nu):
+        """The confocal coordinate sigma at X = p, Y = y where the paper's nu, which is
+        eps sin(2 zeta) / 2 + tau1, takes the value nu."""
+        return (
+            self.S
+            + np.arctan(np.tanh(nu) * y / np.sqrt(1.0 - y * y))
+            - np.arcsin(p / np.sqrt(np.cosh(nu) ** 2 - y * y))
+        )
+
     def section(self, k, phi, chi):
         """R and Z of X = -k cos(chi), Y = k sin(chi) in the plane phi, by bisection on
-        the confocal coordinate sigma (the paper's section 3.2)."""
+        the confocal coordinate sigma (Landreman's section 3.2)."""
         chi, phi = np.broadcast_arrays(np.asarray(chi, float), np.asarray(phi, float))
         p, y = -k * np.cos(chi), k * np.sin(chi)
-        root = np.sqrt(1.0 - y * y)
         lo = np.full(chi.shape, self.S - np.arcsin(k))
         hi = np.full(chi.shape, self.S + np.arcsin(k))
 
         def residual(sigma):
             a, b = self.semiaxes(sigma)
             t = np.arctan2(a * np.sin(phi), b * np.cos(phi))
-            nu = self.eps / 2.0 * np.sin(2.0 * t)
-            return (
-                sigma
-                - self.S
-                - np.arctan(np.tanh(nu) * y / root)
-                + np.arcsin(p / np.sqrt(np.cosh(nu) ** 2 - y * y))
-            ), t
+            nu = self.eps / 2.0 * np.sin(2.0 * t) + self.tau1
+            return sigma - self._sigma(p, y, nu), t
 
         for _ in range(60):
             mid = (lo + hi) / 2.0
@@ -187,9 +227,9 @@ class Sheared:
         a, b = self.semiaxes(sigma)
         return np.hypot(a * np.cos(t), b * np.sin(t)), -np.arcsin(y) / self.lam
 
-    def boundary(self, mpol, ntor):
-        """The surface k = k_b in VMEC's theta = -chi."""
-        return _dft_boundary(lambda th, ph: self.section(self.k_b, ph, -th), mpol, ntor)
+    def boundary(self, theta, phi):
+        """R and Z of the surface k = k_b at VMEC's theta = -chi."""
+        return self.section(self.k_b, phi, -theta)
 
     def axis(self, phi):
         a, b = self.semiaxes(self.S)
@@ -203,9 +243,9 @@ class Sheared:
         k = np.atleast_1d(np.asarray(k, float))[:, None]
         u = 2.0 * np.pi * np.arange(n) / n
         c = np.sqrt(1.0 - k * k * np.sin(u) ** 2)
-        sigma = self.S + np.arcsin(k * np.cos(u) / c)
+        sigma = self._sigma(-k * np.cos(u), k * np.sin(u), self.tau1)
         q = np.pi / self.lam * np.mean(1.0 / (self._h(sigma) * c), axis=1)
-        nu = self.eps / 2.0 * np.sin(2.0 * u)
+        nu = self.eps / 2.0 * np.sin(2.0 * u) + self.tau1
         sigma = self.S + np.arcsin(k / np.cosh(nu))
         g = (self._h(sigma) + self.eps * np.cos(2.0 * u)) / 2.0
         root = np.sqrt(np.cosh(nu) ** 2 - k * k)
@@ -213,15 +253,21 @@ class Sheared:
         return q, a
 
     def _current(self, k, n=1024):
-        """The toroidal current enclosed by the surface k along chi, in amperes."""
+        """The toroidal current enclosed by the surface k along chi, in amperes, from
+        the circulation of the field around the section phi = 0."""
         k = np.atleast_1d(np.asarray(k, float))[:, None]
         u = 2.0 * np.pi * np.arange(n) / n
         p, y = -k * np.cos(u), k * np.sin(u)
         c = np.sqrt(1.0 - y * y)
-        sigma = self.S - np.arcsin(p / c)
-        density = y * y * (1.0 - k * k) / (2.0 * self._h(sigma) * c**3) + p * p / (
-            self.lam**2 * c
-        )
+        sh, ch, th = np.sinh(self.tau1), np.cosh(self.tau1), np.tanh(self.tau1)
+        sigma = self._sigma(p, y, self.tau1)
+        d_sigma = -th * p / (c * (c * c + th * th * y * y)) - y * np.sqrt(
+            ch * ch - k * k
+        ) / (ch * ch - y * y)
+        xi = sigma - self.S
+        density = (c * sh * np.sin(xi) - y * ch * np.cos(xi)) * d_sigma / (
+            2.0 * self._h(sigma)
+        ) + p * p / (self.lam**2 * c)
         return 2.0 * np.pi / MU0 * np.mean(density, axis=1)
 
     @functools.cached_property
@@ -257,13 +303,11 @@ class Sheared:
 
     def vmec_input(self, ns, mpol, ntor):
         prof = self.profiles
-        rbc, zbs = self.boundary(mpol, ntor)
         # p = (psi_b - psi) / lambda^2, which vanishes at the boundary
         am = -np.asarray(prof["psi"].coef) / (self.lam**2 * MU0)
         am[0] = (self.k_b**2 / 2.0 - prof["psi"].coef[0]) / (self.lam**2 * MU0)
         return vmecpp.VmecInput(
             nfp=NFP,
-            lasym=False,
             mpol=mpol,
             ntor=ntor,
             ns_array=np.array([ns], dtype=np.int64),
@@ -273,57 +317,76 @@ class Sheared:
             ncurr=0,
             piota_type="power_series",
             ai=np.asarray(prof["iota"].coef),
-            raxis_c=_cosine_series(lambda ph: self.axis(ph)[0], ntor + 1),
-            zaxis_s=np.zeros(ntor + 1),
-            rbc=rbc,
-            zbs=zbs,
+            **_geometry(self.boundary, self.axis, mpol, ntor, self.tau1 != 0.0),
         )
 
 
 @dataclasses.dataclass(frozen=True)
 class Iota2:
-    """A member of the family with iota = 2 on every surface, the paper's section 2.
+    """A member of the family with iota = 2 on every surface, Landreman's section 2,
+    with the parameter tau0 of Issan et al.'s section 2.
 
-    Its parameters are eps and the boundary psi = delta; its surfaces are circles of
-    radius sqrt(psi) about (-eps / 2, 0) in the plane of the field-line labels (u, v).
+    Its parameters are eps, the boundary psi = delta and tau0; with Omega^2 = 1 -
+    tau0^2, its surfaces are circles of radius sqrt(psi) about (-Omega^2 eps / 2, 0) in
+    the plane of the field-line labels (u, v).
     """
 
     name: str
     eps: float
     delta: float
+    tau0: float = 0.0
 
     @property
     def _ab(self):
         return math.sqrt(1.0 + self.eps), math.sqrt(1.0 - self.eps)
 
+    @property
+    def _omega2(self):
+        return 1.0 - self.tau0**2
+
+    @property
+    def _u_axis(self):
+        return -self._omega2 * self.eps / 2.0
+
     def field(self, x, y, z):
-        """The Cartesian field and psi, the paper's equations 2.1 and 2.3."""
+        """The Cartesian field and psi, Issan et al.'s equations 4 to 7, which are
+        Landreman's 2.1 and 2.3 at tau0 = 0."""
         a, b = self._ab
+        t, o2 = self.tau0, self._omega2
         s = (x / a) ** 2 + (y / b) ** 2
-        f = np.sqrt(2.0 * s - s * s - 4.0 * z * z)
-        bx = (2.0 * z * x - (a / b) * f * y) / s
-        by = (2.0 * z * y + (b / a) * f * x) / s
-        bz = 1.0 - s
-        psi = (x * x + y * y + 4.0 * z * z + bx * bx + by * by + bz * bz - 2.0) / 4.0
-        return bx, by, bz, psi + self.eps**2 / 4.0
+        f = np.sqrt(2.0 * s - s * s - 4.0 * z * z - 4.0 * t * s * z)
+        bx = ((2.0 * z + t * s) * x - (a / b) * f * y) / s
+        by = ((2.0 * z + t * s) * y + (b / a) * f * x) / s
+        bz = 1.0 - s - 2.0 * t * z
+        q = o2 / 2.0 * (x * x + y * y + 4.0 * z * z) + 2.0 * t * z
+        b2 = bx * bx + by * by + bz * bz
+        psi = (
+            o2
+            / 2.0
+            * (q + b2 / 2.0 - 1.0 + t * t / (2.0 * o2) + o2 * self.eps**2 / 2.0)
+        )
+        return bx, by, bz, psi
 
     def embedding(self, u, v, t):
-        """The field line (u, v) at the paper's zeta = t, its equation 2.9."""
+        """The field line (u, v) at the paper's zeta = t, Issan et al.'s equation 10."""
         a, b = self._ab
+        o2 = self._omega2
         ell = np.sqrt((1.0 + np.sqrt(1.0 - 4.0 * (u * u + v * v))) / 2.0)
         ct, st = np.cos(t), np.sin(t)
+        g = 2.0 * t + math.asin(self.tau0)
         return (
-            a * (ell * ct + (u * ct + v * st) / ell),
-            b * (ell * st + (v * ct - u * st) / ell),
-            v * np.cos(2.0 * t) - u * np.sin(2.0 * t),
+            a / math.sqrt(o2) * (ell * ct + (u * ct + v * st) / ell),
+            b / math.sqrt(o2) * (ell * st + (v * ct - u * st) / ell),
+            (v * np.cos(g) - u * np.sin(g) - self.tau0 / 2.0) / o2,
         )
 
     def section(self, psi, theta, phi):
         """R and Z at VMEC's theta = beta - 2 phi, a straight-field-line angle with
-        iota = -2, in the plane phi (after the paper's supplement)."""
+        iota = -2, in the plane phi (after Landreman's supplement)."""
         a, b = self._ab
+        o2 = self._omega2
         beta = theta + 2.0 * phi
-        u = -self.eps / 2.0 + np.sqrt(psi) * np.cos(beta)
+        u = self._u_axis + np.sqrt(psi) * np.cos(beta)
         v = np.sqrt(psi) * np.sin(beta)
         ell = np.sqrt((1.0 + np.sqrt(1.0 - 4.0 * (u * u + v * v))) / 2.0)
         aa, cc = a * (ell + u / ell), a * v / ell
@@ -334,19 +397,27 @@ class Iota2:
         )
         norm = np.hypot(ct, st)
         ct, st = ct / norm, st / norm
-        r = np.hypot(aa * ct + cc * st, dd * ct + ee * st)
-        z = v * (ct * ct - st * st) - 2.0 * u * st * ct
+        r = np.hypot(aa * ct + cc * st, dd * ct + ee * st) / math.sqrt(o2)
+        # cos and sin of 2 t + arcsin(tau0)
+        c2, s2 = ct * ct - st * st, 2.0 * st * ct
+        cg = c2 * math.sqrt(o2) - s2 * self.tau0
+        sg = s2 * math.sqrt(o2) + c2 * self.tau0
+        z = (v * cg - u * sg - self.tau0 / 2.0) / o2
         return r, z
 
-    def boundary(self, mpol, ntor):
-        return _dft_boundary(
-            lambda th, ph: self.section(self.delta, th, ph), mpol, ntor
-        )
+    def boundary(self, theta, phi):
+        """R and Z of the surface psi = delta at VMEC's theta."""
+        return self.section(self.delta, theta, phi)
 
     def axis(self, phi):
-        return math.sqrt(1.0 - self.eps**2) + 0.0 * phi, self.eps / 2.0 * np.sin(
-            2.0 * phi
-        )
+        """R and Z of the magnetic axis, Issan et al.'s equation 12, in the plane
+        phi."""
+        o2 = self._omega2
+        ax = math.sqrt((1.0 + self.eps) * (1.0 - o2 * self.eps) / o2)
+        ay = math.sqrt((1.0 - self.eps) * (1.0 + o2 * self.eps) / o2)
+        t = np.arctan2(ax * np.sin(phi), ay * np.cos(phi))
+        z = self.eps * o2 * np.sin(2.0 * t + math.asin(self.tau0)) - self.tau0
+        return ax * ay / np.hypot(ay * np.cos(phi), ax * np.sin(phi)), z / (2.0 * o2)
 
     def _buco(self, psi, n=128):
         """The buco of the surface psi, from the field along a loop on it.
@@ -357,7 +428,7 @@ class Iota2:
         alpha = 2.0 * np.pi * np.arange(n) / n
         h = 1e-30
         rho = np.sqrt(np.atleast_1d(np.asarray(psi, float)))[:, None]
-        u = -self.eps / 2.0 + rho * np.cos(alpha + 1j * h)
+        u = self._u_axis + rho * np.cos(alpha + 1j * h)
         v = rho * np.sin(alpha + 1j * h)
         pos = self.embedding(u, v, 0.0)
         x, y, z = (np.real(c) for c in pos)
@@ -381,34 +452,35 @@ class Iota2:
 
     def vmec_input(self, ns, mpol, ntor):
         a, b = self._ab
-        rbc, zbs = self.boundary(mpol, ntor)
+        o2 = self._omega2
         return vmecpp.VmecInput(
             nfp=NFP,
-            lasym=False,
             mpol=mpol,
             ntor=ntor,
             ns_array=np.array([ns], dtype=np.int64),
-            phiedge=math.pi * a * b * self.delta,
+            phiedge=math.pi * a * b * self.delta / o2,
             pmass_type="power_series",
-            # p = 2 (delta - psi), which vanishes at the boundary
-            am=np.array([2.0 * self.delta, -2.0 * self.delta]) / MU0,
+            # p = 2 (delta - psi) / Omega^2, which vanishes at the boundary
+            am=np.array([2.0 * self.delta, -2.0 * self.delta]) / (o2 * MU0),
             ncurr=0,
             piota_type="power_series",
             ai=np.array([-2.0]),
-            raxis_c=_cosine_series(lambda ph: self.axis(ph)[0], ntor + 1),
-            zaxis_s=_sine_series(lambda ph: self.axis(ph)[1], ntor + 1),
-            rbc=rbc,
-            zbs=zbs,
+            **_geometry(self.boundary, self.axis, mpol, ntor, self.tau0 != 0.0),
         )
 
 
 # The member the tests use; one near the resonance at iota = 7/2; configuration A of
-# the paper's supplement; and the iota = 2 member of the supplement's DESC script.
+# the paper's supplement; the iota = 2 member of the supplement's DESC script; and the
+# first and the last with the parameter of Issan et al. that breaks stellarator symmetry.
 SHEARED = Sheared("sheared", eps=0.6, S=2.2, lam=2.97, k_b=0.2)
 SHEARED_72 = Sheared("sheared-near-3.5", eps=1.0, S=1.75, lam=2.65, k_b=0.2)
 SHEARED_A = Sheared("sheared-A", eps=1.08, S=3.0, lam=3.5, k_b=0.7)
 IOTA2 = Iota2("iota2", eps=0.25, delta=1.0 / 64.0)
-MEMBERS = {m.name: m for m in (SHEARED, SHEARED_72, SHEARED_A, IOTA2)}
+SHEARED_ASYM = Sheared("sheared-asym", eps=0.6, S=2.2, lam=2.97, k_b=0.2, tau1=0.15)
+IOTA2_ASYM = Iota2("iota2-asym", eps=0.25, delta=1.0 / 64.0, tau0=0.5)
+MEMBERS = {
+    m.name: m for m in (SHEARED, SHEARED_ASYM, SHEARED_72, SHEARED_A, IOTA2, IOTA2_ASYM)
+}
 
 REFERENCE_COMMIT = "c97fbcdd879206e0cfee6ad6e885ae0b13e215e8"
 REFERENCE_TOLERANCE = 1.0e-13
@@ -544,6 +616,21 @@ def _series(coefficients, xm, xn, theta, phi, kind, d_theta=False, d_phi=False):
     return (-np.sin(arg) if kind == "c" else np.cos(arg)) @ (coefficients * factor)
 
 
+def _cos_sin(wout, cos_name, sin_name, count):
+    """The cos and sin coefficients of a quantity of the run, modes first, with zeros
+    for the one a stellarator-symmetric run does not carry."""
+    arrays = [getattr(wout, name) for name in (cos_name, sin_name)]
+    shape = next(_modes_first(a, count).shape for a in arrays if a is not None)
+    return [np.zeros(shape) if a is None else _modes_first(a, count) for a in arrays]
+
+
+def _both(pair, xm, xn, theta, phi, d_theta=False, d_phi=False):
+    """The series of a pair of cos and sin coefficient vectors, or its derivative."""
+    return _series(pair[0], xm, xn, theta, phi, "c", d_theta, d_phi) + _series(
+        pair[1], xm, xn, theta, phi, "s", d_theta, d_phi
+    )
+
+
 def angle_grid(nth=24, nph=24):
     theta = 2.0 * np.pi * (np.arange(nth) + 0.25) / nth
     phi = 2.0 * np.pi * (np.arange(nph) + 0.4) / (nph * NFP)
@@ -555,13 +642,13 @@ def surface_error(member, wout, grid=None):
     boundary psi."""
     th, ph = grid if grid is not None else angle_grid()
     xm, xn = np.asarray(wout.xm, float), np.asarray(wout.xn, float)
-    rmnc = _modes_first(wout.rmnc, len(xm))
-    zmns = _modes_first(wout.zmns, len(xm))
+    rr = _cos_sin(wout, "rmnc", "rmns", len(xm))
+    zz = _cos_sin(wout, "zmnc", "zmns", len(xm))
     s = np.linspace(0.0, 1.0, wout.ns)
     worst = 0.0
     for j in range(1, wout.ns):
-        r = _series(rmnc[:, j], xm, xn, th, ph, "c")
-        z = _series(zmns[:, j], xm, xn, th, ph, "s")
+        r = _both([c[:, j] for c in rr], xm, xn, th, ph)
+        z = _both([c[:, j] for c in zz], xm, xn, th, ph)
         psi = member.field(r * np.cos(ph), r * np.sin(ph), z)[3]
         worst = max(worst, float(np.abs(psi - member.psi_of_s(s[j])).max()))
     return worst / float(member.psi_of_s(1.0))
@@ -571,8 +658,12 @@ def axis_error(member, wout, grid=None):
     """Largest distance of the run's axis from the exact axis, in metres."""
     th, ph = grid if grid is not None else angle_grid()
     xm, xn = np.asarray(wout.xm, float), np.asarray(wout.xn, float)
-    r = _series(_modes_first(wout.rmnc, len(xm))[:, 0], xm, xn, th, ph, "c")
-    z = _series(_modes_first(wout.zmns, len(xm))[:, 0], xm, xn, th, ph, "s")
+    r = _both(
+        [c[:, 0] for c in _cos_sin(wout, "rmnc", "rmns", len(xm))], xm, xn, th, ph
+    )
+    z = _both(
+        [c[:, 0] for c in _cos_sin(wout, "zmnc", "zmns", len(xm))], xm, xn, th, ph
+    )
     r_exact, z_exact = member.axis(ph)
     return float(np.hypot(r - r_exact, z - z_exact).max())
 
@@ -585,10 +676,10 @@ def field_error(member, wout, grid=None, s_min=0.0):
     th, ph = grid if grid is not None else angle_grid()
     xm, xn = np.asarray(wout.xm, float), np.asarray(wout.xn, float)
     xm_nyq, xn_nyq = np.asarray(wout.xm_nyq, float), np.asarray(wout.xn_nyq, float)
-    rmnc = _modes_first(wout.rmnc, len(xm))
-    zmns = _modes_first(wout.zmns, len(xm))
-    bsupu = _modes_first(wout.bsupumnc, len(xm_nyq))
-    bsupv = _modes_first(wout.bsupvmnc, len(xm_nyq))
+    rr = _cos_sin(wout, "rmnc", "rmns", len(xm))
+    zz = _cos_sin(wout, "zmnc", "zmns", len(xm))
+    bsupu = _cos_sin(wout, "bsupumnc", "bsupumns", len(xm_nyq))
+    bsupv = _cos_sin(wout, "bsupvmnc", "bsupvmns", len(xm_nyq))
     s = np.linspace(0.0, 1.0, wout.ns)
     odd = (xm % 2) == 1
     cp, sp = np.cos(ph), np.sin(ph)
@@ -605,15 +696,15 @@ def field_error(member, wout, grid=None, s_min=0.0):
                 odd, 0.5 * np.sqrt(sh) * odd_part, 0.5 * (c[:, j - 1] + c[:, j])
             )
 
-        rh, zh = half(rmnc), half(zmns)
-        r = _series(rh, xm, xn, th, ph, "c")
-        z = _series(zh, xm, xn, th, ph, "s")
-        ru = _series(rh, xm, xn, th, ph, "c", d_theta=True)
-        zu = _series(zh, xm, xn, th, ph, "s", d_theta=True)
-        rv = _series(rh, xm, xn, th, ph, "c", d_phi=True)
-        zv = _series(zh, xm, xn, th, ph, "s", d_phi=True)
-        bu = _series(bsupu[:, j], xm_nyq, xn_nyq, th, ph, "c")
-        bv = _series(bsupv[:, j], xm_nyq, xn_nyq, th, ph, "c")
+        rh, zh = [half(c) for c in rr], [half(c) for c in zz]
+        r = _both(rh, xm, xn, th, ph)
+        z = _both(zh, xm, xn, th, ph)
+        ru = _both(rh, xm, xn, th, ph, d_theta=True)
+        zu = _both(zh, xm, xn, th, ph, d_theta=True)
+        rv = _both(rh, xm, xn, th, ph, d_phi=True)
+        zv = _both(zh, xm, xn, th, ph, d_phi=True)
+        bu = _both([c[:, j] for c in bsupu], xm_nyq, xn_nyq, th, ph)
+        bv = _both([c[:, j] for c in bsupv], xm_nyq, xn_nyq, th, ph)
         bx = bu * ru * cp + bv * (rv * cp - r * sp)
         by = bu * ru * sp + bv * (rv * sp + r * cp)
         bz = bu * zu + bv * zv
@@ -806,15 +897,18 @@ SUITES = {
     "demo": (Scan("sheared", (13, 25), 12, 10),),
     "quick": (
         Scan("sheared", QUICK, 12, 10, angular_ns=100, angular_modes=MODES),
+        Scan("sheared-asym", QUICK, 12, 10),
         Scan("sheared-near-3.5", QUICK, 12, 10, niter=20000, multigrid=False),
         Scan("sheared-A", QUICK, 12, 10, niter=20000, multigrid=False),
         Scan("iota2", QUICK, 10, 8, niter=20000, multigrid=False),
     ),
     "full": (
         Scan("sheared", FULL, 12, 10, angular_ns=400, angular_modes=MODES),
+        Scan("sheared-asym", FULL, 12, 10),
         Scan("sheared-near-3.5", FULL, 12, 10, niter=20000, multigrid=False),
         Scan("sheared-A", FULL, 12, 10, niter=20000, multigrid=False),
         Scan("iota2", FULL, 10, 8, niter=20000, multigrid=False),
+        Scan("iota2-asym", FULL, 10, 8, niter=20000, multigrid=False),
     ),
 }
 
