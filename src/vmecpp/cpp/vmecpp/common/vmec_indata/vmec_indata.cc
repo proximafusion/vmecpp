@@ -337,6 +337,7 @@ VmecINDATA::VmecINDATA() {
   lbsubs = false;
   backup_evaluated_state = true;
   iteration_style = IterationStyle::VMEC_8_52;
+  anderson_acceleration = false;
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
   fgiveup = 30.0;
@@ -466,6 +467,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
+  WriteH5Dataset(anderson_acceleration, "/indata/anderson_acceleration", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
   WriteH5Dataset(lambda_precondition_checkerboard_terms,
@@ -600,6 +602,15 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/lambda_precondition_checkerboard_terms", from_file);
   } else {
     m_indata.lambda_precondition_checkerboard_terms = 1e-3;
+  }
+
+  // Added after the initial schema; files written before it load the
+  // default.
+  if (H5Lexists(from_file.getId(), "/indata/anderson_acceleration", 0) == 1) {
+    ReadH5Dataset(m_indata.anderson_acceleration,
+                  "/indata/anderson_acceleration", from_file);
+  } else {
+    m_indata.anderson_acceleration = false;
   }
 
   // Legacy way of checking for dataset existence
@@ -1174,6 +1185,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     }
   }
 
+  auto maybe_anderson_acceleration = JsonReadBool(j, "anderson_acceleration");
+  if (!maybe_anderson_acceleration.ok()) {
+    return maybe_anderson_acceleration.status();
+  }
+  if (maybe_anderson_acceleration->has_value()) {
+    vmec_indata.anderson_acceleration = maybe_anderson_acceleration->value();
+  }
+
   auto maybe_return_outputs_even_if_not_converged =
       JsonReadBool(j, "return_outputs_even_if_not_converged");
   if (!maybe_return_outputs_even_if_not_converged.ok()) {
@@ -1512,6 +1531,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
   output["iteration_style"] = ToString(iteration_style);
+  output["anderson_acceleration"] = anderson_acceleration;
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
   output["lgiveup"] = lgiveup;

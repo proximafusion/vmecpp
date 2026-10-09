@@ -178,6 +178,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.delt, 1.0);
   EXPECT_EQ(indata.tcon0, 1.0);
   EXPECT_EQ(indata.lforbal, false);
+  EXPECT_EQ(indata.anderson_acceleration, false);
   EXPECT_EQ(indata.lbsubs, false);
   EXPECT_EQ(indata.backup_evaluated_state, true);
 
@@ -709,6 +710,8 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.delt, indata_from_file.delt);
   EXPECT_EQ(indata.tcon0, indata_from_file.tcon0);
   EXPECT_EQ(indata.lforbal, indata_from_file.lforbal);
+  EXPECT_EQ(indata.anderson_acceleration,
+            indata_from_file.anderson_acceleration);
   EXPECT_EQ(indata.lbsubs, indata_from_file.lbsubs);
   EXPECT_EQ(indata.backup_evaluated_state,
             indata_from_file.backup_evaluated_state);
@@ -927,6 +930,7 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.lbsubs, indata.lbsubs);
   EXPECT_EQ(copy.backup_evaluated_state, indata.backup_evaluated_state);
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
+  EXPECT_EQ(copy.anderson_acceleration, indata.anderson_acceleration);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);
   EXPECT_EQ(copy.raxis_c, indata.raxis_c);

@@ -3,8 +3,14 @@
 # SPDX-License-Identifier: MIT
 cc_library(
     name = "vmec",
-    srcs = ["vmec.cc"],
-    hdrs = ["vmec.h"],
+    srcs = [
+        "anderson_acceleration.cc",
+        "vmec.cc",
+    ],
+    hdrs = [
+        "anderson_acceleration.h",
+        "vmec.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "@abseil-cpp//absl/log",
