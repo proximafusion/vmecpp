@@ -165,9 +165,9 @@ def test_z_shift_preserves_cross_section_shape():
     """A rigid z-shift leaves the geometric radius, indentation, elongation,
     triangularity and shift of every cross-section unchanged.
 
-    Deviation from VMEC 8.52, which takes |Z| as the largest Z and checks a point for
-    a new minimum only when it is not a new maximum, so that a cross-section shifted
-    far enough below Z = 0 gets the wrong extrema.
+    Deviation from VMEC 8.52, which takes |Z| as the largest Z and checks a point for a
+    new minimum only when it is not a new maximum, so that a cross-section shifted far
+    enough below Z = 0 gets the wrong extrema.
     """
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
     sym = vmecpp.run(base, max_threads=1, verbose=False)
