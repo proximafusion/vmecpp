@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791722313394,
+  "lastUpdate": 1791723670042,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24951,6 +24951,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.23866564600001539,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7462d2e4b7d94d07090dfa9787f681e18018c86c",
+          "message": "Keep the sign of Z and test every point against each extremum in the geometry table (#972)\n\n* Keep the sign of Z and test every point against each extremum in the geometry table\n\n* Wrap the docstring of the z-shift geometry test as docformatter does",
+          "timestamp": "2026-10-11T12:53:20Z",
+          "tree_id": "959e6af22df0ca61b589cd3639f5d0354d19c617",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7462d2e4b7d94d07090dfa9787f681e18018c86c"
+        },
+        "date": 1791723665057,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7430157014000087,
+            "range": "stddev: 0.014842159147089043",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.651065072666673,
+            "range": "stddev: 0.009555457559645679",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1053004873332763,
+            "range": "stddev: 0.00906091810115792",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6905939833332013,
+            "range": "stddev: 0.01682947542767147",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4830372656666289,
+            "range": "stddev: 0.0033375160533876767",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.9088818660000015,
+            "range": "stddev: 0.032902729578028346",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 6.193608169999834,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.493374084999914,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
