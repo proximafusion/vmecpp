@@ -1423,9 +1423,8 @@ def _evaluate_profile(
             np.polyval(coefficients[::-1], x) if coefficients.size else np.zeros_like(x)
         )
     if kind == "two_power":
-        if coefficients.size < 3:
-            return np.zeros_like(x)
-        return coefficients[0] * (1.0 - x ** coefficients[1]) ** coefficients[2]
+        c0, c1, c2 = np.concatenate([coefficients, np.zeros(3)])[:3]
+        return c0 * (1.0 - x**c1) ** c2
     if kind == "line_segment":
         n = min(knots.size, values.size)
         if n < 2:

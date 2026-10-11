@@ -688,15 +688,13 @@ double RadialProfiles::evalTwoLorentz(const Eigen::VectorXd& coeffs, double x) {
 
 double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
                                     bool shouldIntegrate) {
-  if (coeffs.size() < 3) {
-    LOG(WARNING) << "too few coefficients for 'two_power' profile; need 3, got "
-                 << coeffs.size() << "\n";
-    return 0.0;
-  }
+  const double c0 = Coef(coeffs, 0);
+  const double c1 = Coef(coeffs, 1);
+  const double c2 = Coef(coeffs, 2);
   double ret = 0.0;
   if (!shouldIntegrate) {
     // p(s) = am(0) * [1 - s**am(1)]**am(2)
-    ret = coeffs[0] * std::pow(1.0 - std::pow(x, coeffs[1]), coeffs[2]);
+    ret = c0 * std::pow(1.0 - std::pow(x, c1), c2);
   } else {
     // regular 10-pt Gauss-Legendre quadrature from pcurr() in Fortran VMEC
     int ngl = 10;
@@ -714,8 +712,7 @@ double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
     ret = 0.0;
     for (int i = 0; i < ngl; ++i) {
       const double xp = x * glx[i];
-      ret += glw[i] * coeffs[0] *
-             std::pow(1.0 - std::pow(xp, coeffs[1]), coeffs[2]);
+      ret += glw[i] * c0 * std::pow(1.0 - std::pow(xp, c1), c2);
     }
     ret *= x;
   }
@@ -729,12 +726,6 @@ double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x,
   //   c(i+1))/c(i+2))^2))
   // with two_power(s) = c0 * (1 - s^c1)^c2. Ported from Fortran VMEC
   // functions.f (two_power_gs) and pmass/pcurr 'two_power_gs'.
-  if (coeffs.size() < 3) {
-    LOG(WARNING)
-        << "too few coefficients for 'two_power_gs' profile; need 3, got "
-        << coeffs.size() << "\n";
-    return 0.0;
-  }
   auto raw = [&coeffs](double s) {
     const double two_power =
         Coef(coeffs, 0) *
