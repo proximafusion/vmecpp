@@ -161,6 +161,34 @@ def test_z_shift_preserves_physics():
     assert abs(np.asarray(shifted.zmnc)[0, -1] - dz) < 1e-10
 
 
+def test_z_shift_preserves_cross_section_shape():
+    """A rigid z-shift leaves the geometric radius, indentation, elongation,
+    triangularity and shift of every cross-section unchanged.
+
+    Deviation from VMEC 8.52, which takes |Z| as the largest Z and checks a point for
+    a new minimum only when it is not a new maximum, so that a cross-section shifted
+    far enough below Z = 0 gets the wrong extrema.
+    """
+    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    sym = vmecpp.run(base, max_threads=1, verbose=False)
+    dz = -1.0
+    zbc = np.zeros_like(np.asarray(base.zbs))
+    zbc[0, base.ntor] = dz
+    zaxis_c = np.zeros(base.ntor + 1)
+    zaxis_c[0] = dz
+    shifted = vmecpp.run(
+        _enable_lasym(base, zbc=zbc, zaxis_c=zaxis_c), max_threads=1, verbose=False
+    )
+    for name in ("ygeo", "yinden", "yellip", "ytrian", "yshift"):
+        np.testing.assert_allclose(
+            getattr(shifted.threed1_geometric_magnetic, name),
+            getattr(sym.threed1_geometric_magnetic, name),
+            rtol=0.0,
+            atol=1e-10,
+            err_msg=name,
+        )
+
+
 def _toroidally_rotated_input(vmec_input, zeta0):
     """A lasym input with boundary and axis rotated by zeta0: X'(zeta) = X(zeta +
     zeta0)."""
