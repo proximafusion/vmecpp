@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791471925658,
+  "lastUpdate": 1791722007660,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24871,6 +24871,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4752586629999769,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5d45e7b0aab293d98c655b6f18301086913e19f2",
+          "message": "Annotate the declared field type of _traverse_field_contents as Any (#971)\n\n* Annotate the declared field type of _traverse_field_contents as Any\n\n* Trigger CI again",
+          "timestamp": "2026-10-11T12:27:37Z",
+          "tree_id": "f199766bab39a2290ec4b451e0440d107f7a66c2",
+          "url": "https://github.com/proximafusion/vmecpp/commit/5d45e7b0aab293d98c655b6f18301086913e19f2"
+        },
+        "date": 1791722001667,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5057098731999986,
+            "range": "stddev: 0.004619270059644733",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.2354607583333554,
+            "range": "stddev: 0.011491136005758552",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8942007353332997,
+            "range": "stddev: 0.0030164212121739035",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.5918205350000108,
+            "range": "stddev: 0.07921778898727878",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.091341317333331,
+            "range": "stddev: 0.005724001055508096",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.440468004666684,
+            "range": "stddev: 0.013381257859242532",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.7961578519999648,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.23866564600001539,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
