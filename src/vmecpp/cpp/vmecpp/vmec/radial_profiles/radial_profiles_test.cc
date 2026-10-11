@@ -301,6 +301,19 @@ TEST_F(RadialProfilesTest, SumAtanTermsScaledByTwoOverPi) {
   EXPECT_NEAR(profiles_->evalSumAtan(d, 1.0), 0.1 + 0.5 - 0.2, 1e-12);
 }
 
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a term evaluates the same whether its trailing zero
+// exponent is written out or left off.
+TEST_F(RadialProfilesTest, SumAtanReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.3, 0.8, 2.0, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.3, 0.8, 2.0, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    const double expected = 0.3 + 0.8 * 2.0 / M_PI * std::atan(2.0 * x * x);
+    EXPECT_NEAR(profiles_->evalSumAtan(written, x), expected, 1e-14);
+    EXPECT_NEAR(profiles_->evalSumAtan(shortened, x), expected, 1e-14);
+  }
+}
+
 // ---- sum_cossq -------------------------------------------------------------
 
 namespace {
