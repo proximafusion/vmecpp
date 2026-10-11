@@ -627,25 +627,11 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
     }
   } else {
     double atan_sum = 0.0;
-    if (coeffs.size() >= 5) {
-      atan_sum += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
-                                        std::pow(1 - x, coeffs[4]));
-    }
-    if (coeffs.size() >= 9) {
-      atan_sum += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
-                                        std::pow(1 - x, coeffs[8]));
-    }
-    if (coeffs.size() >= 13) {
-      atan_sum += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
-                                        std::pow(1 - x, coeffs[12]));
-    }
-    if (coeffs.size() >= 17) {
-      atan_sum += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
-                                         std::pow(1 - x, coeffs[16]));
-    }
-    if (coeffs.size() >= 21) {
-      atan_sum += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
-                                         std::pow(1 - x, coeffs[20]));
+    for (int i = 1; i <= 17; i += 4) {
+      atan_sum +=
+          Coef(coeffs, i) *
+          std::atan(Coef(coeffs, i + 1) * std::pow(x, Coef(coeffs, i + 2)) /
+                    std::pow(1 - x, Coef(coeffs, i + 3)));
     }
     ret += 2.0 / M_PI * atan_sum;
   }
