@@ -51,8 +51,9 @@ std::string ProfileTypeName(vmecpp::ProfileType profile_type) {
 // solver as a zero profile, which converges to a silently wrong equilibrium.
 //
 // The polynomial coefficient arrays are zero-padded on read, so an empty
-// array is a valid way to specify a zero power series; the closed forms that
-// raise to a coefficient or divide by one need their full set.
+// array is a valid way to specify a zero power series, and two_power reads a
+// missing exponent as zero; the closed forms that divide by a coefficient
+// need their full set.
 absl::Status CheckProfile(const std::string& type_key,
                           const std::string& type_name,
                           vmecpp::ProfileType profile_type,
