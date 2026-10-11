@@ -4756,26 +4756,12 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
                                         vmec_internal_results.z_o(l_off));
 
           if (yz1u >= maximum_z) {
-            maximum_z = std::abs(yz1u);
+            maximum_z = yz1u;
             rzmax = yr1u;
-          } else if (yz1u <= minimum_z) {
-            minimum_z = yz1u;
-
-            // TODO(jons): these seem to not be used anywhere in Fortran VMEC?
-            // rzmin = yr1u;
           }
-
-          if (yr1u >= maximum_r) {
-            maximum_r = yr1u;
-
-            // TODO(jons): these seem to not be used anywhere  in Fortran VMEC?
-            // zxmax = yz1u;
-          } else if (yr1u <= minimum_r) {
-            minimum_r = yr1u;
-
-            // TODO(jons): these seem to not be used anywhere in Fortran VMEC?
-            // zxmin = yz1u;
-          }
+          minimum_z = std::min(minimum_z, yz1u);
+          maximum_r = std::max(maximum_r, yr1u);
+          minimum_r = std::min(minimum_r, yr1u);
         }  // l
       }  // icount
 
