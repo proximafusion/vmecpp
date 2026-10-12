@@ -56,6 +56,22 @@ double Coef(const Eigen::VectorXd& c, int i) {
   return (i >= 0 && i < static_cast<int>(c.size())) ? c[i] : 0.0;
 }
 
+// Value at s = 1 of a sum_atan term (2/pi) * atan(b * s^p / (1 - s)^q), the
+// limit from below: sign(b) for q > 0, (2/pi) * atan(b) for q = 0 and zero for
+// q < 0.
+double SumAtanEdge(double b, double q) {
+  if (q > 0.0) {
+    if (b > 0.0) {
+      return 1.0;
+    }
+    return (b < 0.0) ? -1.0 : 0.0;
+  }
+  if (q < 0.0) {
+    return 0.0;
+  }
+  return 2.0 / M_PI * std::atan(b);
+}
+
 // Per-interval cubic coefficients of the Akima spline through (knots, values),
 // ported 1:1 from educational_VMEC spline_akima.f. The construction is shared
 // between the direct evaluation and the integrated variant. Fortran uses the
@@ -602,7 +618,7 @@ double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
 
 double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
   // c0 + (2/pi) * sum_i c_i * atan(c_{i+1} * x^c_{i+2} / (1 - x)^c_{i+3}) for
-  // i = 1, 5, 9, 13, 17; each term rises from 0 at x = 0 to c_i at x = 1.
+  // i = 1, 5, 9, 13, 17; at x = 1 each term takes its limit from below.
   double ret = 0.0;
 
   if (coeffs.size() > 0) {
@@ -610,20 +626,9 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
   }
 
   if (x >= 1.0) {
-    if (coeffs.size() >= 2) {
-      ret += coeffs[1];
-    }
-    if (coeffs.size() >= 6) {
-      ret += coeffs[5];
-    }
-    if (coeffs.size() >= 10) {
-      ret += coeffs[9];
-    }
-    if (coeffs.size() >= 14) {
-      ret += coeffs[13];
-    }
-    if (coeffs.size() >= 18) {
-      ret += coeffs[17];
+    for (int i = 1; i <= 17; i += 4) {
+      ret += Coef(coeffs, i) *
+             SumAtanEdge(Coef(coeffs, i + 1), Coef(coeffs, i + 3));
     }
   } else {
     double atan_sum = 0.0;
