@@ -35,7 +35,8 @@ class ProfileParameterizationData {
   int MinimumSplinePoints() const;
   bool NeedsSplineData() const;
   // Number of coefficients the closed-form evaluator needs before it can
-  // form its powers and ratios; 0 for the zero-padded polynomial families.
+  // form its ratios; 0 for the families that read a missing coefficient as
+  // zero.
   int MinimumCoefficients() const;
   AllowedFor IsAllowedFor() const;
 

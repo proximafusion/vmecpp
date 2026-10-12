@@ -267,6 +267,23 @@ TEST_F(RadialProfilesTest, TwoPowerGsReducesToTwoPower) {
   EXPECT_NEAR(profiles_->evalTwoPowerGs(c, x, kDirect), expected, 1e-12);
 }
 
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a profile evaluates the same whether its trailing zero
+// exponent is written out or left off: 0.7 * (1 - x^2)^0 = 0.7.
+TEST_F(RadialProfilesTest, TwoPowerReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.7, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.7, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    EXPECT_NEAR(profiles_->evalTwoPower(written, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPower(shortened, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(shortened, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPower(shortened, x, kIntegrate), 0.7 * x,
+                1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(shortened, x, kIntegrate), 0.7 * x,
+                1e-15);
+  }
+}
+
 // ---- nice_quadratic --------------------------------------------------------
 TEST_F(RadialProfilesTest, NiceQuadratic) {
   const Eigen::VectorXd c = Vec({0.5, 1.5, 0.2});
@@ -319,6 +336,19 @@ TEST_F(RadialProfilesTest, SumAtanTakesTheLimitOfEachTermAtTheEdge) {
     const double edge = 0.3 + 0.8 * edge_case.limit;
     EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0), edge, 1e-14);
     EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0 - 1e-9), edge, 1e-8);
+  }
+}
+
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a term evaluates the same whether its trailing zero
+// exponent is written out or left off.
+TEST_F(RadialProfilesTest, SumAtanReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.3, 0.8, 2.0, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.3, 0.8, 2.0, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    const double expected = 0.3 + 0.8 * 2.0 / M_PI * std::atan(2.0 * x * x);
+    EXPECT_NEAR(profiles_->evalSumAtan(written, x), expected, 1e-14);
+    EXPECT_NEAR(profiles_->evalSumAtan(shortened, x), expected, 1e-14);
   }
 }
 
