@@ -191,7 +191,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake gfortran libnetcdf-dev libomp-dev libhdf5-dev python3-dev
+sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -211,7 +211,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install required system packages:
 
 ```shell
-pacman -Sy --noconfirm python-pip gcc gcc-fortran openmp hdf5 netcdf
+pacman -Sy --noconfirm python-pip gcc openmp zlib cmake
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -227,7 +227,7 @@ python -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install required system packages:
 
 ```shell
-dnf install -y python3.10-devel cmake g++ gfortran libomp-devel hdf5-devel netcdf-devel
+dnf install -y python3.10-devel cmake g++ zlib-devel libomp-devel
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
