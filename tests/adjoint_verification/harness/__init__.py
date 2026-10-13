@@ -404,6 +404,9 @@ def dense_jacobian(
         message = "cache_dir requires the full vmec_input used to create the model"
         raise ValueError(message)
     evaluation = EvaluationSettings() if evaluation is None else evaluation
+    if not evaluation.always_fix_m1_gauge:
+        message = "dense_jacobian requires always_fix_m1_gauge=True"
+        raise ValueError(message)
     evaluation.evaluate(model)
     metadata = None
     path = None

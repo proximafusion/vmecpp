@@ -17,6 +17,8 @@
   deflation. Default limits are 2048 state entries and 64 MiB. Cache keys include
   the input, state, extension content, harness content, and evaluation settings.
   Cache hits require a checksum and two fresh full-state HVP probes.
+  Unpinned evaluation settings are rejected: the native unpinned force branch
+  is history dependent, while this harness differentiates the pinned system.
 - `src/vmecpp/_adjoint_contracts.py` defines the records and four explicit
   `NotImplementedError` stubs.
 - `scripts/plot_style.py` defines shared styling, mode colors, filename rules,

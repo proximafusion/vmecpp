@@ -190,6 +190,14 @@ def test_dense_requires_exact_hvp():
     assert not model.hvp_calls
 
 
+def test_dense_rejects_unpinned_gauge_before_evaluation():
+    model = DummyModel()
+    with pytest.raises(ValueError, match="always_fix_m1_gauge=True"):
+        dense_jacobian(model, evaluation=EvaluationSettings(always_fix_m1_gauge=False))
+    assert model.evaluation is None
+    assert not model.hvp_calls
+
+
 def test_cache_requires_full_input(cache_directory):
     with pytest.raises(ValueError, match="full vmec_input"):
         dense_jacobian(DummyModel(), cache_dir=cache_directory)
