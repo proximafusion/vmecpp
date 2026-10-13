@@ -127,18 +127,14 @@ vmec_input.zbs = condensed_surface.zs
 
 VMEC++ will print a warning if a fixed-boundary input has high spectral content ($\langle M \rangle > 3.0$).
 
-### Relax Damping and Preconditioning for Weakly Shaped Boundaries (e.g. QA)
+### Reduce Iterations for Easy Equilibria
 
 VMEC++ uses an artificial time-stepping scheme (steepest descent) to minimize energy and drive force residuals to zero. For strongly shaped stellarators, conservative damping is needed to prevent numerical instability.
 
-However, for **weakly shaped boundaries**, such as quasi-axisymmetric (QA) stellarators or near-circular tokamaks:
-- Poloidal and toroidal mode couplings are relatively weak.
-- The numerical system is less stiff.
+Weakly shaped configurations, such as quasi-axisymmetric (QA) stellarators or near-circular tokamaks, generally converge reliably. For cases that can benefit from fewer iterations, try increasing `lambda_preconditioner_scale` from its default value of `0.5` to `1.0`:
 
-In these cases, you can relax the damping and preconditioning factors to achieve significantly faster convergence:
+```python
+vmec_input.lambda_preconditioner_scale = 1.0
+```
 
-1. **`lambda_preconditioner_scale`**: This factor scales the step size for the magnetic stream function $\lambda$. The default value of `0.5` provides conservative damping inherited from VMEC 8.52. For weakly shaped or QA equilibria, you can relax damping by setting:
-   ```python
-   vmec_input.lambda_preconditioner_scale = 1.0  # Undamped step, faster convergence
-   ```
-2. **`delt`**: This is the artificial time step. For weakly shaped boundaries, the default `delt = 1.0` works well and can sometimes be kept near `1.0` or increased slightly without triggering bad Jacobian steps.
+This scales the preconditioned step for the magnetic stream function $\lambda$. Keep the default `delt` unless the residual history supports changing it, and check that the run reaches the same force tolerance.
