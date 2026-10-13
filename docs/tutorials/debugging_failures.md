@@ -29,6 +29,8 @@ $$
 
 If $\Delta t$ (`delt`) is too large, the solver can overshoot the energy minimum, leading to numerical oscillations where the force residual oscillates between iterations instead of decaying.
 
+Plot the force-residual components and restart locations with [`examples/force_residual_convergence.py`](../../examples/force_residual_convergence.py). For per-iteration diagnostics, including the time-step and restart behavior, see [`examples/iteration_dynamics.py`](../../examples/iteration_dynamics.py). Adapt these examples to inspect the run that failed.
+
 ### Remedy: Reduce `delt` to Trade Speed for Robustness
 Reduce `delt` to take smaller, more stable steps:
 
