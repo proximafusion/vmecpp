@@ -1,5 +1,6 @@
 {
     "lasym": false,
+    "lambda_precondition_checkerboard_terms": -1.0,
     "nfp": 5,
     "mpol": 5,
     "ntor": 4,

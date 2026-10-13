@@ -267,6 +267,23 @@ TEST_F(RadialProfilesTest, TwoPowerGsReducesToTwoPower) {
   EXPECT_NEAR(profiles_->evalTwoPowerGs(c, x, kDirect), expected, 1e-12);
 }
 
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a profile evaluates the same whether its trailing zero
+// exponent is written out or left off: 0.7 * (1 - x^2)^0 = 0.7.
+TEST_F(RadialProfilesTest, TwoPowerReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.7, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.7, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    EXPECT_NEAR(profiles_->evalTwoPower(written, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPower(shortened, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(shortened, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPower(shortened, x, kIntegrate), 0.7 * x,
+                1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(shortened, x, kIntegrate), 0.7 * x,
+                1e-15);
+  }
+}
+
 // ---- nice_quadratic --------------------------------------------------------
 TEST_F(RadialProfilesTest, NiceQuadratic) {
   const Eigen::VectorXd c = Vec({0.5, 1.5, 0.2});
@@ -277,8 +294,9 @@ TEST_F(RadialProfilesTest, NiceQuadratic) {
 }
 
 // ---- sum_atan --------------------------------------------------------------
-// Each arctangent term carries the factor 2/pi, so it rises from 0 at s = 0 to
-// its amplitude at s = 1, where the closed-form branch sums the amplitudes.
+// Each arctangent term carries the factor 2/pi, so with a positive coefficient
+// and a positive exponent of (1 - s) it rises from 0 at s = 0 to its amplitude
+// at s = 1.
 TEST_F(RadialProfilesTest, SumAtanTermsScaledByTwoOverPi) {
   // iota(s) = a0 + (2/pi) * a1 * atan(a2 * s^a3 / (1 - s)^a4)
   const Eigen::VectorXd c = Vec({0.3, 0.8, 1.0, 1.0, 1.0});
@@ -299,6 +317,39 @@ TEST_F(RadialProfilesTest, SumAtanTermsScaledByTwoOverPi) {
                  0.2 * std::atan(3.0 * std::pow(x, 2.0) / std::pow(0.6, 1.0)));
   EXPECT_NEAR(profiles_->evalSumAtan(d, x), expected, 1e-12);
   EXPECT_NEAR(profiles_->evalSumAtan(d, 1.0), 0.1 + 0.5 - 0.2, 1e-12);
+}
+
+// At s = 1 each term (2/pi) * atan(b * s^p / (1 - s)^q) takes its limit from
+// below, sign(b) for q > 0, (2/pi) * atan(b) for q = 0 and zero for q < 0, so
+// the profile is continuous there. VMEC 8.52 returns c0 plus the amplitudes.
+TEST_F(RadialProfilesTest, SumAtanTakesTheLimitOfEachTermAtTheEdge) {
+  struct EdgeCase {
+    double b;
+    double q;
+    double limit;
+  };
+  for (const EdgeCase& edge_case :
+       {EdgeCase{-2.0, 1.0, -1.0},
+        EdgeCase{2.0, 0.0, 2.0 / M_PI * std::atan(2.0)},
+        EdgeCase{2.0, -1.0, 0.0}, EdgeCase{0.0, 1.0, 0.0}}) {
+    const Eigen::VectorXd c = Vec({0.3, 0.8, edge_case.b, 2.0, edge_case.q});
+    const double edge = 0.3 + 0.8 * edge_case.limit;
+    EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0), edge, 1e-14);
+    EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0 - 1e-9), edge, 1e-8);
+  }
+}
+
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a term evaluates the same whether its trailing zero
+// exponent is written out or left off.
+TEST_F(RadialProfilesTest, SumAtanReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.3, 0.8, 2.0, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.3, 0.8, 2.0, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    const double expected = 0.3 + 0.8 * 2.0 / M_PI * std::atan(2.0 * x * x);
+    EXPECT_NEAR(profiles_->evalSumAtan(written, x), expected, 1e-14);
+    EXPECT_NEAR(profiles_->evalSumAtan(shortened, x), expected, 1e-14);
+  }
 }
 
 // ---- sum_cossq -------------------------------------------------------------

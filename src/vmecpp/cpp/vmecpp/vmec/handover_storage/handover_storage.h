@@ -154,6 +154,15 @@ class HandoverStorage {
   // handover_cR/cZ: RowMatrixXd [num_basis, mnsize], handover_aR/aZ: flat
   // [mnsize]
 
+  // Radially tridiagonal m = 0 lambda preconditioner: half-grid
+  // <g_uu / sqrt g> [ns + 1] at s_{j-1/2}, one tridiagonal matrix [ns] and the
+  // forces [(ntor + 1) * num lambda m = 0 bases, ns].
+  Eigen::VectorXd lambda_b_half;
+  Eigen::VectorXd lambda_m0_a;
+  Eigen::VectorXd lambda_m0_d;
+  Eigen::VectorXd lambda_m0_b;
+  RowMatrixXd lambda_m0_c;
+
   RowMatrixXd handover_cR;      // [num_basis, mnsize]
   Eigen::VectorXd handover_aR;  // [mnsize]
   RowMatrixXd handover_cZ;

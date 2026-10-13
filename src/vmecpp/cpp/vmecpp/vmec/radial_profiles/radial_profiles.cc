@@ -56,6 +56,22 @@ double Coef(const Eigen::VectorXd& c, int i) {
   return (i >= 0 && i < static_cast<int>(c.size())) ? c[i] : 0.0;
 }
 
+// Value at s = 1 of a sum_atan term (2/pi) * atan(b * s^p / (1 - s)^q), the
+// limit from below: sign(b) for q > 0, (2/pi) * atan(b) for q = 0 and zero for
+// q < 0.
+double SumAtanEdge(double b, double q) {
+  if (q > 0.0) {
+    if (b > 0.0) {
+      return 1.0;
+    }
+    return (b < 0.0) ? -1.0 : 0.0;
+  }
+  if (q < 0.0) {
+    return 0.0;
+  }
+  return 2.0 / M_PI * std::atan(b);
+}
+
 // Per-interval cubic coefficients of the Akima spline through (knots, values),
 // ported 1:1 from educational_VMEC spline_akima.f. The construction is shared
 // between the direct evaluation and the integrated variant. Fortran uses the
@@ -602,7 +618,7 @@ double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
 
 double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
   // c0 + (2/pi) * sum_i c_i * atan(c_{i+1} * x^c_{i+2} / (1 - x)^c_{i+3}) for
-  // i = 1, 5, 9, 13, 17; each term rises from 0 at x = 0 to c_i at x = 1.
+  // i = 1, 5, 9, 13, 17; at x = 1 each term takes its limit from below.
   double ret = 0.0;
 
   if (coeffs.size() > 0) {
@@ -610,42 +626,17 @@ double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
   }
 
   if (x >= 1.0) {
-    if (coeffs.size() >= 2) {
-      ret += coeffs[1];
-    }
-    if (coeffs.size() >= 6) {
-      ret += coeffs[5];
-    }
-    if (coeffs.size() >= 10) {
-      ret += coeffs[9];
-    }
-    if (coeffs.size() >= 14) {
-      ret += coeffs[13];
-    }
-    if (coeffs.size() >= 18) {
-      ret += coeffs[17];
+    for (int i = 1; i <= 17; i += 4) {
+      ret += Coef(coeffs, i) *
+             SumAtanEdge(Coef(coeffs, i + 1), Coef(coeffs, i + 3));
     }
   } else {
     double atan_sum = 0.0;
-    if (coeffs.size() >= 5) {
-      atan_sum += coeffs[1] * std::atan(coeffs[2] * std::pow(x, coeffs[3]) /
-                                        std::pow(1 - x, coeffs[4]));
-    }
-    if (coeffs.size() >= 9) {
-      atan_sum += coeffs[5] * std::atan(coeffs[6] * std::pow(x, coeffs[7]) /
-                                        std::pow(1 - x, coeffs[8]));
-    }
-    if (coeffs.size() >= 13) {
-      atan_sum += coeffs[9] * std::atan(coeffs[10] * std::pow(x, coeffs[11]) /
-                                        std::pow(1 - x, coeffs[12]));
-    }
-    if (coeffs.size() >= 17) {
-      atan_sum += coeffs[13] * std::atan(coeffs[14] * std::pow(x, coeffs[15]) /
-                                         std::pow(1 - x, coeffs[16]));
-    }
-    if (coeffs.size() >= 21) {
-      atan_sum += coeffs[17] * std::atan(coeffs[18] * std::pow(x, coeffs[19]) /
-                                         std::pow(1 - x, coeffs[20]));
+    for (int i = 1; i <= 17; i += 4) {
+      atan_sum +=
+          Coef(coeffs, i) *
+          std::atan(Coef(coeffs, i + 1) * std::pow(x, Coef(coeffs, i + 2)) /
+                    std::pow(1 - x, Coef(coeffs, i + 3)));
     }
     ret += 2.0 / M_PI * atan_sum;
   }
@@ -688,15 +679,13 @@ double RadialProfiles::evalTwoLorentz(const Eigen::VectorXd& coeffs, double x) {
 
 double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
                                     bool shouldIntegrate) {
-  if (coeffs.size() < 3) {
-    LOG(WARNING) << "too few coefficients for 'two_power' profile; need 3, got "
-                 << coeffs.size() << "\n";
-    return 0.0;
-  }
+  const double c0 = Coef(coeffs, 0);
+  const double c1 = Coef(coeffs, 1);
+  const double c2 = Coef(coeffs, 2);
   double ret = 0.0;
   if (!shouldIntegrate) {
     // p(s) = am(0) * [1 - s**am(1)]**am(2)
-    ret = coeffs[0] * std::pow(1.0 - std::pow(x, coeffs[1]), coeffs[2]);
+    ret = c0 * std::pow(1.0 - std::pow(x, c1), c2);
   } else {
     // regular 10-pt Gauss-Legendre quadrature from pcurr() in Fortran VMEC
     int ngl = 10;
@@ -714,8 +703,7 @@ double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
     ret = 0.0;
     for (int i = 0; i < ngl; ++i) {
       const double xp = x * glx[i];
-      ret += glw[i] * coeffs[0] *
-             std::pow(1.0 - std::pow(xp, coeffs[1]), coeffs[2]);
+      ret += glw[i] * c0 * std::pow(1.0 - std::pow(xp, c1), c2);
     }
     ret *= x;
   }
@@ -729,12 +717,6 @@ double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x,
   //   c(i+1))/c(i+2))^2))
   // with two_power(s) = c0 * (1 - s^c1)^c2. Ported from Fortran VMEC
   // functions.f (two_power_gs) and pmass/pcurr 'two_power_gs'.
-  if (coeffs.size() < 3) {
-    LOG(WARNING)
-        << "too few coefficients for 'two_power_gs' profile; need 3, got "
-        << coeffs.size() << "\n";
-    return 0.0;
-  }
   auto raw = [&coeffs](double s) {
     const double two_power =
         Coef(coeffs, 0) *

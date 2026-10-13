@@ -278,7 +278,7 @@ def _deserialize_value(
 
 
 def _traverse_field_contents(
-    field_type: type,
+    field_type: Any,
     value: Any,
     value_converter: Callable[[type, Any, list[Any]], Any],
     field_metadata: list[Any],
