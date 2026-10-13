@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791877504722,
+  "lastUpdate": 1791878960530,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -25351,6 +25351,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.16681893700001638,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1e2bdecdcebbb49dbd32cbc7efe69f0c0052ed1b",
+          "message": "Expose the m = 1 gauge pin as VmecInput.always_fix_m1_gauge (#960)\n\n* Default tcon0 to 0.5 and redo a step that keeps restarting with tcon0 = 1\n\n* Split the tcon0 docstring into a summary line and a body\n\n* Replace the redo with a VmecInput.always_fix_m1_gauge field and keep tcon0 at 1\n\n* Trigger CI\n\n* Set always_fix_m1_gauge only through the input\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-10-13T10:04:01+02:00",
+          "tree_id": "04ece6a05e64502d3c7b96ef6c4988666f95ffc5",
+          "url": "https://github.com/proximafusion/vmecpp/commit/1e2bdecdcebbb49dbd32cbc7efe69f0c0052ed1b"
+        },
+        "date": 1791878952277,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.3697289017999765,
+            "range": "stddev: 0.01531924088238708",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 1.5122912173333323,
+            "range": "stddev: 0.01584610746802657",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6008135086666471,
+            "range": "stddev: 0.006740892485080233",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.8750420916666712,
+            "range": "stddev: 0.006326871564762625",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.9270018986666552,
+            "range": "stddev: 0.01214208220423282",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 4.078540641666659,
+            "range": "stddev: 0.08039790111849802",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.9986189140000192,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.16752556199998025,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
