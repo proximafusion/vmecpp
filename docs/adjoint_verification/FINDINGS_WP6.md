@@ -177,19 +177,41 @@ The complete data and fixed-middle-step plots are saved as
 pairs. A fresh native `--resume` accepted the exact provenance, with completed
 pairs unchanged at 168 and records unchanged at 338.
 
-### CTH partial signed-mode component scan
+### CTH measured signed-mode component scan
 
-The saved CTH checkpoint contains 115 of 270 completed pairs and 232 native
-solve records, with no failed native solves among those records. A bounded
-native `--resume` accepted the exact reference provenance and continued the
-partial scan. This is incomplete coverage, not a completed gradient check;
-no CTH component pass rate or error maximum is inferred from it.
+A later bounded continuation completed all 270 pairs: 90 signed slots at the
+same three steps. The complete checkpoint contains 542 records with no failed
+native solves. Native `--resume` accepted the exact reference provenance and
+continued the partial scan without discarding its completed pairs.
 
-The partial data are preserved in
-`components_cth_like_fixed_bdy.checkpoint.npz`. Continue with the documented
-`--resume` command using the same runtime and helpers. Fresh invocations
-without `--resume` replaced earlier progress during execution; duplicate
-writers were stopped before publishing this single atomic checkpoint.
+| Objective | Passing slots | Noise-limited slots | Largest relative error on resolved nonzero samples |
+| --- | --- | --- | --- |
+| Volume | 88/90 | 2 | 1.841e-8 |
+| Boundary | 83/90 | 7 | 1.161e-8 |
+| Random linear | 1/90 | 89 | Not resolved |
+
+Volume's unresolved slots are `rbc(m=0,n=+/-4)`. Their AD derivatives are
+`8.809697e-6`, and measured relative errors are below `6.877e-8`, but only the
+largest step resolves the derivative relative to the roundoff-noise estimate.
+The boundary objective's seven unresolved slots are
+`rbc(2,-4)`, `rbc(3,-4)`, `rbc(3,-3)`, `zbs(2,-4)`, `zbs(3,-1)`,
+`zbs(4,-4)`, and `zbs(4,-3)`. Their measured relative errors are below
+`1.401e-7`, but none has two adjacent resolved steps. For example,
+`zbs(3,-1)` has a derivative of `-2.972212e-6`: its relative target is
+`2.972e-12`, below the `3.553e-12` derivative-noise estimate even at `h=1e-3`.
+
+These volume/boundary labels are conservative roundoff-resolution failures,
+not evidence of errors exceeding the relative target. A larger-step study
+could resolve these small coefficients; decreasing the FD step makes the
+reference-noise comparison worse. No acceptance criterion is weakened here.
+For random linear, the measured value noise is `1.853807e-5`, and all 89
+nonzero slots remain unresolved.
+
+Complete data and plots are saved as
+`plot_03_components_cth_like_fixed_bdy_{volume,boundary,random_linear}` PNG/NPZ
+pairs, alongside `components_cth_like_fixed_bdy.checkpoint.npz`.
+Fresh invocations without `--resume` replaced earlier progress during
+execution; duplicate writers were stopped before serial continuation.
 Future runs must be serialized per case and explicitly resumed.
 
 ## N10: one-shot PR cross-check
