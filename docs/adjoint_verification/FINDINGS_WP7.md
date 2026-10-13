@@ -149,3 +149,45 @@ Existing pre-commit hooks pass
 except the isolated Pyright hook, which cannot resolve dependencies because
 the configured `.venv` is absent. Direct Pyright using the runtime interpreter
 reports zero errors.
+
+## Mercier-specific verification
+
+The new shared `mercier` objective uses the full `DMerc` discriminant at fixed
+normalized flux and requires `lbsubs=True`; the existing `well` objective
+remains `DWell`. The targeted tests cover `DMerc`, `DCurr`, `DGeod`, and `DWell`
+on two three-dimensional, prescribed-current configurations, including squared
+interior objectives rather than volume or boundary-only quantities.
+
+Fixed-state checks isolate output-stage differentiation from equilibrium
+reference noise. The first completed run reported eight passes and five
+Enzyme-only skips. Native values agree term-by-term to at most `3.56e-10` on
+each term's own scale. Resolved directional central differences agree to
+`2.25e-7`; nonlinear reverse derivatives agree with Richardson-extrapolated
+differences to `1.31e-7`. Reverse and forward AD agree at a `1e-10` tolerance.
+These checks validate the tested successful `lbsubs` solves, not all-case
+equilibrium sensitivities.
+
+### Rejected singular solve
+
+A separate mixed-surface regression reproduces a finite metric fallback whose
+reverse derivative was NaN. Masking the singular solve's result with
+`jnp.where` did not prevent its transpose solve from entering reverse AD.
+The output stage now determines acceptance without differentiating that probe,
+then differentiates the solve only on accepted surfaces. Rejected surfaces
+retain the metric field and its derivatives. The successful-solve definition,
+residual threshold, and native fallback values are unchanged.
+
+This is a JAX fallback-derivative bug, not a demonstrated failure of every
+converged Mercier gradient. A fallback still means the force-balance field was
+not obtained on that surface; finite derivatives do not establish Mercier
+reliability there. The second-order correction is local to a smooth branch and
+is not certified across a change of solve-acceptance branch.
+
+After the fix, the mixed-surface regression retains forward value `62` and
+returns gradient `148` instead of NaN, matching analytic, central-difference,
+and forward-AD checks. The expanded fixed-state/native-parity suite reports
+11 passes and five Enzyme-only skips, including the existing Solovev and CTH
+`lbsubs` output comparisons. Direct Pyright reports zero errors; other
+pre-commit hooks pass. Successful surfaces use a detached acceptance probe
+followed by a differentiable solve, adding a solve to that path; no runtime
+cost claim is made.

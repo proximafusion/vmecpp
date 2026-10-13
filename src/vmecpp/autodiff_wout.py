@@ -1303,11 +1303,25 @@ def _bsubs_from_force_balance(
         dzeta[rows] + pedestal
     )
     rhs = brho[:, rows]
-    # one LAPACK solve per surface; the batched CPU LU is two orders slower
-    solution = jax.lax.map(lambda system: jnp.linalg.solve(*system), (matrix, rhs))
-    residual = jnp.max(jnp.abs(jnp.einsum("jrc,jc->jr", matrix, solution) - rhs), 1)
-    scale = jnp.maximum(jnp.max(jnp.abs(rhs), axis=1), 1.0)
-    solved = jnp.all(jnp.isfinite(solution), axis=1) & (residual <= 1e-8 * scale)
+
+    def solve_surface(system):
+        matrix, rhs = system
+        # A rejected singular solve must not enter the transpose solve in AD.
+        candidate = jnp.linalg.solve(
+            jax.lax.stop_gradient(matrix), jax.lax.stop_gradient(rhs)
+        )
+        residual = jnp.max(jnp.abs(matrix @ candidate - rhs))
+        scale = jnp.maximum(jnp.max(jnp.abs(rhs)), 1.0)
+        solved = jnp.all(jnp.isfinite(candidate)) & (residual <= 1e-8 * scale)
+        solution = jax.lax.cond(
+            solved,
+            lambda: jnp.linalg.solve(matrix, rhs),
+            lambda: jnp.zeros_like(rhs),
+        )
+        return solution, solved
+
+    # Per-surface LAPACK solves avoid the slower batched CPU LU.
+    solution, solved = jax.lax.map(solve_surface, (matrix, rhs))
 
     grid = (setup.ns - 2, setup.nzeta, setup.ntheta_eff)
     out = []

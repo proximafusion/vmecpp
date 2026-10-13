@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import jax
@@ -19,6 +20,52 @@ from .conftest import requires_enzyme
 from .harness import boundary_array, load_input, small_input, solved_model
 
 MERCIER_TERMS = ("DMerc", "DCurr", "DGeod", "DWell")
+
+
+def test_singular_lbsubs_fallback_has_finite_reverse_derivative():
+    # Pedestal and sin(theta) on the smallest symmetric angular grid.
+    setup: Any = SimpleNamespace(
+        ns=4,
+        nzeta=1,
+        ntheta_eff=2,
+        w_int=np.asarray([0.5, 0.5]),
+        signgs=1,
+        lbsubs=(
+            np.arange(2),
+            np.zeros((2, 2)),
+            np.asarray([[0.0, 1.0], [0.0, -1.0]]),
+            np.zeros((2, 2)),
+            np.asarray([1.0, 0.0]),
+        ),
+    )
+
+    def fields(x):
+        metric = tuple(jnp.full((4, 1, 2), entry) for entry in (x**2 + 2, 2 * x, 3 * x))
+        half = jnp.ones((3, 1, 2))
+        # The first interior surface is invertible; the second has a zero
+        # pedestal column throughout a neighborhood, not a branch-threshold kink.
+        bsupv = half * jnp.asarray([2.0, 0.0, 0.0])[:, None, None]
+        bsubu = x**2 * jnp.asarray([[[0.0, 0.0]], [[1.0, -1.0]], [[2.0, -2.0]]])
+        return autodiff_wout._bsubs_from_force_balance(
+            setup, metric, x * half, bsupv, half, bsubu, half, jnp.ones(3), jnp.ones(3)
+        )
+
+    def objective(x):
+        return sum(jnp.sum(field[1:-1] ** 2) for field in fields(x))
+
+    actual = fields(1.0)
+    for field, fallback in zip(actual, (3.0, 2.0, 3.0), strict=True):
+        np.testing.assert_array_equal(field[2:], fallback)
+        np.testing.assert_array_equal(field[0], fallback)
+    np.testing.assert_allclose(actual[1][1], [[3.0, -3.0]], rtol=0, atol=1e-14)
+    value, derivative = jax.jit(jax.value_and_grad(objective))(1.0)
+    np.testing.assert_allclose(value, 62.0, rtol=0, atol=1e-13)
+    np.testing.assert_allclose(derivative, 148.0, rtol=1e-13, atol=0)
+    _, forward = jax.jvp(objective, (1.0,), (1.0,))
+    np.testing.assert_allclose(forward, derivative, rtol=1e-13, atol=0)
+    step = 1e-5
+    finite_difference = (objective(1 + step) - objective(1 - step)) / (2 * step)
+    np.testing.assert_allclose(derivative, finite_difference, rtol=1e-9, atol=0)
 
 
 def interior_mercier(value: geometry.Geometry, vmec_input):
@@ -56,6 +103,7 @@ def objective_state_cotangent(
     try:
         if state is not None:
             model.set_state(np.ascontiguousarray(state))
+        raw_force(model)
         value, cotangent = jax.value_and_grad(objective)(
             geometry.from_cpp(model.get_geometry())
         )
@@ -72,6 +120,10 @@ def objective_state_cotangent(
         return float(value), np.asarray(state_bar).copy()
     finally:
         model.set_state(np.ascontiguousarray(original))
+        try:
+            raw_force(model)
+        finally:
+            model.set_state(np.ascontiguousarray(original))
 
 
 @pytest.fixture(scope="module", params=("small", "cth"))
@@ -204,6 +256,7 @@ def test_nonlinear_objective_state_cotangent_restores_and_reevaluates():
     source.always_fix_m1_gauge = True
     model = solved_model(source)
     state = np.asarray(model.get_state()).copy()
+    force = raw_force(model)
     terms = np.asarray(
         interior_mercier(geometry.from_cpp(model.get_geometry()), source)
     )
@@ -227,6 +280,7 @@ def test_nonlinear_objective_state_cotangent_restores_and_reevaluates():
     )
     assert np.linalg.norm(plus_bar - base_bar) > 0
     np.testing.assert_array_equal(model.get_state(), state)
+    np.testing.assert_array_equal(model.get_forces(), force)
 
 
 @pytest.fixture(scope="module")
