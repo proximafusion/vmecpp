@@ -13,7 +13,8 @@ SCRIPTS = (
 )
 
 
-def test_saved_directional_errors_are_replayed(tmp_path, monkeypatch):
+@pytest.mark.parametrize("ad", [2.0, 1e-9])
+def test_saved_directional_errors_are_replayed(tmp_path, monkeypatch, ad):
     pytest.importorskip("matplotlib")
     source = tmp_path / "plot_02_taylor_small_random_linear_m1.npz"
     h = np.geomspace(1e-2, 1e-5, 4)
@@ -22,11 +23,12 @@ def test_saved_directional_errors_are_replayed(tmp_path, monkeypatch):
         source,
         steps=h,
         central_fd=fd,
-        directional_ad=np.asarray(2.0),
+        directional_ad=np.asarray(ad),
         noise_floor=np.asarray(1e-8),
         direction_name=np.asarray("m1"),
         status=np.asarray("unresolved"),
         provenance=np.asarray('{"reference":"test oracle"}'),
+        acceptance_threshold=1e-6 * fd,
     )
     output = tmp_path / "output"
     monkeypatch.syspath_prepend(str(SCRIPTS))
@@ -42,6 +44,7 @@ def test_saved_directional_errors_are_replayed(tmp_path, monkeypatch):
         np.testing.assert_array_equal(saved["steps_0"], h)
         np.testing.assert_array_equal(saved["central_fd_0"], fd)
         np.testing.assert_allclose(saved["noise_scale_0"], 1e-8 / h)
+        np.testing.assert_array_equal(saved["acceptance_threshold_0"], 1e-6 * fd)
         assert saved["status_0"].item() == "unresolved"
         assert (
             saved["source_sha256_0"].item()
@@ -61,6 +64,7 @@ def test_incompatible_directional_studies_are_rejected(tmp_path, monkeypatch):
             direction_name=np.asarray(direction),
             status=np.asarray("unresolved"),
             provenance=np.asarray(f'{{"reference":"test oracle","seed":{seed}}}'),
+            acceptance_threshold=np.asarray([2.01e-6, 2.001e-6]),
         )
     output = tmp_path / "output"
     monkeypatch.syspath_prepend(str(SCRIPTS))

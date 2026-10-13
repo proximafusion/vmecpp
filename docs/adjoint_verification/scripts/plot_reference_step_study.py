@@ -45,6 +45,7 @@ def main() -> None:
                     direction = str(saved["direction_name"].item())
                     status = str(saved["status"].item())
                     provenance = str(saved["provenance"].item())
+                    threshold = saved["acceptance_threshold"]
                 source_provenance = json.loads(provenance)
                 if study_provenance is None:
                     study_provenance = source_provenance
@@ -54,6 +55,9 @@ def main() -> None:
                 if (
                     h.ndim != 1
                     or fd.shape != h.shape
+                    or threshold.shape != h.shape
+                    or not np.isfinite(threshold).all()
+                    or np.any(threshold <= 0)
                     or not np.isfinite(h).all()
                     or np.any(h <= 0)
                     or not np.isfinite(ad)
@@ -74,8 +78,9 @@ def main() -> None:
                     "--",
                     label="measured value noise / h",
                 )
-                axis.axhline(
-                    1e-6 * abs(ad) if abs(ad) > 1e-8 else 1e-8,
+                axis.loglog(
+                    h,
+                    threshold,
                     color="black",
                     linestyle=":",
                     label="derivative target",
@@ -90,6 +95,7 @@ def main() -> None:
                 arrays[f"central_fd_{index}"] = fd
                 arrays[f"directional_ad_{index}"] = np.asarray(ad)
                 arrays[f"noise_scale_{index}"] = noise_scale
+                arrays[f"acceptance_threshold_{index}"] = threshold
                 arrays[f"direction_{index}"] = np.asarray(direction)
                 arrays[f"status_{index}"] = np.asarray(status)
                 arrays[f"provenance_{index}"] = np.asarray(provenance)

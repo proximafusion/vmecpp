@@ -141,7 +141,9 @@ floating-point comparisons are conservative: a changed binary or even a
 non-bitwise-reproducible reference solve requires a new scan, not silently
 accepted reuse. Native resume reproducibility still needs measurement.
 Analytic-oracle interruption/resume and rejection tests passed (18 tests);
-saved-data replay and mixed-provenance rejection passed (2 tests).
+saved-data replay and mixed-provenance rejection passed (3 tests).
+The replay uses the saved per-step derivative acceptance thresholds rather
+than inferring a different near-zero rule from the AD derivative alone.
 
 ## N10: one-shot PR cross-check
 
