@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -181,6 +182,25 @@ def test_geometry_callback_failure_restores_state_and_force(monkeypatch):
     )
     with pytest.raises(ValueError, match="objective value must be finite"):
         callback(original + 0.01)
+    np.testing.assert_array_equal(model.get_state(), original)
+    np.testing.assert_array_equal(model.get_forces(), force)
+
+
+def test_geometry_callback_rejects_float32_without_mutating_configuration():
+    model = GeometryModel()
+    original = model.get_state()
+    force = raw_force(model)
+    callback = autodiff_corrections.geometry_objective_state_gradient(
+        model, geometry_objective
+    )
+    with jax.enable_x64(False):  # pyright: ignore[reportAttributeAccessIssue]
+        with pytest.raises(ValueError, match="require jax_enable_x64=True"):
+            autodiff_corrections.geometry_objective_state_gradient(
+                model, geometry_objective
+            )
+        with pytest.raises(ValueError, match="require jax_enable_x64=True"):
+            callback(original)
+        assert not jax.config.x64_enabled
     np.testing.assert_array_equal(model.get_state(), original)
     np.testing.assert_array_equal(model.get_forces(), force)
 

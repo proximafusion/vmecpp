@@ -22,6 +22,9 @@ Option A remains explicitly unsupported.
 Use `geometry_objective_state_gradient(model, objective)` from
 `vmecpp.autodiff_corrections` to construct the callback. `objective` must be a
 JAX-differentiable scalar function of the supplied `geometry.Geometry`.
+JAX x64 must be enabled when constructing and invoking the callback. The
+helper raises a clear `ValueError` if `jax_enable_x64` is false, preventing
+silent truncation of native doubles without changing global configuration.
 The factory reevaluates `jax.value_and_grad`, packs the existing twelve
 coefficient cotangents in their native ordering, and applies
 `model.geometry_state_vjp`, including the poloidal-flux cotangent. Users do not
@@ -139,7 +142,7 @@ rebuild is disabled with `SKBUILD_EDITABLE_SKIP` set to the absolute build
 directory to avoid concurrent rebuilds.
 
 Validation: the corrections, shared-contract, and Newton regression tests
-report 69 passed and 2 Enzyme-only skips, including the existing Option A
+report 70 passed and 2 Enzyme-only skips, including the existing Option A
 `NotImplementedError` regression. Empty active operators and empty Schur-block
 condition estimates fail explicitly rather than calling `min([])`.
 Existing pre-commit hooks pass

@@ -45,16 +45,20 @@ def geometry_objective_state_gradient(
     and use autodiff_wout.wout_quantities on the supplied Geometry, not a cached
     wout snapshot. Nonzero ncurr=1 flux cotangents require Enzyme.
 
+    JAX x64 must be enabled before constructing or using the callback; the
+    helper raises rather than changing global precision configuration.
     The callback refreshes candidate profiles through the raw-force evaluation,
     then restores caller state and raw force on all exits. It requires the
     pinned-gauge force definition, like corrected_vjp.
     """
+    _require_x64()
     if not callable(objective):
         message = "objective must be a callable scalar Geometry objective"
         raise ValueError(message)
     value_and_gradient = jax.value_and_grad(objective)
 
     def state_gradient(state: np.ndarray) -> np.ndarray:
+        _require_x64()
         original = np.asarray(model.get_state(), dtype=np.float64).copy()
         candidate = _finite_vector(state, original.shape, "objective state")
         try:
