@@ -459,6 +459,34 @@ class _BlockTridiagonal:
                 )
         return result
 
+    def solve_transpose(self, rhs: np.ndarray) -> np.ndarray:
+        """Solve the transpose using the same in-place block LU factors.
+
+        Assembly stores H^T, so this supplies the H solve for Newton steps. The upper
+        blocks contain D^{-1} U after factorization; the lower blocks are unchanged.
+        """
+        forward = np.zeros_like(rhs)
+        for j, members in enumerate(self.members):
+            forward[members] = rhs[members]
+            if j > 0:
+                forward[members] -= (
+                    self._block(self.upper, j - 1, j).T @ forward[self.members[j - 1]]
+                )
+        result = np.zeros_like(rhs)
+        for j in range(self.ns - 1, -1, -1):
+            members = self.members[j]
+            value = forward[members].copy()
+            if j + 1 < self.ns:
+                value -= (
+                    self._block(self.lower, j + 1, j).T @ result[self.members[j + 1]]
+                )
+            result[members] = scipy.linalg.lu_solve(
+                (self._block(self.diagonal, j, j), self.pivots[j]),
+                value,
+                trans=1,
+            )
+        return result
+
 
 def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
     """``H^T`` restricted to ``solved``, exactly, from coloured Hessian products.
