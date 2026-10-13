@@ -20,10 +20,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python for the Enzyme object build
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Build Enzyme force-derivative objects
+        id: enzyme
+        uses: ./.github/actions/build-enzyme-objects
+
       # Shared environment + run; PR runs compare and comment but never write
       # back (auto-push stays false).
       - name: Run benchmarks
         uses: ./.github/actions/run-benchmarks
+        env:
+          CMAKE_ARGS: >-
+            -DVMECPP_ENABLE_ENZYME=ON
+            -DVMECPP_ENZYME_JVP_OBJECT=${{ steps.enzyme.outputs.jvp-object }}
+            -DVMECPP_ENZYME_VJP_OBJECT=${{ steps.enzyme.outputs.vjp-object }}
         with:
           auto-push: "false"
           comment-on-alert: "true"

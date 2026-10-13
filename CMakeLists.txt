@@ -431,11 +431,11 @@ if(VMECPP_ENABLE_ENZYME)
     enable_testing()
     # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
     # half-grid Jacobian. Enzyme runs as an optimization-time pass, so it needs
-    # -O2 and the plugin attached.
+    # -O3 and the plugin attached.
     add_executable(jacobian_kernel_autodiff_test
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
     target_compile_options(jacobian_kernel_autodiff_test PRIVATE
-      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+      -O3 -fplugin=${VMECPP_ENZYME_PLUGIN})
     add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
     # Exact Hessian of the composed local force map (all six force-chain kernels):
     # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
@@ -443,7 +443,7 @@ if(VMECPP_ENABLE_ENZYME)
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
     target_compile_options(local_force_hessian_test PRIVATE
-      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+      -O3 -fplugin=${VMECPP_ENZYME_PLUGIN})
     add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
 
     # Wire the exact force Hessian-vector product into the core library and the
@@ -460,7 +460,7 @@ if(VMECPP_ENABLE_ENZYME)
     # Enzyme does not support the AVX mask intrinsics emitted for x86-64-v3.
     # Compile these two translation units for the baseline ISA on x86; use the
     # compiler's default target on other architectures.
-    set(VMECPP_ENZYME_COMPILE_OPTIONS "-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+    set(VMECPP_ENZYME_COMPILE_OPTIONS "-O3;-fplugin=${VMECPP_ENZYME_PLUGIN}")
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
       list(PREPEND VMECPP_ENZYME_COMPILE_OPTIONS "-march=x86-64")
     endif()
