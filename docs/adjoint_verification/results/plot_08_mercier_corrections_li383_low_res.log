@@ -1,0 +1,4 @@
+/home/runner/work/vmecpp/vmecpp/docs/adjoint_verification/scripts/plot_mercier_corrections.py:109: UserWarning: Attempting to set identical low and high ylims makes transformation singular; automatically expanding.
+  figure.tight_layout()
+li383_low_res: failed; FD=['pending' 'pending' 'pending' 'pending']; corrections=[['pending' 'pending' 'pending' 'pending']
+ ['pending' 'pending' 'pending' 'pending']]; public API=pending; failure=reference: RuntimeError: reference: active residual 2.027140e-12 exceeds 1.0e-12

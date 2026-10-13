@@ -1,0 +1,6 @@
+Discarding coefficients because mpol=5 or ntor=4 are smaller than mpol_new=4 or ntor_new=2
+Discarding coefficients because mpol=5 or ntor=4 are smaller than mpol_new=4 or ntor_new=2
+Discarding axis coefficients because ntor=4 is larger than ntor_new=2
+Discarding axis coefficients because ntor=4 is larger than ntor_new=2
+small: failed_criteria; FD=['failed_plateau' 'failed_plateau' 'failed_plateau' 'failed_plateau']; corrections=[['failed_improvement' 'failed_improvement' 'failed_improvement' 'passed']
+ ['failed_improvement' 'passed' 'failed_improvement' 'passed']]; public API=failed_parity; failure=

@@ -1,0 +1,58 @@
+{
+  "case": "li383_low_res",
+  "status": "failed",
+  "failure": "reference: RuntimeError: reference: active residual 1.767805e-12 exceeds 1.0e-12",
+  "total_seconds": 1.7523152429998845,
+  "steps": [
+    1e-05,
+    3e-06,
+    1e-06
+  ],
+  "loose_ftol": 1e-12,
+  "max_steps": 10,
+  "solve_status": [
+    "failed_residual",
+    "pending",
+    "pending",
+    "pending",
+    "pending",
+    "pending",
+    "pending"
+  ],
+  "fd_status": [
+    "pending",
+    "pending",
+    "pending",
+    "pending"
+  ],
+  "correction_status": [
+    [
+      "pending",
+      "pending",
+      "pending",
+      "pending"
+    ],
+    [
+      "pending",
+      "pending",
+      "pending",
+      "pending"
+    ]
+  ],
+  "public_api_status": "pending",
+  "reference_residual_history": [
+    1.4568612912749357e-06,
+    3.176725151589622e-09,
+    2.8408958789486858e-12,
+    2.5915056458266117e-12,
+    2.0430040534747022e-12,
+    2.027140036322395e-12,
+    1.987275144875446e-12,
+    1.9121357058937724e-12,
+    1.831608191412521e-12,
+    1.7678131896813138e-12,
+    1.7678048850796869e-12
+  ],
+  "reference_raw_residual": 1.7678048850796869e-12,
+  "terms": []
+}

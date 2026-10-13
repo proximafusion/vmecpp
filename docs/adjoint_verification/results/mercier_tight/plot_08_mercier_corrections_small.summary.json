@@ -1,0 +1,492 @@
+{
+  "case": "small",
+  "status": "passed",
+  "failure": "",
+  "total_seconds": 28.847968163999667,
+  "steps": [
+    1e-05,
+    3e-06,
+    1e-06
+  ],
+  "loose_ftol": 1e-12,
+  "max_steps": 10,
+  "solve_status": [
+    "passed",
+    "passed",
+    "passed",
+    "passed",
+    "passed",
+    "passed",
+    "passed"
+  ],
+  "fd_status": [
+    "passed",
+    "passed",
+    "passed",
+    "passed"
+  ],
+  "correction_status": [
+    [
+      "passed",
+      "passed",
+      "passed",
+      "passed"
+    ],
+    [
+      "passed",
+      "passed",
+      "passed",
+      "passed"
+    ]
+  ],
+  "public_api_status": "passed",
+  "reference_residual_history": [
+    2.3227988234734417e-08,
+    9.48594871046704e-11,
+    2.417738893663207e-15
+  ],
+  "reference_raw_residual": 2.417738893663207e-15,
+  "terms": [
+    {
+      "term": "DMerc",
+      "reference_value": 0.7192301396855846,
+      "fixed_scale": 153.42081411859883,
+      "reference_boundary_gradient_norm": 42.78956975686344,
+      "reference_state_cotangent_norm": 69451.0680072037,
+      "reference_gradient_seconds": 6.612123898000391,
+      "exact_directional_gradient": 3.684437430724775,
+      "fd_derivatives": [
+        3.6844413849657083,
+        3.684437683171282,
+        3.684437222428727
+      ],
+      "fd_relative_errors": [
+        1.0732267174862e-06,
+        6.851690144510954e-08,
+        5.6533956223434475e-08
+      ],
+      "fd_plateau_relative_change": 1.25050857668544e-07,
+      "corrections": [
+        {
+          "loose_state": 0,
+          "status": "passed",
+          "raw_residual": 6.800765183982201e-08,
+          "naive_corrected_gradient_relative_error": [
+            0.002351880797412149,
+            0.0004149223499409795
+          ],
+          "naive_corrected_value_absolute_error": [
+            0.00010639067913520428,
+            4.781394161712527e-06
+          ],
+          "naive_corrected_values": [
+            0.7191237490064494,
+            0.7192253582914229
+          ],
+          "naive_boundary_gradient_norm": 42.80380779116319,
+          "corrected_boundary_gradient_norm": 42.79532686601299,
+          "diagnostics": {
+            "force_residual": 6.800765183982201e-08,
+            "solve_residual": 9.021851117343536e-16,
+            "block_rcond": 3.966889118895585e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 4016.8967453752175,
+            "adjoint_weighted_residual": -0.00010160928497348865,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 4.135010338354374e-13,
+            "second_adjoint_solve_residual": 1.40961220216071e-15
+          },
+          "timings_seconds": {
+            "objective": 0.022439728999870567,
+            "naive_vjp": 0.09607586599986462,
+            "corrected_vjp": 8.322515571999702
+          }
+        },
+        {
+          "loose_state": 1,
+          "status": "passed",
+          "raw_residual": 2.0466314168906285e-10,
+          "naive_corrected_gradient_relative_error": [
+            6.35275236969793e-07,
+            2.6476036866539926e-10
+          ],
+          "naive_corrected_value_absolute_error": [
+            3.551263616508038e-07,
+            5.4289905904170155e-14
+          ],
+          "naive_corrected_values": [
+            0.7192297845592229,
+            0.7192301396856389
+          ],
+          "naive_boundary_gradient_norm": 42.78955646209287,
+          "corrected_boundary_gradient_norm": 42.78956975521821,
+          "diagnostics": {
+            "force_residual": 2.0466314168906285e-10,
+            "solve_residual": 1.0534952672820526e-15,
+            "block_rcond": 3.9665228415321505e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 4006.6565749583847,
+            "adjoint_weighted_residual": -3.5512641597307663e-07,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 7.267930706858835e-15,
+            "second_adjoint_solve_residual": 1.0367305215719494e-15
+          },
+          "timings_seconds": {
+            "objective": 0.021229328000117675,
+            "naive_vjp": 0.10909320900009334,
+            "corrected_vjp": 0.28165514500005884
+          }
+        }
+      ]
+    },
+    {
+      "term": "DCurr",
+      "reference_value": 0.4034409984803995,
+      "fixed_scale": 17.38929047953967,
+      "reference_boundary_gradient_norm": 35.717831490851296,
+      "reference_state_cotangent_norm": 535893.790044652,
+      "reference_gradient_seconds": 0.13762703000020338,
+      "exact_directional_gradient": -10.745370243200712,
+      "fd_derivatives": [
+        -10.74536910490309,
+        -10.745370390345213,
+        -10.745370722320402
+      ],
+      "fd_relative_errors": [
+        1.0593376914676006e-07,
+        1.369375751015283e-08,
+        4.4588474616798143e-08
+      ],
+      "fd_plateau_relative_change": 3.089471710664531e-08,
+      "corrections": [
+        {
+          "loose_state": 0,
+          "status": "passed",
+          "raw_residual": 6.800765183982201e-08,
+          "naive_corrected_gradient_relative_error": [
+            0.0022798576257993725,
+            1.555996598726788e-05
+          ],
+          "naive_corrected_value_absolute_error": [
+            0.00016643074316291528,
+            9.091178432840685e-07
+          ],
+          "naive_corrected_values": [
+            0.4032745677372366,
+            0.4034400893625562
+          ],
+          "naive_boundary_gradient_norm": 35.70204689360441,
+          "corrected_boundary_gradient_norm": 35.717857461185716,
+          "diagnostics": {
+            "force_residual": 6.800765183982201e-08,
+            "solve_residual": 8.614867069652632e-16,
+            "block_rcond": 3.966889118895585e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 43440.02911891317,
+            "adjoint_weighted_residual": -0.00016552162531961452,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 4.135010338354374e-13,
+            "second_adjoint_solve_residual": 9.631026726170917e-16
+          },
+          "timings_seconds": {
+            "objective": 0.021428325999750086,
+            "naive_vjp": 0.1126605039999049,
+            "corrected_vjp": 0.35405000699984157
+          }
+        },
+        {
+          "loose_state": 1,
+          "status": "passed",
+          "raw_residual": 2.0466314168906285e-10,
+          "naive_corrected_gradient_relative_error": [
+            4.2454797284021e-06,
+            2.4186999524389962e-11
+          ],
+          "naive_corrected_value_absolute_error": [
+            1.4686795751228665e-06,
+            3.8152814241243505e-12
+          ],
+          "naive_corrected_values": [
+            0.4034424671599746,
+            0.4034409984765842
+          ],
+          "naive_boundary_gradient_norm": 35.717949751025486,
+          "corrected_boundary_gradient_norm": 35.71783149063847,
+          "diagnostics": {
+            "force_residual": 2.0466314168906285e-10,
+            "solve_residual": 9.516882285963206e-16,
+            "block_rcond": 3.9665228415321505e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 43498.933165969844,
+            "adjoint_weighted_residual": 1.4686833903955505e-06,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 7.267930706858835e-15,
+            "second_adjoint_solve_residual": 7.409090000379466e-16
+          },
+          "timings_seconds": {
+            "objective": 0.019559552999908192,
+            "naive_vjp": 0.09473418500010666,
+            "corrected_vjp": 0.4729674459999842
+          }
+        }
+      ]
+    },
+    {
+      "term": "DGeod",
+      "reference_value": 0.36402003581145914,
+      "fixed_scale": 5.591871022214364,
+      "reference_boundary_gradient_norm": 349.6100663606858,
+      "reference_state_cotangent_norm": 8902385.622290973,
+      "reference_gradient_seconds": 0.1236404279998169,
+      "exact_directional_gradient": -151.52282875109137,
+      "fd_derivatives": [
+        -151.52405747635987,
+        -151.52293003173332,
+        -151.52286101741132
+      ],
+      "fd_relative_errors": [
+        8.109110123954077e-06,
+        6.684129480395729e-07,
+        2.129451948802431e-07
+      ],
+      "fd_plateau_relative_change": 4.5546775315932985e-07,
+      "corrections": [
+        {
+          "loose_state": 0,
+          "status": "passed",
+          "raw_residual": 6.800765183982201e-08,
+          "naive_corrected_gradient_relative_error": [
+            0.17411492001990653,
+            0.010284878300456216
+          ],
+          "naive_corrected_value_absolute_error": [
+            0.024117854958955576,
+            0.002825533902777233
+          ],
+          "naive_corrected_values": [
+            0.3881378907704147,
+            0.3611945019086819
+          ],
+          "naive_boundary_gradient_norm": 409.8778990731128,
+          "corrected_boundary_gradient_norm": 352.87830474087644,
+          "diagnostics": {
+            "force_residual": 6.800765183982201e-08,
+            "solve_residual": 9.506029777437227e-16,
+            "block_rcond": 3.966889118895585e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 132159.1058544618,
+            "adjoint_weighted_residual": 0.026943388861732826,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 4.135010338354374e-13,
+            "second_adjoint_solve_residual": 1.8827291057099822e-15
+          },
+          "timings_seconds": {
+            "objective": 0.020848109999860753,
+            "naive_vjp": 0.1039843479998126,
+            "corrected_vjp": 0.303579167999942
+          }
+        },
+        {
+          "loose_state": 1,
+          "status": "passed",
+          "raw_residual": 2.0466314168906285e-10,
+          "naive_corrected_gradient_relative_error": [
+            2.167902238766576e-05,
+            2.131565887460389e-08
+          ],
+          "naive_corrected_value_absolute_error": [
+            4.8513413095085944e-06,
+            3.5775882256672276e-11
+          ],
+          "naive_corrected_values": [
+            0.36402488715276865,
+            0.364020035847235
+          ],
+          "naive_boundary_gradient_norm": 349.61759458358995,
+          "corrected_boundary_gradient_norm": 349.6100591203541,
+          "diagnostics": {
+            "force_residual": 2.0466314168906285e-10,
+            "solve_residual": 8.317162619592996e-16,
+            "block_rcond": 3.9665228415321505e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 118038.95432973167,
+            "adjoint_weighted_residual": 4.851305533604024e-06,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 7.267930706858835e-15,
+            "second_adjoint_solve_residual": 1.2326860106714962e-15
+          },
+          "timings_seconds": {
+            "objective": 0.03532640399998854,
+            "naive_vjp": 0.14585818600016864,
+            "corrected_vjp": 0.6968578860000889
+          }
+        }
+      ]
+    },
+    {
+      "term": "DWell",
+      "reference_value": 0.44288549261838706,
+      "fixed_scale": 10.686996169535588,
+      "reference_boundary_gradient_norm": 51.243135754395915,
+      "reference_state_cotangent_norm": 13469.719093395028,
+      "reference_gradient_seconds": 0.14644256100018538,
+      "exact_directional_gradient": -18.890111930922863,
+      "fd_derivatives": [
+        -18.89011330180601,
+        -18.89011207068895,
+        -18.890112019387395
+      ],
+      "fd_relative_errors": [
+        7.25714624122205e-08,
+        7.398901450253478e-09,
+        4.683112816037235e-09
+      ],
+      "fd_plateau_relative_change": 2.715788634216243e-09,
+      "corrections": [
+        {
+          "loose_state": 0,
+          "status": "passed",
+          "raw_residual": 6.800765183982201e-08,
+          "naive_corrected_gradient_relative_error": [
+            0.00022787127314405443,
+            6.690874032800091e-08
+          ],
+          "naive_corrected_value_absolute_error": [
+            4.47032233233946e-05,
+            1.812155459024467e-08
+          ],
+          "naive_corrected_values": [
+            0.44293019584171045,
+            0.44288547449683247
+          ],
+          "naive_boundary_gradient_norm": 51.23869263959395,
+          "corrected_boundary_gradient_norm": 51.243135325698475,
+          "diagnostics": {
+            "force_residual": 6.800765183982201e-08,
+            "solve_residual": 2.7333047797590397e-15,
+            "block_rcond": 3.966889118895585e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 21.45001644871149,
+            "adjoint_weighted_residual": 4.472134487800252e-05,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 4.135010338354374e-13,
+            "second_adjoint_solve_residual": 4.852448314054119e-15
+          },
+          "timings_seconds": {
+            "objective": 0.0202060189999429,
+            "naive_vjp": 0.09354706099975374,
+            "corrected_vjp": 0.2976746929998626
+          }
+        },
+        {
+          "loose_state": 1,
+          "status": "passed",
+          "raw_residual": 2.0466314168906285e-10,
+          "naive_corrected_gradient_relative_error": [
+            1.253529468081772e-07,
+            4.3178349853904284e-13
+          ],
+          "naive_corrected_value_absolute_error": [
+            4.705192346854403e-09,
+            1.3766765505351941e-14
+          ],
+          "naive_corrected_values": [
+            0.4428854973235794,
+            0.4428854926183733
+          ],
+          "naive_boundary_gradient_norm": 51.24314045280677,
+          "corrected_boundary_gradient_norm": 51.24313575439203,
+          "diagnostics": {
+            "force_residual": 2.0466314168906285e-10,
+            "solve_residual": 2.6551023075395883e-15,
+            "block_rcond": 3.9665228415321505e-07,
+            "class_sizes": {
+              "active": 272,
+              "pinned": 10,
+              "null": 174,
+              "zero_column": 0
+            },
+            "cotangent_on_null": 0.0,
+            "cotangent_on_pinned": 21.44402916995599,
+            "adjoint_weighted_residual": 4.705206120873604e-09,
+            "max_relabeling_overlap": null,
+            "newton_solve_residual": 7.267930706858835e-15,
+            "second_adjoint_solve_residual": 6.866094325415581e-15
+          },
+          "timings_seconds": {
+            "objective": 0.047974503000205004,
+            "naive_vjp": 0.1883199640001294,
+            "corrected_vjp": 0.5037370899999587
+          }
+        }
+      ]
+    }
+  ],
+  "public_api": {
+    "public_api_seconds": 0.55995100500013,
+    "public_api_gradient_relative_difference": 9.53892049079215e-13,
+    "public_api_value_absolute_difference": 4.374278717023117e-14,
+    "public_api_value": 0.7192253582913791
+  },
+  "loose_histories": [
+    [
+      6.800765183982201e-08,
+      2.0466314168906285e-10
+    ],
+    [
+      2.0466314168906285e-10,
+      1.5733218535756938e-15
+    ]
+  ],
+  "all_solve_residuals": {
+    "reference": 2.417738893663207e-15,
+    "plus_0": 1.828386716751994e-15,
+    "minus_0": 5.698027076860637e-15,
+    "plus_1": 1.654507057671825e-15,
+    "minus_1": 2.292816046620057e-15,
+    "plus_2": 2.953285799094351e-15,
+    "minus_2": 2.0312172225614377e-15
+  }
+}

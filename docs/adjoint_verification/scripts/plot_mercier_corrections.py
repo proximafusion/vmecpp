@@ -116,31 +116,33 @@ def render(data: dict[str, Any], output: Path, case: str) -> None:
             plt.close(figure)
 
 
-def initial_data(case: str) -> dict[str, Any]:
+def initial_data(
+    case: str, steps: np.ndarray = STEPS, loose_ftol: float = 1e-8
+) -> dict[str, Any]:
     return {
         "case": case,
         "status": "running",
         "failure": "",
         "terms": TERMS,
-        "steps": STEPS,
+        "steps": steps.copy(),
+        "loose_ftol": loose_ftol,
         "newton_tol": TOL,
         "fd_rtol": FD_RTOL,
-        "solve_status": np.full(7, "pending", dtype="U64"),
+        "solve_status": np.full(1 + 2 * len(steps), "pending", dtype="U64"),
         "solve_labels": (
             "reference",
-            "plus_0",
-            "minus_0",
-            "plus_1",
-            "minus_1",
-            "plus_2",
-            "minus_2",
+            *(
+                f"{sign}_{index}"
+                for index in range(len(steps))
+                for sign in ("plus", "minus")
+            ),
         ),
         "fd_status": np.full(4, "pending", dtype="U64"),
         "public_api_status": "pending",
         "correction_status": np.full((2, 4), "pending", dtype="U64"),
-        "fd_values": np.full((3, 2, 4), np.nan),
-        "fd_derivative": np.full((3, 4), np.nan),
-        "fd_relative_error": np.full((3, 4), np.nan),
+        "fd_values": np.full((len(steps), 2, 4), np.nan),
+        "fd_derivative": np.full((len(steps), 4), np.nan),
+        "fd_relative_error": np.full((len(steps), 4), np.nan),
         "fd_plateau_relative_change": np.full(4, np.nan),
         "correction_residual": np.full((2, 4), np.nan),
         "gradient_relative_error": np.full((2, 4, 2), np.nan),
@@ -162,9 +164,16 @@ def initial_data(case: str) -> dict[str, Any]:
     }
 
 
-def measure(case: str, output: Path, max_steps: int) -> dict[str, Any]:
+def measure(
+    case: str,
+    output: Path,
+    max_steps: int,
+    *,
+    steps: np.ndarray = STEPS,
+    loose_ftol: float = 1e-8,
+) -> dict[str, Any]:
     """Checkpoint reference/FD successes before attempting nonlinear corrections."""
-    data = initial_data(case)
+    data = initial_data(case, steps, loose_ftol)
     checkpoint(data, output, case)
     started = time.perf_counter()
     stage = "runtime"
@@ -199,6 +208,26 @@ def measure(case: str, output: Path, max_steps: int) -> dict[str, Any]:
         data["git_revision"] = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip()
+        modules = {
+            "autodiff": autodiff,
+            "autodiff_wout": autodiff_wout,
+            "autodiff_corrections": sys.modules[
+                geometry_objective_state_gradient.__module__
+            ],
+            "autodiff_newton": sys.modules[newton_polish.__module__],
+            "geometry": geometry,
+            "harness": sys.modules[small_input.__module__],
+        }
+        for name, module in modules.items():
+            imported_file = module.__file__
+            if imported_file is None:
+                message = f"cannot identify imported source for {name}"
+                raise RuntimeError(message)
+            imported_path = Path(imported_file).resolve()
+            data[f"source_{name}_path"] = str(imported_path)
+            data[f"source_{name}_sha256"] = hashlib.sha256(
+                imported_path.read_bytes()
+            ).hexdigest()
         data["exact_force_jacobian"] = vmecpp.has_exact_force_jacobian()
         data["jax_version"] = jax.__version__
         data["jax_x64"] = jax.config.x64_enabled
@@ -340,7 +369,7 @@ def measure(case: str, output: Path, max_steps: int) -> dict[str, Any]:
             raise RuntimeError(message)
 
         stage = "independent_fd"
-        for step_index, step in enumerate(STEPS):
+        for step_index, step in enumerate(steps):
             for sign_index, sign in enumerate((1, -1)):
                 label = f"{'plus' if sign == 1 else 'minus'}_{step_index}"
                 _, value = solve(
@@ -385,7 +414,7 @@ def measure(case: str, output: Path, max_steps: int) -> dict[str, Any]:
 
         stage = "loose_solve"
         loose = source.model_copy(deep=True)
-        loose.ftol_array = np.full_like(source.ftol_array, 1e-8)
+        loose.ftol_array = np.full_like(source.ftol_array, loose_ftol)
         data["loose_input_json"] = loose.to_json()
         begin = time.perf_counter()
         model = autodiff._solve_model(loose._to_cpp_vmecindata(), boundary)
@@ -529,10 +558,34 @@ def main() -> None:
         "--cases", nargs="+", choices=("small", "li383_low_res"), default=["small"]
     )
     parser.add_argument("--max-steps", type=int, default=5)
+    parser.add_argument(
+        "--steps",
+        nargs="+",
+        type=float,
+        default=STEPS.tolist(),
+        help="at least three finite positive, strictly decreasing FD steps",
+    )
+    parser.add_argument(
+        "--loose-ftol",
+        type=float,
+        default=1e-8,
+        help="finite positive VMEC solve tolerance for the two correction states",
+    )
     parser.add_argument("--output-dir", type=Path, default=RESULTS)
     parser.add_argument("--render-only", action="store_true")
     args = parser.parse_args()
     output = args.output_dir.resolve()
+    steps = np.asarray(args.steps)
+    if (
+        steps.size < 3
+        or not np.all(np.isfinite(steps) & (steps > 0))
+        or not np.all(np.diff(steps) < 0)
+    ):
+        parser.error(
+            "--steps requires at least three positive decreasing finite values"
+        )
+    if not np.isfinite(args.loose_ftol) or args.loose_ftol <= 0:
+        parser.error("--loose-ftol must be finite and positive")
     if not output.is_relative_to(RESULTS.resolve()) or args.max_steps < 1:
         parser.error("output must be under results and --max-steps must be positive")
     failed = False
@@ -543,7 +596,13 @@ def main() -> None:
             ) as saved:
                 data = {name: saved[name] for name in saved.files}
         else:
-            data = measure(case, output, args.max_steps)
+            data = measure(
+                case,
+                output,
+                args.max_steps,
+                steps=steps,
+                loose_ftol=args.loose_ftol,
+            )
         render(data, output, case)
         print(  # noqa: T201
             f"{case}: {data['status']}; FD={data['fd_status']}; "

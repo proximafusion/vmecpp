@@ -340,7 +340,12 @@ def test_native_corrected_api_matches_direct_option_b(monkeypatch, quantity):
             scale = float(np.max(np.abs(terms[MERCIER_TERMS.index(quantity)])))
             assert np.isfinite(scale)
             assert scale > 0
-            objective = jax.jit(MercierObjective(source, quantity, scale))
+            mercier_objective = MercierObjective(source, quantity, scale)
+
+            def scaled_mercier(snapshot):
+                return mercier_objective(snapshot)
+
+            objective = jax.jit(scaled_mercier)
 
         actual_value, actual_gradient, actual_diagnostics = (
             solver.corrected_value_and_grad(objective, boundary)

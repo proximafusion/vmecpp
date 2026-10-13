@@ -1,0 +1,10 @@
+Discarding coefficients because mpol=5 or ntor=4 are smaller than mpol_new=4 or ntor_new=2
+Discarding coefficients because mpol=5 or ntor=4 are smaller than mpol_new=4 or ntor_new=2
+Discarding axis coefficients because ntor=4 is larger than ntor_new=2
+Discarding axis coefficients because ntor=4 is larger than ntor_new=2
+/home/runner/work/vmecpp/vmecpp/docs/adjoint_verification/scripts/plot_mercier_corrections.py:109: UserWarning: Attempting to set identical low and high ylims makes transformation singular; automatically expanding.
+  figure.tight_layout()
+small: passed; FD=['passed' 'passed' 'passed' 'passed']; corrections=[['passed' 'passed' 'passed' 'passed']
+ ['passed' 'passed' 'passed' 'passed']]; public API=passed; failure=
+li383_low_res: failed; FD=['pending' 'pending' 'pending' 'pending']; corrections=[['pending' 'pending' 'pending' 'pending']
+ ['pending' 'pending' 'pending' 'pending']]; public API=pending; failure=reference: RuntimeError: reference: active residual 1.767805e-12 exceeds 1.0e-12

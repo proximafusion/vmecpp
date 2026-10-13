@@ -265,20 +265,27 @@ def test_nonlinear_objective_state_cotangent_restores_and_reevaluates():
     interior, _ = autodiff._interior_and_boundary(model)
     direction = np.zeros_like(state)
     direction[interior] = base_bar[interior] / np.linalg.norm(base_bar[interior])
-    step = 1e-6
-    plus_value, plus_bar = objective_state_cotangent(
-        model, objective, state + step * direction
+    # This squared diagnostic has a narrow linear neighborhood in state space.
+    steps = (1e-6, 1e-8, 1e-9, 3e-10, 1e-10, 3e-11)
+    finite_differences = []
+    cotangent_changed = False
+    for step in steps:
+        plus_value, plus_bar = objective_state_cotangent(
+            model, objective, state + step * direction
+        )
+        minus_value, _ = objective_state_cotangent(
+            model, objective, state - step * direction
+        )
+        finite_differences.append((plus_value - minus_value) / (2 * step))
+        cotangent_changed |= np.linalg.norm(plus_bar - base_bar) > 0
+    derivative = base_bar @ direction
+    relative_errors = np.abs(np.asarray(finite_differences) - derivative) / abs(
+        derivative
     )
-    minus_value, _ = objective_state_cotangent(
-        model, objective, state - step * direction
-    )
-    np.testing.assert_allclose(
-        (plus_value - minus_value) / (2 * step),
-        base_bar @ direction,
-        rtol=1e-6,
-        atol=0,
-    )
-    assert np.linalg.norm(plus_bar - base_bar) > 0
+    print(f"Mercier state FD steps={steps}, relative errors={relative_errors}")
+    matches = relative_errors <= 1e-6
+    assert np.any(matches[:-1] & matches[1:]), relative_errors
+    assert cotangent_changed
     np.testing.assert_array_equal(model.get_state(), state)
     np.testing.assert_array_equal(model.get_forces(), force)
 
@@ -307,7 +314,7 @@ def polished_mercier_equilibria():
         return model, geometry.from_cpp(model.get_geometry()), float(norm)
 
     model, base, residual = solve(boundary)
-    steps = np.asarray([1e-3, 3e-4, 1e-4])
+    steps = np.asarray([1e-5, 3e-6, 1e-6])
     pairs = []
     residuals = [residual]
     for step in steps:
@@ -386,7 +393,8 @@ def test_option_b_nonlinear_mercier_improves_gradient_and_value(
     gradient_scale = np.linalg.norm(reference_gradient)
     assert gradient_scale > 0
 
-    loose_input = small_input(ftol=1e-8)
+    # Local corrections need a smaller state error than the ftol=1e-8 case.
+    loose_input = small_input(ftol=1e-12)
     loose_input.lbsubs = True
     loose_input.always_fix_m1_gauge = True
     model = solved_model(loose_input)

@@ -255,3 +255,115 @@ acceptance statuses. A failure or unresolved plateau is recorded as such;
 the experiment does not replace the existing acceptance criteria with a
 favorable FD step. Gradient/value improvement is checked against the same
 polished reference and fixed objective definition.
+
+The continuation restored one Enzyme v0.0.264 plugin with Clang/LLVM 18 and
+rebuilt the editable extension once. Both `_vmecpp.VMECPP_ENABLE_ENZYME` and
+`vmecpp.has_exact_force_jacobian()` now report `True`. Existing fetched
+dependency sources were retained; no dependency versions or tracked build
+configuration were changed. Unlike the earlier failed restoration, these
+flags were checked on the extension actually imported by Python.
+
+### Small CTH end-to-end Mercier derivatives
+
+The initial Enzyme run reported 9 passes, 4 unresolved FD plateaus, and 2
+failures. One failure was a state-direction FD truncation error: the normalized
+squared `DMerc` objective has a narrow linear neighborhood. At a state step
+of `1e-6`, the FD derivative was `2.080859e6` versus AD `6.105289e4`.
+Reducing the step gave relative errors `3.285e-3` at `1e-8`, `3.286e-5` at
+`1e-9`, `3.204e-7` at `1e-10`, and `7.322e-8` at `3e-11`. The derivative
+test now requires two adjacent resolved steps at the original `1e-6`
+relative target; no tolerance was enlarged.
+
+The four initial independent-equilibrium plateaus were also truncation-limited
+at boundary steps `1e-3`, `3e-4`, and `1e-4`. Using independent polished solves
+at `1e-5`, `3e-6`, and `1e-6` resolves all four nonlinear objectives:
+
+| Term | Relative error at 3e-6 | Relative error at 1e-6 |
+| --- | --- | --- |
+| DMerc | 6.848e-8 | 5.626e-8 |
+| DCurr | 1.363e-8 | 4.459e-8 |
+| DGeod | 6.681e-7 | 2.126e-7 |
+| DWell | 7.555e-9 | 4.226e-9 |
+
+All seven raw residuals were below `5.699e-15`. The five refined state/implicit
+tests passed, with no plateau skips. This establishes the tested small CTH
+direction, not all-case or all-mode Mercier gradient acceptance.
+
+### Native corrections are not uniformly improving
+
+At native `ftol=1e-8`, small CTH's active raw residual was `7.102150e-6`.
+The following errors are measured against the same polished reference and
+fixed normalized objective:
+
+| Term | Naive relative gradient error | Option B error | Naive absolute value error | Corrected value error |
+| --- | --- | --- | --- | --- |
+| DMerc | 6.59159 | 20.65823 | 9.800409e-2 | 3.192870e-1 |
+| DCurr | 1.665170e-1 | 2.267638e-2 | 2.277580e-4 | 1.574573e-3 |
+| DGeod | 608.53345 | 1894.46663 | 80.33339 | 245.78438 |
+| DWell | 5.491075e-2 | 1.192675e-3 | 9.600035e-3 | 3.229019e-4 |
+
+After one Newton step, the residual was `6.970675e-6`. `DWell` still improved
+both quantities, and `DCurr` now improved both; `DMerc` and `DGeod` did not.
+Residual norm alone therefore does not certify a local correction domain.
+These are real correction-improvement failures, not failed Enzyme builds or
+an excuse to enable the correction unconditionally.
+
+The first original-resolution li383 reference reached `2.027140e-12` after
+five Newton steps, above the `1e-12` requirement. Its checkpoint records this
+failure and leaves derivative/correction entries pending. No li383 Mercier
+acceptance follows from those missing measurements.
+
+### Measured local improvement at tighter native tolerance
+
+A second experiment preserves the original failure data and writes to
+`results/mercier_tight`. Reproduce it with
+`scripts/plot_mercier_corrections.py --cases small li383_low_res --steps 1e-5 3e-6
+1e-6 --loose-ftol 1e-12 --max-steps 10 --output-dir results/mercier_tight`.
+The FD and improvement criteria are unchanged.
+
+Small CTH passed all four FD plateaus, gradient/value improvements at both
+states, and the fixed-scale public `DMerc` API parity check:
+
+| Term | Gradient error at F=6.801e-8, naive -> B | Gradient error at F=2.047e-10, naive -> B |
+| --- | --- | --- |
+| DMerc | 2.351881e-3 -> 4.149224e-4 | 6.352752e-7 -> 2.647604e-10 |
+| DCurr | 2.279858e-3 -> 1.555997e-5 | 4.245480e-6 -> 2.418700e-11 |
+| DGeod | 1.741149e-1 -> 1.028488e-2 | 2.167902e-5 -> 2.131566e-8 |
+| DWell | 2.278713e-4 -> 6.690874e-8 | 1.253529e-7 -> 4.317835e-13 |
+
+`DMerc` absolute value errors changed from `1.063907e-4` to `4.781394e-6`
+at the first state, and from `3.551264e-7` to `5.428991e-14` at the second.
+All other terms' value errors also decreased. A final Newton step reduced
+the raw force to about `1.6e-15`. Two states establish improvement here, not
+the requested all-configuration N8 slopes or a universal residual threshold.
+
+The small experiment took 28.85 seconds. Warm naive VJPs took 0.094--0.188
+seconds, and warm Option B VJPs took 0.282--0.697 seconds per objective/state.
+The first corrected `DMerc` call took 8.32 seconds, including JAX compilation.
+These are local wall times, not a solver-wide performance claim.
+
+At original li383 resolution, ten steps still left `1.767805e-12` above the
+same `1e-12` reference requirement. That case remains blocked; increasing the
+iteration budget did not establish the required reference.
+
+The full Enzyme Mercier suite now passes all 15 tests. FD steps were refined
+to resolve truncation error, and the improvement regression starts at the
+measured local domain `ftol=1e-12`; the failing `ftol=1e-8` experiment remains
+saved and documented above. Separate public API regressions report 39 passes,
+one existing non-Enzyme-only skip, and six deselections, including native
+interior-R and nonlinear `DWell` parity. Six plot/precision/CLI tests passed.
+
+## Default integration conclusion
+
+Ship only the explicitly invoked, experimental objective-aware method on the
+default solver object. Keep the generic JAX Geometry solve and its tolerance
+schedule unchanged. The loose-state counterexamples and blocked li383
+reference do not justify making residual corrections or relaxed inner solves
+automatic. Users must validate their objective and convergence domain; raw
+residual diagnostics do not supply an all-case error guarantee.
+
+Formatting hooks and explicit-interpreter Pyright checks passed. Secret scans
+reported no secrets. Read-only final review found no significant issues after
+fixing precision and source-provenance checks. The automated review executable
+was unavailable, and the final CodeQL scan timed out; it is not reported as a
+completed security scan.

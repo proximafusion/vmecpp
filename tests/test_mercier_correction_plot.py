@@ -1,14 +1,17 @@
 """Deterministic rendering of synthetic WP7 data, without an Enzyme runtime."""
 
 import runpy
+import sys
 from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
-import matplotlib.figure
 import numpy as np
 import pytest
+
+pytest.importorskip("matplotlib")
+FIGURE_MODULE = pytest.importorskip("matplotlib.figure")
 
 SCRIPT = (
     Path(__file__).resolve().parents[1]
@@ -38,6 +41,22 @@ def test_scientific_measurement_enables_x64_and_rejects_float32():
         PLOT["enable_x64"](config)
 
 
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--steps", "1e-3", "1e-4"],
+        ["--steps", "1e-3", "1e-4", "1e-4"],
+        ["--steps", "nan", "1e-4", "1e-5"],
+        ["--loose-ftol", "0"],
+    ],
+)
+def test_invalid_scientific_options_fail_before_native_execution(monkeypatch, options):
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), *options])
+    with pytest.raises(SystemExit) as error:
+        PLOT["main"]()
+    assert error.value.code == 2
+
+
 def test_synthetic_mercier_plot_preserves_named_records(monkeypatch):
     data = PLOT["initial_data"]("small")
     data["status"] = "synthetic_not_measured"
@@ -55,7 +74,7 @@ def test_synthetic_mercier_plot_preserves_named_records(monkeypatch):
     output = Path("plot_08_mercier_corrections_synthetic_memory")
     arrays, image = BytesIO(), BytesIO()
     replacements = []
-    savefig = matplotlib.figure.Figure.savefig
+    savefig = FIGURE_MODULE.Figure.savefig
 
     def save_image(figure, destination, **kwargs):
         assert destination == output / "plot_08_mercier_corrections_small.png.part"
@@ -74,7 +93,7 @@ def test_synthetic_mercier_plot_preserves_named_records(monkeypatch):
             "replace",
             lambda source, target: replacements.append((source, target)),
         )
-        patches.setattr(matplotlib.figure.Figure, "savefig", save_image)
+        patches.setattr(FIGURE_MODULE.Figure, "savefig", save_image)
         PLOT["checkpoint"](data, output, "small")
         PLOT["render"](data, output, "small")
     assert image.getvalue().startswith(b"\x89PNG\r\n\x1a\n")
