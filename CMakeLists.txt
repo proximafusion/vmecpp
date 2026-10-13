@@ -161,7 +161,7 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
 endif()
 FetchContent_Declare(
   eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_REPOSITORY https://github.com/eigen-mirror/eigen.git
   GIT_TAG tags/5.0.1
   GIT_SHALLOW TRUE
 )
