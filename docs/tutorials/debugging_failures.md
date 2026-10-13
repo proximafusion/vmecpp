@@ -12,7 +12,6 @@ This guide explains the most common failure modes and gives practical steps to d
 | Free boundary fails on shaped boundary | Ill-posedness near islands or separatrix | Reduce `phiedge` and truncate profiles to solve for an inner flux surface |
 | Non-positive Jacobian ($J \le 0$) | Boundary ripples or bad axis initial guess | Spectrally condense boundary; check `raxis_c`/`zaxis_s`; reduce `delt` |
 | Inaccurate Mercier criterion (`DMerc`) | Default full-grid $B_s$ interpolation | Enable `lbsubs = True` to re-derive $B_s$ from radial force balance |
-| Slow convergence on weakly shaped boundary | Overly conservative damping | Set `lambda_preconditioner_scale = 1.0` and use `delt = 1.0` |
 
 ---
 
@@ -128,32 +127,4 @@ Common causes and fixes:
 The calculated Mercier stability criterion `DMerc`, magnetic shear, or current density profile shows unphysical spikes or does not match analytical expectations.
 
 ### Fix: Set `lbsubs = True`
-By default (`lbsubs = False`), the full-grid covariant radial magnetic field component $B_s$ is calculated by averaging values from adjacent half-grid points. This simple interpolation neglects radial equilibrium constraints and can introduce errors in radial derivatives.
-
-Setting `lbsubs = True` instructs VMEC++ to compute the full-grid $B_s$ by inverting the radial force balance equation in Fourier space:
-
-$$
-vmec\_input.lbsubs = True
-$$
-
-Always enable `lbsubs = True` when analyzing Mercier stability or current profiles.
-
----
-
-## 5. Slow Convergence on Weakly Shaped Configurations (QA)
-
-### Symptom
-A quasi-axisymmetric (QA) stellarator or tokamak equilibrium converges very slowly, taking thousands of iterations even on coarse grids.
-
-### Fix: Relax Damping and Preconditioning
-VMEC includes conservative damping intended for strongly shaped, non-axisymmetric 3D stellarators (such as W7-X). For weakly shaped or QA boundaries, the mode coupling is weak and the problem is much less stiff.
-
-You can relax the damping to speed up convergence:
-- Set `lambda_preconditioner_scale = 1.0` (default is `0.5`).
-- Keep `delt = 1.0` (or slightly higher).
-
-```python
-# Accelerated convergence settings for weakly shaped / QA boundaries
-vmec_input.lambda_preconditioner_scale = 1.0
-vmec_input.delt = 1.0
-```
+For the explanation and usage guidance, see [Enable `lbsubs` for current-related properties and Mercier stability](fixed_boundary.md#enable-lbsubs-for-current-related-properties-and-mercier-stability-dmerc) in the fixed-boundary tutorial. Enable it when analyzing Mercier stability or current profiles.
