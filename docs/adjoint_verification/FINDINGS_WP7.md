@@ -212,3 +212,46 @@ Mercier, N8 slopes on CTH/li383, and a default residual/cost recommendation
 remain unverified. The measured quadratic correction slopes above are
 nonlinear algebraic-oracle results only. This module is not integrated into
 the public JAX solver by default.
+
+## Objective-aware default solver integration
+
+The solver returned by `autodiff.make_solver(input)` now exposes
+`corrected_value_and_grad(objective, boundary, directional_step=1e-3)`,
+returning the corrected scalar value, dense boundary gradient, and
+`ImplicitVjpDiagnostics`. This native objective-level method uses Option B,
+including reevaluation of the objective state gradient at displaced states.
+It performs a fresh solve without consuming the ordinary JAX forward cache.
+
+The scalar objective must depend on the boundary through the supplied
+Geometry only, with profiles and objective parameters held fixed. For Mercier,
+use the same fixed `VmecInput` with `lbsubs=True` when evaluating
+`autodiff_wout.wout_quantities`. The method requires JAX x64 and Enzyme.
+Profile overrides, JIT tracing, and higher-order differentiation are rejected.
+
+The ordinary `solver(boundary, profiles)` and its generic JAX VJP are unchanged.
+A Geometry cotangent cannot recover the Hessian of an arbitrary nonlinear
+downstream objective, so enabling Option B in that generic VJP would silently
+drop objective curvature. Correction therefore belongs at the objective-level
+entry point, not in a frozen-cotangent Geometry pullback.
+
+This integration retains the final native convergence requirement and is
+experimental. It does not automatically loosen input tolerances or claim that
+the correction improves every objective. The earlier native-validation limits
+above describe the previous runtime; new Enzyme measurements are reported
+separately below when available.
+
+## Reproducible native experiment
+
+`scripts/plot_mercier_corrections.py` measures all four normalized, nonlinear
+interior objectives (`DMerc`, `DCurr`, `DGeod`, `DWell`) with fixed reference
+scales. It records independent plus/minus equilibrium differences at
+`h = (1e-3, 3e-4, 1e-4)`, exact implicit gradients, raw residual histories,
+and Option B errors at two loose states separated by a Newton step.
+Each completed stage is saved before the next measurement.
+
+The `plot_08_mercier_corrections_CASE` PNG/NPZ pairs retain input, binary,
+script, and runtime provenance, timings, solve outcomes, and derivative
+acceptance statuses. A failure or unresolved plateau is recorded as such;
+the experiment does not replace the existing acceptance criteria with a
+favorable FD step. Gradient/value improvement is checked against the same
+polished reference and fixed objective definition.

@@ -26,7 +26,9 @@ are differentiable as well; free-boundary parameters are not.
 from __future__ import annotations
 
 import collections
+import copy
 import itertools
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,8 +36,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy.linalg
+from jax.core import Tracer
 
 from vmecpp import autodiff_wout, geometry
+from vmecpp._adjoint_contracts import ImplicitVjpDiagnostics
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 _GEOMETRY_COEFFICIENTS = (
@@ -708,6 +712,118 @@ class DifferentiableVmec:
     def __call__(self, boundary, profiles=None) -> geometry.Geometry:
         """The geometry for ``boundary`` and optional ``profiles`` values."""
         return self._solve(boundary, profiles)[0]
+
+    def corrected_value_and_grad(
+        self,
+        objective: Callable[[geometry.Geometry], jax.Array],
+        boundary,
+        *,
+        directional_step: float = 1.0e-3,
+        profiles=None,
+    ) -> tuple[float, np.ndarray, ImplicitVjpDiagnostics]:
+        """Evaluate a scalar Geometry objective with an Option B residual correction.
+
+        This experimental native operation requires JAX x64 and exact force derivatives.
+        It runs a fresh, converged solve without accessing the JAX forward cache. The
+        objective state gradient is reevaluated to retain objective curvature; the
+        additive value correction is -lambda^T F. This is a local residual correction,
+        not a converged-gradient guarantee.
+
+        The objective must be JAX-differentiable and depend on the boundary only through
+        its Geometry argument. Input profiles and objective parameters are fixed;
+        profile overrides and derivatives are unsupported here. This method cannot be
+        jitted or differentiated through. The ordinary geometry call and its generic JAX
+        VJP remain uncorrected.
+        """
+        from vmecpp.autodiff_corrections import (  # noqa: PLC0415
+            corrected_vjp,
+            geometry_objective_state_gradient,
+        )
+        from vmecpp.autodiff_diagnostics import raw_force  # noqa: PLC0415
+
+        if any(
+            isinstance(value, Tracer)
+            for value in jax.tree.leaves((boundary, directional_step, profiles))
+        ):
+            error_message = (
+                "corrected_value_and_grad is a native operation; JAX tracers, "
+                "jit, and higher-order differentiation are unsupported"
+            )
+            raise ValueError(error_message)
+        if not jax.config.x64_enabled:
+            error_message = "corrected_value_and_grad requires jax_enable_x64=True"
+            raise ValueError(error_message)
+        if profiles is not None:
+            error_message = (
+                "corrected_value_and_grad does not support profile overrides or "
+                "profile derivatives; profiles are fixed by the solver input"
+            )
+            raise NotImplementedError(error_message)
+        if not callable(objective):
+            error_message = "objective must be a callable scalar Geometry objective"
+            raise ValueError(error_message)
+        boundary_array = np.asarray(boundary)
+        if (
+            boundary_array.shape != self.parameter_shape
+            or not np.issubdtype(boundary_array.dtype, np.number)
+            or np.iscomplexobj(boundary_array)
+            or not np.all(np.isfinite(boundary_array))
+        ):
+            error_message = (
+                f"boundary must be finite and real with shape {self.parameter_shape}"
+            )
+            raise ValueError(error_message)
+        boundary_array = np.array(boundary_array, dtype=np.float64, copy=True)
+        step_array = np.asarray(directional_step)
+        if (
+            step_array.shape != ()
+            or not np.issubdtype(step_array.dtype, np.number)
+            or np.iscomplexobj(step_array)
+            or not np.isfinite(step_array)
+            or step_array <= 0
+        ):
+            error_message = "directional_step must be finite and positive"
+            raise ValueError(error_message)
+        if not _vmecpp.VMECPP_ENABLE_ENZYME or self.vmec_input.lforbal:
+            error_message = (
+                "corrected_value_and_grad requires Enzyme exact force derivatives "
+                "(VMECPP_ENABLE_ENZYME=ON) and lforbal=false"
+            )
+            raise RuntimeError(error_message)
+        fixed_input = copy.deepcopy(self.vmec_input)
+        model = _solve_model(fixed_input._to_cpp_vmecindata(), boundary_array)
+        if not model.has_exact_force_jacobian:
+            error_message = (
+                "corrected_value_and_grad requires a model with exact force derivatives"
+            )
+            raise RuntimeError(error_message)
+        raw_force(model)
+        value = objective(geometry.from_cpp(model.get_geometry()))
+        if isinstance(value, Tracer):
+            error_message = (
+                "corrected_value_and_grad objective returned a JAX tracer; "
+                "jit and higher-order differentiation are unsupported"
+            )
+            raise ValueError(error_message)
+        value_array = np.asarray(value)
+        if (
+            value_array.shape != ()
+            or not np.issubdtype(value_array.dtype, np.number)
+            or np.iscomplexobj(value_array)
+            or not np.isfinite(value_array)
+        ):
+            error_message = "objective must return a finite real scalar"
+            raise ValueError(error_message)
+        state_gradient = geometry_objective_state_gradient(model, objective)
+        x_bar = state_gradient(np.asarray(model.get_state(), dtype=np.float64).copy())
+        boundary_gradient, value_correction, diagnostics = corrected_vjp(
+            model,
+            x_bar,
+            "B",
+            objective_state_gradient=state_gradient,
+            directional_step=directional_step,
+        )
+        return float(value_array) + value_correction, boundary_gradient, diagnostics
 
     def _solve(self, boundary, profiles=None) -> tuple[geometry.Geometry, jax.Array]:
         """The geometry and the non-differentiated outputs of :attr:`extra_size`."""
