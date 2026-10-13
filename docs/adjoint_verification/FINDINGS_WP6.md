@@ -120,6 +120,10 @@ The restored sandbox initially had `VMECPP_ENABLE_ENZYME=OFF`. Saved NPZ data
 remain evidence from the recorded Enzyme binary, but new exact-gradient
 measurements require restoring and verifying an Enzyme-enabled runtime.
 No missing measurements are inferred from the saved Taylor slopes.
+The continuation rebuilt `ClangEnzyme-18.so` from Enzyme v0.0.264 with
+LLVM/Clang 18 and restored the editable extension without dependency or
+production-source changes. Both `_vmecpp.VMECPP_ENABLE_ENZYME` and
+`vmecpp.has_exact_force_jacobian()` then returned `True`.
 
 ### Durable component scans
 
@@ -133,17 +137,60 @@ Run `scripts/plot_reference_gradients.py` with
 --studies components --hot-restart --output-dir plots_wp6`, and add `--resume`
 to continue existing checkpoints without rerunning Taylor studies. The initial
 run also writes an empty checkpoint before its first pair.
+Starting a fresh scan replaces an existing checkpoint; continuing it requires
+`--resume`. Use only one writer per case/checkpoint path.
 
 Resume validates checksums, steps, ordered objectives and random weights,
 input, base state, exact gradients, reference noise, and runtime/helper hashes.
 It rejects incompatible or corrupt data instead of combining runs. Exact
 floating-point comparisons are conservative: a changed binary or even a
 non-bitwise-reproducible reference solve requires a new scan, not silently
-accepted reuse. Native resume reproducibility still needs measurement.
+accepted reuse. Native resume reproducibility must be checked per case.
 Analytic-oracle interruption/resume and rejection tests passed (18 tests);
 saved-data replay and mixed-provenance rejection passed (3 tests).
 The replay uses the saved per-step derivative acceptance thresholds rather
 than inferring a different near-zero rule from the AD derivative alone.
+
+### li383 measured signed-mode component scan
+
+The continuation completed all 168 central-difference pairs: 56 signed
+`rbc`/`zbs` slots at steps `1e-3`, `3e-4`, and `1e-4`, including redundant and
+inactive slots. All 336 perturbed native solves converged; the checkpoint
+contains 338 records including the two reference records.
+
+| Objective | Passing slots | Noise-limited slots | Largest relative error on resolved nonzero samples |
+| --- | --- | --- | --- |
+| Volume | 56/56 | 0 | 5.533e-9 |
+| Boundary | 56/56 | 0 | 7.418e-9 |
+| Random linear | 1/56 | 55 | Not resolved |
+
+Counts include near-zero and inactive-slot checks. Maxima use every resolved
+nonzero sample at all three steps, not an error-minimizing step choice.
+The random-linear value noise is `3.314114e-6`, giving derivative-noise scales
+from `3.314e-3` to `3.314e-2`; none of its nonzero component derivatives is
+resolved at the required target. This is an unresolved reference comparison,
+not demonstrated agreement or a localized adjoint bug. The passing volume
+and boundary checks do not certify interior-sensitive objectives.
+
+The complete data and fixed-middle-step plots are saved as
+`plot_03_components_li383_low_res_{volume,boundary,random_linear}` PNG/NPZ
+pairs. A fresh native `--resume` accepted the exact provenance, with completed
+pairs unchanged at 168 and records unchanged at 338.
+
+### CTH partial signed-mode component scan
+
+The saved CTH checkpoint contains 115 of 270 completed pairs and 232 native
+solve records, with no failed native solves among those records. A bounded
+native `--resume` accepted the exact reference provenance and continued the
+partial scan. This is incomplete coverage, not a completed gradient check;
+no CTH component pass rate or error maximum is inferred from it.
+
+The partial data are preserved in
+`components_cth_like_fixed_bdy.checkpoint.npz`. Continue with the documented
+`--resume` command using the same runtime and helpers. Fresh invocations
+without `--resume` replaced earlier progress during execution; duplicate
+writers were stopped before publishing this single atomic checkpoint.
+Future runs must be serialized per case and explicitly resumed.
 
 ## N10: one-shot PR cross-check
 
@@ -159,3 +206,11 @@ WP5's validated reference equilibria before production integration. Numerical
 failures, if observed, must be recorded with their steps, directions, objective,
 force residuals, and reference method rather than hidden by weakening the
 acceptance tolerance.
+
+The continuation's focused checks passed: 18 checkpoint tests and 3 saved-data
+replay tests. Formatting hooks passed. The isolated default Pyright hook cannot
+resolve this sandbox's globally installed dependencies; the same checker with
+the explicit Python interpreter reported zero errors. CodeQL reported zero
+Python alerts. The automated review executable was unavailable; a read-only
+review identified mixed-source provenance and a reconstructed plotting
+threshold, both corrected with regression coverage.

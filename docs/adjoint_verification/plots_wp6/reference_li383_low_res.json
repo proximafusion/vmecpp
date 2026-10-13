@@ -1,0 +1,386 @@
+{
+  "case": "li383_low_res",
+  "provenance": {
+    "binary_sha256": "bbc863b43952da6c69bd177a484acd6d85a248df6155ec07c2907e79cd9a0079",
+    "enzyme": true,
+    "exact_gradient": "jax.value_and_grad(autodiff.make_solver)",
+    "failed_solve_status": -1,
+    "force_tolerance": "squared/normalized force threshold, not state accuracy",
+    "helper_sha256": "e800e935e7daa67d5606a4f484cbf65a5d31c580e850893040ae015221dbe1e5",
+    "hot_restart": true,
+    "input": {
+      "ac": [
+        8183.956999999995,
+        1436035.600000001,
+        -10740714.0,
+        74438920.0,
+        -322215650.0,
+        881050800.0,
+        -1493896600.0,
+        1527468000.0,
+        -867901590.0,
+        210351200.0
+      ],
+      "ac_aux_f": [],
+      "ac_aux_s": [],
+      "ai": [],
+      "ai_aux_f": [],
+      "ai_aux_s": [],
+      "always_fix_m1_gauge": true,
+      "am": [
+        73408.0,
+        -5483.0,
+        -38712.0,
+        -507860.0,
+        1915500.0,
+        -3442900.0,
+        2881000.0,
+        -874930.0
+      ],
+      "am_aux_f": [],
+      "am_aux_s": [],
+      "aphi": [
+        1.0
+      ],
+      "backup_evaluated_state": true,
+      "bloat": 1.0,
+      "curtor": -174250.0,
+      "delt": 0.9,
+      "extcur": [],
+      "fgiveup": 30.0,
+      "free_boundary_method": "nestor",
+      "ftol_array": [
+        1e-16
+      ],
+      "gamma": 0.0,
+      "iteration_style": "vmec_8_52",
+      "lambda_precondition_checkerboard_terms": 0.001,
+      "lambda_preconditioner_scale": 0.5,
+      "lasym": false,
+      "lbsubs": false,
+      "lforbal": false,
+      "lfreeb": false,
+      "lgiveup": false,
+      "mgrid_file": "NONE",
+      "mpol": 4,
+      "mpol_geometry": -1,
+      "ncurr": 1,
+      "nfp": 3,
+      "niter_array": [
+        20000
+      ],
+      "ns_array": [
+        16
+      ],
+      "nstep": 200,
+      "ntheta": 0,
+      "ntor": 3,
+      "ntor_geometry": -1,
+      "nvacskip": 3,
+      "nzeta": 0,
+      "pcurr_type": "power_series",
+      "phiedge": 0.514386,
+      "piota_type": "power_series",
+      "pmass_type": "power_series",
+      "pres_scale": 1.0,
+      "raxis_c": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "raxis_s": null,
+      "rbc": [
+        {
+          "m": 0,
+          "n": 0,
+          "value": 1.3782
+        },
+        {
+          "m": 0,
+          "n": 1,
+          "value": -0.0041452
+        },
+        {
+          "m": 0,
+          "n": 2,
+          "value": -0.0041374
+        },
+        {
+          "m": 0,
+          "n": 3,
+          "value": 0.0036116
+        },
+        {
+          "m": 1,
+          "n": -3,
+          "value": 0.00047123
+        },
+        {
+          "m": 1,
+          "n": -2,
+          "value": -0.0026156
+        },
+        {
+          "m": 1,
+          "n": -1,
+          "value": 0.020869
+        },
+        {
+          "m": 1,
+          "n": 0,
+          "value": 0.27073
+        },
+        {
+          "m": 1,
+          "n": 1,
+          "value": -0.135
+        },
+        {
+          "m": 1,
+          "n": 2,
+          "value": 0.0048519
+        },
+        {
+          "m": 1,
+          "n": 3,
+          "value": 0.00048906
+        },
+        {
+          "m": 2,
+          "n": -3,
+          "value": -0.00046166
+        },
+        {
+          "m": 2,
+          "n": -2,
+          "value": -0.00019988
+        },
+        {
+          "m": 2,
+          "n": -1,
+          "value": 0.0089339
+        },
+        {
+          "m": 2,
+          "n": 0,
+          "value": 0.091094
+        },
+        {
+          "m": 2,
+          "n": 1,
+          "value": 0.090684
+        },
+        {
+          "m": 2,
+          "n": 2,
+          "value": 0.027208
+        },
+        {
+          "m": 2,
+          "n": 3,
+          "value": -0.0044665
+        },
+        {
+          "m": 3,
+          "n": -3,
+          "value": 0.00059433
+        },
+        {
+          "m": 3,
+          "n": -2,
+          "value": 5.2473e-05
+        },
+        {
+          "m": 3,
+          "n": -1,
+          "value": 0.0031952
+        },
+        {
+          "m": 3,
+          "n": 0,
+          "value": -0.014174
+        },
+        {
+          "m": 3,
+          "n": 1,
+          "value": -0.0017796
+        },
+        {
+          "m": 3,
+          "n": 2,
+          "value": -0.010529
+        },
+        {
+          "m": 3,
+          "n": 3,
+          "value": -0.0058013
+        }
+      ],
+      "rbs": null,
+      "return_outputs_even_if_not_converged": false,
+      "signgs": -1,
+      "spres_ped": 1.0,
+      "tcon0": 1.0,
+      "vacuum_mpol": 0,
+      "vacuum_ntor": 0,
+      "zaxis_c": null,
+      "zaxis_s": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "zbc": null,
+      "zbs": [
+        {
+          "m": 0,
+          "n": 1,
+          "value": 0.0071634
+        },
+        {
+          "m": 0,
+          "n": 2,
+          "value": 0.0075995
+        },
+        {
+          "m": 0,
+          "n": 3,
+          "value": -0.0029503
+        },
+        {
+          "m": 1,
+          "n": -3,
+          "value": -0.00015952
+        },
+        {
+          "m": 1,
+          "n": -2,
+          "value": 0.0014116
+        },
+        {
+          "m": 1,
+          "n": -1,
+          "value": 0.0092873
+        },
+        {
+          "m": 1,
+          "n": 0,
+          "value": 0.46465
+        },
+        {
+          "m": 1,
+          "n": 1,
+          "value": 0.16516
+        },
+        {
+          "m": 1,
+          "n": 2,
+          "value": -0.0060559
+        },
+        {
+          "m": 1,
+          "n": 3,
+          "value": -0.00017736
+        },
+        {
+          "m": 2,
+          "n": -3,
+          "value": 0.00059225
+        },
+        {
+          "m": 2,
+          "n": -2,
+          "value": 0.0001935
+        },
+        {
+          "m": 2,
+          "n": -1,
+          "value": 0.012754
+        },
+        {
+          "m": 2,
+          "n": 0,
+          "value": 0.015451
+        },
+        {
+          "m": 2,
+          "n": 1,
+          "value": 0.011618
+        },
+        {
+          "m": 2,
+          "n": 2,
+          "value": -0.027337
+        },
+        {
+          "m": 2,
+          "n": 3,
+          "value": 0.0013515
+        },
+        {
+          "m": 3,
+          "n": -3,
+          "value": -0.00058654
+        },
+        {
+          "m": 3,
+          "n": -2,
+          "value": -0.0001022
+        },
+        {
+          "m": 3,
+          "n": -1,
+          "value": -0.0030523
+        },
+        {
+          "m": 3,
+          "n": 0,
+          "value": 0.011779
+        },
+        {
+          "m": 3,
+          "n": 1,
+          "value": -0.001926
+        },
+        {
+          "m": 3,
+          "n": 2,
+          "value": 0.010663
+        },
+        {
+          "m": 3,
+          "n": 3,
+          "value": 0.0058095
+        }
+      ]
+    },
+    "jax": "0.11.2",
+    "noise": "base versus return from a nearby native equilibrium, plus roundoff",
+    "noise_probe_step": 0.0001,
+    "numpy": "2.5.4",
+    "reference": "native VmecModel.solve, interim ftol=1e-16 (not Newton)",
+    "restart_api": "HotRestartState from vmecpp.run; cold-initialized pinned gauge",
+    "seed": 0
+  },
+  "results": [
+    {
+      "objective": "volume",
+      "status": "pass",
+      "passed": true,
+      "study": "components"
+    },
+    {
+      "objective": "boundary",
+      "status": "pass",
+      "passed": true,
+      "study": "components"
+    },
+    {
+      "objective": "random_linear",
+      "status": "unresolved",
+      "passed": false,
+      "study": "components"
+    }
+  ]
+}
