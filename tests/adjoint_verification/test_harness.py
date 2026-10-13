@@ -139,6 +139,26 @@ def test_objective_fixtures(
     assert isinstance(relabeling_objectives["interior_m2_r"], InteriorM2RObjective)
 
 
+def test_mercier_objective_requires_force_balance_bsubs():
+    value = load_input("cth_like_fixed_bdy")
+    value.lbsubs = False
+    with pytest.raises(ValueError, match="lbsubs=True"):
+        InvariantObjective(value, "mercier")
+    value.lbsubs = True
+    objective = InvariantObjective(value, "mercier")
+    value.lbsubs = False
+    assert objective.vmec_input.lbsubs
+
+
+def test_mercier_objective_uses_full_discriminant(monkeypatch, physics_case):
+    vmec_input, value = physics_case
+    vmec_input = vmec_input.model_copy(update={"lbsubs": True})
+    fields = {"DMerc": jnp.asarray([0.0, 3.0, 0.0]), "DWell": jnp.zeros(3)}
+    monkeypatch.setattr(autodiff_wout, "wout_quantities", lambda *_: fields)
+    assert float(InvariantObjective(vmec_input, "mercier")(value)) == 3.0
+    assert "mercier" in objective_suite(vmec_input, value)
+
+
 def test_factory_preserves_boundary_modes_when_resizing():
     original = load_input("cth_like_fixed_bdy_iota")
     resized = load_input("cth_like_fixed_bdy_iota", ns=11, mpol=8, ntor=6)

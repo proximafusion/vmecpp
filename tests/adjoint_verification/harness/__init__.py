@@ -125,7 +125,7 @@ def solved_model(vmec_input: vmecpp.VmecInput):
 
 @dataclasses.dataclass(frozen=True)
 class InvariantObjective:
-    """A wout invariant: volume, aspect, iota(s), or Mercier DWell(s).
+    """A wout invariant: volume, aspect, iota(s), or interior Mercier terms.
 
     ``s`` is a fixed normalized toroidal-flux coordinate, not a radial index.
     The discrete wout diagnostics retain their native discretization errors.
@@ -136,11 +136,14 @@ class InvariantObjective:
     s: float = 0.5
 
     def __post_init__(self):
-        if self.quantity not in ("volume", "aspect", "iota", "well"):
+        if self.quantity not in ("volume", "aspect", "iota", "well", "mercier"):
             message = f"unknown invariant objective: {self.quantity}"
             raise ValueError(message)
         if not 0.0 < self.s < 1.0:
             message = "s must lie strictly inside (0, 1)"
+            raise ValueError(message)
+        if self.quantity == "mercier" and not self.vmec_input.lbsubs:
+            message = "the Mercier verification objective requires lbsubs=True"
             raise ValueError(message)
         object.__setattr__(self, "vmec_input", self.vmec_input.model_copy(deep=True))
 
@@ -149,10 +152,10 @@ class InvariantObjective:
             jet = geometry.evaluate(value, jnp.asarray([self.s, 0.0, 0.0]))
             return jet[4, 1] / jet[3, 1]
         fields = autodiff_wout.wout_quantities(value, self.vmec_input)
-        if self.quantity == "well":
-            well = fields["DWell"]
-            assert well is not None
-            return jnp.interp(self.s, jnp.linspace(0.0, 1.0, len(well)), well)
+        if self.quantity in ("well", "mercier"):
+            terms = fields["DWell" if self.quantity == "well" else "DMerc"]
+            assert terms is not None
+            return jnp.interp(self.s, jnp.linspace(0.0, 1.0, len(terms)), terms)
         result = fields[self.quantity]
         assert result is not None
         return result
@@ -248,7 +251,13 @@ def objective_suite(vmec_input: vmecpp.VmecInput, value: geometry.Geometry, seed
     return {
         **{
             name: InvariantObjective(vmec_input, name)
-            for name in ("volume", "aspect", "iota", "well")
+            for name in (
+                "volume",
+                "aspect",
+                "iota",
+                "well",
+                *(("mercier",) if vmec_input.lbsubs else ()),
+            )
         },
         "qs": QuasisymmetryObjective(),
         "boundary": BoundaryObjective(),

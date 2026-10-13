@@ -25,6 +25,7 @@ Stubs deliberately fail rather than supply unverified numerical results.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -43,6 +44,8 @@ class ImplicitVjpDiagnostics:
     cotangent_on_pinned: float
     adjoint_weighted_residual: float
     max_relabeling_overlap: float | None = None
+    newton_solve_residual: float | None = None
+    second_adjoint_solve_residual: float | None = None
 
 
 class Factorization(Protocol):
@@ -96,14 +99,35 @@ def relabeling_generators(model: Any) -> np.ndarray:
 
 
 def corrected_vjp(
-    model: Any, x_bar: np.ndarray, method: str
+    model: Any,
+    x_bar: np.ndarray,
+    method: str,
+    *,
+    objective_state_gradient: Callable[[np.ndarray], np.ndarray] | None = None,
+    directional_step: float = 1.0e-3,
 ) -> tuple[np.ndarray, float, ImplicitVjpDiagnostics]:
     """Return boundary gradient, additive value correction, and diagnostics.
 
     ``x_bar`` is the objective cotangent in full-state coordinates. ``method``
-    is ``"A"`` (Newton and relinearize) or ``"B"`` (second-order adjoint).
+    is ``"B"`` (second-order adjoint); ``"A"`` is explicitly unsupported.
+    Option B requires ``objective_state_gradient(state)``, returning the full
+    objective cotangent at that flat state, with boundary and profiles fixed.
+    Its base value must agree with ``x_bar``. A fixed cotangent alone cannot
+    supply the objective Hessian for a nonlinear objective. The callback must
+    include any objective dependence on prescribed state entries; independent
+    explicit boundary dependence is not supported.
+    ``directional_step`` requests the positive scalar h in x +/- h delta.
+    The implementation enlarges displacements below eps^(1/3) times the active
+    state scale, then scales the directional derivative back to delta.
     The value correction is added to J, i.e. it is -lambda^T F.
     """
-    del model, x_bar, method
-    error_message = "WP7: corrected VJP is not implemented"
-    raise NotImplementedError(error_message)
+    # The implementation imports the diagnostic record from this module.
+    from vmecpp import autodiff_corrections  # noqa: PLC0415
+
+    return autodiff_corrections.corrected_vjp(
+        model,
+        x_bar,
+        method,
+        objective_state_gradient=objective_state_gradient,
+        directional_step=directional_step,
+    )
