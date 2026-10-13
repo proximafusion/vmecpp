@@ -13,6 +13,8 @@ on:
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
   UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  LLVM_VERSION: "21"
+  ENZYME_REF: "v0.0.264"
 
 jobs:
   main:
@@ -28,6 +30,10 @@ jobs:
         uses: actions/checkout@v4
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6 # We use uv in cibuildwheel for faster builds
+      - name: Set up Python for the Enzyme object build
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       # Pull requests build one CPython per platform; releases and manual runs
       # build them all.
       - name: Select the CPython versions to build
@@ -40,6 +46,86 @@ jobs:
           path: .ccache
           key: ccache-${{ matrix.os }}-${{ github.sha }}
           restore-keys: ccache-${{ matrix.os }}-
+      - name: Install Clang/LLVM 21 and build tools on Linux
+        if: runner.os == 'Linux'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y \
+            "llvm-${LLVM_VERSION}-dev" "clang-${LLVM_VERSION}" \
+            "libclang-${LLVM_VERSION}-dev" "libomp-${LLVM_VERSION}-dev" \
+            cmake gfortran ninja-build python3-dev zlib1g-dev
+      - name: Install Clang/LLVM 21 and build tools on macOS
+        if: runner.os == 'macOS'
+        run: brew install llvm@21 libomp gcc cmake ninja
+      - name: Cache the ClangEnzyme plugin
+        id: enzyme-cache
+        uses: actions/cache@v4
+        with:
+          path: enzyme-build
+          key: enzyme-${{ env.ENZYME_REF }}-llvm${{ env.LLVM_VERSION }}-${{ matrix.os }}
+      - name: Set Linux Enzyme compiler paths
+        if: runner.os == 'Linux'
+        run: |
+          echo "ENZYME_CC=clang-${LLVM_VERSION}" >> "$GITHUB_ENV"
+          echo "ENZYME_CXX=clang++-${LLVM_VERSION}" >> "$GITHUB_ENV"
+          echo "LLVM_DIR=$(llvm-config-${LLVM_VERSION} --cmakedir)" >> "$GITHUB_ENV"
+          echo "CLANG_DIR=$(llvm-config-${LLVM_VERSION} --prefix)/lib/cmake/clang" >> "$GITHUB_ENV"
+      - name: Set macOS Enzyme compiler paths
+        if: runner.os == 'macOS'
+        run: |
+          llvm_prefix="$(brew --prefix llvm@${LLVM_VERSION})"
+          echo "ENZYME_CC=${llvm_prefix}/bin/clang" >> "$GITHUB_ENV"
+          echo "ENZYME_CXX=${llvm_prefix}/bin/clang++" >> "$GITHUB_ENV"
+          echo "LLVM_DIR=${llvm_prefix}/lib/cmake/llvm" >> "$GITHUB_ENV"
+          echo "CLANG_DIR=${llvm_prefix}/lib/cmake/clang" >> "$GITHUB_ENV"
+      - name: Build the pinned ClangEnzyme plugin
+        if: steps.enzyme-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "${ENZYME_REF}" \
+            https://github.com/EnzymeAD/Enzyme.git enzyme-src
+          cmake -G Ninja -S enzyme-src/enzyme -B enzyme-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR="${LLVM_DIR}" \
+            -DClang_DIR="${CLANG_DIR}"
+          ninja -C enzyme-build "ClangEnzyme-${LLVM_VERSION}"
+      - name: Locate ClangEnzyme plugin
+        run: |
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            plugin="$(find "${PWD}/enzyme-build" -name "ClangEnzyme-${LLVM_VERSION}.dylib" -print -quit)"
+          else
+            plugin="$(find "${PWD}/enzyme-build" -name "ClangEnzyme-${LLVM_VERSION}.so" -print -quit)"
+          fi
+          test -n "${plugin}"
+          echo "ENZYME_PLUGIN=${plugin}" >> "$GITHUB_ENV"
+      - name: Build Enzyme force-derivative objects
+        env:
+          CC: ${{ env.ENZYME_CC }}
+          CXX: ${{ env.ENZYME_CXX }}
+        run: |
+          cmake -G Ninja -S . -B enzyme-object-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVMECPP_ENABLE_ENZYME=ON \
+            -DVMECPP_ENZYME_PLUGIN="${ENZYME_PLUGIN}"
+          cmake --build enzyme-object-build --target vmecpp_core --parallel 4
+          mkdir -p enzyme-objects
+          jvp="$(find enzyme-object-build -name exact_force_jvp.cc.o -print -quit)"
+          vjp="$(find enzyme-object-build -name exact_force_vjp.cc.o -print -quit)"
+          test -n "${jvp}"
+          test -n "${vjp}"
+          cp "${jvp}" enzyme-objects/exact_force_jvp.o
+          cp "${vjp}" enzyme-objects/exact_force_vjp.o
+      - name: Set Enzyme object paths for wheel builds
+        run: |
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            jvp=/project/enzyme-objects/exact_force_jvp.o
+            vjp=/project/enzyme-objects/exact_force_vjp.o
+          else
+            jvp="${GITHUB_WORKSPACE}/enzyme-objects/exact_force_jvp.o"
+            vjp="${GITHUB_WORKSPACE}/enzyme-objects/exact_force_vjp.o"
+          fi
+          echo "ENZYME_CMAKE_ARGS=-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=${jvp} -DVMECPP_ENZYME_VJP_OBJECT=${vjp}" >> "$GITHUB_ENV"
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
@@ -51,6 +137,7 @@ jobs:
             UV_CONSTRAINT=/project/.github/constraints.txt
             CCACHE_DIR=/project/.ccache
             CCACHE_MAXSIZE=500M
+            CMAKE_ARGS="${{ env.ENZYME_CMAKE_ARGS }}"
           CIBW_ENVIRONMENT_MACOS: >
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
@@ -58,6 +145,11 @@ jobs:
             OpenMP_ROOT=$(brew --prefix)/opt/libomp
             CCACHE_DIR=${{ github.workspace }}/.ccache
             CCACHE_MAXSIZE=500M
+            CMAKE_ARGS="${{ env.ENZYME_CMAKE_ARGS }}"
+          CIBW_TEST_COMMAND: >-
+            python -c "import vmecpp; assert vmecpp.has_exact_force_jacobian()"
+            && pytest {package}/tests/test_simsopt_compat.py
+            {package}/tests/test_free_boundary.py {package}/tests/test_hessian.py
         with:
           package-dir: .
           output-dir: wheelhouse

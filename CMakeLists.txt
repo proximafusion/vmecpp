@@ -458,12 +458,16 @@ if(VMECPP_ENABLE_ENZYME)
         PUBLIC VMECPP_ENABLE_ENZYME)
     endforeach()
     # Enzyme does not support the AVX mask intrinsics emitted for x86-64-v3.
-    # Compile these two translation units for the baseline ISA in every core;
-    # the rest of vmecpp_core_v3 remains optimized for x86-64-v3.
+    # Compile these two translation units for the baseline ISA on x86; use the
+    # compiler's default target on other architectures.
+    set(VMECPP_ENZYME_COMPILE_OPTIONS "-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+      list(PREPEND VMECPP_ENZYME_COMPILE_OPTIONS "-march=x86-64")
+    endif()
     set_source_files_properties(
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc
       PROPERTIES COMPILE_OPTIONS
-        "-march=x86-64;-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+        "${VMECPP_ENZYME_COMPILE_OPTIONS}")
   endif()
 endif()
