@@ -101,11 +101,8 @@ jobs:
           test -n "${plugin}"
           echo "ENZYME_PLUGIN=${plugin}" >> "$GITHUB_ENV"
       - name: Build Enzyme force-derivative objects
-        env:
-          CC: ${{ env.ENZYME_CC }}
-          CXX: ${{ env.ENZYME_CXX }}
         run: |
-          cmake -G Ninja -S . -B enzyme-object-build \
+          CC="${ENZYME_CC}" CXX="${ENZYME_CXX}" cmake -G Ninja -S . -B enzyme-object-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DVMECPP_ENABLE_ENZYME=ON \
             -DVMECPP_ENZYME_PLUGIN="${ENZYME_PLUGIN}"
@@ -117,16 +114,6 @@ jobs:
           test -n "${vjp}"
           cp "${jvp}" enzyme-objects/exact_force_jvp.o
           cp "${vjp}" enzyme-objects/exact_force_vjp.o
-      - name: Set Enzyme object paths for wheel builds
-        run: |
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            jvp=/project/enzyme-objects/exact_force_jvp.o
-            vjp=/project/enzyme-objects/exact_force_vjp.o
-          else
-            jvp="${GITHUB_WORKSPACE}/enzyme-objects/exact_force_jvp.o"
-            vjp="${GITHUB_WORKSPACE}/enzyme-objects/exact_force_vjp.o"
-          fi
-          echo "ENZYME_CMAKE_ARGS=-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=${jvp} -DVMECPP_ENZYME_VJP_OBJECT=${vjp}" >> "$GITHUB_ENV"
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
@@ -138,7 +125,7 @@ jobs:
             UV_CONSTRAINT=/project/.github/constraints.txt
             CCACHE_DIR=/project/.ccache
             CCACHE_MAXSIZE=500M
-            CMAKE_ARGS="${{ env.ENZYME_CMAKE_ARGS }}"
+            CMAKE_ARGS="-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=/project/enzyme-objects/exact_force_jvp.o -DVMECPP_ENZYME_VJP_OBJECT=/project/enzyme-objects/exact_force_vjp.o"
           CIBW_ENVIRONMENT_MACOS: >
             MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
             DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
@@ -146,7 +133,7 @@ jobs:
             OpenMP_ROOT=$(brew --prefix)/opt/libomp
             CCACHE_DIR=${{ github.workspace }}/.ccache
             CCACHE_MAXSIZE=500M
-            CMAKE_ARGS="${{ env.ENZYME_CMAKE_ARGS }}"
+            CMAKE_ARGS="-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=${{ github.workspace }}/enzyme-objects/exact_force_jvp.o -DVMECPP_ENZYME_VJP_OBJECT=${{ github.workspace }}/enzyme-objects/exact_force_vjp.o"
           CIBW_TEST_COMMAND: >-
             python -c "import vmecpp; assert vmecpp.has_exact_force_jacobian()"
             && pytest {package}/tests/test_simsopt_compat.py
