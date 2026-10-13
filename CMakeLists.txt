@@ -57,6 +57,11 @@ file(MAKE_DIRECTORY "${_native_deps_include}")
 # lib it doesn't bundle zlib's own object code, so it must be linked in
 # explicitly wherever hdf5_c is used.
 find_package(ZLIB REQUIRED)
+if(APPLE)
+  # The macOS SDK is already on Clang's implicit system include path. Adding
+  # its usr/include directory explicitly breaks libc++'s system-header wrappers.
+  set_property(TARGET ZLIB::ZLIB PROPERTY INTERFACE_INCLUDE_DIRECTORIES "")
+endif()
 
 set(_native_deps_cmake_args
   -DCMAKE_INSTALL_PREFIX=${_native_deps_prefix}
@@ -349,12 +354,6 @@ install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
 #   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
 option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
 if(VMECPP_ENABLE_ENZYME)
-  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
-    message(FATAL_ERROR
-      "VMECPP_ENABLE_ENZYME requires a Clang-based compiler (got "
-      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin. "
-      "Intel oneAPI icx/icpx (IntelLLVM) is Clang-based and supported.")
-  endif()
   set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
   set(VMECPP_ENZYME_CORE_TARGETS vmecpp_core)
   if(VMECPP_HWCAPS_DISPATCH)
@@ -420,6 +419,12 @@ if(VMECPP_ENABLE_ENZYME)
         PUBLIC VMECPP_ENABLE_ENZYME)
     endforeach()
   else()
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
+      message(FATAL_ERROR
+        "Building Enzyme derivative sources requires a Clang-based compiler "
+        "(got ${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin. "
+        "Use prebuilt Enzyme objects with a different compiler.")
+    endif()
     if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
       message(FATAL_ERROR
         "VMECPP_ENABLE_ENZYME=ON requires "
