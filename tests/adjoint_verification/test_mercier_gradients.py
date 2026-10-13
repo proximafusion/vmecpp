@@ -362,3 +362,93 @@ def test_implicit_nonlinear_mercier_gradient(polished_mercier_equilibria, quanti
     if abs(finite_differences[-1] - finite_differences[-2]) > 1e-6 * magnitude:
         pytest.skip(f"{quantity} independent equilibrium FD has no resolved plateau")
     np.testing.assert_allclose(finite_differences[-2:], derivative, rtol=1e-6, atol=0)
+
+
+@requires_enzyme
+def test_option_b_nonlinear_mercier_improves_gradient_and_value(
+    polished_mercier_equilibria,
+):
+    from vmecpp._adjoint_contracts import corrected_vjp  # noqa: PLC0415
+
+    source, reference_model, reference_geometry, *_ = polished_mercier_equilibria
+    terms = np.asarray(interior_mercier(reference_geometry, source))
+    objective = MercierObjective(source, "DMerc", float(np.max(np.abs(terms[0]))))
+    reference_value, reference_bar = jax.value_and_grad(objective)(reference_geometry)
+    flat_bar = np.concatenate(
+        [np.asarray(leaf).ravel() for leaf in jax.tree.leaves(reference_bar)]
+    )
+    reference_state = np.asarray(reference_model.get_state()).copy()
+    try:
+        reference_gradient, _ = autodiff._implicit_vjp(reference_model, flat_bar)
+    finally:
+        reference_model.set_state(np.ascontiguousarray(reference_state))
+        raw_force(reference_model)
+    gradient_scale = np.linalg.norm(reference_gradient)
+    assert gradient_scale > 0
+
+    loose_input = small_input(ftol=1e-8)
+    loose_input.lbsubs = True
+    loose_input.always_fix_m1_gauge = True
+    model = solved_model(loose_input)
+    records = []
+    residuals = []
+    final_residual = None
+    for _ in range(2):
+        state = np.asarray(model.get_state()).copy()
+        force = raw_force(model)
+        value, state_bar = objective_state_cotangent(model, objective)
+        _, geometry_bar = jax.value_and_grad(objective)(
+            geometry.from_cpp(model.get_geometry())
+        )
+        flat_bar = np.concatenate(
+            [np.asarray(leaf).ravel() for leaf in jax.tree.leaves(geometry_bar)]
+        )
+        try:
+            naive_gradient, _ = autodiff._implicit_vjp(model, flat_bar)
+        finally:
+            model.set_state(np.ascontiguousarray(state))
+            raw_force(model)
+
+        def callback(candidate):
+            return objective_state_cotangent(model, objective, candidate)[1]
+
+        np.testing.assert_allclose(callback(state), state_bar, rtol=1e-12, atol=0)
+        corrected_gradient, value_correction, diagnostics = corrected_vjp(
+            model,
+            state_bar,
+            "B",
+            objective_state_gradient=callback,
+            directional_step=1e-3,
+        )
+        np.testing.assert_array_equal(model.get_state(), state)
+        np.testing.assert_allclose(raw_force(model), force, rtol=1e-12, atol=0)
+        naive_error = (
+            np.linalg.norm(naive_gradient - reference_gradient) / gradient_scale
+        )
+        corrected_error = (
+            np.linalg.norm(corrected_gradient - reference_gradient) / gradient_scale
+        )
+        records.append(
+            (
+                diagnostics.force_residual,
+                naive_error,
+                corrected_error,
+                abs(value - float(reference_value)),
+                abs(value + value_correction - float(reference_value)),
+            )
+        )
+        residuals.append(diagnostics.force_residual)
+        polished = autodiff_newton.newton_polish(model, 1, 1e-12)
+        assert polished.residual_history[-1] < polished.residual_history[0]
+        final_residual = polished.residual_history[-1]
+    assert final_residual is not None
+    residuals.append(final_residual)
+    print(
+        "Option B DMerc: (raw residual, naive/corrected relative gradient error, "
+        f"naive/corrected value error)={records}; progression={residuals}"
+    )
+    assert np.all(np.diff(residuals) < 0)
+    if records[0][1] <= 1e-8:
+        pytest.skip("Option B DMerc gradient improvement unresolved at numerical floor")
+    assert records[0][2] < records[0][1]
+    assert records[0][4] < records[0][3]

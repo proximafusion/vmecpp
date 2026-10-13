@@ -191,3 +191,24 @@ and forward-AD checks. The expanded fixed-state/native-parity suite reports
 pre-commit hooks pass. Successful surfaces use a detached acceptance probe
 followed by a differentiable solve, adding a solve to that path; no runtime
 cost claim is made.
+
+## Remaining native acceptance
+
+The end-to-end tests independently polish perturbed equilibria and compare
+nonlinear Mercier gradients at multiple FD steps. A separate Option B test
+compares full boundary gradients and corrected values against a polished
+reference, recording raw residual progression. These tests are Enzyme-gated;
+adding them does not establish that their acceptance criteria have passed.
+
+The runtime restoration did not produce a verified Enzyme-enabled editable
+extension. The loaded extension still reported both native capability flags
+as false. Overlapping restoration jobs invalidated temporary build artifacts;
+restoration was stopped rather than treating configuration flags or partial
+libraries as a working exact-derivative runtime. No build configuration or
+dependency-version change is included in the final source changes.
+
+Consequently, native Mercier implicit gradients, Option B improvement on
+Mercier, N8 slopes on CTH/li383, and a default residual/cost recommendation
+remain unverified. The measured quadratic correction slopes above are
+nonlinear algebraic-oracle results only. This module is not integrated into
+the public JAX solver by default.
