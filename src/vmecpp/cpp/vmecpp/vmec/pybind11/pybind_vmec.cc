@@ -225,8 +225,7 @@ class VmecModel {
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state,
-      bool always_fix_m1_gauge) {
+      const std::optional<vmecpp::HotRestartState> &initial_state) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -235,7 +234,6 @@ class VmecModel {
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
     vmecpp::Vmec &v = *model->vmec_;
-    v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -455,9 +453,6 @@ class VmecModel {
   }
 
   bool always_fix_m1_gauge() const { return vmec_->always_fix_m1_gauge_; }
-  void set_always_fix_m1_gauge(bool value) const {
-    vmec_->always_fix_m1_gauge_ = value;
-  }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
   // Each call converges the *current* resolution ftol_array entry.
@@ -1052,6 +1047,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
       .def_readwrite("backup_evaluated_state",
                      &VmecINDATA::backup_evaluated_state)
+      .def_readwrite("always_fix_m1_gauge", &VmecINDATA::always_fix_m1_gauge)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
@@ -1646,7 +1642,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads, vmecpp::OutputMode verbose,
-         bool always_fix_m1_gauge,
          py::object iteration_callback) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
@@ -1666,8 +1661,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, std::move(initial_state), max_threads,
-                            verbose, interrupt_check, always_fix_m1_gauge,
-                            iteration_hook.Hook());
+                            verbose, interrupt_check, iteration_hook.Hook());
         }
         iteration_hook.Rethrow();
         if (was_interrupted) {
@@ -1678,7 +1672,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress,
-      py::arg("always_fix_m1_gauge") = false,
       py::arg("iteration_callback") = py::none());
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
@@ -1797,10 +1790,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   // from Python (see vmecpp._iteration).
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
-                  py::arg("ns"), py::arg("initial_state") = std::nullopt,
-                  py::arg("always_fix_m1_gauge") = false,
-                  "Create a model; set always_fix_m1_gauge here to pin the "
-                  "gauge during hot-restart initialization.")
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
            py::arg("always_fix_m1_gauge") = true)
@@ -1820,17 +1810,14 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
-      .def_property("always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
-                    &VmecModel::set_always_fix_m1_gauge,
-                    "Zero the m=1 gauge force from the first iteration of "
-                    "solve() and set the gauge from the boundary in "
-                    "refine_to(). For a hot restart, pass the flag to create() "
-                    "so initialization pins the gauge. The converged gauge "
-                    "then equals the "
-                    "boundary gauge scaled by sqrt(s), independent of the "
-                    "iteration and multigrid history, and the exact "
-                    "Hessian-vector products with always_fix_m1_gauge=True "
-                    "are the Jacobian of the iterated system.")
+      .def_property_readonly(
+          "always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
+          "indata.always_fix_m1_gauge: zero the m=1 gauge force from the first "
+          "iteration of solve() and set the gauge from the boundary in "
+          "create() and refine_to(). The converged gauge then equals the "
+          "boundary gauge scaled by sqrt(s), independent of the iteration and "
+          "multigrid history, and the exact Hessian-vector products with "
+          "always_fix_m1_gauge=True are the Jacobian of the iterated system.")
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)

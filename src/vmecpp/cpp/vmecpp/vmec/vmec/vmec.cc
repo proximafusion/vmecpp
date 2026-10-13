@@ -109,7 +109,7 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback, bool always_fix_m1_gauge,
+    InterruptCallback interrupt_callback,
     IterationCallback iteration_callback) {
   auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
                                      std::move(interrupt_callback),
@@ -118,7 +118,6 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     return maybe_vmec.status();
   }
   Vmec& v = **maybe_vmec;
-  v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -237,6 +236,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       invTau_(kNDamp),
       last_preconditioner_update_(0),
       last_full_update_nestor_(0) {
+  always_fix_m1_gauge_ = indata_.always_fix_m1_gauge;
+
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 

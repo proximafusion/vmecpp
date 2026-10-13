@@ -6,7 +6,7 @@ and solves the transposed interior force system. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
 
-The solve pins the m=1 poloidal-origin gauge (``VmecModel.always_fix_m1_gauge``):
+The solve pins the m=1 poloidal-origin gauge (``VmecInput.always_fix_m1_gauge``):
 the native iteration lets that gauge drift under its force until ``fsqz`` drops
 below 1e-6 and freezes it wherever it is, so the converged state would depend on
 the iteration history and the fixed-gauge force Jacobian would not describe it.
@@ -118,13 +118,14 @@ def _solve_model(template, boundary: np.ndarray, profiles=None):
     standalone-convergent.
     """
     indata = _make_indata(template, boundary, profiles)
+    indata.always_fix_m1_gauge = True
     resolutions = [int(value) for value in np.asarray(indata.ns_array)]
     model = None
     for ns in resolutions:
         if ns < 3:
             continue
         if model is None:
-            model = _vmecpp.VmecModel.create(indata, ns, always_fix_m1_gauge=True)
+            model = _vmecpp.VmecModel.create(indata, ns)
         else:
             model.refine_to(ns)
         model.solve()
@@ -664,8 +665,8 @@ class DifferentiableVmec:
             self._solved_state(boundary, profiles) if solve is None else solve["state"]
         )
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
+        indata.always_fix_m1_gauge = True
         model = _vmecpp.VmecModel.create(indata, self.ns)
-        model.always_fix_m1_gauge = True
         model.set_state(np.ascontiguousarray(state))
         return model
 
@@ -801,11 +802,11 @@ class _RunSolver(DifferentiableVmec):
 
     def _run(self, boundary: np.ndarray, profiles: dict):
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
+        indata.always_fix_m1_gauge = True
         output = _vmecpp.run(
             indata,
             max_threads=self.max_threads,
             verbose=_vmecpp.OutputMode(self.verbose),
-            always_fix_m1_gauge=True,
         )
         initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
         model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)
