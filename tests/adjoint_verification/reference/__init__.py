@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+from uuid import uuid4
+from zipfile import BadZipFile
 
 import jax
 import jax.numpy as jnp
@@ -19,6 +22,77 @@ from ..harness import boundary_array, load_input, objective_suite, small_input
 OBJECTIVES = ("volume", "aspect", "iota", "well", "qs", "boundary", "random_linear")
 DEFAULT_STEPS = np.geomspace(1.0e-2, 1.0e-7, 11)
 COMPONENT_STEPS = np.asarray([1.0e-3, 3.0e-4, 1.0e-4])
+
+
+def _checkpoint_digest(arrays):
+    digest = hashlib.sha256()
+    for name in sorted(arrays):
+        array = np.ascontiguousarray(arrays[name])
+        digest.update(name.encode("ascii"))
+        digest.update(array.dtype.str.encode("ascii"))
+        digest.update(json.dumps(array.shape).encode("ascii"))
+        digest.update(array.tobytes())
+    return digest.hexdigest()
+
+
+def _write_checkpoint(path, arrays):
+    """Replace a checkpoint only after its same-directory NPZ is durable."""
+    pending = path.with_name(f".{path.name}.{uuid4().hex}.pending")
+    try:
+        with pending.open("xb") as stream:
+            np.savez(stream, **arrays, checksum=np.asarray(_checkpoint_digest(arrays)))
+            stream.flush()
+            os.fsync(stream.fileno())
+        pending.replace(path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def _read_checkpoint(path, metadata, shape):
+    try:
+        with np.load(path, allow_pickle=False) as saved:
+            arrays = {name: saved[name] for name in saved.files}
+        checksum = arrays.pop("checksum")
+        if checksum.shape != () or str(checksum) != _checkpoint_digest(arrays):
+            message = "checksum mismatch"
+            raise ValueError(message)
+        expected = {*metadata, "plus", "minus", "completed", "records", "failures"}
+        if set(arrays) != expected:
+            message = "incompatible checkpoint fields"
+            raise ValueError(message)
+        for name, value in metadata.items():
+            cached = arrays[name]
+            if (
+                cached.dtype != value.dtype
+                or cached.shape != value.shape
+                or not np.array_equal(cached, value)
+            ):
+                message = f"incompatible {name}"
+                raise ValueError(message)
+        for name in ("plus", "minus"):
+            if arrays[name].shape != shape or arrays[name].dtype != np.dtype(float):
+                message = f"invalid {name} shape or dtype"
+                raise ValueError(message)
+        if (
+            arrays["completed"].shape != shape[1:]
+            or arrays["completed"].dtype != np.dtype(bool)
+            or arrays["records"].ndim != 2
+            or arrays["records"].shape[1] != 5
+            or arrays["records"].dtype != np.dtype(float)
+            or arrays["failures"].shape != (len(arrays["records"]),)
+            or arrays["failures"].dtype.kind != "U"
+        ):
+            message = "invalid completion mask or solve records"
+            raise ValueError(message)
+        return arrays
+    except (OSError, ValueError, KeyError, EOFError, BadZipFile, TypeError) as error:
+        message = f"invalid component checkpoint {path}: {error}"
+        raise ValueError(message) from error
 
 
 def reference_input(name="small"):
@@ -448,26 +522,107 @@ class ReferenceStudy:
                 )
         return data
 
-    def components(self, steps=COMPONENT_STEPS):
-        """Central FD step series for every rbc/zbs mode, with inactive zeros."""
+    def _component_metadata(self, steps):
+        names = list(self.objectives)
+        metadata = {
+            "schema": np.asarray(1),
+            "shape": np.asarray(self.boundary.shape),
+            "steps": steps,
+            "boundary": np.asarray(self.boundary),
+            "base_state": np.asarray(self.model.get_state()),
+            "objective_names": np.asarray(names),
+            "base_values": np.asarray([self.values[name] for name in names]),
+            "noise": np.asarray([self.noise[name] for name in names]),
+            "gradient_ad": np.asarray([self.gradients[name] for name in names]),
+            "input": np.asarray(self.input.to_json()),
+            "provenance": np.asarray(self.provenance()),
+            "helper_sha256": np.asarray(
+                hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+            ),
+            "objective_helper_sha256": np.asarray(
+                hashlib.sha256(
+                    (Path(__file__).parents[1] / "harness" / "__init__.py").read_bytes()
+                ).hexdigest()
+            ),
+        }
+        for column, objective in enumerate(self.objectives.values()):
+            for index, weight in enumerate(
+                jax.tree_util.tree_leaves(getattr(objective, "weights", ()))
+            ):
+                metadata[f"weight_{column}_{index}"] = np.asarray(weight)
+        metadata["provenance_sha256"] = np.asarray(_checkpoint_digest(metadata))
+        return metadata
+
+    def _checkpoint_records(self):
+        return {
+            "records": np.asarray(self.records, dtype=float).reshape(-1, 5),
+            "failures": np.asarray(self.failures, dtype=str),
+        }
+
+    def components(self, steps=COMPONENT_STEPS, *, checkpoint=None, resume=False):
+        """Scan all signed slots; optionally save each completed +/- pair.
+
+        ``checkpoint`` is an NPZ path. ``resume=True`` requires a compatible
+        checkpoint and skips only its completed pairs. New scans replace any
+        existing checkpoint. Objective columns retain their exact input order.
+        """
         steps = _steps(steps, min_points=3)
+        if resume and checkpoint is None:
+            message = "component resume requires a checkpoint path"
+            raise ValueError(message)
         mask = active_boundary(self.input)
         shape = (len(self.objectives), len(steps), *self.boundary.shape)
         plus = np.full(shape, np.nan)
         minus = np.full(shape, np.nan)
-        fd = np.full(shape, np.nan)
+        completed = np.zeros(shape[1:], dtype=bool)
+        metadata = {}
+        path = None if checkpoint is None else Path(checkpoint)
+        if path is not None:
+            metadata = self._component_metadata(steps)
+            if resume:
+                saved = _read_checkpoint(path, metadata, shape)
+                plus, minus, completed = (
+                    saved[name] for name in ("plus", "minus", "completed")
+                )
+                self.records = saved["records"].tolist()
+                self.failures = saved["failures"].tolist()
+            else:
+                _write_checkpoint(
+                    path,
+                    {
+                        **metadata,
+                        "plus": plus,
+                        "minus": minus,
+                        "completed": completed,
+                        **self._checkpoint_records(),
+                    },
+                )
         plus_flat = plus.reshape(len(self.objectives), len(steps), -1)
         minus_flat = minus.reshape(len(self.objectives), len(steps), -1)
-        fd_flat = fd.reshape(len(self.objectives), len(steps), -1)
+        completed_flat = completed.reshape(len(steps), -1)
         for index in range(mask.size):
             direction = np.zeros_like(self.boundary)
             direction.ravel()[index] = 1
             for k, h in enumerate(steps):
+                if completed_flat[k, index]:
+                    continue
                 p = self.evaluate(self.boundary + h * direction)
                 m = self.evaluate(self.boundary - h * direction)
                 plus_flat[:, k, index] = p
                 minus_flat[:, k, index] = m
-                fd_flat[:, k, index] = (p - m) / (2 * h)
+                completed_flat[k, index] = True
+                if path is not None:
+                    _write_checkpoint(
+                        path,
+                        {
+                            **metadata,
+                            "plus": plus,
+                            "minus": minus,
+                            "completed": completed,
+                            **self._checkpoint_records(),
+                        },
+                    )
+        fd = (plus - minus) / (2 * steps.reshape((-1,) + (1,) * self.boundary.ndim))
         results = []
         for column, name in enumerate(self.objectives):
             ad = self.gradients[name]

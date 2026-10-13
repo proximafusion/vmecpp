@@ -1,5 +1,11 @@
 """Native interim WP6 gradient checks and an analytic noise/slope oracle."""
 
+import importlib
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -108,24 +114,62 @@ def test_prescribed_iota_constant_is_not_arbitrary_noise_exemption():
     assert failed_solve["status"] == "failure"
 
 
-def test_component_scan_polynomial_oracle_all_slots_and_strict_target():
-    class PolynomialOracle(ReferenceStudy):
-        def __init__(self):
-            self.input = reference_input("small")
-            self.boundary = boundary_array(self.input)
-            self.weights = np.arange(1, self.boundary.size + 1, dtype=float).reshape(
-                self.boundary.shape
-            ) * active_boundary(self.input)
-            self.objectives = {"polynomial": None}
-            self.gradients = {"polynomial": self.weights * (2 * self.boundary + 1)}
-            self.noise = {"polynomial": 0}
-            self.visited = []
+class PolynomialOracle(ReferenceStudy):
+    def __init__(self, names=("polynomial",), interrupt_after=None):
+        self.input = reference_input("small")
+        self.boundary = boundary_array(self.input)
+        self.weights = np.arange(1, self.boundary.size + 1, dtype=float).reshape(
+            self.boundary.shape
+        ) * active_boundary(self.input)
+        self.objectives = {
+            name: SimpleNamespace(weights=(index + 1) * self.weights)
+            for index, name in enumerate(names)
+        }
+        self.gradients = {
+            name: obj.weights * (2 * self.boundary + 1)
+            for name, obj in self.objectives.items()
+        }
+        self.values = {
+            name: np.sum(obj.weights * (self.boundary**2 + self.boundary))
+            for name, obj in self.objectives.items()
+        }
+        self.noise = dict.fromkeys(names, 0.0)
+        self.visited = []
+        self.interrupt_after = interrupt_after
+        self.records = []
+        self.failures = []
+        self.model = self
 
-        def evaluate(self, boundary):
-            changed = np.flatnonzero((boundary - self.boundary).ravel())
-            assert len(changed) == 1
-            self.visited.append(int(changed[0]))
-            return np.asarray([np.sum(self.weights * (boundary**2 + boundary))])
+    def get_state(self):
+        return self.boundary.ravel().copy()
+
+    def provenance(self):
+        return json.dumps(
+            {"oracle": "polynomial-v1", "input": json.loads(self.input.to_json())},
+            sort_keys=True,
+        )
+
+    def evaluate(self, boundary):
+        changed = np.flatnonzero((boundary - self.boundary).ravel())
+        assert len(changed) == 1
+        if (
+            self.interrupt_after is not None
+            and len(self.visited) == self.interrupt_after
+        ):
+            message = "interrupted polynomial scan"
+            raise RuntimeError(message)
+        self.visited.append(int(changed[0]))
+        self.records.append([11, 1.0e-16, 0, 0, 0])
+        self.failures.append("")
+        return np.asarray(
+            [
+                np.sum(obj.weights * (boundary**2 + boundary))
+                for obj in self.objectives.values()
+            ]
+        )
+
+
+def test_component_scan_polynomial_oracle_all_slots_and_strict_target():
 
     oracle = PolynomialOracle()
     steps = np.asarray([0.001, 0.0003, 0.0001])
@@ -135,7 +179,7 @@ def test_component_scan_polynomial_oracle_all_slots_and_strict_target():
         np.bincount(oracle.visited, minlength=oracle.boundary.size),
         np.full(oracle.boundary.size, 2 * len(steps)),
     )
-    ntor = oracle.input.ntor
+    ntor = int(oracle.input.ntor)
     assert np.all(result["gradient_ad"][:, 0, :ntor] != 0)
     np.testing.assert_allclose(
         result["gradient_fd"][:, :, 0, :ntor],
@@ -148,6 +192,174 @@ def test_component_scan_polynomial_oracle_all_slots_and_strict_target():
     assert not inaccurate["passed"]
     assert inaccurate["status"] == "failure"
     assert not inaccurate["passed_modes"][inaccurate["active"]].any()
+
+
+def test_component_checkpoint_interrupt_resume(tmp_path):
+    steps = np.asarray([0.001, 0.0003, 0.0001])
+    path = tmp_path / "components.npz"
+    names = ("polynomial", "twice")
+    expected = PolynomialOracle(names).components(steps)
+    interrupted = PolynomialOracle(names, interrupt_after=7)
+    with pytest.raises(RuntimeError, match="interrupted polynomial"):
+        interrupted.components(steps, checkpoint=path)
+    with np.load(path, allow_pickle=False) as saved:
+        assert saved["completed"].sum() == 3
+        np.testing.assert_array_equal(saved["objective_names"], names)
+        assert saved["records"].shape == (6, 5)
+        assert all(saved[name].dtype.kind != "O" for name in saved.files)
+    resumed = PolynomialOracle(names)
+    actual = resumed.components(steps, checkpoint=path, resume=True)
+    assert len(resumed.visited) == 2 * len(steps) * resumed.boundary.size - 6
+    assert 0 not in resumed.visited
+    for result, reference in zip(actual, expected, strict=True):
+        assert result.keys() == reference.keys()
+        for key in result:
+            np.testing.assert_equal(result[key], reference[key])
+    assert len(resumed.records) == 2 * len(steps) * resumed.boundary.size
+    resumed.visited.clear()
+    resumed.components(steps, checkpoint=path, resume=True)
+    assert not resumed.visited
+    assert not list(tmp_path.glob("*.pending"))
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["steps", "objectives", "order", "config", "weights", "noise", "gradient", "value"],
+)
+def test_component_checkpoint_rejects_incompatible(tmp_path, change):
+    path = tmp_path / "components.npz"
+    steps = np.asarray([0.001, 0.0003, 0.0001])
+    names = ("polynomial", "twice")
+    initial = PolynomialOracle(names, interrupt_after=2)
+    with pytest.raises(RuntimeError, match="interrupted polynomial"):
+        initial.components(steps, checkpoint=path)
+    oracle = PolynomialOracle(names)
+    if change == "steps":
+        steps = steps * 2
+    elif change == "objectives":
+        oracle = PolynomialOracle()
+    elif change == "order":
+        oracle.objectives = dict(reversed(list(oracle.objectives.items())))
+    elif change == "config":
+        oracle.input.niter_array *= 2
+    elif change == "weights":
+        oracle.objectives["polynomial"].weights = oracle.weights * 2
+    elif change == "noise":
+        oracle.noise["polynomial"] = 1.0e-8
+    elif change == "gradient":
+        oracle.gradients["polynomial"] *= 2
+    elif change == "value":
+        oracle.values["polynomial"] += 1
+    with pytest.raises(ValueError, match=r"invalid component checkpoint.*incompatible"):
+        oracle.components(steps, checkpoint=path, resume=True)
+    assert not oracle.visited
+
+
+def test_component_checkpoint_atomic_replace_failure(tmp_path, monkeypatch):
+    path = tmp_path / "components.npz"
+    interrupted = PolynomialOracle(interrupt_after=2)
+    with pytest.raises(RuntimeError, match="interrupted polynomial"):
+        interrupted.components(checkpoint=path)
+    original = path.read_bytes()
+
+    def fail_replace(source, target):
+        assert source.parent == target.parent == tmp_path
+        message = "interrupted checkpoint replacement"
+        raise OSError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", fail_replace)
+        with pytest.raises(OSError, match="interrupted checkpoint replacement"):
+            PolynomialOracle().components(checkpoint=path, resume=True)
+    assert path.read_bytes() == original
+    assert not list(tmp_path.glob("*.pending"))
+    resumed = PolynomialOracle()
+    assert resumed.components(checkpoint=path, resume=True)[0]["passed"]
+    assert len(resumed.visited) == 6 * resumed.boundary.size - 2
+
+
+@pytest.fixture
+def reference_cli(monkeypatch):
+    scripts = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "adjoint_verification"
+        / "scripts"
+    )
+    monkeypatch.syspath_prepend(str(scripts))
+    return importlib.import_module("plot_reference_gradients")
+
+
+def test_component_cli_checkpoint_and_resume(tmp_path, monkeypatch, reference_cli):
+    study = PolynomialOracle(("boundary",))
+    monkeypatch.setattr(
+        reference_cli, "ReferenceStudy", lambda *_args, **_kwargs: study
+    )
+    monkeypatch.setattr(reference_cli, "plot_components", lambda *_args: None)
+    args = ["plot_reference_gradients", "--output-dir", str(tmp_path), "--studies"]
+    monkeypatch.setattr(sys, "argv", [*args, "components"])
+    assert reference_cli.main() == 0
+    assert (tmp_path / "components_small.checkpoint.npz").is_file()
+    study.visited.clear()
+
+    def fail_taylor(*_args):
+        message = "Taylor must not rerun on component resume"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(study, "taylor", fail_taylor)
+    monkeypatch.setattr(sys, "argv", [*args, "taylor", "components", "--resume"])
+    assert reference_cli.main() == 0
+    assert not study.visited
+    report = json.loads((tmp_path / "reference_small.json").read_text())
+    assert report["results"][0]["status"] == "skipped"
+    assert report["results"][1]["study"] == "components"
+
+
+def test_component_cli_resume_requires_each_case(
+    tmp_path, monkeypatch, reference_cli, capsys
+):
+    (tmp_path / "components_small.checkpoint.npz").write_bytes(b"placeholder")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "plot_reference_gradients",
+            "--output-dir",
+            str(tmp_path),
+            "--studies",
+            "components",
+            "--cases",
+            "small",
+            "solovev",
+            "--resume",
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        reference_cli.main()
+    assert error.value.code == 2
+    assert "components_solovev.checkpoint.npz" in capsys.readouterr().err
+
+
+def test_component_checkpoint_rejects_corruption_and_missing(tmp_path):
+    oracle = PolynomialOracle()
+    path = tmp_path / "components.npz"
+    with pytest.raises(ValueError, match="requires a checkpoint path"):
+        oracle.components(resume=True)
+    with pytest.raises(ValueError, match="invalid component checkpoint"):
+        oracle.components(checkpoint=path, resume=True)
+    path.write_bytes(b"not an NPZ")
+    with pytest.raises(ValueError, match="invalid component checkpoint"):
+        oracle.components(checkpoint=path, resume=True)
+    interrupted = PolynomialOracle(interrupt_after=2)
+    with pytest.raises(RuntimeError, match="interrupted polynomial"):
+        interrupted.components(checkpoint=path)
+    with np.load(path, allow_pickle=False) as saved:
+        arrays = {name: saved[name] for name in saved.files}
+    arrays["plus"].flat[0] += 1
+    np.savez(path, **arrays)
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        oracle.components(checkpoint=path, resume=True)
+    assert not oracle.visited
 
 
 def test_direction_normalization_and_inactive_modes():

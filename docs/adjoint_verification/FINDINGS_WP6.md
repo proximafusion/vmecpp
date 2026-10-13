@@ -85,6 +85,16 @@ at the tested derivative steps. They also do not excuse an incorrect gradient.
 Repeat with WP5's validated reference before assigning the discrepancy to
 reference convergence, structural masks, or relabeling dependence.
 
+The saved directional data can be replayed without any equilibrium solves:
+`scripts/plot_reference_step_study.py --data-dir plots_wp6 --output-dir plots_wp6`.
+The resulting `plot_02_fd_step_study_small_random_linear` PNG/NPZ pair compares
+the measured absolute AD/FD discrepancy, the value-noise scale divided by the
+FD step, and the unchanged derivative target. Each source NPZ's hash and
+original provenance are retained. Decreasing the FD step does not monotonically
+improve this comparison: reference noise is amplified by division by the step.
+Replay rejects mixed source provenance, including files left over from a
+different seed or input configuration in the same output directory.
+
 ## Component finite differences
 
 The component study retains the dense signed-toroidal-mode boundary layout,
@@ -98,6 +108,40 @@ Adding it to every relative comparison can accept a `5e-5` relative error
 for a derivative near `1e-4`; that is fifty times the requested tolerance.
 Redundant negative-n slots at m=0 are scanned, not assigned zero derivatives:
 redundancy does not imply that an individual parameter has no effect.
+
+### Timeout checkpoint
+
+The interrupted run committed its small-case Taylor plots and reference-noise
+measurements. It did not commit any component results:
+`plots_wp6/wp6_components.log` is empty. An empty log is not a numerical failure
+or evidence that any signed boundary component has passed.
+
+The restored sandbox initially had `VMECPP_ENABLE_ENZYME=OFF`. Saved NPZ data
+remain evidence from the recorded Enzyme binary, but new exact-gradient
+measurements require restoring and verifying an Enzyme-enabled runtime.
+No missing measurements are inferred from the saved Taylor slopes.
+
+### Durable component scans
+
+The component study now writes `components_CASE.checkpoint.npz` after each
+complete plus/minus pair, using an atomic replacement and file/directory
+synchronization. An interruption during a pair repeats that pair on resume.
+Completed failed native solves remain failures, not missing work or passes.
+
+Run `scripts/plot_reference_gradients.py` with
+`--cases cth_like_fixed_bdy li383_low_res --objectives volume boundary random_linear
+--studies components --hot-restart --output-dir plots_wp6`, and add `--resume`
+to continue existing checkpoints without rerunning Taylor studies. The initial
+run also writes an empty checkpoint before its first pair.
+
+Resume validates checksums, steps, ordered objectives and random weights,
+input, base state, exact gradients, reference noise, and runtime/helper hashes.
+It rejects incompatible or corrupt data instead of combining runs. Exact
+floating-point comparisons are conservative: a changed binary or even a
+non-bitwise-reproducible reference solve requires a new scan, not silently
+accepted reuse. Native resume reproducibility still needs measurement.
+Analytic-oracle interruption/resume and rejection tests passed (18 tests);
+saved-data replay and mixed-provenance rejection passed (2 tests).
 
 ## N10: one-shot PR cross-check
 

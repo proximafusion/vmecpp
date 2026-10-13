@@ -162,7 +162,22 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--hot-restart", action="store_true")
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "resume per-case component checkpoints in --output-dir; "
+            "Taylor studies are not rerun"
+        ),
+    )
     args = parser.parse_args()
+    if args.resume:
+        if "components" not in args.studies:
+            parser.error("--resume requires --studies components")
+        for case in args.cases:
+            checkpoint = args.output_dir / f"components_{case}.checkpoint.npz"
+            if not checkpoint.is_file():
+                parser.error(f"--resume requires component checkpoint {checkpoint}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     failed = False
     for case in args.cases:
@@ -175,6 +190,15 @@ def main():
             )
             summaries = []
             for name in args.studies:
+                if args.resume and name == "taylor":
+                    summaries.append(
+                        {
+                            "study": "taylor",
+                            "status": "skipped",
+                            "reason": "--resume resumes components only",
+                        }
+                    )
+                    continue
                 results = (
                     study.taylor(
                         DEFAULT_STEPS if args.steps is None else args.steps,
@@ -182,7 +206,10 @@ def main():
                     )
                     if name == "taylor"
                     else study.components(
-                        COMPONENT_STEPS if args.steps is None else args.steps
+                        COMPONENT_STEPS if args.steps is None else args.steps,
+                        checkpoint=args.output_dir
+                        / f"components_{case}.checkpoint.npz",
+                        resume=args.resume,
                     )
                 )
                 if name == "taylor":
@@ -203,7 +230,7 @@ def main():
                 "provenance": json.loads(study.provenance()),
                 "results": summaries,
             }
-        except (RuntimeError, ValueError) as error:
+        except (OSError, RuntimeError, ValueError) as error:
             report = {
                 "case": case,
                 "status": "blocked",
