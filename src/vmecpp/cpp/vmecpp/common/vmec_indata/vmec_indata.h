@@ -254,6 +254,12 @@ class VmecINDATA {
   // false, they hold the advanced state, as in educational_VMEC.
   bool backup_evaluated_state;
 
+  // If true, the m=1 gauge of R and Z is set from the boundary at the start of
+  // every multigrid step and its force is zeroed in every iteration; if false,
+  // its force is zeroed only in the first iteration of a multigrid step and
+  // while fsqz < 1e-6, as in VMEC 8.52.
+  bool always_fix_m1_gauge;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

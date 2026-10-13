@@ -553,6 +553,11 @@ class VmecInput(BaseModelWithNumpy):
     """If true, restart backups hold the state of the last force evaluation; if false,
     they hold the advanced state, as in educational_VMEC and the reference files."""
 
+    always_fix_m1_gauge: bool = False
+    """If true, the m = 1 gauge of R and Z is set from the boundary at the start of
+    every multigrid step and held there; if false, it is held only in the first
+    iteration of a multigrid step and while fsqz < 1e-6, as in VMEC 8.52."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

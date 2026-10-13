@@ -114,6 +114,21 @@ def test_bad_initial_jacobian_is_retried_from_three_surfaces():
     np.testing.assert_allclose(lasym_wout.zmns, wout.zmns, rtol=0.0, atol=2e-11)
 
 
+def test_pinned_m1_gauge_converges_at_half_constraint():
+    # ConStellaration boundary DCaUizWEEjG6oHsffeztGFU, with the input the
+    # ConStellaration forward model builds and tcon0 = 0.5: with the VMEC 8.52
+    # gauge the residual of the ns = 71 step stalls near 2e-9, with the m = 1
+    # gauge held from the boundary it converges
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_m1_gauge_drift.json"
+    )
+    assert vmec_input.tcon0 == 0.5
+    assert vmec_input.always_fix_m1_gauge
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
