@@ -216,11 +216,10 @@ class Vmec {
 
   // -------------------
 
-  // Size the free-boundary vacuum team (vac_num_threads_) to the threads the
-  // runtime grants next to the radial team of num_threads_ threads, and build
-  // the vacuum solvers (fb_vac_/tp_vac_) when that size changes. Call only
-  // when lfreeb is set, after num_threads_ is set for the multigrid step and
-  // the mgrid has been loaded. The solvers are ns-independent and persist
+  // Size the free-boundary vacuum team (vac_num_threads_) to the radial team of
+  // num_threads_ threads, and build the vacuum solvers (fb_vac_/tp_vac_) when
+  // that size changes. Call only when lfreeb is set, after num_threads_ is set
+  // for the multigrid step and the mgrid has been loaded. The solvers persist
   // across multigrid steps.
   void SetupVacuumSolvers();
 
@@ -313,8 +312,8 @@ class Vmec {
   OutputQuantities output_quantities_;
 
   int num_threads_;
-  // Thread count for the free-boundary solve is decoupled from
-  // num_threads_ (which is capped at ns/2), since it's ns-independent.
+  // Size of the free-boundary vacuum solver team; equals num_threads_ once the
+  // vacuum solvers are set up.
   int vac_num_threads_ = 0;
   std::vector<std::unique_ptr<RadialPartitioning>> r_;
   std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;

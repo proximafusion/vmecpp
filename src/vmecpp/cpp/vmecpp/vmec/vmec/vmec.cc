@@ -580,22 +580,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 }  // run
 
 void Vmec::SetupVacuumSolvers() {
-#ifdef _OPENMP
-  // The vacuum solve runs in a parallel region nested inside the persistent
-  // radial parallel region (see IdealMhdModel::update). Allow at least two
-  // active parallel levels so the nested team is actually granted its threads
-  // rather than being serialized to one.
-  // omp_set_nested is deprecated but still needed by older libgomp runtimes.
-  omp_set_nested(1);
-  omp_set_max_active_levels(2);
-#endif  // _OPENMP
-
-  // The tangential partitioning covers the grid only if every vacuum thread
-  // runs, so the vacuum team is sized to what the runtime grants next to the
-  // radial team of num_threads_ threads. OMP_THREAD_LIMIT counts both teams,
-  // and an enclosing parallel region can use up the active levels.
-  const int vac_num_threads = GrantedNestedThreads(
-      num_threads_, vmec_adjust_vacuum_num_threads(fc_.max_threads(), s_.nZnT));
+  // The vacuum solve runs cooperatively in the persistent radial parallel
+  // region (see IdealMhdModel::update), so its tangential partitioning is over
+  // the radial team of num_threads_ threads, which the runtime has granted.
+  const int vac_num_threads = num_threads_;
   if (vac_num_threads == vac_num_threads_) {
     return;
   }
@@ -717,12 +705,9 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     num_threads_ = GrantedThreads(vmec_adjust_num_threads(
         fc_.max_threads(), fc_.num_surfaces_to_distribute));
 
-    // Set up the free-boundary vacuum solvers. Their thread count
-    // (vac_num_threads_) is decoupled from the radial num_threads_: the vacuum
-    // solve is parallelized over the tangential grid (nZnT), so it can use the
-    // full thread budget even at coarse multigrid steps where num_threads_ is
-    // capped at ns/2. The solvers persist across multigrid steps, rebuilt only
-    // when the team granted next to this step's radial team changes size; the
+    // Set up the free-boundary vacuum solvers, partitioned over the tangential
+    // grid (nZnT) among the num_threads_ radial threads. The solvers persist
+    // across multigrid steps, rebuilt only when num_threads_ changes; the
     // accumulated vacuum response matrix/RHS live in Vmec, in ns-independent
     // Fourier space, and persist either way, reproducing Fortran VMEC's
     // persistent vacuum state.
@@ -765,13 +750,12 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       p_[thread_id]->setupInputProfiles();
 
       // setup MHD model. The free-boundary vacuum solvers (fb_vac_) are shared
-      // across all radial threads and driven from a nested parallel region, so
-      // the whole vector - not a per-thread solver - is handed to the model.
+      // across all radial threads, each of which drives one of them, so the
+      // whole vector - not a per-thread solver - is handed to the model.
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
-          vac_num_threads_, indata_.signgs, indata_.nvacskip,
-          &vacuum_pressure_state_);
+          indata_.signgs, indata_.nvacskip, &vacuum_pressure_state_);
       m_[thread_id]->setFromINDATA(
           indata_.ncurr, indata_.gamma, indata_.tcon0, indata_.lforbal,
           indata_.lambda_preconditioner_scale,
