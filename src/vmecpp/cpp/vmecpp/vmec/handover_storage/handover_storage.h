@@ -220,19 +220,13 @@ class HandoverStorage {
   Eigen::VectorXd vacuum_potential;
 
   // Whether the free-boundary vacuum solve requested an early exit at a
-  // debug checkpoint (VmecCheckpoint). The vacuum solve now runs in a nested
-  // parallel region driven by a single radial thread, so this shared flag
-  // broadcasts that thread's checkpoint result to the whole radial team (which
-  // reads it after the enclosing 'omp single' barrier). Always false during
-  // normal runs (checkpoint == NONE).
+  // debug checkpoint (VmecCheckpoint). Thread 0 of the radial team records the
+  // result of the cooperative vacuum solve here, which the whole team reads
+  // after a barrier. Always false during normal runs (checkpoint == NONE).
   bool vacuum_reached_checkpoint = false;
 
-  // First error from the nested vacuum team; reset to OK before each solve.
+  // First error from the vacuum team; reset to OK before each solve.
   absl::Status vacuum_status = absl::OkStatus();
-
-  // Threads the runtime granted the last nested vacuum team, checked against
-  // the team the vacuum solvers are partitioned for.
-  int vacuum_team_size = 0;
 
  private:
   const Sizes& s_;

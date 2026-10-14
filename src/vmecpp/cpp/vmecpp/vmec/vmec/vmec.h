@@ -338,8 +338,8 @@ class Vmec {
   OutputQuantities output_quantities_;
 
   int num_threads_;
-  // Thread count for the free-boundary solve is decoupled from
-  // num_threads_ (which is capped at ns/2), since it's ns-independent.
+  // Size of the free-boundary vacuum solver team; equals num_threads_ once the
+  // vacuum solvers are set up.
   int vac_num_threads_ = 0;
   std::vector<std::unique_ptr<RadialPartitioning>> r_;
   std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;

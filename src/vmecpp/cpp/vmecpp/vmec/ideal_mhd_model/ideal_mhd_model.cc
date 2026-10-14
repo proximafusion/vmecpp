@@ -146,7 +146,7 @@ IdealMhdModel::IdealMhdModel(
     RadialProfiles* m_p, const VmecConstants* constants,
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
     const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
-    int vac_num_threads, int signOfJacobian, int nvacskip,
+    int signOfJacobian, int nvacskip,
     VacuumPressureState* m_vacuum_pressure_state)
     : m_fc_(*m_fc),
       s_(*s),
@@ -157,7 +157,6 @@ IdealMhdModel::IdealMhdModel(
       m_h_(*m_h),
       r_(*r),
       m_fb_vac_(m_fb_vac),
-      m_vac_num_threads_(vac_num_threads),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
 #ifdef VMECPP_USE_FFTX
       fft_plans_(s->nZeta, s->nfp, s->mpol),
@@ -170,8 +169,6 @@ IdealMhdModel::IdealMhdModel(
   if (m_fc_.lfreeb) {
     CHECK(m_fb_vac_ != nullptr && !m_fb_vac_->empty())
         << "Free-boundary configuration requires a Free-boundary solver";
-    CHECK_GT(m_vac_num_threads_, 0)
-        << "Free-boundary configuration requires vac_num_threads > 0";
   }
 
   // init members
@@ -728,70 +725,50 @@ absl::StatusOr<bool> IdealMhdModel::update(
       const bool at_checkpoint_iteration =
           iter2 >= iterations_before_checkpointing;
 
-      // Run the free-boundary vacuum solve in a parallel region nested inside
-      // the persistent radial parallel region. This gives the vacuum solve its
-      // own thread count (m_vac_num_threads_), decoupled from the radial thread
-      // count (which is capped at ns/2). A single radial thread drives it; the
-      // other radial threads wait at the implicit barrier at the end of the
-      // 'omp single'. NESTOR reads its inputs from and writes its outputs to
-      // shared handover storage (m_h_), so the nested team - not the radial
-      // team - performs the whole solve.
+      // Run the free-boundary vacuum solve cooperatively in the radial team:
+      // every radial thread drives its own tangential slice of NESTOR (the
+      // solvers in m_fb_vac_ are partitioned over the radial team size). NESTOR
+      // reads its inputs from and writes its outputs to shared handover storage
+      // (m_h_). The solve deliberately does not open a nested parallel region:
+      // libgomp does not keep nested threads alive, so a nested team costs a
+      // pthread_create/join per thread on every vacuum solve, which exceeds the
+      // work of the solve itself.
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
       {
         m_h_.vacuum_status = absl::OkStatus();
-#ifdef _OPENMP
-#pragma omp parallel num_threads(m_vac_num_threads_)
-#endif  // _OPENMP
-        {
-          int vac_thread_id = 0;
-          int vac_team_size = 1;
-#ifdef _OPENMP
-          vac_thread_id = omp_get_thread_num();
-          vac_team_size = omp_get_num_threads();
-#endif  // _OPENMP
-          if (vac_thread_id == 0) {
-            m_h_.vacuum_team_size = vac_team_size;
-          }
-          // The tangential slices only cover the whole grid if every
-          // vac_thread_id runs. Every thread of the team sees the same size,
-          // so a smaller team skips the solve as a whole.
-          if (vac_team_size == m_vac_num_threads_) {
-            const absl::StatusOr<bool> rc = (*m_fb_vac_)[vac_thread_id]->update(
+      }  // implicit barrier: status is reset before any thread reports into it
+
+      {
+        const absl::StatusOr<bool> rc =
+            (*m_fb_vac_)[r_.get_thread_id()]->update(
                 m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
                 m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
                 signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
                 &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
                 at_checkpoint_iteration);
-            // Reduced across the team; the first error wins.
-            if (!rc.ok()) {
+        // Reduced across the team; the first error wins.
+        if (!rc.ok()) {
 #ifdef _OPENMP
 #pragma omp critical
 #endif  // _OPENMP
-              {
-                if (m_h_.vacuum_status.ok()) {
-                  m_h_.vacuum_status = rc.status();
-                }
-              }
-            }
-            // All nested threads follow identical control flow and compute the
-            // same checkpoint result; record it once for the radial team.
-            if (vac_thread_id == 0) {
-              m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
+          {
+            if (m_h_.vacuum_status.ok()) {
+              m_h_.vacuum_status = rc.status();
             }
           }
         }
+        // All threads follow identical control flow and compute the same
+        // checkpoint result; record it once for the team.
+        if (r_.get_thread_id() == 0) {
+          m_h_.vacuum_reached_checkpoint = rc.ok() && *rc;
+        }
       }
-      // The 'omp single' barrier publishes the outputs, flag, status and team
-      // size. Vmec sizes the vacuum team to the grant it finds before each
-      // multigrid step; a different grant here ends the run with an error.
-      if (m_h_.vacuum_team_size != m_vac_num_threads_) {
-        return absl::ResourceExhaustedError(absl::StrFormat(
-            "the free-boundary vacuum solve is partitioned over %d threads, "
-            "but OpenMP granted %d",
-            m_vac_num_threads_, m_h_.vacuum_team_size));
-      }
+      // publish the vacuum outputs, status and checkpoint flag to all threads
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
       // Only a warning here: the boundary may leave the grid transiently while
       // the equilibrium is still moving. Vmec::run turns a still-outside
       // boundary into an error once the run has converged.
