@@ -143,7 +143,22 @@ class MagneticFieldResponseTable(BaseModelWithNumpy):
         )
 
 
+def write_mgrid_file(
+    coils_path: str | Path,
+    makegrid_parameters: MakegridParameters,
+    out_path: str | Path,
+) -> None:
+    """Run MAKEGRID on a coils file and write the resulting mgrid NetCDF file."""
+    magnetic_configuration = _vmecpp.MagneticConfiguration.from_file(coils_path)
+    _vmecpp.write_makegrid_netcdf_file(
+        str(out_path),
+        makegrid_parameters._to_cpp_makegrid_parameters(),
+        magnetic_configuration,
+    )
+
+
 __all__ = [
     "MagneticFieldResponseTable",
     "MakegridParameters",
+    "write_mgrid_file",
 ]

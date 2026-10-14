@@ -1748,6 +1748,29 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("makegrid_parameters"), py::arg("magnetic_configuration"));
 
   m.def(
+      "write_makegrid_netcdf_file",
+      [](const std::string &out_file,
+         const makegrid::MakegridParameters &mgrid_params,
+         const magnetics::MagneticConfiguration &magnetic_configuration) {
+        auto maybe_currents =
+            magnetics::GetCircuitCurrents(magnetic_configuration);
+        Eigen::VectorXd currents = GetValueOrThrow(maybe_currents);
+        auto maybe_table = makegrid::ComputeMagneticFieldResponseTable(
+            mgrid_params, magnetic_configuration);
+        auto table = GetValueOrThrow(maybe_table);
+        auto maybe_vector_potential = makegrid::ComputeVectorPotentialCache(
+            mgrid_params, magnetic_configuration);
+        auto vector_potential = GetValueOrThrow(maybe_vector_potential);
+        absl::Status status = makegrid::WriteMakegridNetCDFFile(
+            out_file, mgrid_params, currents, table, vector_potential);
+        if (!status.ok()) {
+          throw std::runtime_error(std::string(status.message()));
+        }
+      },
+      py::arg("out_file"), py::arg("makegrid_parameters"),
+      py::arg("magnetic_configuration"));
+
+  m.def(
       "run",
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
