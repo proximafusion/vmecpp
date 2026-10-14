@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791976617038,
+  "lastUpdate": 1791977457260,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24599,6 +24599,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.47995280999998613,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d9087921855759c026e9560c6cd5757ad570a9f3",
+          "message": "Take the external magnetic field as a callable (#982)\n\n* Take the external magnetic field as a callable\n\nExternalMagneticField evaluates a MagneticFieldFunction (R, phi, Z) ->\n(B^R, B^phi, B^Z) for both Nestor and OnlyCoils; mgrid interpolation is one\nsuch function. vmecpp.run accepts a Python callable as magnetic_field.\n\n* Port mgrid_provider_test to the point-wise interpolate, hold the field by pointer\n\nThe out-of-grid message reports the extents of the points passed in. The\ncallable run matches the response-table run to 1e-10.\n\n* Compare the callable run to 1e-11",
+          "timestamp": "2026-10-14T13:16:43+02:00",
+          "tree_id": "20f53795169914b8f2f6c5a943ae385ba7d19800",
+          "url": "https://github.com/proximafusion/vmecpp/commit/d9087921855759c026e9560c6cd5757ad570a9f3"
+        },
+        "date": 1791977451154,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5879646737999792,
+            "range": "stddev: 0.0020775519928032775",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6861287293333285,
+            "range": "stddev: 0.007051602180558768",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0622030416666728,
+            "range": "stddev: 0.0042240077183200424",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7738885936666595,
+            "range": "stddev: 0.027594831212110368",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2730273206666425,
+            "range": "stddev: 0.003435438189380118",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.453761939333352,
+            "range": "stddev: 0.012660631612906346",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.2024513850000176,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.2873327590000372,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
