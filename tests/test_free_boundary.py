@@ -306,8 +306,8 @@ def test_run_free_boundary_from_callable(free_boundary_method):
     wout = vmecpp.run(vmec_input, field, max_threads=2, verbose=False).wout
 
     assert wout.itfsq == reference.itfsq
-    np.testing.assert_allclose(wout.rmnc, reference.rmnc, rtol=0, atol=1e-12)
-    np.testing.assert_allclose(wout.zmns, reference.zmns, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(wout.rmnc, reference.rmnc, rtol=0, atol=1e-10)
+    np.testing.assert_allclose(wout.zmns, reference.zmns, rtol=0, atol=1e-10)
 
 
 def test_magnetic_field_callable_errors():

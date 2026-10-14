@@ -92,7 +92,7 @@ class ExternalMagneticField {
   const TangentialPartitioning& tp_;
 
   const SurfaceGeometry& sg_;
-  const MagneticFieldFunction& magnetic_field_;
+  const MagneticFieldFunction* magnetic_field_;
 
   // Compute the contribution to the external magnetic field from net toroidal
   // current along magnetic axis. Here, the contribution is computed using

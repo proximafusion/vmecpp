@@ -14,7 +14,7 @@ namespace vmecpp {
 ExternalMagneticField::ExternalMagneticField(
     const Sizes* s, const TangentialPartitioning* tp, const SurfaceGeometry* sg,
     const MagneticFieldFunction* magnetic_field)
-    : s_(*s), tp_(*tp), sg_(*sg), magnetic_field_(*magnetic_field) {
+    : s_(*s), tp_(*tp), sg_(*sg), magnetic_field_(magnetic_field) {
   // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
   // resolved by the surface grid, so the axis-current filament is replicated
   // over nvper equally-spaced toroidal angles (matching educational_VMEC's
@@ -65,8 +65,8 @@ absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
   surfaceZ = sg_.z1b.segment(tp_.ztMin, tp_.ztMax - tp_.ztMin);
 
   // Not returned here: the barriers below are collective over the team.
-  absl::Status field_status = magnetic_field_(surfaceR, surfacePhi, surfaceZ,
-                                              interpBr, interpBp, interpBz);
+  absl::Status field_status = (*magnetic_field_)(surfaceR, surfacePhi, surfaceZ,
+                                                 interpBr, interpBp, interpBz);
 
 #ifdef _OPENMP
 #pragma omp barrier
