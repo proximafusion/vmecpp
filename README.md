@@ -162,7 +162,19 @@ In a terminal in which Python has access to the VMEC++ package:
 # vmecpp is a python module and can be either run with `python -m` or directly as a script
 vmecpp examples/data/input.w7x
 
-# check all options
+vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
+vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
+vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fortran VMEC
+
+# convert a classic Fortran indata file to VMEC++'s JSON format -> examples/data/w7x.json
+vmecpp convert examples/data/input.w7x
+
+# compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
+# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
+vmecpp mgrid makegrid_parameters.json coils.<name>
+
+# print the version, or check all options
+vmecpp --version
 vmecpp --help
 ```
 
