@@ -235,6 +235,20 @@ TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
   EXPECT_FALSE(maybe_vmec.ok());
 }  // CheckFromIndataReturnsErrorForInvalidMgridPath
 
+// FromIndata sets the external magnetic field, which InitializeRadial hands to
+// the vacuum solvers without Vmec::run, as VmecModel does.
+TEST(TestVmec, CheckFromIndataSetsMagneticField) {
+  absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok()) << maybe_vmec.status();
+  EXPECT_TRUE(static_cast<bool>((*maybe_vmec)->magnetic_field_));
+}  // CheckFromIndataSetsMagneticField
+
 // A thread count below 1 is an error status, not a failed check in FlowControl.
 TEST(TestVmec, CheckRunRejectsAThreadCountBelowOne) {
   const std::string filename = "vmecpp/test_data/solovev.json";

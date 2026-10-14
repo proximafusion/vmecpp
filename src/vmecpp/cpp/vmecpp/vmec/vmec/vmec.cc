@@ -235,6 +235,8 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     if (!s.ok()) {
       return s;
     }
+    v->magnetic_field_ =
+        std::bind_front(&MGridProvider::interpolate, &v->mgrid_);
   }
 
   return v;
