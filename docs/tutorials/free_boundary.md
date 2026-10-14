@@ -13,6 +13,7 @@ The external magnetic field can come from an MGRID file or an in-memory magnetic
 ## Related Examples
 
 - [Run and hot-restart a free-boundary equilibrium](https://github.com/proximafusion/vmecpp/blob/main/examples/freeboundary_run_and_hot_restart.py)
+- [Run a free-boundary equilibrium in an analytical magnetic field](https://github.com/proximafusion/vmecpp/blob/main/examples/free_boundary_analytical_field.py)
 
 ## Basic Setup
 
@@ -100,6 +101,44 @@ output = vmecpp.run(
     magnetic_field_response_table=response_table,
 )
 ```
+
+### 3. Free-Boundary with a Magnetic Field Function
+
+`magnetic_field` also accepts a function of position, `b_r, b_phi, b_z = f(r, phi, z)`, which VMEC++ evaluates at the points of the plasma boundary in every vacuum update, with no grid and no interpolation. `r`, `phi` and `z` are 1D arrays of cylindrical coordinates, `phi` the geometric toroidal angle, and the function returns the cylindrical components of the field in Tesla. `mgrid_file` and `extcur` are not used by VMEC++. Each vacuum thread calls the function on its own subset of the boundary points.
+
+The external field of the Solov'ev free-boundary case is that of a straight wire along the $Z$ axis and of circular coils, which has a closed form:
+
+```python
+import numpy as np
+from scipy.special import ellipe, ellipk
+import vmecpp
+
+MU0 = 4.0e-7 * np.pi
+vmec_input = vmecpp.VmecInput.from_file(
+    "src/vmecpp/cpp/vmecpp/test_data/solovev_free_bdy.json"
+)
+# (radius, height) of the circular coils, which carry extcur[1:]
+loops = np.array([[0.867845, 1.86006], [4.49628, 3.69583], ...])
+
+
+def magnetic_field(r, phi, z):
+    a = loops[:, 0, None]
+    dz = z - loops[:, 1, None]
+    alpha2 = a**2 + r**2 + dz**2 - 2 * a * r
+    beta2 = a**2 + r**2 + dz**2 + 2 * a * r
+    m = 1.0 - alpha2 / beta2
+    scale = MU0 * vmec_input.extcur[1:, None] / (2 * np.pi * alpha2 * np.sqrt(beta2))
+    b_r = scale * dz / r * ((a**2 + r**2 + dz**2) * ellipe(m) - alpha2 * ellipk(m))
+    b_z = scale * ((a**2 - r**2 - dz**2) * ellipe(m) + alpha2 * ellipk(m))
+    # the wire along the Z axis carries extcur[0]
+    b_phi = MU0 * vmec_input.extcur[0] / (2 * np.pi * r)
+    return b_r.sum(axis=0), b_phi, b_z.sum(axis=0)
+
+
+output = vmecpp.run(vmec_input, magnetic_field=magnetic_field)
+```
+
+The complete script, which also compares the result with the mgrid file of the same coils, is [free_boundary_analytical_field.py](https://github.com/proximafusion/vmecpp/blob/main/examples/free_boundary_analytical_field.py).
 
 ## Physics Limitations and Practical Guidelines
 
