@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791986919397,
+  "lastUpdate": 1791989344302,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24839,6 +24839,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.18091759800006457,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6bc0d9ee2dedb13155d856ae88bfb9513d759a80",
+          "message": "Add a free-boundary example in an analytical magnetic field (#985)\n\n* Add a free-boundary example in an analytical magnetic field\n\nRuns solovev_free_bdy with the closed-form field of its coils, a straight\nwire and circular loops, passed to vmecpp.run as a function, and documents\nmagnetic field functions in the free-boundary tutorial.\n\n* Use the current response table API in the free-boundary tutorial\n\nfrom_coils_file takes a coils file and MakegridParameters, and run takes the\ntable as magnetic_field.",
+          "timestamp": "2026-10-14T16:41:07+02:00",
+          "tree_id": "d28b39f1a20b58f00d78572948a76b93310d122b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/6bc0d9ee2dedb13155d856ae88bfb9513d759a80"
+        },
+        "date": 1791989339190,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6790084664000233,
+            "range": "stddev: 0.012100484756542523",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.617635801000006,
+            "range": "stddev: 0.013372125128358519",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.092706789333344,
+            "range": "stddev: 0.001702096495041268",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6560572933333713,
+            "range": "stddev: 0.006161254326304464",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4752922679999756,
+            "range": "stddev: 0.0048792983032204225",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.834093972000005,
+            "range": "stddev: 0.013572128858353806",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.6962614980000126,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.48883850200002144,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
