@@ -20,7 +20,7 @@ Compute the MGRID file from a coils file, then run VMEC++ on an input file that 
 
 ```console
 # writes mgrid_<name>.nc for the coils file coils.<name>
-vmecpp makegrid_parameters.json --mgrid coils.<name>
+vmecpp makegrid makegrid_parameters.json coils.<name>
 
 # the input's "mgrid_file" field must point to mgrid_<name>.nc
 vmecpp input.<name>.json

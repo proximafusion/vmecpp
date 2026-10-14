@@ -25,16 +25,40 @@ def _parse_convert_arguments(argv: list[str]) -> argparse.Namespace:
     return args
 
 
+def _parse_makegrid_arguments(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="vmecpp makegrid",
+        description="Run MAKEGRID on a coils file and write the mgrid NetCDF file "
+        "mgrid_<name>.nc for the coils file coils.<name>.",
+    )
+    p.add_argument(
+        "makegrid_parameters",
+        help="A MakegridParameters JSON file defining the grid of the mgrid file.",
+        type=Path,
+    )
+    p.add_argument(
+        "coils_file",
+        help="A coils file in MAKEGRID format, e.g. coils.w7x.",
+        type=Path,
+    )
+    args = p.parse_args(argv)
+    args.command = "makegrid"
+    return args
+
+
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     if argv is None:
         argv = sys.argv[1:]
 
     if argv and argv[0] == "convert":
         return _parse_convert_arguments(argv[1:])
+    if argv and argv[0] == "makegrid":
+        return _parse_makegrid_arguments(argv[1:])
 
     p = argparse.ArgumentParser(
         description="VMEC++ is a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.",
-        epilog="Run 'vmecpp convert <input_file>' to convert an input file to VMEC++'s JSON format.",
+        epilog="Run 'vmecpp convert <input_file>' to convert an input file to VMEC++'s JSON format, "
+        "or 'vmecpp makegrid <makegrid_parameters> <coils_file>' to compute an mgrid file.",
     )
     p.add_argument(
         "input_file",
@@ -65,16 +89,8 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Show the legacy table output instead of animated progress bars.",
         action="store_true",
     )
-    p.add_argument(
-        "--mgrid",
-        help="Run MAKEGRID on the given coils file and write an mgrid NetCDF file, "
-        "instead of running VMEC++. In this mode input_file is a MakegridParameters "
-        "JSON file.",
-        type=Path,
-        metavar="COILS_FILE",
-    )
     args = p.parse_args(argv)
-    args.command = "mgrid" if args.mgrid is not None else "run"
+    args.command = "run"
     return args
 
 
@@ -89,11 +105,13 @@ def main() -> None:
         print(f"Converted {args.input_file} to {json_file}")  # noqa: T201
         return
 
-    if args.command == "mgrid":
-        makegrid_parameters = vmecpp.MakegridParameters.from_file(args.input_file)
-        coils_name = args.mgrid.name.removeprefix("coils.")
+    if args.command == "makegrid":
+        makegrid_parameters = vmecpp.MakegridParameters.from_file(
+            args.makegrid_parameters
+        )
+        coils_name = args.coils_file.name.removeprefix("coils.")
         mgrid_file = Path(f"mgrid_{coils_name}.nc")
-        write_mgrid_file(args.mgrid, makegrid_parameters, mgrid_file)
+        write_mgrid_file(args.coils_file, makegrid_parameters, mgrid_file)
         print(f"Output written to {mgrid_file}")  # noqa: T201
         return
 
