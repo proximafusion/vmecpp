@@ -14,6 +14,20 @@ The external magnetic field can come from an MGRID file or an in-memory magnetic
 
 To run in free-boundary mode, set `lfreeb = True` and provide the external magnetic field specification.
 
+### Typical Command-Line Workflow
+
+Compute the MGRID file from a coils file, then run VMEC++ on an input file that references it:
+
+```console
+# writes mgrid_<name>.nc for the coils file coils.<name>
+vmecpp makegrid_parameters.json --mgrid coils.<name>
+
+# the input's "mgrid_file" field must point to mgrid_<name>.nc
+vmecpp input.<name>.json
+```
+
+`makegrid_parameters.json` defines the grid (see `src/vmecpp/cpp/makegrid/example_inputs/makegrid_parameters.json`).
+
 ### 1. Free-Boundary with an MGRID File
 
 The standard method uses a precomputed MGRID file storing the vacuum magnetic field on a 3D cylindrical grid $(R, \phi, Z)$:
