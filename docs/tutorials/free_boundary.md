@@ -73,33 +73,25 @@ print(f"Final major radius: {output.wout.rmnc[0, output.wout.ns - 1]:.3f} m")
 VMEC++ also supports running free-boundary calculations using an in-memory `MagneticFieldResponseTable` computed directly from coil geometry (such as Makegrid-format coils files):
 
 ```python
-import numpy as np
 import vmecpp
-from vmecpp import MagneticFieldResponseTable
 
-# Load input
-vmec_input = vmecpp.VmecInput.from_file("examples/data/solovev.json")
-vmec_input.lfreeb = True
+test_data = "src/vmecpp/cpp/vmecpp/test_data"
 
-# Generate response table directly from a coils file
-response_table = MagneticFieldResponseTable.from_coils_file(
-    coils_file="examples/data/coils.solovev",
-    r_min=0.5,
-    r_max=1.5,
-    z_min=-0.5,
-    z_max=0.5,
-    num_r=33,
-    num_z=33,
-    num_phi=18,
-    num_field_periods=vmec_input.nfp,
-    is_stellarator_symmetric=True,
+# Load a free-boundary input; its mgrid_file is not used when a response table is passed
+vmec_input = vmecpp.VmecInput.from_file(f"{test_data}/solovev_free_bdy.json")
+
+# The grid of the response table: R, Z and phi extents and resolution, number of field periods
+makegrid_parameters = vmecpp.MakegridParameters.from_file(
+    f"{test_data}/makegrid_parameters_solovev.json"
 )
 
-# Pass the response table directly to run()
-output = vmecpp.run(
-    vmec_input,
-    magnetic_field_response_table=response_table,
+# Generate the response table directly from a coils file
+response_table = vmecpp.MagneticFieldResponseTable.from_coils_file(
+    f"{test_data}/coils.solovev", makegrid_parameters
 )
+
+# Pass the response table directly to run(); it is weighted by vmec_input.extcur
+output = vmecpp.run(vmec_input, magnetic_field=response_table)
 ```
 
 ### 3. Free-Boundary with a Magnetic Field Function
