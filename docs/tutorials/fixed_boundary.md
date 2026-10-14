@@ -8,6 +8,12 @@ $$
 
 This tutorial walks through setting up and running a fixed-boundary case, followed by recommended settings for accuracy and convergence.
 
+## Related Examples
+
+- [Run VMEC++ from an input file](https://github.com/proximafusion/vmecpp/blob/main/examples/python_api.py)
+- [Build a `VmecInput` in Python](https://github.com/proximafusion/vmecpp/blob/main/examples/python_api_input.py)
+- [Compare current-density results with `lbsubs`](https://github.com/proximafusion/vmecpp/blob/main/examples/w7x_lbsubs_current_density.py)
+
 ## Basic Workflow
 
 ### 1. Running from an Input File
