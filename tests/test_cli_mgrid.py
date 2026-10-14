@@ -35,5 +35,14 @@ def test_makegrid_subcommand_arguments(subcommand):
     assert args.coils_file == Path("coils.x")
 
 
+def test_help_lists_subcommands(capsys):
+    with pytest.raises(SystemExit):
+        cli.parse_arguments(["--help"])
+    out = capsys.readouterr().out
+    assert "convert" in out
+    assert "makegrid" in out
+    assert "mgrid" in out
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
