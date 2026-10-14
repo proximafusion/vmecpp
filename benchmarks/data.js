@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791979048231,
+  "lastUpdate": 1791986613577,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24759,6 +24759,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3543269369999962,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "16a13e49aeadedfbd4212204cedc0e7f614dfd07",
+          "message": "Set the mgrid magnetic field in FromIndata (#984)\n\nVmecModel initializes through FromIndata and InitializeRadial without\nVmec::run, so a free-boundary model called an empty magnetic field\nfunction and aborted with std::bad_function_call.",
+          "timestamp": "2026-10-14T15:58:45+02:00",
+          "tree_id": "75de9736ed38d6ebf305a81e105e49cfd06e7954",
+          "url": "https://github.com/proximafusion/vmecpp/commit/16a13e49aeadedfbd4212204cedc0e7f614dfd07"
+        },
+        "date": 1791986606199,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.38454584079997856,
+            "range": "stddev: 0.008094179708485853",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 1.5563308833333547,
+            "range": "stddev: 0.031631243560322236",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.6345811759999833,
+            "range": "stddev: 0.0035023435774866447",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 0.9636198430000226,
+            "range": "stddev: 0.013023174050938951",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.9709093139999823,
+            "range": "stddev: 0.010490642941077525",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 4.235072379999981,
+            "range": "stddev: 0.021838869958583033",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.315112370999941,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.18091759800006457,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
