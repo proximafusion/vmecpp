@@ -161,13 +161,20 @@ def write_mgrid_file(
     coils_path: str | Path,
     makegrid_parameters: MakegridParameters,
     out_path: str | Path,
+    progress: typing.Callable[[str, int, int], None] | None = None,
 ) -> None:
-    """Run MAKEGRID on a coils file and write the resulting mgrid NetCDF file."""
+    """Run MAKEGRID on a coils file and write the resulting mgrid NetCDF file.
+
+    `progress(stage, circuits_done, number_of_circuits)` is called before the first
+    circuit and after each circuit, for stage "B" (magnetic field) and "A" (vector
+    potential).
+    """
     magnetic_configuration = _vmecpp.MagneticConfiguration.from_file(coils_path)
     _vmecpp.write_makegrid_netcdf_file(
         str(out_path),
         makegrid_parameters._to_cpp_makegrid_parameters(),
         magnetic_configuration,
+        progress,
     )
 
 

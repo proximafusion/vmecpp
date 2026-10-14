@@ -96,6 +96,53 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+_RESET, _RED, _GREEN, _YELLOW = "\033[0m", "\033[31m", "\033[32m", "\033[33m"
+_MAKEGRID_STAGES = {"B": "B field", "A": "A potential"}
+
+
+def _progress_bar(done: int, total: int, width: int = 50) -> str:
+    """Bar in the style of the VMEC++ run progress display."""
+    filled = width * done // total
+    color = _GREEN if done == total else _YELLOW if 2 * done > total else _RED
+    fill = f"{color}{'=' * filled}{_RESET}" if filled else ""
+    return f"[{fill}{'-' * (width - filled)}]"
+
+
+class _MakegridProgress:
+    """One progress bar per MAKEGRID stage, redrawn in place on a TTY."""
+
+    def __init__(self) -> None:
+        self._tty = sys.stdout.isatty()
+        self._state: dict[str, tuple[int, int]] = dict.fromkeys(
+            _MAKEGRID_STAGES, (0, 1)
+        )
+        self._drawn = False
+
+    def _line(self, stage: str) -> str:
+        done, total = self._state[stage]
+        return f"  {_MAKEGRID_STAGES[stage]:<11}: {_progress_bar(done, total)} {done}/{total}"
+
+    def __call__(self, stage: str, done: int, total: int) -> None:
+        self._state[stage] = (done, total)
+        if self._tty:
+            up = f"\033[{len(self._state)}A" if self._drawn else ""
+            print(up + "\n".join(self._line(s) for s in self._state))  # noqa: T201
+            self._drawn = True
+        elif done == total:
+            print(self._line(stage))  # noqa: T201
+
+
+def _describe_makegrid_grid(p: vmecpp.MakegridParameters) -> str:
+    return (
+        f"Grid: {p.number_of_r_grid_points} (R) x {p.number_of_z_grid_points} (Z) "
+        f"x {p.number_of_phi_grid_points} (phi) per field period\n"
+        f"R in [{p.r_grid_minimum:g}, {p.r_grid_maximum:g}] m, "
+        f"Z in [{p.z_grid_minimum:g}, {p.z_grid_maximum:g}] m\n"
+        f"{p.number_of_field_periods} field periods, "
+        f"stellarator symmetry: {'yes' if p.assume_stellarator_symmetry else 'no'}"
+    )
+
+
 def main() -> None:
     args = parse_arguments()
 
@@ -113,7 +160,13 @@ def main() -> None:
         )
         coils_name = args.coils_file.name.removeprefix("coils.")
         mgrid_file = Path(f"mgrid_{coils_name}.nc")
-        write_mgrid_file(args.coils_file, makegrid_parameters, mgrid_file)
+        print(_describe_makegrid_grid(makegrid_parameters))  # noqa: T201
+        write_mgrid_file(
+            args.coils_file,
+            makegrid_parameters,
+            mgrid_file,
+            progress=_MakegridProgress(),
+        )
         print(f"Output written to {mgrid_file}")  # noqa: T201
         return
 

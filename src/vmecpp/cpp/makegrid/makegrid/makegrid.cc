@@ -21,6 +21,13 @@ using makegrid::MagneticFieldResponseTable;
 using makegrid::MakegridCachedVectorPotential;
 using makegrid::MakegridParameters;
 using makegrid::WriteMakegridNetCDFFile;
+
+makegrid::ProgressCallback LogProgress(const std::string& label) {
+  return [label](int done, int total) {
+    if (done > 0)
+      std::cout << label << " " << done << "/" << total << ": done\n";
+  };
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -61,14 +68,15 @@ int main(int argc, char** argv) {
 
   // compute the magnetic field cache and the vector potential cache
   absl::StatusOr<MagneticFieldResponseTable> maybe_magnetic_response_table =
-      ComputeMagneticFieldResponseTable(makegrid_parameters,
-                                        magnetic_configuration);
+      ComputeMagneticFieldResponseTable(
+          makegrid_parameters, magnetic_configuration, LogProgress("B"));
   CHECK_OK(maybe_magnetic_response_table);
   const MagneticFieldResponseTable& magnetic_response_table =
       *maybe_magnetic_response_table;
 
   absl::StatusOr<MakegridCachedVectorPotential> maybe_vector_potential_cache =
-      ComputeVectorPotentialCache(makegrid_parameters, magnetic_configuration);
+      ComputeVectorPotentialCache(makegrid_parameters, magnetic_configuration,
+                                  LogProgress("A"));
   CHECK_OK(maybe_vector_potential_cache);
   const MakegridCachedVectorPotential& vector_potential_cache =
       *maybe_vector_potential_cache;

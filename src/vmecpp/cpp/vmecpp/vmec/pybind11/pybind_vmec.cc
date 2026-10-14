@@ -1807,15 +1807,24 @@ PYBIND11_MODULE(_vmecpp, m) {
       "write_makegrid_netcdf_file",
       [](const std::string &out_file,
          const makegrid::MakegridParameters &mgrid_params,
-         const magnetics::MagneticConfiguration &magnetic_configuration) {
+         const magnetics::MagneticConfiguration &magnetic_configuration,
+         py::object progress) {
+        // progress(stage, circuits_done, number_of_circuits) with stage "B"
+        // (magnetic field) or "A" (vector potential).
+        auto callback = [&progress](const char *stage) {
+          return makegrid::ProgressCallback(
+              [&progress, stage](int done, int total) {
+                if (!progress.is_none()) progress(stage, done, total);
+              });
+        };
         auto maybe_currents =
             magnetics::GetCircuitCurrents(magnetic_configuration);
         Eigen::VectorXd currents = GetValueOrThrow(maybe_currents);
         auto maybe_table = makegrid::ComputeMagneticFieldResponseTable(
-            mgrid_params, magnetic_configuration);
+            mgrid_params, magnetic_configuration, callback("B"));
         auto table = GetValueOrThrow(maybe_table);
         auto maybe_vector_potential = makegrid::ComputeVectorPotentialCache(
-            mgrid_params, magnetic_configuration);
+            mgrid_params, magnetic_configuration, callback("A"));
         auto vector_potential = GetValueOrThrow(maybe_vector_potential);
         absl::Status status = makegrid::WriteMakegridNetCDFFile(
             out_file, mgrid_params, currents, table, vector_potential);
@@ -1824,7 +1833,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         }
       },
       py::arg("out_file"), py::arg("makegrid_parameters"),
-      py::arg("magnetic_configuration"));
+      py::arg("magnetic_configuration"), py::arg("progress") = py::none());
 
   m.def(
       "run",
