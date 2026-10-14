@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791977815152,
+  "lastUpdate": 1791978675991,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24679,6 +24679,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.2873327590000372,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2193d2ce73201f1cb57b6d8ab566d41baf6711af",
+          "message": "Run the NESTOR vacuum solve in the radial team instead of a nested team (#983)\n\n* Run the NESTOR vacuum solve in the radial team instead of a nested team\n\nlibgomp does not keep the threads of a nested parallel region alive, so\nthe nested team introduced in #645 cost a pthread_create/join per thread\non every vacuum solve (~7 clone3 per iteration at 8 threads). On\nfree-boundary runs this made vmecpp slower with more threads, e.g. CTH-like\nfree boundary (5x4, ns=15): 1.0 s at 1 thread, 2.8 s at 8 threads.\n\nPartition the tangential grid over the radial team and drive NESTOR from\nevery radial thread, as before #645. The vacuum team is thus capped at\nns/2 threads at coarse multigrid steps. Drop vac_num_threads plumbing,\nvmec_adjust_vacuum_num_threads, GrantedNestedThreads and the tests that\npinned the decoupling.\n\nCTH-like free boundary at 8 threads: 2.8 s -> 0.34 s (5x4), 12.5 s -> 1.4 s\n(8x6, ns 15/31/51). wb agrees with the previous result to 1e-8.\n\n* clang-format",
+          "timestamp": "2026-10-14T13:35:53+02:00",
+          "tree_id": "f7b70a99593a62fba581e691ee0f337c2bd637ee",
+          "url": "https://github.com/proximafusion/vmecpp/commit/2193d2ce73201f1cb57b6d8ab566d41baf6711af"
+        },
+        "date": 1791978667683,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.579471319599952,
+            "range": "stddev: 0.005324919784143149",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.996965441666665,
+            "range": "stddev: 0.02749590980768342",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1190695123333019,
+            "range": "stddev: 0.0031139216630134917",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.956972851000046,
+            "range": "stddev: 0.01391433096978379",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.308577023666582,
+            "range": "stddev: 0.015437968585056682",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.351270278333383,
+            "range": "stddev: 0.01201685791135513",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.627709592999963,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3543269369999962,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
