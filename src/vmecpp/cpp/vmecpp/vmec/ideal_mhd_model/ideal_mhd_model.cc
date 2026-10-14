@@ -741,12 +741,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
       }  // implicit barrier: status is reset before any thread reports into it
 
       {
-        const absl::StatusOr<bool> rc = (*m_fb_vac_)[r_.get_thread_id()]->update(
-            m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
-            m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-            signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-            &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-            at_checkpoint_iteration);
+        const absl::StatusOr<bool> rc =
+            (*m_fb_vac_)[r_.get_thread_id()]->update(
+                m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
+                m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
+                signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
+                &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+                at_checkpoint_iteration);
         // Reduced across the team; the first error wins.
         if (!rc.ok()) {
 #ifdef _OPENMP
