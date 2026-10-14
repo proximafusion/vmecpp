@@ -10,7 +10,6 @@
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/free_boundary/free_boundary_base/free_boundary_base.h"
-#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
 
 namespace vmecpp {
@@ -18,8 +17,8 @@ namespace vmecpp {
 class OnlyCoils : public FreeBoundaryBase {
  public:
   OnlyCoils(const Sizes* s, const TangentialPartitioning* tp,
-            const MGridProvider* mgrid, std::span<double> bSqVacShare,
-            std::span<double> vacuum_b_r_share,
+            const MagneticFieldFunction* magnetic_field,
+            std::span<double> bSqVacShare, std::span<double> vacuum_b_r_share,
             std::span<double> vacuum_b_phi_share,
             std::span<double> vacuum_b_z_share, std::span<double> reduce_slots);
 

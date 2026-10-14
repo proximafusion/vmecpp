@@ -256,6 +256,16 @@ INSTANTIATE_TEST_SUITE_P(TestVmec, LoadMGridTest,
 // Number of tangential grid points used by the interpolation tests below.
 static constexpr int kNumTangentialPoints = 8;
 
+// Toroidal angles of points cycling through the mgrid's toroidal grid planes.
+Eigen::VectorXd GridPhi(int num_points, const MGridProvider& mgrid) {
+  Eigen::VectorXd phi(num_points);
+  for (int index = 0; index < num_points; ++index) {
+    phi[index] =
+        2.0 * M_PI * (index % mgrid.numPhi) / (mgrid.nfp * mgrid.numPhi);
+  }
+  return phi;
+}
+
 class MGridInterpolationTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -308,9 +318,8 @@ TEST_F(MGridInterpolationTest, BoundaryInsideGridIsAccepted) {
   Eigen::VectorXd b_r(kNumTangentialPoints);
   Eigen::VectorXd b_p(kNumTangentialPoints);
   Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(0, kNumTangentialPoints, mgrid_.numPhi,
-                         kNumTangentialPoints, r, z, b_r, b_p, b_z);
+  const absl::Status status = mgrid_.interpolate(
+      r, GridPhi(kNumTangentialPoints, mgrid_), z, b_r, b_p, b_z);
 
   EXPECT_TRUE(status.ok()) << status;
   for (int index = 0; index < kNumTangentialPoints; ++index) {
@@ -320,22 +329,19 @@ TEST_F(MGridInterpolationTest, BoundaryInsideGridIsAccepted) {
   }
 }
 
-// The reported extents are the whole boundary's, not the reporting slice's:
-// this call covers the second slice only, which does not contain the minima.
+// The reported extents are those of the points passed in.
 TEST_F(MGridInterpolationTest, BoundaryOutsideGridIsAnError) {
-  const int num_points = 2 * kNumTangentialPoints;
   Eigen::VectorXd r;
   Eigen::VectorXd z;
-  FillInsideGrid(num_points, r, z);
-  r[num_points - 1] = OutsideR();
-  z[num_points - 2] = OutsideZ();
+  FillInsideGrid(kNumTangentialPoints, r, z);
+  r[kNumTangentialPoints - 1] = OutsideR();
+  z[kNumTangentialPoints - 2] = OutsideZ();
 
   Eigen::VectorXd b_r(kNumTangentialPoints);
   Eigen::VectorXd b_p(kNumTangentialPoints);
   Eigen::VectorXd b_z(kNumTangentialPoints);
-  const absl::Status status =
-      mgrid_.interpolate(kNumTangentialPoints, num_points, mgrid_.numPhi,
-                         num_points, r, z, b_r, b_p, b_z);
+  const absl::Status status = mgrid_.interpolate(
+      r, GridPhi(kNumTangentialPoints, mgrid_), z, b_r, b_p, b_z);
 
   EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
   const std::string message(status.message());
@@ -346,8 +352,8 @@ TEST_F(MGridInterpolationTest, BoundaryOutsideGridIsAnError) {
 }
 
 #ifdef _OPENMP
-// Hangs if the barrier is ever made conditional on the slice being in grid.
-TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
+// Concurrent calls on slices report only their own points.
+TEST_F(MGridInterpolationTest, OnlyTheOutOfGridSliceReportsAnError) {
   constexpr int kNumThreads = 4;
   const int num_points = kNumThreads * kNumTangentialPoints;
 
@@ -356,6 +362,7 @@ TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
   FillInsideGrid(num_points, r, z);
   // Only the slice owned by the last thread leaves the grid.
   r[num_points - 1] = OutsideR();
+  const Eigen::VectorXd phi = GridPhi(num_points, mgrid_);
 
   std::vector<absl::Status> per_thread_status(kNumThreads);
   int team_size = 0;
@@ -369,13 +376,14 @@ TEST_F(MGridInterpolationTest, MixedInAndOutOfGridSlicesDoNotDeadlock) {
     }
 
     const int zt_min = thread_id * kNumTangentialPoints;
-    const int zt_max = zt_min + kNumTangentialPoints;
 
     Eigen::VectorXd b_r(kNumTangentialPoints);
     Eigen::VectorXd b_p(kNumTangentialPoints);
     Eigen::VectorXd b_z(kNumTangentialPoints);
     per_thread_status[thread_id] = mgrid_.interpolate(
-        zt_min, zt_max, mgrid_.numPhi, num_points, r, z, b_r, b_p, b_z);
+        r.segment(zt_min, kNumTangentialPoints),
+        phi.segment(zt_min, kNumTangentialPoints),
+        z.segment(zt_min, kNumTangentialPoints), b_r, b_p, b_z);
   }
 
   ASSERT_EQ(team_size, kNumThreads);
@@ -663,7 +671,8 @@ TEST(MGridPolynomialInterpolation,
         r[3] = 1.0;
         z[3] = 0.9;
         ASSERT_TRUE(
-            provider.interpolate(0, 205, 5, 205, r, z, br, bp, bz).ok());
+            provider.interpolate(r, GridPhi(205, provider), z, br, bp, bz)
+                .ok());
         double error = 0.0;
         for (int i = 0; i < 205; ++i) {
           const double expected = 1.25 * polynomial(r[i], z[i], i % 5);

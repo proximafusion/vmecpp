@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <numbers>
@@ -156,14 +157,37 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
   return std::move(v.output_quantities_);
 }
 
-namespace vmecpp {
-
-absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
-    const VmecINDATA& indata,
-    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback,
     IterationCallback iteration_callback) {
+  auto maybe_vmec = Vmec::FromIndata(
+      indata, std::move(magnetic_field), max_threads, verbose,
+      std::move(interrupt_callback), std::move(iteration_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
+
+  // the values of the first three arguments should just be VMEC's defaults
+  absl::StatusOr<bool> s =
+      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+
+  if (!s.ok()) {
+    return s.status();
+  }
+
+  return std::move(v.output_quantities_);
+}
+
+namespace vmecpp {
+
+namespace {
+// Checks what the Vmec constructor relies on.
+absl::Status CheckConstructorArguments(const VmecINDATA& indata,
+                                       std::optional<int> max_threads) {
   // check the input before the constructor builds Sizes from it; the
   // informational messages are left to the check in run()
   absl::Status is_indata_consistent =
@@ -178,6 +202,21 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
         "The number of threads must be >= 1, but is %d. To use all available "
         "threads, leave max_threads unset.",
         *max_threads));
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  absl::Status arguments_status =
+      CheckConstructorArguments(indata, max_threads);
+  if (!arguments_status.ok()) {
+    return arguments_status;
   }
 
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
@@ -198,6 +237,27 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     }
   }
 
+  return v;
+}
+
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  if (!magnetic_field) {
+    return absl::InvalidArgumentError("magnetic_field must not be empty.");
+  }
+  absl::Status arguments_status =
+      CheckConstructorArguments(indata, max_threads);
+  if (!arguments_status.ok()) {
+    return arguments_status;
+  }
+
+  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+                                  std::move(interrupt_callback),
+                                  std::move(iteration_callback));
+  v->magnetic_field_ = std::move(magnetic_field);
   return v;
 }
 
@@ -279,7 +339,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                         maximum_multi_grid_step));
   }
 
-  if (indata_.lfreeb) {
+  if (indata_.lfreeb && !magnetic_field_) {
     if (!mgrid_.IsLoaded()) {
       // Fallback: load mgrid from file if constructed directly via the public
       // constructor instead of the FromIndata factory method.
@@ -288,6 +348,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return status;
       }
     }
+    magnetic_field_ = std::bind_front(&MGridProvider::interpolate, &mgrid_);
+  }
+  if (indata_.lfreeb && mgrid_.IsLoaded()) {
     // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
     // toroidal resolution of the run.
     if (mgrid_.numPhi != s_.nZeta) {
@@ -616,7 +679,7 @@ void Vmec::SetupVacuumSolvers() {
 
     if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
       fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
-          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
           std::span<double>(matrixShare.data(), matrixShare.size()),
           std::span<double>(bvecShare.data(), bvecShare.size()),
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
@@ -629,7 +692,7 @@ void Vmec::SetupVacuumSolvers() {
                             vacuum_reduce_slots_.size()));
     } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
       fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
-          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
                             h_.vacuum_magnetic_pressure.size()),
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),

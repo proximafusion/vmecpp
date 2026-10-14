@@ -17,7 +17,9 @@
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
 #include "vmecpp/free_boundary/free_boundary_base/free_boundary_base.h"
+#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 #include "vmecpp/free_boundary/nestor/nestor.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
 #include "vmecpp/vmec/boundaries/boundaries.h"
@@ -165,6 +167,17 @@ absl::StatusOr<OutputQuantities> run(
     InterruptCallback interrupt_callback = nullptr,
     IterationCallback iteration_callback = nullptr);
 
+// This overload enables free-boundary runs with an external magnetic field
+// given as a function of position; mgrid_file and extcur in `indata` are
+// ignored.
+absl::StatusOr<OutputQuantities> run(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<HotRestartState> initial_state = std::nullopt,
+    std::optional<int> max_threads = std::nullopt,
+    OutputMode verbose = OutputMode::kLegacy,
+    InterruptCallback interrupt_callback = nullptr,
+    IterationCallback iteration_callback = nullptr);
+
 class Vmec {
  public:
   // Prefer using the FromIndata factory method, which handles both fixed-
@@ -203,6 +216,15 @@ class Vmec {
       InterruptCallback interrupt_callback = nullptr,
       IterationCallback iteration_callback = nullptr);
 
+  // Factory method for a free-boundary run whose external magnetic field is
+  // `magnetic_field` instead of an mgrid.
+  static absl::StatusOr<std::unique_ptr<Vmec>> FromIndata(
+      const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+      std::optional<int> max_threads = std::nullopt,
+      OutputMode verbose = OutputMode::kLegacy,
+      InterruptCallback interrupt_callback = nullptr,
+      IterationCallback iteration_callback = nullptr);
+
   // checkpoint_multi_grid_step selects which entry of ns_array the checkpoints
   // taken in InitializeRadial fire on, counting from 1. Without it those
   // checkpoints always stop the run in the first multi-grid step, which leaves
@@ -220,7 +242,7 @@ class Vmec {
   // runtime grants next to the radial team of num_threads_ threads, and build
   // the vacuum solvers (fb_vac_/tp_vac_) when that size changes. Call only
   // when lfreeb is set, after num_threads_ is set for the multigrid step and
-  // the mgrid has been loaded. The solvers are ns-independent and persist
+  // magnetic_field_ has been set. The solvers are ns-independent and persist
   // across multigrid steps.
   void SetupVacuumSolvers();
 
@@ -310,6 +332,9 @@ class Vmec {
   // the linearization of the iterated system.
   bool always_fix_m1_gauge_ = false;
   MGridProvider mgrid_;
+  // external magnetic field of a free-boundary run; mgrid_ interpolation
+  // unless given to FromIndata
+  MagneticFieldFunction magnetic_field_;
   OutputQuantities output_quantities_;
 
   int num_threads_;

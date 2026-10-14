@@ -35,6 +35,7 @@ from vmecpp import _util, autodiff_wout
 from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
+    MagneticFieldFunction,
     MagneticFieldResponseTable,
     MakegridParameters,
 )
@@ -3083,7 +3084,7 @@ class SolverState:
 
 def run(
     input: VmecInput,
-    magnetic_field: MagneticFieldResponseTable | None = None,
+    magnetic_field: MagneticFieldResponseTable | MagneticFieldFunction | None = None,
     *,
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
@@ -3095,8 +3096,10 @@ def run(
 
     Args:
         input: a VmecInput instance, corresponding to the contents of a classic VMEC input file
-        magnetic_field: if present, VMEC++ will pass the magnetic field object in memory instead of reading
-            it from an mgrid file (only relevant in free-boundary runs).
+        magnetic_field: the external magnetic field of a free-boundary run, used instead of the
+            mgrid file in the input: either a MagneticFieldResponseTable, which is weighted by
+            `input.extcur` and interpolated like an mgrid, or a :data:`MagneticFieldFunction`
+            ``b_r, b_phi, b_z = f(r, phi, z)`` evaluated at the plasma boundary points.
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy. If None, a number of threads equal to the number of logical cores is used.
@@ -3194,7 +3197,7 @@ def run(
             verbose=_verbose.value,
             iteration_callback=cpp_iteration_callback,
         )
-    else:
+    elif isinstance(magnetic_field, MagneticFieldResponseTable):
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
         # we don't silently use the mgrid file in input, instead of the magnetic_response_table object.
         cpp_indata.mgrid_file = "NONE"
@@ -3206,6 +3209,22 @@ def run(
             verbose=_verbose.value,
             iteration_callback=cpp_iteration_callback,
         )
+    elif callable(magnetic_field):
+        cpp_indata.mgrid_file = "NONE"
+        cpp_output_quantities = _vmecpp.run(
+            cpp_indata,
+            magnetic_field=magnetic_field,
+            initial_state=initial_state,
+            max_threads=max_threads,
+            verbose=_verbose.value,
+            iteration_callback=cpp_iteration_callback,
+        )
+    else:
+        msg = (
+            "magnetic_field must be a MagneticFieldResponseTable or a callable, but is "
+            f"{type(magnetic_field).__name__}"
+        )
+        raise TypeError(msg)
 
     wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     return VmecOutput(
@@ -3397,6 +3416,7 @@ __all__ = [  # noqa: RUF022
     "Mercier",
     "Threed1Volumetrics",
     "MakegridParameters",
+    "MagneticFieldFunction",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
     "IterationStyle",

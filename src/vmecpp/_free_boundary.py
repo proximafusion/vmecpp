@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import typing
 from pathlib import Path
 
 import jaxtyping as jt
@@ -11,6 +12,19 @@ import pydantic
 
 from vmecpp._pydantic_numpy import BaseModelWithNumpy, own_model_fields
 from vmecpp.cpp import _vmecpp  # type: ignore
+
+MagneticFieldFunction = typing.Callable[
+    [np.ndarray, np.ndarray, np.ndarray],
+    tuple[np.ndarray, np.ndarray, np.ndarray],
+]
+"""External magnetic field of a free-boundary run as a function of position.
+
+Called as ``b_r, b_phi, b_z = f(r, phi, z)`` with 1D arrays of the cylindrical
+coordinates of points on the plasma boundary, ``phi`` the geometric toroidal angle,
+and returns the cylindrical components of the field at those points in Tesla.
+It is called once per vacuum thread and evaluation, each time on a subset of the
+boundary points.
+"""
 
 
 class MakegridParameters(BaseModelWithNumpy):
