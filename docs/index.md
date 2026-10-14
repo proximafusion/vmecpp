@@ -10,7 +10,6 @@
 Reference <api/vmecpp>
 Tutorials <tutorials/index>
 Examples <examples_overview>
-Fourier Basis Details <fourier_basis_implementation>
 Benchmarks <benchmarks>
 ```
 
