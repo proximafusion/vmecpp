@@ -843,4 +843,11 @@ TEST_F(RadialProfilesTest, PolfluxIsIotaTimesTorfluxForConstantIota) {
   }
 }
 
+// presH is only assigned by IdealMhdModel::update; a model that has not run it
+// must not hand uninitialized memory to the exact adjoint.
+TEST_F(RadialProfilesTest, PressureIsZeroBeforeTheFirstUpdate) {
+  EXPECT_GT(profiles_->presH.size(), 0);
+  EXPECT_TRUE((profiles_->presH.array() == 0.0).all());
+}
+
 }  // namespace vmecpp
