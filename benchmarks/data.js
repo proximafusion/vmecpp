@@ -26,13 +26,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3501943795999978,
-            "range": "stddev: 0.006910631524456307",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3470393650000119,
@@ -98,13 +91,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768444,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3506801131999964,
-            "range": "stddev: 0.005236822041365806",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -172,13 +158,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34865256279997536,
-            "range": "stddev: 0.0036643546182046115",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3495417560000078,
@@ -244,13 +223,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768232,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34843086499997755,
-            "range": "stddev: 0.003773429247722929",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -318,13 +290,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3519441519999873,
-            "range": "stddev: 0.0024524715966221357",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3508943966000061,
@@ -390,13 +355,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768509,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3551613028000247,
-            "range": "stddev: 0.004997165271623071",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -464,13 +422,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3759517630000119,
-            "range": "stddev: 0.012256737670348091",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.38641568700004425,
@@ -536,13 +487,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768482,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3585053366000011,
-            "range": "stddev: 0.009196342419732224",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -610,13 +554,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3382559619999029,
-            "range": "stddev: 0.0056491019869853555",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.338758500799986,
@@ -682,13 +619,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768365,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35123409819993867,
-            "range": "stddev: 0.003037278024107745",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -756,13 +686,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3331885719999718,
-            "range": "stddev: 0.0012160701415494788",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.33625830380001387,
@@ -828,13 +751,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768316,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34902276420002637,
-            "range": "stddev: 0.004351193208576876",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -902,13 +818,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3798548496001331,
-            "range": "stddev: 0.06117148761714235",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3509917456000039,
@@ -974,13 +883,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768507,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35102334440007327,
-            "range": "stddev: 0.008983364805680396",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1048,13 +950,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3489055195999981,
-            "range": "stddev: 0.001483940432649183",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3509530218000009,
@@ -1120,13 +1015,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768269,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35459477980001564,
-            "range": "stddev: 0.012176900103038598",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1194,13 +1082,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3518372711999859,
-            "range": "stddev: 0.005151303438584993",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.352290478000009,
@@ -1266,13 +1147,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768331,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3565584348000129,
-            "range": "stddev: 0.0035464196446546104",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1340,13 +1214,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35196212259997994,
-            "range": "stddev: 0.005637704305723554",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3507590654000296,
@@ -1412,13 +1279,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768260,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3599945996000088,
-            "range": "stddev: 0.006861602120168427",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1486,13 +1346,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35483621220000716,
-            "range": "stddev: 0.004545607523410218",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.35219240499995974,
@@ -1558,13 +1411,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768252,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.32997479399999746,
-            "range": "stddev: 0.0014030719609982852",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1632,13 +1478,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3343159835999927,
-            "range": "stddev: 0.004923706436016819",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3297302864000244,
@@ -1704,13 +1543,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768237,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33007244419999326,
-            "range": "stddev: 0.0005395700615074876",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1778,13 +1610,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.331361290000018,
-            "range": "stddev: 0.0019963446304969183",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3300119563999715,
@@ -1850,13 +1675,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768326,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.331467070199983,
-            "range": "stddev: 0.0014324932171018746",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -1924,13 +1742,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33052033120000035,
-            "range": "stddev: 0.0010946854064119982",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.32869266540001263,
@@ -1996,13 +1807,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768455,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3308388449999711,
-            "range": "stddev: 0.0017620843496458372",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2070,13 +1874,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3435581637999917,
-            "range": "stddev: 0.0010810218149467391",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3397906081999963,
@@ -2142,13 +1939,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768380,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34144114400000947,
-            "range": "stddev: 0.0018178222956462698",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2216,13 +2006,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3529959325999698,
-            "range": "stddev: 0.01326154497068901",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.35560592860001633,
@@ -2288,13 +2071,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768474,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3408698918000027,
-            "range": "stddev: 0.001401865206837848",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2362,13 +2138,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.352984058800007,
-            "range": "stddev: 0.002298251340245004",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.36261547340000105,
@@ -2434,13 +2203,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768405,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36979356739998365,
-            "range": "stddev: 0.005926728829276898",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2508,13 +2270,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3471523712000362,
-            "range": "stddev: 0.008044544420803481",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.4132730596000783,
@@ -2580,13 +2335,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768358,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3395550173999823,
-            "range": "stddev: 0.0013558896247079398",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2654,13 +2402,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33842152940000003,
-            "range": "stddev: 0.003562150423616499",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3353181886000243,
@@ -2726,13 +2467,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768479,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34126689620004524,
-            "range": "stddev: 0.006247554215219144",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2800,13 +2534,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.331634525000004,
-            "range": "stddev: 0.001334159803225369",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3406526048000387,
@@ -2872,13 +2599,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768289,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33439785979999215,
-            "range": "stddev: 0.005954641562952937",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -2946,13 +2666,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3382960339999954,
-            "range": "stddev: 0.0011511419868398644",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34968594799997843,
@@ -3018,13 +2731,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768499,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3496156135999627,
-            "range": "stddev: 0.0030503288548929803",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3092,13 +2798,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3459619845999953,
-            "range": "stddev: 0.003076812334709196",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3439969539999879,
@@ -3164,13 +2863,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768440,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3410285317999865,
-            "range": "stddev: 0.001313080525014661",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3238,13 +2930,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34910293000000364,
-            "range": "stddev: 0.005874650243484552",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3449050523999858,
@@ -3310,13 +2995,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768301,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34851384439998584,
-            "range": "stddev: 0.006175492768501686",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3384,13 +3062,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35469325040000965,
-            "range": "stddev: 0.0018560996782669426",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34921755860000303,
@@ -3456,13 +3127,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768522,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3421728954000173,
-            "range": "stddev: 0.0009979951915561752",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3530,13 +3194,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35419645279994255,
-            "range": "stddev: 0.004015198658211754",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34974769939999534,
@@ -3602,13 +3259,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768517,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34729532979997657,
-            "range": "stddev: 0.0029053725698816647",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3676,13 +3326,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3761998550000499,
-            "range": "stddev: 0.009499081122837042",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.37454951260001507,
@@ -3748,13 +3391,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768492,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36176889060002393,
-            "range": "stddev: 0.00817513272116792",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3822,13 +3458,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35046582920003855,
-            "range": "stddev: 0.0020180495570918987",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34948026940001,
@@ -3894,13 +3523,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768294,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35367545159992914,
-            "range": "stddev: 0.0056866942313185355",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -3968,13 +3590,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3557536190000519,
-            "range": "stddev: 0.0032495304496673325",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.35329365939992385,
@@ -4040,13 +3655,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768338,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35443969639995887,
-            "range": "stddev: 0.003252475173070944",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4114,13 +3722,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3481292570000164,
-            "range": "stddev: 0.0012187962132464826",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3490135192000025,
@@ -4186,13 +3787,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768511,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35193702120001263,
-            "range": "stddev: 0.004649816150771736",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4260,13 +3854,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34847369300000536,
-            "range": "stddev: 0.0011636341129629346",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34755986679997475,
@@ -4332,13 +3919,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768247,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3511006137999857,
-            "range": "stddev: 0.0042103065132542755",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4406,13 +3986,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35148397540001497,
-            "range": "stddev: 0.003019188588042692",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3502104211999949,
@@ -4478,13 +4051,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768279,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34616636860000655,
-            "range": "stddev: 0.0018825142832423745",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4552,13 +4118,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34993096600001083,
-            "range": "stddev: 0.004640112086194305",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3470201624000765,
@@ -4624,13 +4183,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768227,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3398469436000028,
-            "range": "stddev: 0.007500863510724243",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4698,13 +4250,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33561558740000236,
-            "range": "stddev: 0.0019971185385641394",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3345542450000039,
@@ -4770,13 +4315,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768378,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3331767075999892,
-            "range": "stddev: 0.0013444826492080885",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4844,13 +4382,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33536536200001593,
-            "range": "stddev: 0.004596480977337334",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3316704275999882,
@@ -4916,13 +4447,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768395,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33419397499999376,
-            "range": "stddev: 0.001637463507730509",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -4990,13 +4514,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3343735882000146,
-            "range": "stddev: 0.006980300305780556",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3325125247999722,
@@ -5062,13 +4579,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768333,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.33209369780004183,
-            "range": "stddev: 0.0008595825151351756",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -5136,13 +4646,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34734706280000865,
-            "range": "stddev: 0.001695095133244917",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34495362180000483,
@@ -5208,13 +4711,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768353,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34922679919998245,
-            "range": "stddev: 0.009652096196504808",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -5282,13 +4778,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34706532220000097,
-            "range": "stddev: 0.0021543778839636487",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3440817384000184,
@@ -5354,13 +4843,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768442,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3492956778000007,
-            "range": "stddev: 0.00855183759870831",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -5428,13 +4910,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3463660618000176,
-            "range": "stddev: 0.0016617173078786623",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34803383160001433,
@@ -5500,13 +4975,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768422,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.34538702640002156,
-            "range": "stddev: 0.0008812091145537821",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -5574,13 +5042,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3450566773999526,
-            "range": "stddev: 0.001991983718765346",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.34503534099999345,
@@ -5646,13 +5107,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768472,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3420105369999874,
-            "range": "stddev: 0.0026848065831966473",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -5720,13 +5174,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3423746362000202,
-            "range": "stddev: 0.0029260389769599432",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3420249653999917,
@@ -5792,13 +5239,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768304,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3424007522000011,
-            "range": "stddev: 0.001088128486728563",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -5866,13 +5306,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3396702080000068,
-            "range": "stddev: 0.000986851517929818",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3417786604000185,
@@ -5938,13 +5371,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768464,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35103824339998935,
-            "range": "stddev: 0.003027324007737844",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6012,13 +5438,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3794874679999339,
-            "range": "stddev: 0.006195225172779154",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3718577709999863,
@@ -6084,13 +5503,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768375,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3653196843999467,
-            "range": "stddev: 0.006114595369044278",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6158,13 +5570,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3389697540000043,
-            "range": "stddev: 0.0032125813544916343",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3386326803999964,
@@ -6230,13 +5635,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768321,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3406406126000093,
-            "range": "stddev: 0.0027720605431652227",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6304,13 +5702,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3503733977999673,
-            "range": "stddev: 0.001956562921327315",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3532749231999787,
@@ -6376,13 +5767,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768313,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36273092559995346,
-            "range": "stddev: 0.001291320440875881",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6450,13 +5834,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3485600840000188,
-            "range": "stddev: 0.0010802387366475837",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3499410205999993,
@@ -6522,13 +5899,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768410,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36248383199999806,
-            "range": "stddev: 0.006879804601255375",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6596,13 +5966,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36217252599999483,
-            "range": "stddev: 0.007504852199738848",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.35248315020003246,
@@ -6668,13 +6031,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768432,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3639012019999882,
-            "range": "stddev: 0.0019547874018844887",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6742,13 +6098,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3700741767999943,
-            "range": "stddev: 0.0008690008225827827",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3813923328000328,
@@ -6814,13 +6163,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768341,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.37925844320000124,
-            "range": "stddev: 0.007263119953481301",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -6888,13 +6230,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.38079686440000843,
-            "range": "stddev: 0.004475247076992409",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.37838451280008484,
@@ -6960,13 +6295,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768274,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.37285331179996317,
-            "range": "stddev: 0.0051386521247268275",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7034,13 +6362,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.37002953400005933,
-            "range": "stddev: 0.004278432487245612",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3738871812000525,
@@ -7106,13 +6427,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768437,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3777442356000392,
-            "range": "stddev: 0.006462722628028831",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7180,13 +6494,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.38166242620000046,
-            "range": "stddev: 0.0074875851784243",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.37069525560001465,
@@ -7252,13 +6559,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768484,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.37475795179998383,
-            "range": "stddev: 0.0064821280562263085",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7326,13 +6626,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3678729247999854,
-            "range": "stddev: 0.0016810247767230601",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3707049565999796,
@@ -7398,13 +6691,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768336,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.371007663999967,
-            "range": "stddev: 0.004373151802639963",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7472,13 +6758,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.37554186779998416,
-            "range": "stddev: 0.004524223887931482",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3729971388000422,
@@ -7544,13 +6823,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768235,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3714916148000157,
-            "range": "stddev: 0.0010006868050741837",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7618,13 +6890,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.4004895254000985,
-            "range": "stddev: 0.0033021034116759132",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.38661269479994187,
@@ -7690,13 +6955,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768487,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3637609743999974,
-            "range": "stddev: 0.0025545583793632628",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7764,13 +7022,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3860334330000228,
-            "range": "stddev: 0.012734983724117096",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3738129340000114,
@@ -7836,13 +7087,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768489,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3665029976000255,
-            "range": "stddev: 0.004144273055847308",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -7910,13 +7154,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36593384899997544,
-            "range": "stddev: 0.004048268626507567",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.36747915040000406,
@@ -7982,13 +7219,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768393,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3629898096000261,
-            "range": "stddev: 0.002315102722254379",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -8056,13 +7286,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.36397135320000873,
-            "range": "stddev: 0.0036205448608694446",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3639717516000019,
@@ -8128,13 +7351,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768368,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3608306038000137,
-            "range": "stddev: 0.002160694866458537",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -8202,13 +7418,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3630967033999923,
-            "range": "stddev: 0.005476617236460058",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3586028419999934,
@@ -8274,13 +7483,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768400,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.352507413800015,
-            "range": "stddev: 0.0020807212581481337",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -8348,13 +7550,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3516141011999935,
-            "range": "stddev: 0.0014033665494406359",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3493642946000136,
@@ -8420,13 +7615,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768477,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3580739907999714,
-            "range": "stddev: 0.00579620758761109",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -8494,13 +7682,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.3530951578000213,
-            "range": "stddev: 0.0020729121452193067",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3507347842000172,
@@ -8566,13 +7747,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768328,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35242261559999405,
-            "range": "stddev: 0.001010548969330669",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -8640,13 +7814,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.35366191219995924,
-            "range": "stddev: 0.000894185909842562",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3546048787999553,
@@ -8713,13 +7880,6 @@ window.BENCHMARK_DATA = {
         "tool": "customSmallerIsBetter",
         "benches": [
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.37103883820000194,
-            "range": "stddev: 0.0015744461884759449",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
             "value": 0.3696252702000038,
@@ -8785,13 +7945,6 @@ window.BENCHMARK_DATA = {
         "date": 1783616768430,
         "tool": "customSmallerIsBetter",
         "benches": [
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "unit": "seconds",
-            "value": 0.371867638599997,
-            "range": "stddev: 0.0029048635385211952",
-            "extra": "rounds: 5"
-          },
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "unit": "seconds",
@@ -8866,13 +8019,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.36989101419999315,
-            "range": "stddev: 0.0025127050800725064",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.8922581506666725,
             "range": "stddev: 0.01730250508830585",
@@ -8935,13 +8081,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3399173277999978,
             "range": "stddev: 0.0021652167890319723",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3396122498000068,
-            "range": "stddev: 0.0014524190718821154",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9012,13 +8151,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3863184055999909,
-            "range": "stddev: 0.005546494091758826",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.401779187333337,
             "range": "stddev: 0.027027416837713543",
@@ -9081,13 +8213,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.370769228599994,
             "range": "stddev: 0.001595908827903826",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3711316952000061,
-            "range": "stddev: 0.0017555564672272247",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9158,13 +8283,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.36730023140000867,
-            "range": "stddev: 0.005117938678102473",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.487031740333331,
             "range": "stddev: 0.041423228897246984",
@@ -9227,13 +8345,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3602378807999912,
             "range": "stddev: 0.003354475015384404",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3564612549999765,
-            "range": "stddev: 0.003115844575226895",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9304,13 +8415,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3889894816000151,
-            "range": "stddev: 0.009219581119372607",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3275141859999926,
             "range": "stddev: 0.03862801609502994",
@@ -9373,13 +8477,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.36723528420000096,
             "range": "stddev: 0.002053255532042651",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3730700739999861,
-            "range": "stddev: 0.0023084690652248074",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9450,13 +8547,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.29106761559999084,
-            "range": "stddev: 0.0038554618709586725",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 2.779234937666691,
             "range": "stddev: 0.020077478572037934",
@@ -9519,13 +8609,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.2784309919999998,
             "range": "stddev: 0.000620146919800032",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.2796520560000033,
-            "range": "stddev: 0.0015757336172009756",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9596,13 +8679,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3911381371999937,
-            "range": "stddev: 0.0033688041332005513",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3872015293333297,
             "range": "stddev: 0.02923940751316323",
@@ -9665,13 +8741,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.37004509660000623,
             "range": "stddev: 0.002355719090347387",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3688521546000061,
-            "range": "stddev: 0.0008029325434149772",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9742,13 +8811,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.37190870000000587,
-            "range": "stddev: 0.0028596142107606267",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3632396316666586,
             "range": "stddev: 0.07564224886620653",
@@ -9811,13 +8873,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3785944826001014,
             "range": "stddev: 0.0027922351501063966",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.37685176459999636,
-            "range": "stddev: 0.004004870193410839",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -9888,13 +8943,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3972336651999967,
-            "range": "stddev: 0.004518199076954199",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.4163945503333366,
             "range": "stddev: 0.06469888815936511",
@@ -9957,13 +9005,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.39169817519999695,
             "range": "stddev: 0.008642915970956273",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.390979883,
-            "range": "stddev: 0.005190005229494393",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10034,13 +9075,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.4038521593999803,
-            "range": "stddev: 0.005961195610510133",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.450566042666651,
             "range": "stddev: 0.04826553560640979",
@@ -10103,13 +9137,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3602387629999953,
             "range": "stddev: 0.013345142628690278",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.35778308180000523,
-            "range": "stddev: 0.0035268164313576205",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10180,13 +9207,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3526200317999951,
-            "range": "stddev: 0.0007462031668978937",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3809581723333224,
             "range": "stddev: 0.03023781305965428",
@@ -10249,13 +9269,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.366575261800017,
             "range": "stddev: 0.003807459650898824",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3665416578000077,
-            "range": "stddev: 0.001598699519922289",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10326,13 +9339,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3706244087999721,
-            "range": "stddev: 0.003617675633332115",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.334518432666679,
             "range": "stddev: 0.023085660374063923",
@@ -10395,13 +9401,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.40040561399999886,
             "range": "stddev: 0.007032530802342807",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.38865905240000986,
-            "range": "stddev: 0.0014932128772709534",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10472,13 +9471,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3882004445999939,
-            "range": "stddev: 0.0049571236496897715",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.399407962999978,
             "range": "stddev: 0.01791138594022735",
@@ -10541,13 +9533,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.2454975683999919,
             "range": "stddev: 0.0016878992378364214",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.25552653279996773,
-            "range": "stddev: 0.01484266098462041",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10618,13 +9603,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3919038931999978,
-            "range": "stddev: 0.009938788061355824",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3616236359999996,
             "range": "stddev: 0.022172916170515047",
@@ -10687,13 +9665,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3694254505999993,
             "range": "stddev: 0.0017811646272064968",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3731576030000042,
-            "range": "stddev: 0.0038920643148385122",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10764,13 +9735,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.375090694399978,
-            "range": "stddev: 0.003628077030135446",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.09908274899999,
             "range": "stddev: 0.027804800943643487",
@@ -10833,13 +9797,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3336948543999938,
             "range": "stddev: 0.0012303562662325128",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.33649869839999835,
-            "range": "stddev: 0.0022524269868377934",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -10910,13 +9867,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3982030843999894,
-            "range": "stddev: 0.007792036932176479",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3114107923333242,
             "range": "stddev: 0.02483191091081432",
@@ -10979,13 +9929,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.2965856742000142,
             "range": "stddev: 0.006435002090572609",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.2915789632000042,
-            "range": "stddev: 0.003110785545006487",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -11056,13 +9999,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3865268016000073,
-            "range": "stddev: 0.004776448556860936",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.130077806999983,
             "range": "stddev: 0.02667596060747959",
@@ -11125,13 +10061,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.36849818860000594,
             "range": "stddev: 0.0037482874490110665",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.37062464800000045,
-            "range": "stddev: 0.010062588555572387",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -11202,13 +10131,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.4128469784000117,
-            "range": "stddev: 0.009977715879278298",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.1822960123333055,
             "range": "stddev: 0.025394590737103807",
@@ -11271,13 +10193,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3353532378000068,
             "range": "stddev: 0.0037841831610882664",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.33523893900000984,
-            "range": "stddev: 0.0018632723540991502",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -11348,13 +10263,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.38632895279999957,
-            "range": "stddev: 0.0030227888234594085",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.14643711233334,
             "range": "stddev: 0.016111581926059857",
@@ -11421,13 +10329,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.36990631940000185,
-            "range": "stddev: 0.004177704418851978",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.3003710353333418,
             "range": "stddev: 0.030755497706545946",
@@ -11490,13 +10391,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3391950140000063,
             "range": "stddev: 0.0029188548398642314",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3420144999999593,
-            "range": "stddev: 0.0022491471720055955",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -11581,13 +10475,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3812210183999696,
-            "range": "stddev: 0.001954730349941055",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.0773216283333418,
             "range": "stddev: 0.0379521347422409",
@@ -11664,13 +10551,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3745032980000019,
             "range": "stddev: 0.000598987337476209",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3779910754000014,
-            "range": "stddev: 0.002545133503421568",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -11755,13 +10635,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3673638681999819,
-            "range": "stddev: 0.003734933401874886",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.043121097333369,
             "range": "stddev: 0.03089122443683207",
@@ -11838,13 +10711,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.36913798680000126,
             "range": "stddev: 0.0021217279306456156",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3718835203999788,
-            "range": "stddev: 0.0024401115027152275",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -11929,13 +10795,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.38209492419999835,
-            "range": "stddev: 0.0030517131459473637",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 3.0617773153333587,
             "range": "stddev: 0.020550053723640636",
@@ -12012,13 +10871,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.27958637159999855,
             "range": "stddev: 0.004966644531594783",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.2793615247999924,
-            "range": "stddev: 0.005982304367793371",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -12103,13 +10955,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3874168343999941,
-            "range": "stddev: 0.002386185305608925",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 2.522615830666666,
             "range": "stddev: 0.011889579530403588",
@@ -12186,13 +11031,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.32893548600000033,
             "range": "stddev: 0.010515268718929719",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.33670127460002275,
-            "range": "stddev: 0.011102317694095773",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -12277,13 +11115,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.37641427180000164,
-            "range": "stddev: 0.0050395622204572115",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 2.6335992289999695,
             "range": "stddev: 0.02691311529844954",
@@ -12360,13 +11191,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.29516311539998696,
             "range": "stddev: 0.003074976194065509",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.29654811500000733,
-            "range": "stddev: 0.0036177737962288055",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -12451,13 +11275,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.35513289799998804,
-            "range": "stddev: 0.0006871119773160861",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 2.501626379333326,
             "range": "stddev: 0.02121865015794113",
@@ -12534,13 +11351,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.26423215780000076,
             "range": "stddev: 0.014416693663051088",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.24093589440000188,
-            "range": "stddev: 0.004286351801462455",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -12625,13 +11435,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.2813069662000089,
-            "range": "stddev: 0.0013324702733189349",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 2.0136222239999975,
             "range": "stddev: 0.027057871524264438",
@@ -12708,13 +11511,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3555713179999998,
             "range": "stddev: 0.0052383338621874226",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3601832194000053,
-            "range": "stddev: 0.006678532935689655",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -12799,13 +11595,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.38024284159998845,
-            "range": "stddev: 0.00324143711836379",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 2.4955782463333285,
             "range": "stddev: 0.011698931852521863",
@@ -12882,13 +11671,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.3378801771999861,
             "range": "stddev: 0.0019858910653856943",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.3403245853999806,
-            "range": "stddev: 0.0010966059396025415",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
@@ -12973,13 +11755,6 @@ window.BENCHMARK_DATA = {
             "extra": "rounds: 5"
           },
           {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.2389967773999956,
-            "range": "stddev: 0.003837662775735626",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
             "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
             "value": 1.5261630813333227,
             "range": "stddev: 0.027211165774186336",
@@ -13056,13 +11831,6 @@ window.BENCHMARK_DATA = {
             "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
             "value": 0.36596883639998623,
             "range": "stddev: 0.0022670927377973203",
-            "unit": "seconds",
-            "extra": "rounds: 5"
-          },
-          {
-            "name": "benchmarks/test_benchmarks.py::test_bench_cli_invalid_input",
-            "value": 0.36373566320000916,
-            "range": "stddev: 0.0010282697997892837",
             "unit": "seconds",
             "extra": "rounds: 5"
           },
