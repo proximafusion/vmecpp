@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791989743730,
+  "lastUpdate": 1792012468423,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24919,6 +24919,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.48883850200002144,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ff9581eca58d810f391d3b165c5d56daa7b3f39d",
+          "message": "Zero presH at construction so the exact adjoint does not read uninitialized memory (#986)\n\npresH is assigned only by IdealMhdModel::update. VmecModel.geometry_state_vjp on a freshly created model (ncurr != 0, nonzero poloidal_flux_bar) passes it to the Enzyme pullback of the force kernel, where a NaN or inf in the uninitialized buffer propagates through zero cotangent seeds.",
+          "timestamp": "2026-10-14T23:06:34+02:00",
+          "tree_id": "3b9a03c3358bbb27c6a8aeba746f2d3f8c7aeb00",
+          "url": "https://github.com/proximafusion/vmecpp/commit/ff9581eca58d810f391d3b165c5d56daa7b3f39d"
+        },
+        "date": 1792012460030,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6838774164000029,
+            "range": "stddev: 0.01149582373225498",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6481735596666645,
+            "range": "stddev: 0.01974979295157746",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1148147160000121,
+            "range": "stddev: 0.010813592136229112",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.7042374103333298,
+            "range": "stddev: 0.02140601892881623",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.484773037000006,
+            "range": "stddev: 0.004271433877656461",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.836867598666667,
+            "range": "stddev: 0.026982233422487293",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 4.288561114999993,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.48570197999998754,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
