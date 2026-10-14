@@ -465,7 +465,10 @@ if(VMECPP_ENABLE_ENZYME)
     # Enzyme does not support the AVX mask intrinsics emitted for x86-64-v3.
     # Compile these two translation units for the baseline ISA on x86; use the
     # compiler's default target on other architectures.
-    set(VMECPP_ENZYME_COMPILE_OPTIONS "-O3;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+    # Keep these objects native: GCC and Apple's linker cannot consume LLVM 21
+    # LTO bitcode emitted by Clang, while the objects are linked across toolchains.
+    set(VMECPP_ENZYME_COMPILE_OPTIONS
+      "-O3;-fno-lto;-fplugin=${VMECPP_ENZYME_PLUGIN}")
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
       list(PREPEND VMECPP_ENZYME_COMPILE_OPTIONS "-march=x86-64")
     endif()
