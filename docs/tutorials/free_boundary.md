@@ -10,6 +10,10 @@ $$
 
 The external magnetic field can come from an MGRID file or an in-memory magnetic field response table. VMEC++ solves the vacuum region using a Green's function surface integral method (such as NESTOR or BIEST).
 
+## Related Examples
+
+- [Run and hot-restart a free-boundary equilibrium](https://github.com/proximafusion/vmecpp/blob/main/examples/freeboundary_run_and_hot_restart.py)
+
 ## Basic Setup
 
 To run in free-boundary mode, set `lfreeb = True` and provide the external magnetic field specification.

@@ -331,14 +331,15 @@ VMEC++ on a configuration that is very similar to the converged equilibrium.
 ```python
 import vmecpp
 
-vmec_input = vmecpp.VmecInput.from_file("w7x.json")
+vmec_input = vmecpp.VmecInput.from_file("examples/data/w7x.json")
 
 # Base run
 vmec_output = vmecpp.run(vmec_input)
 
 # Now let's perturb the plasma boundary a little bit...
-vmec_input.rbc[0, 0] *= 0.8
-vmec_input.rbc[1, 0] *= 1.2
+ntor = vmec_input.ntor
+vmec_input.rbc[0, ntor+0] *= 1.0 + 1.0e-6 # m=0, n=0
+vmec_input.rbc[1, ntor+0] *= 1.0 - 1.0e-6 # m=1, n=0
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
 vmec_input.ns_array = vmec_input.ns_array[-1:]
 vmec_input.ftol_array = vmec_input.ftol_array[-1:]

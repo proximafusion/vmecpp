@@ -55,7 +55,7 @@ nitpick_ignore = [
 
 always_document_param_types = True
 
-myst_enable_extensions = ["html_image"]
+myst_enable_extensions = ["dollarmath", "html_image"]
 myst_heading_anchors = 3
 
 html_static_path = ["_static"]
