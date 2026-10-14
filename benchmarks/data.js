@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1791971489393,
+  "lastUpdate": 1791976222221,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -24519,6 +24519,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.35625254900014625,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3cc8dde3f1aaaa4b27f1f098266297bafe754c77",
+          "message": "Add --mgrid CLI argument to run MAKEGRID on a coils file (#981)\n\n* Add --mgrid CLI argument to run MAKEGRID on a coils file\n\nExpose WriteMakegridNetCDFFile to Python and add `vmecpp <params.json> --mgrid <coils file>`,\nwhich writes mgrid_<name>.nc.\n\n* Document the CLI in the README and the mgrid workflow in the free-boundary tutorial\n\n* Make mgrid a makegrid subcommand and use a tracked coils file in its test\n\nvmecpp makegrid <makegrid_parameters.json> <coils_file> matches the convert\nsubcommand. The test used a gitignored QUASR coils file that is absent in CI.",
+          "timestamp": "2026-10-14T11:01:48Z",
+          "tree_id": "f71043006ed79522d30f4d991ea778ae8fa20b97",
+          "url": "https://github.com/proximafusion/vmecpp/commit/3cc8dde3f1aaaa4b27f1f098266297bafe754c77"
+        },
+        "date": 1791976217455,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6545080597999913,
+            "range": "stddev: 0.0049889536617614685",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.613409184333326,
+            "range": "stddev: 0.01852083991366462",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0980805093333477,
+            "range": "stddev: 0.007488083078322319",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6611878726666873,
+            "range": "stddev: 0.044453795968141335",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4813121896666341,
+            "range": "stddev: 0.007753444414075535",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.7786558243333275,
+            "range": "stddev: 0.020115050459461638",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.497855233999985,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.47995280999998613,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
