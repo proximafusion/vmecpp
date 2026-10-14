@@ -170,8 +170,8 @@ vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fo
 vmecpp convert examples/data/input.w7x
 
 # compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
-# (the JSON file only defines the mgrid grid, it is not a VMEC input)
-vmecpp makegrid makegrid_parameters.json coils.<name>
+# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
+vmecpp mgrid makegrid_parameters.json coils.<name>
 
 # print the version, or check all options
 vmecpp --version

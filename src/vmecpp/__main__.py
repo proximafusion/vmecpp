@@ -52,13 +52,13 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
     if argv and argv[0] == "convert":
         return _parse_convert_arguments(argv[1:])
-    if argv and argv[0] == "makegrid":
+    if argv and argv[0] in ("makegrid", "mgrid"):
         return _parse_makegrid_arguments(argv[1:])
 
     p = argparse.ArgumentParser(
         description="VMEC++ is a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.",
         epilog="Run 'vmecpp convert <input_file>' to convert an input file to VMEC++'s JSON format, "
-        "or 'vmecpp makegrid <makegrid_parameters> <coils_file>' to compute an mgrid file.",
+        "or 'vmecpp makegrid <makegrid_parameters> <coils_file>' (alias: mgrid) to compute an mgrid file.",
     )
     p.add_argument(
         "input_file",

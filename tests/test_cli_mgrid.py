@@ -27,8 +27,9 @@ def test_mgrid_writes_netcdf_file(tmp_path, monkeypatch):
         assert mgrid["br_001"].shape == (18, 13, 11)
 
 
-def test_makegrid_subcommand_arguments():
-    args = cli.parse_arguments(["makegrid", "params.json", "coils.x"])
+@pytest.mark.parametrize("subcommand", ["makegrid", "mgrid"])
+def test_makegrid_subcommand_arguments(subcommand):
+    args = cli.parse_arguments([subcommand, "params.json", "coils.x"])
     assert args.command == "makegrid"
     assert args.makegrid_parameters == Path("params.json")
     assert args.coils_file == Path("coils.x")

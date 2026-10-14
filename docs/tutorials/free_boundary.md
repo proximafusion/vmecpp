@@ -24,13 +24,13 @@ Compute the MGRID file from a coils file, then run VMEC++ on an input file that 
 
 ```console
 # writes mgrid_<name>.nc for the coils file coils.<name>
-vmecpp makegrid makegrid_parameters.json coils.<name>
+vmecpp mgrid makegrid_parameters.json coils.<name>
 
 # the input's "mgrid_file" field must point to mgrid_<name>.nc
 vmecpp input.<name>.json
 ```
 
-`makegrid_parameters.json` defines the grid (see `src/vmecpp/cpp/makegrid/example_inputs/makegrid_parameters.json`).
+`mgrid` is an alias of `makegrid`. `makegrid_parameters.json` defines the grid (see `src/vmecpp/cpp/makegrid/example_inputs/makegrid_parameters.json`).
 
 ### 1. Free-Boundary with an MGRID File
 
