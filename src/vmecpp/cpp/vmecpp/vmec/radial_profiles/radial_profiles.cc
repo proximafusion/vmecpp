@@ -267,6 +267,7 @@ RadialProfiles::RadialProfiles(const RadialPartitioning* r,
 
   dVdsH.resize(r_.nsMaxH - r_.nsMinH);
   presH.resize(r_.nsMaxH - r_.nsMinH);
+  presH.setZero();  // read by the exact adjoint before the first update()
   bucoH.resize(r_.nsMaxH - r_.nsMinH);
   bvcoH.resize(r_.nsMaxH - r_.nsMinH);
 
