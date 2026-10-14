@@ -81,6 +81,7 @@ def test_vacuum_potential_cutoffs():
     assert vmec_input.vacuum_mpol == 0
     assert vmec_input.vacuum_ntor == 0
 
+    assert isinstance(vmec_input.ntor, int)
     below = vmec_input.model_copy(deep=True)
     below.vacuum_ntor = vmec_input.ntor - 1
     with pytest.raises(Exception, match="vacuum_ntor"):
@@ -90,6 +91,7 @@ def test_vacuum_potential_cutoffs():
     expanded.vacuum_mpol = 8
     expanded.vacuum_ntor = 8
     output = vmecpp.run(expanded, response_table, verbose=False)
+    assert output.wout.potvac is not None
     assert output.wout.potvac.shape == (2 * (8 + 2) * (2 * 8 + 1),)
 
 
@@ -230,3 +232,101 @@ def test_magnetic_field_response_table_scaled_raw(makegrid_params):
             atol=1e-14,
             rtol=0.0,
         )
+
+
+def _lagrange_field(table: vmecpp.MagneticFieldResponseTable, extcur):
+    """MagneticFieldFunction with the interpolation that VMEC++ applies to a
+    response table: a 4-node Lagrange stencil in R and Z on the toroidal grid."""
+    p = table.parameters
+    shape = (p.number_of_phi_grid_points, p.number_of_z_grid_points, -1)
+    grids = [
+        np.tensordot(extcur, getattr(table, name), axes=1).reshape(shape)
+        for name in ("b_r", "b_p", "b_z")
+    ]
+    r_step = (p.r_grid_maximum - p.r_grid_minimum) / (p.number_of_r_grid_points - 1)
+    z_step = (p.z_grid_maximum - p.z_grid_minimum) / (p.number_of_z_grid_points - 1)
+
+    def weights(index, num_nodes):
+        start = np.clip(np.floor(index).astype(int) - 1, 0, num_nodes - 4)
+        u = (index - start)[:, None]
+        nodes = np.arange(4)
+        w = np.ones((index.size, 4))
+        for j in range(4):
+            w *= np.where(nodes == j, 1.0, (u - j) / np.where(nodes == j, 1, nodes - j))
+        return start, w
+
+    def field(r, phi, z):
+        k = (
+            np.rint(
+                phi
+                * p.number_of_field_periods
+                * p.number_of_phi_grid_points
+                / (2 * np.pi)
+            ).astype(int)
+            % p.number_of_phi_grid_points
+        )
+        r_start, r_w = weights(
+            (r - p.r_grid_minimum) / r_step, p.number_of_r_grid_points
+        )
+        z_start, z_w = weights(
+            (z - p.z_grid_minimum) / z_step, p.number_of_z_grid_points
+        )
+        b = []
+        for grid in grids:
+            values = np.zeros_like(r)
+            for j in range(4):
+                for i in range(4):
+                    values += z_w[:, j] * r_w[:, i] * grid[k, z_start + j, r_start + i]
+            b.append(values)
+        return tuple(b)
+
+    return field
+
+
+@pytest.mark.parametrize("free_boundary_method", ["nestor", "only_coils"])
+def test_run_free_boundary_from_callable(free_boundary_method):
+    """A callable with the response table's interpolation reproduces its run."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.free_boundary_method = free_boundary_method
+    if free_boundary_method == "only_coils":
+        vmec_input.curtor = 0.0
+        vmec_input.pres_scale = 0.0
+
+    reference = vmecpp.run(vmec_input, response, max_threads=2, verbose=False).wout
+    field = _lagrange_field(response, vmec_input.extcur)
+    wout = vmecpp.run(vmec_input, field, max_threads=2, verbose=False).wout
+
+    assert wout.itfsq == reference.itfsq
+    np.testing.assert_allclose(wout.rmnc, reference.rmnc, rtol=0, atol=1e-11)
+    np.testing.assert_allclose(wout.zmns, reference.zmns, rtol=0, atol=1e-11)
+
+
+def test_magnetic_field_callable_errors():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+
+    class FieldError(Exception):
+        pass
+
+    def raising_field(*_):
+        raise FieldError
+
+    with pytest.raises(FieldError):
+        vmecpp.run(vmec_input, raising_field, verbose=False)
+
+    def short_field(r, *_):
+        return r[:-1], r[:-1], r[:-1]
+
+    with pytest.raises(ValueError, match="magnetic_field must return arrays"):
+        vmecpp.run(vmec_input, short_field, verbose=False)
+
+    with pytest.raises(TypeError, match="magnetic_field must be"):
+        vmecpp.run(vmec_input, 1.0, verbose=False)  # type: ignore[arg-type]

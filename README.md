@@ -162,7 +162,19 @@ In a terminal in which Python has access to the VMEC++ package:
 # vmecpp is a python module and can be either run with `python -m` or directly as a script
 vmecpp examples/data/input.w7x
 
-# check all options
+vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
+vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
+vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fortran VMEC
+
+# convert a classic Fortran indata file to VMEC++'s JSON format -> examples/data/w7x.json
+vmecpp convert examples/data/input.w7x
+
+# compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
+# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
+vmecpp mgrid makegrid_parameters.json coils.<name>
+
+# print the version, or check all options
+vmecpp --version
 vmecpp --help
 ```
 
@@ -318,14 +330,15 @@ VMEC++ on a configuration that is very similar to the converged equilibrium.
 ```python
 import vmecpp
 
-vmec_input = vmecpp.VmecInput.from_file("w7x.json")
+vmec_input = vmecpp.VmecInput.from_file("examples/data/w7x.json")
 
 # Base run
 vmec_output = vmecpp.run(vmec_input)
 
 # Now let's perturb the plasma boundary a little bit...
-vmec_input.rbc[0, 0] *= 0.8
-vmec_input.rbc[1, 0] *= 1.2
+ntor = vmec_input.ntor
+vmec_input.rbc[0, ntor+0] *= 1.0 + 1.0e-6 # m=0, n=0
+vmec_input.rbc[1, ntor+0] *= 1.0 - 1.0e-6 # m=1, n=0
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
 vmec_input.ns_array = vmec_input.ns_array[-1:]
 vmec_input.ftol_array = vmec_input.ftol_array[-1:]
