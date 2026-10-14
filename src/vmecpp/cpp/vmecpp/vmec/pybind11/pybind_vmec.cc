@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
 
@@ -118,6 +119,61 @@ struct PythonIterationCallback {
       } catch (py::error_already_set &e) {
         error.emplace(std::move(e));
         return false;
+      }
+    };
+  }
+
+  void Rethrow() {
+    if (error.has_value()) {
+      throw *error;
+    }
+  }
+};
+
+// Adapts a Python callable f(r, phi, z) -> (b_r, b_phi, b_z) to
+// vmecpp::MagneticFieldFunction: each call acquires the GIL; an exception, or
+// a result that is not three arrays of the length of r, fails the vacuum
+// solve, and Rethrow raises it once the run has returned.
+struct PythonMagneticField {
+  py::object callable;
+  std::optional<py::error_already_set> error;
+
+  vmecpp::MagneticFieldFunction Function() {
+    return [this](const Eigen::VectorXd &r, const Eigen::VectorXd &phi,
+                  const Eigen::VectorXd &z, Eigen::VectorXd &m_b_r,
+                  Eigen::VectorXd &m_b_phi,
+                  Eigen::VectorXd &m_b_z) -> absl::Status {
+      py::gil_scoped_acquire acquire;
+      if (error.has_value()) {
+        return absl::CancelledError("magnetic_field raised an exception");
+      }
+      try {
+        py::object b = callable(r, phi, z);
+        std::tuple<Eigen::VectorXd, Eigen::VectorXd, Eigen::VectorXd> b_rpz;
+        try {
+          b_rpz = b.cast<decltype(b_rpz)>();
+        } catch (const py::cast_error &) {
+          PyErr_SetString(PyExc_TypeError,
+                          "magnetic_field must return three 1D float arrays "
+                          "(b_r, b_phi, b_z)");
+          throw py::error_already_set();
+        }
+        auto &[b_r, b_phi, b_z] = b_rpz;
+        if (b_r.size() != r.size() || b_phi.size() != r.size() ||
+            b_z.size() != r.size()) {
+          PyErr_Format(PyExc_ValueError,
+                       "magnetic_field must return arrays of length %zd, the "
+                       "number of points, but returned lengths %zd, %zd, %zd",
+                       r.size(), b_r.size(), b_phi.size(), b_z.size());
+          throw py::error_already_set();
+        }
+        m_b_r = b_r;
+        m_b_phi = b_phi;
+        m_b_z = b_z;
+        return absl::OkStatus();
+      } catch (py::error_already_set &e) {
+        error.emplace(std::move(e));
+        return absl::CancelledError("magnetic_field raised an exception");
       }
     };
   }
@@ -1780,6 +1836,45 @@ PYBIND11_MODULE(_vmecpp, m) {
         return GetValueOrThrow(ret);
       },
       py::arg("indata"), py::arg("magnetic_response_table"),
+      py::arg("initial_state") = std::nullopt,
+      py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("iteration_callback") = py::none());
+
+  m.def(
+      "run",
+      [](const VmecINDATA &indata, py::function magnetic_field,
+         std::optional<vmecpp::HotRestartState> initial_state,
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         py::object iteration_callback) {
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) return true;
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        PythonIterationCallback iteration_hook{iteration_callback,
+                                               std::nullopt};
+        PythonMagneticField field{magnetic_field, std::nullopt};
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, field.Function(), std::move(initial_state),
+                            max_threads, verbose, interrupt_check,
+                            iteration_hook.Hook());
+        }
+        field.Rethrow();
+        iteration_hook.Rethrow();
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
+        return GetValueOrThrow(ret);
+      },
+      py::arg("indata"), py::arg("magnetic_field"),
       py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress,

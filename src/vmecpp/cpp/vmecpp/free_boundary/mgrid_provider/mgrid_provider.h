@@ -29,13 +29,11 @@ class MGridProvider {
       const makegrid::MagneticFieldResponseTable& magnetic_response_table,
       const Eigen::VectorXd& coil_currents);
 
-  void SetFixedMagneticField(const Eigen::VectorXd& fixed_br,
-                             const Eigen::VectorXd& fixed_bp,
-                             const Eigen::VectorXd& fixed_bz);
-
-  // Interpolate [ztMin, ztMax) of nZnT points; error if outside the grid.
-  [[nodiscard]] absl::Status interpolate(int ztMin, int ztMax, int nZeta,
-                                         int nZnT, const Eigen::VectorXd& r,
+  // Interpolate at the points (r[i], phi[i], z[i]); a MagneticFieldFunction.
+  // Each phi must lie on the toroidal grid; error if a point is outside the
+  // grid in R or Z.
+  [[nodiscard]] absl::Status interpolate(const Eigen::VectorXd& r,
+                                         const Eigen::VectorXd& phi,
                                          const Eigen::VectorXd& z,
                                          Eigen::VectorXd& m_interpBr,
                                          Eigen::VectorXd& m_interpBp,
@@ -92,11 +90,6 @@ class MGridProvider {
   }
 
   bool has_mgrid_loaded_;
-  bool has_fixed_field_;
-
-  Eigen::VectorXd fixed_br_;
-  Eigen::VectorXd fixed_bp_;
-  Eigen::VectorXd fixed_bz_;
 };
 
 }  // namespace vmecpp
