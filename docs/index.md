@@ -7,8 +7,8 @@
 :maxdepth: 2
 :hidden:
 
-Tutorials <tutorials/index>
 Reference <api/vmecpp>
+Tutorials <tutorials/index>
 Examples <examples_overview>
 Fourier Basis Details <fourier_basis_implementation>
 Benchmarks <benchmarks>
