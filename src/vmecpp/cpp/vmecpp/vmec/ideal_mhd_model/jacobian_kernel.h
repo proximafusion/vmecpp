@@ -50,8 +50,21 @@ inline void ComputeHalfGridJacobian(
       r12[ih] = 0.5 * ((r1e_i + r1e_o) + sH * (r1o_i + r1o_o));
       ru12[ih] = 0.5 * ((rue_i + rue_o) + sH * (ruo_i + ruo_o));
       zu12[ih] = 0.5 * ((zue_i + zue_o) + sH * (zuo_i + zuo_o));
-      rs[ih] = ((r1e_o - r1e_i) + sH * (r1o_o - r1o_i)) / deltaS;
-      zs[ih] = ((z1e_o - z1e_i) + sH * (z1o_o - z1o_i)) / deltaS;
+      if (jH > nsMinF1 && jH + 2 <= nsMaxH) {
+        const int i_inner = i_in - nZnT;
+        const int i_outer = i_out + nZnT;
+        rs[ih] =
+            (r1e[i_inner] - 27.0 * r1e_i + 27.0 * r1e_o - r1e[i_outer] +
+             sH * (r1o[i_inner] - 27.0 * r1o_i + 27.0 * r1o_o - r1o[i_outer])) /
+            (24.0 * deltaS);
+        zs[ih] =
+            (z1e[i_inner] - 27.0 * z1e_i + 27.0 * z1e_o - z1e[i_outer] +
+             sH * (z1o[i_inner] - 27.0 * z1o_i + 27.0 * z1o_o - z1o[i_outer])) /
+            (24.0 * deltaS);
+      } else {
+        rs[ih] = ((r1e_o - r1e_i) + sH * (r1o_o - r1o_i)) / deltaS;
+        zs[ih] = ((z1e_o - z1e_i) + sH * (z1o_o - z1o_i)) / deltaS;
+      }
 
       const double tau1 = ru12[ih] * zs[ih] - rs[ih] * zu12[ih];
       const double tau2 =
