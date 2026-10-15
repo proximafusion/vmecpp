@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792015133360,
+  "lastUpdate": 1792049318354,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -25159,6 +25159,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.47707524799989187,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0bd147f270a43f3fe52d0aac8049dce97d76668f",
+          "message": "Show grid metadata and progress bars in vmecpp mgrid (#988)\n\n* Show grid metadata and progress bars in vmecpp mgrid\n\n* Use a single bar color in vmecpp mgrid",
+          "timestamp": "2026-10-15T09:21:14+02:00",
+          "tree_id": "c775056b24de62ef1bbca9548c69d7f677701c55",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0bd147f270a43f3fe52d0aac8049dce97d76668f"
+        },
+        "date": 1792049313407,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.667670561400007,
+            "range": "stddev: 0.009982232933967793",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6134478723333245,
+            "range": "stddev: 0.06167122028916781",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1063102596666379,
+            "range": "stddev: 0.012198433448357394",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6723256190000104,
+            "range": "stddev: 0.02199715101635629",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4783067523333482,
+            "range": "stddev: 0.006700434580871672",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.772897599666673,
+            "range": "stddev: 0.03707761759870263",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.5429080330000033,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.5064535330000126,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
