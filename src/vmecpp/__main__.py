@@ -96,15 +96,14 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-_RESET, _RED, _GREEN, _YELLOW = "\033[0m", "\033[31m", "\033[32m", "\033[33m"
+_RESET, _GREEN = "\033[0m", "\033[32m"
 _MAKEGRID_STAGES = {"B": "B field", "A": "A potential"}
 
 
 def _progress_bar(done: int, total: int, width: int = 50) -> str:
     """Bar in the style of the VMEC++ run progress display."""
     filled = width * done // total
-    color = _GREEN if done == total else _YELLOW if 2 * done > total else _RED
-    fill = f"{color}{'=' * filled}{_RESET}" if filled else ""
+    fill = f"{_GREEN}{'=' * filled}{_RESET}" if filled else ""
     return f"[{fill}{'-' * (width - filled)}]"
 
 
