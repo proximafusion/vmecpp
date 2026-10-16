@@ -19,26 +19,19 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true  # for the mgrid test data
       # The TSAN image (clang/libomp with ThreadSanitizer support) takes ~1h to
-      # build, so it is prebuilt and pushed to GHCR by build_tsan_image.yaml and
-      # only rebuilt when src/vmecpp/cpp/docker/tsan/ changes. Here we just pull
-      # the cached image.
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # build. Use the public upstream image so forks need no registry setup.
+      # Refresh this digest after build_tsan_image.yaml rebuilds a changed
+      # src/vmecpp/cpp/docker/tsan/ context.
       - name: Pull TSAN Docker image
         run: |
-          IMAGE=ghcr.io/${{ github.repository_owner }}/vmecpp-tsan:latest
-          docker pull "${IMAGE,,}"
-          docker tag "${IMAGE,,}" proximafusion/tsan
+          IMAGE=ghcr.io/proximafusion/vmecpp-tsan@sha256:a00180555b9a8a79e7bae821394d82b08ce90084797a4e8cda9fcd074243220f
+          docker pull "$IMAGE"
+          docker tag "$IMAGE" proximafusion/tsan
       - name: Restore bazel cache
         uses: actions/cache/restore@v4
         with:
