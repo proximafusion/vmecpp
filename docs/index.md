@@ -11,6 +11,7 @@ Reference <api/vmecpp>
 Tutorials <tutorials/index>
 Examples <examples_overview>
 Benchmarks <benchmarks>
+Proof-Carrying Equilibria <proof_carrying_equilibria>
 ```
 
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
