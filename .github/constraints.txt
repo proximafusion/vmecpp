@@ -1,5 +1,5 @@
-# netCDF4 1.7.5 wheels require macOS 15 (Darwin 24). Use compatible wheels
-# on older runners; the Homebrew source build fails the mgrid round trip.
-netCDF4<1.7.5; sys_platform == "darwin" and platform_release < "24"
+# netCDF4 1.7.5 wheels require macOS 15. Keep both macOS runners on
+# compatible wheels; the Homebrew source build fails the mgrid round trip.
+netCDF4<1.7.5; sys_platform == "darwin"
 # Block simsopt 1.11.0 wheels with unsupported AVX-512 instructions.
 simsopt!=1.11.0
