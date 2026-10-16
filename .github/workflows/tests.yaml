@@ -49,7 +49,7 @@ jobs:
       - name: Install required packages for MacOS
         if: ${{ contains(matrix.os, 'macos') }}
         run: |
-          brew install ninja libomp eigen git netcdf
+          brew install ninja libomp eigen git
       - name: Install required packages for Ubuntu
         if: ${{ contains(matrix.os, 'ubuntu') }}
         run: |
@@ -98,7 +98,9 @@ jobs:
             python -m pip install -v .[test]
           fi
       - name: Test package
-        run: python -m pytest tests/
+        run: |
+          python -c "import netCDF4; print('netCDF4:', netCDF4.__version__, 'netCDF-C:', netCDF4.__netcdf4libversion__, 'HDF5:', netCDF4.__hdf5libversion__)"
+          python -m pytest tests/
       - name: Test docstring examples
         # All except for __main__.py because this crashes doctest.
         run: python -m doctest $(git ls-files src/ | grep '\.py$' | grep -v '/__main__.py$')

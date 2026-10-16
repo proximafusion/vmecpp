@@ -78,6 +78,7 @@ jobs:
             python -c "import vmecpp; assert vmecpp.has_exact_force_jacobian()"
             && pytest {package}/tests/test_simsopt_compat.py
             {package}/tests/test_free_boundary.py {package}/tests/test_hessian.py
+            {package}/tests/test_init.py::test_free_boundary_run_with_mgrid_mode_none
         with:
           package-dir: .
           output-dir: wheelhouse
