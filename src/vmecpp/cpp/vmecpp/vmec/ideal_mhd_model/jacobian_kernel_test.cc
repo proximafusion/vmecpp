@@ -45,7 +45,8 @@ TEST(JacobianKernelTest,
       r1e.data(), r1o.data(), z1e.data(), z1o.data(), ru_e.data(), ru_o.data(),
       zu_e.data(), zu_o.data(), sqrt_sh.data(), delta_s, 0.25,
       /*nZnT=*/1, /*nsMinF1=*/0, /*nsMinH=*/0, /*nsMaxH=*/kNumHalf, r12.data(),
-      ru12.data(), zu12.data(), rs.data(), zs.data(), tau.data());
+      ru12.data(), zu12.data(), rs.data(), zs.data(), tau.data(),
+      /*use_fourth_order_radial_derivatives=*/true);
 
   for (int j = 0; j < kNumHalf; ++j) {
     const double s_half = (j + 0.5) * delta_s;

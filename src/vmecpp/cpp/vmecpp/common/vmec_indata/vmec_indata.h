@@ -260,6 +260,10 @@ class VmecINDATA {
   // while fsqz < 1e-6, as in VMEC 8.52.
   bool always_fix_m1_gauge;
 
+  // Experimental four-point radial derivative stencil for R_s and Z_s. The
+  // default uses the existing centered two-point stencil.
+  bool use_fourth_order_radial_derivatives;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

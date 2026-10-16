@@ -93,7 +93,10 @@ def test_bad_initial_jacobian_is_retried_from_three_surfaces():
     )
     wout = vmecpp.run(vmec_input, verbose=False).wout
     assert wout.ier_flag == 0
-    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+    assert (
+        max(float(wout.fsqr), float(wout.fsqz), float(wout.fsql))
+        <= vmec_input.ftol_array[-1]
+    )
 
     # the non-stellarator-symmetric path retries the same way and reproduces the
     # symmetric result
@@ -126,7 +129,10 @@ def test_pinned_m1_gauge_converges_at_half_constraint():
     assert vmec_input.always_fix_m1_gauge
     wout = vmecpp.run(vmec_input, verbose=False).wout
     assert wout.ier_flag == 0
-    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+    assert (
+        max(float(wout.fsqr), float(wout.fsqz), float(wout.fsql))
+        <= vmec_input.ftol_array[-1]
+    )
 
 
 # We trust the C++ tests to cover the hot restart functionality properly,
@@ -914,6 +920,7 @@ print("free", repr(vmecpp.run(free, field, max_threads=2, verbose=False).wout.vo
 def test_vmec_input_validation():
     test_file = TEST_DATA_DIR / "solovev.json"
     vmec_input = vmecpp.VmecInput.from_file(test_file)
+    vmec_input.use_fourth_order_radial_derivatives = True
 
     # Why do we not compare `json_dict = json.loads(test_file.read_text())` ?
     # The test_file json may exclude fields that have default values,

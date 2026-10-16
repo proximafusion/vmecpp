@@ -559,6 +559,13 @@ class VmecInput(BaseModelWithNumpy):
     every multigrid step and held there; if false, it is held only in the first
     iteration of a multigrid step and while fsqz < 1e-6, as in VMEC 8.52."""
 
+    use_fourth_order_radial_derivatives: bool = False
+    """Use an experimental four-point radial stencil for the R_s and Z_s geometry
+    derivatives.
+
+    The default is the existing centered two-point stencil.
+    """
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

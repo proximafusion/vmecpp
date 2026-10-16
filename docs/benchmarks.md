@@ -18,6 +18,10 @@ A small but representative set of benchmarks runs automatically on every push to
 
 These target individual hot functions so a regression can be attributed to a specific kernel rather than only showing up in the end-to-end timings above. Each is a Google Benchmark `cc_binary` under `src/vmecpp/cpp/`, swept over several `(mpol, ntor)` resolutions.
 
+The [wider radial finite-difference prototype](radial_fd_benchmark.md) compares
+convergence, timing, and exact-equilibrium error for the centered and four-point
+geometry derivative stencils.
+
 | Benchmark | Description |
 |-----------|-------------|
 | `DftFourierToReal` / `FftFourierToReal` | Inverse transform (Fourier -> real-space geometry), DFT fallback vs FFTX path |

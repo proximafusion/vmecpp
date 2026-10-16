@@ -181,6 +181,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.lbsubs, false);
   EXPECT_EQ(indata.backup_evaluated_state, true);
   EXPECT_EQ(indata.always_fix_m1_gauge, false);
+  EXPECT_EQ(indata.use_fourth_order_radial_derivatives, false);
 
   // initial guess for magnetic axis
   EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
@@ -951,6 +952,8 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.lbsubs, indata.lbsubs);
   EXPECT_EQ(copy.backup_evaluated_state, indata.backup_evaluated_state);
   EXPECT_EQ(copy.always_fix_m1_gauge, indata.always_fix_m1_gauge);
+  EXPECT_EQ(copy.use_fourth_order_radial_derivatives,
+            indata.use_fourth_order_radial_derivatives);
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);

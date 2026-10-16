@@ -147,7 +147,8 @@ IdealMhdModel::IdealMhdModel(
     ThreadLocalStorage* m_ls, HandoverStorage* m_h, const RadialPartitioning* r,
     const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
     int signOfJacobian, int nvacskip,
-    VacuumPressureState* m_vacuum_pressure_state)
+    VacuumPressureState* m_vacuum_pressure_state,
+    bool use_fourth_order_radial_derivatives)
     : m_fc_(*m_fc),
       s_(*s),
       t_(*t),
@@ -158,6 +159,7 @@ IdealMhdModel::IdealMhdModel(
       r_(*r),
       m_fb_vac_(m_fb_vac),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
+      use_fourth_order_radial_derivatives_(use_fourth_order_radial_derivatives),
 #ifdef VMECPP_USE_FFTX
       fft_plans_(s->nZeta, s->nfp, s->mpol),
 #endif
@@ -1586,11 +1588,12 @@ void IdealMhdModel::computeJacobian() {
   // Half-grid r12, ru12, zu12, rs, zs and the Jacobian tau. The arithmetic
   // lives in the shared, allocation-free kernel (jacobian_kernel.h) so the
   // solver and the Enzyme autodiff test use one implementation.
-  ComputeHalfGridJacobian(
-      r1_e.data(), r1_o.data(), z1_e.data(), z1_o.data(), ru_e.data(),
-      ru_o.data(), zu_e.data(), zu_o.data(), m_p_.sqrtSH.data(), m_fc_.deltaS,
-      dSHalfDsInterp, s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH, r12.data(),
-      ru12.data(), zu12.data(), rs.data(), zs.data(), tau.data());
+  ComputeHalfGridJacobian(r1_e.data(), r1_o.data(), z1_e.data(), z1_o.data(),
+                          ru_e.data(), ru_o.data(), zu_e.data(), zu_o.data(),
+                          m_p_.sqrtSH.data(), m_fc_.deltaS, dSHalfDsInterp,
+                          s_.nZnT, r_.nsMinF1, r_.nsMinH, r_.nsMaxH, r12.data(),
+                          ru12.data(), zu12.data(), rs.data(), zs.data(),
+                          tau.data(), use_fourth_order_radial_derivatives_);
 
   // Jacobian sign check: same running min/max over tau as before, now scanned
   // after the kernel (identical values, hence identical verdict).
@@ -2600,6 +2603,8 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.radialBlending = m_p_.radialBlending.data();
   comp.deltaS = m_fc_.deltaS;
   comp.dSHalfDsInterp = dSHalfDsInterp;
+  comp.use_fourth_order_radial_derivatives =
+      use_fourth_order_radial_derivatives_;
   comp.lamscale = constants_.lamscale;
   comp.lthreed = s_.lthreed;
   comp.with_constraint = true;

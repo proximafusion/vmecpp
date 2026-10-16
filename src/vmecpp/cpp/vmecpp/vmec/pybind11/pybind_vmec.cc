@@ -1104,6 +1104,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("backup_evaluated_state",
                      &VmecINDATA::backup_evaluated_state)
       .def_readwrite("always_fix_m1_gauge", &VmecINDATA::always_fix_m1_gauge)
+      .def_readwrite("use_fourth_order_radial_derivatives",
+                     &VmecINDATA::use_fourth_order_radial_derivatives)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)

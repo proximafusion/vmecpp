@@ -63,7 +63,8 @@ class IdealMhdModel {
                 HandoverStorage* m_h, const RadialPartitioning* r,
                 const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
                 int signOfJacobian, int nvacskip,
-                VacuumPressureState* m_vacuum_pressure_state);
+                VacuumPressureState* m_vacuum_pressure_state,
+                bool use_fourth_order_radial_derivatives = false);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
                      bool lforbal, double lambda_preconditioner_scale,
@@ -618,6 +619,7 @@ class IdealMhdModel {
   const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
+  bool use_fourth_order_radial_derivatives_;
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.

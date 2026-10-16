@@ -1,0 +1,5 @@
+case,scheme,elapsed_s,iterations,time_per_iteration_s,converged,ftol,max_residual,surface_error,field_error,axis_error,current_error
+cma,baseline,2.66773905,1286,0.00207444716,true,1e-09,9.85253673e-10,,,,
+cma,four_point,6.49054293,2988,0.00217220312,true,1e-09,9.93156768e-10,,,,
+exact_sheared_ns25,baseline,5.27748869,1563,0.00337651228,true,1e-18,9.82182163e-19,7.45709204e-05,6.66285166e-05,4.00524498e-06,4.238972e-06
+exact_sheared_ns25,four_point,75.8843008,20049,0.00378494193,false,1e-18,4.93751297e-09,0.00133719559,0.00131375116,9.23481025e-05,1.01368247e-05

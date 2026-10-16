@@ -30,7 +30,8 @@ inline void ComputeHalfGridJacobian(
     const double* __restrict sqrtSH, double deltaS, double dSHalfDsInterp,
     int nZnT, int nsMinF1, int nsMinH, int nsMaxH, double* __restrict r12,
     double* __restrict ru12, double* __restrict zu12, double* __restrict rs,
-    double* __restrict zs, double* __restrict tau) {
+    double* __restrict zs, double* __restrict tau,
+    bool use_fourth_order_radial_derivatives = false) {
   for (int jH = nsMinH; jH < nsMaxH; ++jH) {
     const double sH = sqrtSH[jH - nsMinH];
     for (int kl = 0; kl < nZnT; ++kl) {
@@ -50,7 +51,10 @@ inline void ComputeHalfGridJacobian(
       r12[ih] = 0.5 * ((r1e_i + r1e_o) + sH * (r1o_i + r1o_o));
       ru12[ih] = 0.5 * ((rue_i + rue_o) + sH * (ruo_i + ruo_o));
       zu12[ih] = 0.5 * ((zue_i + zue_o) + sH * (zuo_i + zuo_o));
-      if (jH > nsMinF1 && jH + 2 <= nsMaxH) {
+      // The half-grid four-point stencil is fourth-order accurate. Fall back
+      // to the centered two-point stencil where the local radial halo is short.
+      if (use_fourth_order_radial_derivatives && jH > nsMinF1 &&
+          jH + 2 <= nsMaxH) {
         const int i_inner = i_in - nZnT;
         const int i_outer = i_out + nZnT;
         rs[ih] =

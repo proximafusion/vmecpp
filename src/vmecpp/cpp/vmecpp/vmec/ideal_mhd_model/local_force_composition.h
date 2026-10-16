@@ -52,6 +52,7 @@ struct LocalForceComposition {
   const double* radialBlending;  // index jF-nsMinF1
   double deltaS;
   double dSHalfDsInterp;
+  bool use_fourth_order_radial_derivatives = false;
   double lamscale;
   bool lthreed;
 
@@ -171,7 +172,8 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
 
   ComputeHalfGridJacobian(r1e, r1o, z1e, z1o, rue, ruo, zue, zuo, c->sqrtSH,
                           c->deltaS, c->dSHalfDsInterp, nZnT, c->nsMinF1,
-                          c->nsMinH, c->nsMaxH, r12, ru12, zu12, rs, zs, tau);
+                          c->nsMinH, c->nsMaxH, r12, ru12, zu12, rs, zs, tau,
+                          c->use_fourth_order_radial_derivatives);
   ComputeMetricElements(r1e, r1o, rue, ruo, zue, zuo, rve, rvo, zve, zvo, tau,
                         r12, c->sqrtSF, c->sqrtSH, c->lthreed, nZnT, c->nsMinF1,
                         c->nsMinH, c->nsMaxH, gsqrt, guu, guv, gvv);
