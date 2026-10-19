@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792394264796,
+  "lastUpdate": 1792402908829,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -25319,6 +25319,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.24186195400000088,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "27c92f205d9e18168d372c37c64432928aadd217",
+          "message": "Make lbsubs currents consistent and support asymmetry (#995)\n\n* Make lbsubs currents consistent and support asymmetry\n\n* Update __init__.py",
+          "timestamp": "2026-10-19T11:33:59+02:00",
+          "tree_id": "a33262e04c35e92a45582c306e210ad0faf5a8d7",
+          "url": "https://github.com/proximafusion/vmecpp/commit/27c92f205d9e18168d372c37c64432928aadd217"
+        },
+        "date": 1792402903984,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.750640232399985,
+            "range": "stddev: 0.02660214401064367",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.699559317999975,
+            "range": "stddev: 0.08172630447062783",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1065609526666738,
+            "range": "stddev: 0.02637524344836944",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6950950156666522,
+            "range": "stddev: 0.026893933128493863",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4881765453333173,
+            "range": "stddev: 0.011912591205386246",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.927659018333334,
+            "range": "stddev: 0.010295968656191009",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.7509808610000164,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.49345855699999674,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
