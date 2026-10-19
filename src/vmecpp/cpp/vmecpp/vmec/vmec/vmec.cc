@@ -999,21 +999,21 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
 }
 
 void Vmec::SetInitialGuess(int thread_id) {
-  if (b_inner_.has_value()) {
-    decomposed_x_[thread_id]->interpFromBoundaries(t_, *b_inner_, b_,
-                                                   *p_[thread_id]);
-  } else {
+  if (!b_inner_.has_value()) {
     decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_, *p_[thread_id]);
+    return;
   }
+  decomposed_x_[thread_id]->interpFromBoundaries(t_, *b_inner_, b_,
+                                                 *p_[thread_id]);
 }
 
 void Vmec::SetM1GaugeFromBoundaries(int thread_id) {
-  if (b_inner_.has_value()) {
-    decomposed_x_[thread_id]->setM1GaugeFromBoundaries(t_, *b_inner_, b_,
-                                                       *p_[thread_id]);
-  } else {
+  if (!b_inner_.has_value()) {
     decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_, *p_[thread_id]);
+    return;
   }
+  decomposed_x_[thread_id]->setM1GaugeFromBoundaries(t_, *b_inner_, b_,
+                                                     *p_[thread_id]);
 }
 
 // eqsolve
