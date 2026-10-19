@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792404580362,
+  "lastUpdate": 1792414021573,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -25479,6 +25479,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.48615682099995183,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "591007c5ed4a3241f6c5bdcc519237ff9a06ab4d",
+          "message": "Add wout post-processing tutorial (#998)\n\nAdd wout post-processing tutorial and link examples",
+          "timestamp": "2026-10-19T14:39:46+02:00",
+          "tree_id": "f78e6a978ee29f868388dde65e28efeff7bfcbe6",
+          "url": "https://github.com/proximafusion/vmecpp/commit/591007c5ed4a3241f6c5bdcc519237ff9a06ab4d"
+        },
+        "date": 1792414016490,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6457776886000147,
+            "range": "stddev: 0.0033579122716843783",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.5956419646666595,
+            "range": "stddev: 0.005753502161719497",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0931137646666684,
+            "range": "stddev: 0.00226568089701965",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.663414748999988,
+            "range": "stddev: 0.028429903869842017",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4751638546666754,
+            "range": "stddev: 0.004370701528272391",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.755825828666654,
+            "range": "stddev: 0.006624048905557495",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.95808678100002,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4837897629998906,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
