@@ -24,10 +24,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
-# CI-only dependency workaround, see .github/constraints.txt
+# CI-only dependency workarounds, see .github/constraints.txt and .github/uv.toml
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
   UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  PIP_ONLY_BINARY: netCDF4
+  UV_CONFIG_FILE: ${{ github.workspace }}/.github/uv.toml
   MPLBACKEND: Agg
 
 jobs:
