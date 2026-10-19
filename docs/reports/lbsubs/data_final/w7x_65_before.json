@@ -1,0 +1,14 @@
+{
+  "case": "w7x",
+  "ns": 65,
+  "stage": "before",
+  "seconds": 320.9436470960063,
+  "fsq": 9.978107245247977e-17,
+  "beta": 0.014534359318543596,
+  "DMerc_first": 0.7970545565186089,
+  "reference_kind": "none",
+  "max_current_A_m2": 562289.3431252182,
+  "rms_current_A_m2": 67299.44838575377,
+  "first_surface_max_current_A_m2": 562289.3431252182,
+  "bulk_max_current_A_m2": 227127.8610066658
+}
