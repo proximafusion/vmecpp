@@ -6,12 +6,22 @@ This guide explains the most common failure modes and gives practical steps to d
 
 ## Summary Checklist
 
-| Symptom | Primary Cause | Recommended Fix |
+We recommend setting `lbsubs=True` by default, especially for plasma currents
+and quantities derived from them. The input field still defaults to `False` for
+backward compatibility, so set it explicitly. See the [lbsubs guidance](fixed_boundary.md#enable-lbsubs-for-current-related-properties-and-mercier-stability-dmerc)
+for the tradeoff and derivative requirements. For current calculations, use a
+final force tolerance below `1e-16`; values as low as `1e-19` can be beneficial.
+
+| Symptom | Possible Cause | Recommended Fix |
 |---|---|---|
 | Force residual stalls or oscillates | Step size `delt` too large | Reduce `delt` (e.g. from 1.0 to 0.5 or 0.2) and increase iterations `niter_array` |
 | Free boundary fails on shaped boundary | Ill-posedness near islands or separatrix | Reduce `phiedge` and truncate profiles to solve for an inner flux surface |
 | Non-positive Jacobian ($J \le 0$) | Boundary ripples or bad axis initial guess | Spectrally condense boundary; check `raxis_c`/`zaxis_s`; reduce `delt` |
-| Inaccurate Mercier criterion (`DMerc`) | Default full-grid $B_s$ interpolation | Enable `lbsubs = True` to re-derive $B_s$ from radial force balance |
+| Large or growing current-density ring near the magnetic axis | Inconsistent $B_s$ reconstruction or plain odd-m radial differences | Enable `lbsubs=True`; use exported currents or the matching sqrt(s)-regularized derivative |
+| Unphysical spikes in reconstructed current-based diagnostics | Downstream reconstruction uses different grids, derivatives, or units | Enable `lbsubs=True`; compare with `currumnc`/`currvmnc` and their sine partners; check Jacobian interpolation and the included $1/\mu_0$ factor |
+| Sharp spikes or banding in parallel or Pfirsch-Schlueter currents | Inaccurate radial force balance or poorly resolved structure near resonant surfaces | Enable `lbsubs=True`; inspect signed angular profiles and check radial/angular resolution and force tolerance |
+| Alternating bands or checkerboard patterns in current cross-sections | Insufficient force convergence or radial/angular resolution | Reduce the final force tolerance below `1e-16`, trying `1e-19`; inspect signed distributions under refinement |
+| Unphysical spikes or strong grid dependence in the Mercier criterion (`DMerc`) | Errors in currents and radial derivatives, including near-axis cancellation | Enable `lbsubs=True` with matching derivatives; check convergence of currents and individual Mercier terms |
 
 ---
 
@@ -126,7 +136,37 @@ Common causes and fixes:
 ## 4. Current-Related Properties and Mercier Stability (`DMerc`)
 
 ### Symptom
-The calculated Mercier stability criterion `DMerc`, magnetic shear, or current density profile shows unphysical spikes or does not match analytical expectations.
+Current distributions show unphysical spikes, a current-density ring that grows
+near the magnetic axis as `ns` increases, or alternating bands across flux
+surfaces. These features can appear in parallel and Pfirsch-Schlueter currents,
+current-based diagnostic reconstruction, and the Mercier criterion `DMerc`.
 
-### Fix: Set `lbsubs = True`
-For the explanation and usage guidance, see [Enable `lbsubs` for current-related properties and Mercier stability](fixed_boundary.md#enable-lbsubs-for-current-related-properties-and-mercier-stability-dmerc) in the fixed-boundary tutorial. Enable it when analyzing Mercier stability or current profiles.
+### Check the current reconstruction and convergence
+
+Set `lbsubs=True` as the recommended default. It re-solves the full-grid
+covariant component $B_s$ from radial force balance. This can reduce current errors caused by interpolation, but does not
+improve the equilibrium iteration or guarantee accurate `DMerc`. It trades
+agreement with the geometry-based magnetic field for agreement with the discrete
+radial force-balance equation. See the [lbsubs discussion](fixed_boundary.md#enable-lbsubs-for-current-related-properties-and-mercier-stability-dmerc)
+for the equations and usage.
+
+- Use a final force tolerance below `1e-16` for current calculations; `1e-19`
+  can be beneficial. Radial differentiation amplifies residual errors in the
+  magnetic field. Check that the run reaches the requested tolerance and that
+  the current distribution stabilizes as the tolerance is tightened.
+- Compare `lbsubs=False` and `True` using the same equilibrium inputs.
+- Use the exported current fields `currumnc`, `currvmnc`, and their sine partners
+  when present. If rebuilding currents from $B_s$, $B_u$, and $B_v$, use the
+  sqrt(s)-regularized odd-m radial derivative described in the `currumnc`
+  docstring. Plain radial differences can create a false axis current whose
+  amplitude grows as $h^{-1/2}$, where $h=1/(ns-1)$.
+- Check signed current profiles and cross-sections as well as maxima. Increase
+  radial and angular resolution and tighten the force tolerance to see whether
+  the features converge. A smaller axis spike alone does not establish accuracy.
+- Check C++ warnings: a failed lbsubs surface solve keeps the geometry-based
+  $B_s$ on that surface. The JAX output stage currently uses this fallback
+  silently.
+
+The geometry and rotational transform are unchanged by `lbsubs`. Diagnose an
+incorrect magnetic shear through the equilibrium and its radial resolution,
+rather than expecting the $B_s$ re-solve to change the rotational transform.
