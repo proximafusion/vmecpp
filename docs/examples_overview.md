@@ -18,3 +18,5 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`plasma_without_magnetic_axis.py`](../examples/plasma_without_magnetic_axis.py): solve the plasma between a fixed inner boundary and the boundary, without a magnetic axis, and compare it with the equilibrium it was cut from.
 - [`watch_solve.py`](../examples/watch_solve.py): draw the flux surfaces and the force residuals while VMEC++ converges, through the iteration callback of `vmecpp.run`.
 - [`self_consistent_bootstrap_current.py`](../examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
+- [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
+- [`force_balance_spectrum.py`](../examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
