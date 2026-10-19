@@ -9,10 +9,12 @@ on:
   release:
     types: [published]
 
-# CI-only dependency workaround, see .github/constraints.txt
+# CI-only dependency workarounds, see .github/constraints.txt and .github/uv.toml
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
   UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  PIP_ONLY_BINARY: netCDF4
+  UV_CONFIG_FILE: ${{ github.workspace }}/.github/uv.toml
   LLVM_VERSION: "21"
   ENZYME_REF: "v0.0.264"
 
@@ -56,11 +58,13 @@ jobs:
         uses: pypa/cibuildwheel@v3.3.1
         # All the settings for cibuildwheel are in pyproject.toml
         env:
-          # Linux builds run in a container, where PIP_CONSTRAINT above does not
-          # apply and the repo is mounted at /project.
+          # Linux builds run in a container, where the CI-only settings above do
+          # not apply and the repo is mounted at /project.
           CIBW_ENVIRONMENT_LINUX: >
             PIP_CONSTRAINT=/project/.github/constraints.txt
             UV_CONSTRAINT=/project/.github/constraints.txt
+            PIP_ONLY_BINARY=netCDF4
+            UV_CONFIG_FILE=/project/.github/uv.toml
             CCACHE_DIR=/project/.ccache
             CCACHE_MAXSIZE=500M
             CMAKE_ARGS="-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=/project/enzyme-objects/exact_force_jvp.o -DVMECPP_ENZYME_VJP_OBJECT=/project/enzyme-objects/exact_force_vjp.o"
