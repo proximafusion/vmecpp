@@ -548,9 +548,11 @@ class VmecInput(BaseModelWithNumpy):
 
     lbsubs: bool = False
     """If true, recompute the full-grid covariant B_s by solving radial force balance
-    with regularized radial derivatives (lbsubs flag in Fortran VMEC).
+    with regularized radial derivatives.
 
-    Both stellarator parities are supported.
+    Helps with getting more physical currents for post-processing involving `B_s`
+    like diagnostic reconstruction, DMerc, or toroidal current densities.
+    https://proximafusion.github.io/vmecpp/tutorials/fixed_boundary.html
     """
 
     backup_evaluated_state: bool = True
