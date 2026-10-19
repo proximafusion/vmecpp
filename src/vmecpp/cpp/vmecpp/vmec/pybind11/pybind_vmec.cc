@@ -1396,6 +1396,21 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("delta2", &vmecpp::Threed1ShafranovIntegrals::delta2)
       .def_readonly("delta3", &vmecpp::Threed1ShafranovIntegrals::delta3);
 
+  py::class_<vmecpp::Threed1FreeBoundary>(m, "Threed1FreeBoundary")
+      .def_readonly("rb", &vmecpp::Threed1FreeBoundary::rb)
+      .def_readonly("phib", &vmecpp::Threed1FreeBoundary::phib)
+      .def_readonly("zb", &vmecpp::Threed1FreeBoundary::zb)
+      .def_readonly("bsqmhdi", &vmecpp::Threed1FreeBoundary::bsqmhdi)
+      .def_readonly("bsqvaci", &vmecpp::Threed1FreeBoundary::bsqvaci)
+      .def_readonly("bsqmhdf", &vmecpp::Threed1FreeBoundary::bsqmhdf)
+      .def_readonly("bsqvacf", &vmecpp::Threed1FreeBoundary::bsqvacf)
+      .def_readonly("bredge", &vmecpp::Threed1FreeBoundary::bredge)
+      .def_readonly("bpedge", &vmecpp::Threed1FreeBoundary::bpedge)
+      .def_readonly("bzedge", &vmecpp::Threed1FreeBoundary::bzedge)
+      .def_readonly("brv", &vmecpp::Threed1FreeBoundary::brv)
+      .def_readonly("bphiv", &vmecpp::Threed1FreeBoundary::bphiv)
+      .def_readonly("bzv", &vmecpp::Threed1FreeBoundary::bzv);
+
   py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
       .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
       .def(py::init())
@@ -1583,6 +1598,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("threed1_betas", &vmecpp::OutputQuantities::threed1_betas)
       .def_readonly("threed1_shafranov_integrals",
                     &vmecpp::OutputQuantities::threed1_shafranov_integrals)
+      .def_readonly("threed1_free_boundary",
+                    &vmecpp::OutputQuantities::threed1_free_boundary)
       .def_readonly("wout", &vmecpp::OutputQuantities::wout)
       .def_readonly("indata", &vmecpp::OutputQuantities::indata)
       .def(
