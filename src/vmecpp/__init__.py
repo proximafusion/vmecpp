@@ -648,6 +648,65 @@ class VmecInput(BaseModelWithNumpy):
     Only used if lasym=True.
     """
 
+    inner_boundary_s: float = 0.0
+    """Radial coordinate s of the inner boundary of the plasma.
+
+    0 (default) places the magnetic axis at s = 0. A value in (0, 1) makes the plasma a
+    shell between the fixed inner boundary ``rbc_inner``, ``zbs_inner`` and the
+    boundary, without a magnetic axis: the ``ns`` flux surfaces divide
+    ``[inner_boundary_s, 1]`` evenly, and the profiles keep their meaning in s. Requires
+    a fixed boundary, and an inner boundary that lies inside the boundary.
+
+    Surface 0 of the outputs is then the inner boundary: ``raxis_cc``, ``zaxis_cs``,
+    ``b0``, ``rbtor0`` and ``betaxis`` describe it, ``phi`` starts at the toroidal
+    flux it encloses and ``chi`` at 0, and ``volume_p`` is the volume between the
+    two boundaries.
+    """
+
+    rbc_inner: (
+        SerializableSparseCoefficientArray[
+            jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        ]
+        | None
+    ) = None
+    """Inner boundary coefficients for R ~ cos(m*u - n*v); stellarator-symmetric.
+
+    Set if and only if inner_boundary_s > 0.
+    """
+
+    zbs_inner: (
+        SerializableSparseCoefficientArray[
+            jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        ]
+        | None
+    ) = None
+    """Inner boundary coefficients for Z ~ sin(m*u - n*v); stellarator-symmetric.
+
+    Set if and only if inner_boundary_s > 0.
+    """
+
+    rbs_inner: (
+        SerializableSparseCoefficientArray[
+            jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        ]
+        | None
+    ) = None
+    """Inner boundary coefficients for R ~ sin(m*u - n*v); non-stellarator-symmetric.
+
+    Only used if inner_boundary_s > 0 and lasym=True, where None means zero.
+    """
+
+    zbc_inner: (
+        SerializableSparseCoefficientArray[
+            jt.Float[np.ndarray, "mpol two_ntor_plus_one"]
+        ]
+        | None
+    ) = None
+    """Inner boundary coefficients for Z ~ cos(m*u - n*v); non-stellarator-symmetric.
+
+    Only used if inner_boundary_s > 0 and lasym=True, where None means zero.
+    """
+
     @pydantic.model_validator(mode="after")
     def _validate_fourier_coefficients_shapes(self) -> VmecInput:
         """All geometry coefficients need to have the shape (mpol, 2*ntor+1), wit 'rbs',
@@ -668,6 +727,30 @@ class VmecInput(BaseModelWithNumpy):
 
             shape = np.shape(current_value)
             if shape != expected_shape:
+                setattr(
+                    self,
+                    field,
+                    VmecInput.resize_2d_coeff(
+                        current_value,
+                        mpol_new=mpol_final,
+                        ntor_new=ntor_final,
+                    ),
+                )
+
+        inner_fields = []
+        if self.inner_boundary_s > 0.0:
+            inner_fields = ["rbc_inner", "zbs_inner"]
+            if self.lasym:
+                inner_fields.extend(["rbs_inner", "zbc_inner"])
+        for field in inner_fields:
+            current_value = getattr(self, field)
+            if current_value is None:
+                if field in ("rbc_inner", "zbs_inner"):
+                    msg = f"'{field}' has to be set when inner_boundary_s > 0"
+                    raise ValueError(msg)
+                current_value = np.zeros(expected_shape)
+                setattr(self, field, current_value)
+            if np.shape(current_value) != expected_shape:
                 setattr(
                     self,
                     field,
@@ -712,6 +795,32 @@ class VmecInput(BaseModelWithNumpy):
                         f"but the symmetry-breaking field '{key}' is populated with \n{value}"
                     )
                     raise ValueError(msg)
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def _validate_inner_boundary_fields(self) -> VmecInput:
+        """Check that the inner boundary fields match inner_boundary_s and lasym."""
+        if not 0.0 <= self.inner_boundary_s < 1.0:
+            msg = (
+                f"inner_boundary_s has to be in [0, 1), but is {self.inner_boundary_s}"
+            )
+            raise ValueError(msg)
+        if self.inner_boundary_s > 0.0 and self.lfreeb:
+            msg = "An inner boundary (inner_boundary_s > 0) requires lfreeb=False"
+            raise ValueError(msg)
+        unused = []
+        if self.inner_boundary_s == 0.0:
+            unused = ["rbc_inner", "zbs_inner", "rbs_inner", "zbc_inner"]
+        elif not self.lasym:
+            unused = ["rbs_inner", "zbc_inner"]
+        for key in unused:
+            if getattr(self, key) is not None:
+                condition = "" if key in ("rbc_inner", "zbs_inner") else " and lasym"
+                msg = (
+                    f"The field '{key}' is populated, but it is only used with "
+                    f"inner_boundary_s > 0{condition}"
+                )
+                raise ValueError(msg)
         return self
 
     @staticmethod
@@ -854,6 +963,13 @@ class VmecInput(BaseModelWithNumpy):
             updated_fields["raxis_s"] = resize_axis(self.raxis_s)
             updated_fields["zaxis_c"] = resize_axis(self.zaxis_c)
 
+        for field in ("rbc_inner", "zbs_inner", "rbs_inner", "zbc_inner"):
+            value = getattr(self, field)
+            if value is not None:
+                updated_fields[field] = self.resize_2d_coeff(
+                    np.asarray(value), mpol_new, ntor_new
+                )
+
         for name, value in updated_fields.items():
             setattr(self, name, value)
 
@@ -909,7 +1025,13 @@ class VmecInput(BaseModelWithNumpy):
             "zbs",
             "rbs",
             "zbc",
+            "rbc_inner",
+            "zbs_inner",
+            "rbs_inner",
+            "zbc_inner",
         }
+        # allocated by _set_mpol_ntor only when inner_boundary_s > 0
+        inner_attrs = {"rbc_inner", "zbs_inner", "rbs_inner", "zbc_inner"}
 
         for attr in own_model_fields(VmecInput):
             if attr in readonly_attrs or attr in (
@@ -934,6 +1056,9 @@ class VmecInput(BaseModelWithNumpy):
         for attr in readonly_attrs - {"mpol", "ntor"}:
             # now we can set the elements of the readonly_attrs
             value = getattr(self, attr)
+
+            if value is None and attr in inner_attrs:
+                continue
 
             # Asymmetric fields are only populated when lasym==True
             # so we need to skip them for itemwise assignment
@@ -2883,6 +3008,7 @@ def _run_traced(
         or not isinstance(vmec_input.ntor, int),
         "magnetic_field": magnetic_field is not None,
         "restart_from": restart_from is not None,
+        "an inner boundary": vmec_input.inner_boundary_s > 0.0,
     }
     for name, present in unsupported.items():
         if present:
@@ -3292,7 +3418,8 @@ def has_exact_force_jacobian() -> bool:
     to check ahead of time whether reverse-mode differentiation through
     `vmecpp.autodiff` is available in the current installation. A model's
     `has_exact_force_jacobian` property additionally depends on that model's
-    force-balance formulation and can be false even when this function is true.
+    force-balance formulation and on whether it has an inner boundary, and can be
+    false even when this function is true.
     """
     return bool(_vmecpp.VMECPP_ENABLE_ENZYME)
 

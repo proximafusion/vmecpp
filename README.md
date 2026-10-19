@@ -377,6 +377,7 @@ on demand from the [Full V&V against reference VMEC](https://github.com/proximaf
 VMEC++:
 - reports issues via standard Python exceptions and has a zero crash policy
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
+- solves equilibria without a magnetic axis, in the shell between a fixed inner boundary and the boundary (`inner_boundary_s`, see [`examples/plasma_without_magnetic_axis.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plasma_without_magnetic_axis.py))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
 - The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
 - The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.

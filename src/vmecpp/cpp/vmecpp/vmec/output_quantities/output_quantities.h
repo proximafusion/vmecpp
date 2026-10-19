@@ -65,6 +65,13 @@ struct VmecInternalResults {
   // RecomputeToroidalFlux here!
   Eigen::VectorXd phiF;
 
+  // s of surface 0: the inner boundary of a plasma without a magnetic axis, or
+  // 0 at the magnetic axis
+  double s_inner = 0.0;
+
+  // integral of phi' from s = 0 to surface 0
+  double phip_integral_inner = 0.0;
+
   // [ns] rotational transform on full-grid
   Eigen::VectorXd iotaF;
 
