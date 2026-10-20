@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 import vmecpp
+from vmecpp._free_boundary import write_mgrid_file
 from vmecpp._response import _combined
 
 TEST_DATA = Path(__file__).resolve().parents[1] / "src" / "vmecpp" / "cpp" / "vmecpp"
@@ -46,13 +47,25 @@ def solovev():
 
 
 @pytest.fixture(scope="module")
-def solovev_free():
+def solovev_free(tmp_path_factory):
     """The Solov'ev free-boundary tokamak at 16 surfaces, its output and its
-    linearization."""
+    linearization.
+
+    Its mgrid file is built from the coils file, so the test does not need the one that
+    Git LFS holds.
+    """
+    mgrid = tmp_path_factory.mktemp("mgrid") / "mgrid_solovev.nc"
+    write_mgrid_file(
+        TEST_DATA / "coils.solovev",
+        vmecpp.MakegridParameters.from_file(
+            TEST_DATA / "makegrid_parameters_solovev.json"
+        ),
+        mgrid,
+    )
     base = vmecpp.VmecInput.from_file(TEST_DATA / "solovev_free_bdy.json")
     base = base.model_copy(
         update={
-            "mgrid_file": str(TEST_DATA / "mgrid_solovev.nc"),
+            "mgrid_file": str(mgrid),
             "ns_array": np.array([16]),
             "ftol_array": np.array([1.0e-16]),
             "niter_array": np.array([200000]),
