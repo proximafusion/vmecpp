@@ -1105,6 +1105,8 @@ PYBIND11_MODULE(_vmecpp, m) {
                      &VmecINDATA::backup_evaluated_state)
       .def_readwrite("always_fix_m1_gauge", &VmecINDATA::always_fix_m1_gauge)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
+      .def_readwrite("anderson_acceleration",
+                     &VmecINDATA::anderson_acceleration)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
 
