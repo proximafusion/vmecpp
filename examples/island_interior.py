@@ -8,7 +8,9 @@ chain enters a run only as a distortion of those surfaces. Inside one island, th
 the field lines lie on surfaces nested about the island's O-point line: the island
 interior is such a region in its own right, with the O-point line as its magnetic axis
 and an island flux surface as its boundary. This example computes the interior of one
-island of the 5/5 chain at the edge of the W7-X standard configuration.
+island of the 5/5 chain at the edge of the W7-X standard configuration, which
+J. C. Schmitt et al., Plasma Phys. Control. Fusion 64, 055022 (2022), solve in vacuum as
+a fixed-boundary VMEC run.
 
 1. The vacuum field of the W7-X coils of SIMSOPT, interpolated over one field period.
 2. The O point on the outboard midplane of the bean-shaped plane phi = 0. The field is
