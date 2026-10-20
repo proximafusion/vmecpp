@@ -224,6 +224,12 @@ class VmecINDATA {
   // constraint force scaling factor for ns --> 0
   double tcon0;
 
+  // If true, R and Z at m = 0 to 2 and lambda at m = 1 to 4, all at n = 0,
+  // take their step from the block of the force Jacobian that couples them,
+  // probed by finite differences, in place of the separate R, Z and lambda
+  // preconditioners, once the residuals are below 1e-4. Fixed boundary only.
+  bool axis_block_preconditioner;
+
   // hack: directly compute innermost flux surface geometry from radial force
   // balance
   bool lforbal;
