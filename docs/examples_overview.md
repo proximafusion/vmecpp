@@ -15,7 +15,9 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`sample_hot_restarts_with_random_perturbations.py`](../examples/sample_hot_restarts_with_random_perturbations.py): explore restart sensitivity to small boundary perturbations.
 - [`force_residual_convergence.py`](../examples/force_residual_convergence.py): plot convergence of force residuals during VMEC++ runs.
 - [`fourier_resolution_increase.py`](../examples/fourier_resolution_increase.py): reach a high Fourier resolution by continuation, in fewer iterations than a fixed-resolution solve.
+- [`coupled_plasmas.py`](../examples/coupled_plasmas.py): solve two free-boundary plasmas on one axis in one vacuum field, as in merging-compression start-up, and see how far they move towards each other.
 - [`watch_solve.py`](../examples/watch_solve.py): draw the flux surfaces and the force residuals while VMEC++ converges, through the iteration callback of `vmecpp.run`.
 - [`self_consistent_bootstrap_current.py`](../examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
 - [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
 - [`force_balance_spectrum.py`](../examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
+- [`island_interior.py`](../examples/island_interior.py): solve the interior of an island of the W7-X 5/5 chain as an equilibrium whose magnetic axis is the island's O-point line, compare it with field-line tracing, and move the island by the field of a finite-beta core plasma.
