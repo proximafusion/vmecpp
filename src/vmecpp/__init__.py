@@ -55,6 +55,7 @@ from vmecpp._pydantic_numpy import (
     own_model_fields,
 )
 from vmecpp._rescale import rescale
+from vmecpp._response import GeometryResponse, Linearization
 from vmecpp.cpp import _vmecpp  # type: ignore # bindings to the C++ core
 
 HotRestartMismatchError = _vmecpp.HotRestartMismatchError
@@ -3460,6 +3461,8 @@ __all__ = [  # noqa: RUF022
     "HotRestartMismatchError",
     "run",
     "interpolate_solution",
+    "Linearization",
+    "GeometryResponse",
     "rescale",
     "VmecInput",
     "VmecOutput",
