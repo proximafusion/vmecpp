@@ -26,9 +26,9 @@ these; with toroidal_transits = 4 or 6 each is a single VMEC++ domain.
    T / 2 transits (phi = pi for the 5/5 chain, the inboard side of phi = 0 for the 5/4
    and 5/6 chains), a root in one variable. SIMSOPT places a crossing on its line but
    only near the plane, so each crossing is carried along the line onto the plane.
-3. An island flux surface, traced from a point outboard of the O point most of the way
-   to the separatrix: 18 of 29 mm for the 5/5 chain, 5.0 of 5.8 mm for 5/4 and 55 of
-   72 mm for 5/6. The line turns about the O-point line iota times per closure of the
+3. An island flux surface, traced from a point outboard of the O point: 10, 5.8 and
+   30 mm for the 5/5, 5/4 and 5/6 chains, whose separatrices lie 29, 10.3 and 72 mm
+   out, and 16, 7.0 and 55 mm with --full. The line turns about the O-point line iota times per closure of the
    island, so its crossing after tau closures has the straight-field-line angle
    2 pi iota tau on that surface, and R and Z against that angle need only a few
    poloidal harmonics in each plane.
@@ -59,19 +59,28 @@ these; with toroidal_transits = 4 or 6 each is a single VMEC++ domain.
    from the same offset is the reference for the displacement. A. Knieps et al., Nucl.
    Fusion 62, 026011 (2022), compute with HINT how beta changes the edge of three
    configurations of different edge iota.
+7. Island coordinates of the vacuum interior at laboratory points (R, phi, Z): rho and
+   theta by Newton iteration on its Fourier series, whose coefficient mn has the
+   toroidal mode number xn / toroidal_transits in phi, and the radial and binormal unit
+   vectors grad rho / |grad rho| and b x grad rho / |b x grad rho|, b along the coil
+   field: what Schmitt et al. compute from their VMEC interior of the 5/5 island. They
+   are checked on lines traced inside the boundary, along which rho should not vary
+   and to whose field the radial vector should be normal.
 
-Both resolutions resolve the toroidal harmonics of the ripple of the 50 coils, n = 50,
-which the boundaries of these large island surfaces carry; --full refines the
-interpolated field and the radial and poloidal resolution of the runs.
+The boundaries carry the ripple of the 50 coils, n = 50, and its second harmonic, so
+ntor is the largest toroidal mode number resolved in phi times transits / periods.
+--full refines the interpolated field and the poloidal, radial and toroidal
+resolution, and traces the boundaries further out.
 """
 
 import argparse
+import math
 import threading
 import time
 from pathlib import Path
 
 import numpy as np
-from scipy.interpolate import RectBivariateSpline
+from scipy.interpolate import CubicSpline, RectBivariateSpline
 from scipy.optimize import brentq, minimize_scalar
 from scipy.spatial import cKDTree
 from simsopt.field import (
@@ -89,16 +98,19 @@ import vmecpp
 NFP = 5
 MU0 = 4.0e-7 * np.pi
 # grid cells (R, phi over a period, Z) and polynomial degree of the interpolated field,
-# the resolution of the island run, the resolution of the core run, the upsampling of
-# its boundary grid for the casing sum (toroidal, poloidal), the points per plane of
-# the grid of its field around the island, and the closures of the island over which
-# the surface is traced in it
+# the poloidal resolution of the island run and the poloidal harmonics of its traced
+# boundary, the largest toroidal mode number in phi of that boundary, which carries the
+# ripple of the 50 coils and its second harmonic, and the radial resolution; the
+# resolution of the core run, the upsampling of its boundary grid for the casing sum
+# (toroidal, poloidal), the points per plane of the grid of its field around the
+# island, and the closures of the island over which the surface is traced in it
 SETTINGS = {
     "default": {
         "cells": (27, 24, 18),
         "degree": 3,
         "mpol": 8,
-        "ntor": 60,
+        "harmonics": 12,
+        "modes": 100,
         "ns": 13,
         "core": (6, 6, [13]),
         "upsampling": (12, 8),
@@ -108,8 +120,9 @@ SETTINGS = {
     "full": {
         "cells": (54, 48, 36),
         "degree": 4,
-        "mpol": 10,
-        "ntor": 60,
+        "mpol": 16,
+        "harmonics": 16,
+        "modes": 120,
         "ns": 51,
         "core": (8, 8, [13, 25]),
         "upsampling": (12, 8),
@@ -121,7 +134,8 @@ SETTINGS = {
 # coils are turned to bring the symmetry plane of the O points to phi = 0, the edge
 # iota, the transits after which an island closes and the field periods of its domain,
 # the interval of the O point on the outboard midplane of phi = 0, the offset of the
-# traced surface from it and that of the separatrix, the interval of the magnetic axis
+# traced surface from it, at the default resolution and with --full, and that of the
+# separatrix, the interval of the magnetic axis
 # there, the offset of the boundary of the core from the axis, the offset of the surface
 # traced with the core, and the force tolerance of the island run: the cross-sections
 # of the 5/4 and 5/6 islands are slivers many times longer than wide, whose last
@@ -134,7 +148,7 @@ EDGES = {
         "transits": 1,
         "periods": 1,
         "o_point": (6.20, 6.27),
-        "offset": 0.018,
+        "offset": (0.010, 0.016),
         "separatrix": 0.029,
         "axis": (5.90, 6.00),
         "core_offset": 0.22,
@@ -148,8 +162,8 @@ EDGES = {
         "transits": 4,
         "periods": 5,
         "o_point": (6.196, 6.2025),
-        "offset": 0.005,
-        "separatrix": 0.0058,
+        "offset": (0.0058, 0.0070),
+        "separatrix": 0.0103,
         "axis": (5.90, 6.00),
         "core_offset": 0.15,
         "offset_with_core": 0.002,
@@ -162,7 +176,7 @@ EDGES = {
         "transits": 6,
         "periods": 5,
         "o_point": (5.93, 6.00),
-        "offset": 0.055,
+        "offset": (0.030, 0.055),
         "separatrix": 0.072,
         "axis": (5.15, 5.25),
         "core_offset": 0.45,
@@ -172,11 +186,12 @@ EDGES = {
 }
 # closures of the island over which its surface is traced in the coil field
 SURFACE_TURNS = 150
-HARMONICS = 12
 # island pressures p0 in Pa
 PRESSURES = (100.0, 400.0)
 CORE_PRESSURE = 5.0e4
-RK4_STEPS = 8  # per plane of the island run
+RK4_STEPS = 5  # per plane of the island run
+# the least spacing in rad of the planes whose crossings SIMSOPT records
+MIN_PLANE_SPACING = 0.02
 # the least distance of the grid of the core field from the casing points, over their
 # spacing
 CASING_MARGIN = 1.5
@@ -253,6 +268,37 @@ class FieldLines:
     def crossings(self, r0, z0, a, b, count):
         """(R, Z) of the line through (r0, 0, z0) at the toroidal angles 2 pi a s / b
         along B, s = 1, ..., count."""
+        # SIMSOPT records every crossing only of planes at least MIN_PLANE_SPACING
+        # apart: it is asked for every stride-th angle, and the line is carried from
+        # the start and from those crossings onto the angles between
+        stride = 1
+        while 2.0 * np.pi * np.gcd(a * stride, b) / b < MIN_PLANE_SPACING:
+            stride += 1
+        if stride == 1:
+            return self._crossings(r0, z0, a, b, count)
+        coarse = count // stride
+        r, z = np.empty(count), np.empty(count)
+        if coarse:
+            rc, zc = self._crossings(r0, z0, a * stride, b, coarse)
+            r[stride - 1 :: stride][:coarse], z[stride - 1 :: stride][:coarse] = rc, zc
+        s = np.arange(1, count + 1)
+        base = s // stride
+        start_r = np.where(base > 0, r[np.maximum(base * stride - 1, 0)], r0)
+        start_z = np.where(base > 0, z[np.maximum(base * stride - 1, 0)], z0)
+        angle = self.sign * 2.0 * np.pi * a / b
+        for offset in range(1, stride):
+            sel = s - base * stride == offset
+            if np.any(sel):
+                r[sel], z[sel] = self.onto(
+                    start_r[sel],
+                    angle * (base[sel] * stride),
+                    start_z[sel],
+                    angle * s[sel],
+                    steps=16 * offset,
+                )
+        return r, z
+
+    def _crossings(self, r0, z0, a, b, count):
         # in steps of 2 pi / b along the line the angles are the steps a s; it crosses
         # the planes of these angles at every step u whose plane (sign u) mod b is one
         index = np.unique((self.sign * a * np.arange(1, count + 1)) % b)
@@ -348,7 +394,7 @@ def o_point(lines, edge):
     return r_o, rotation
 
 
-def surface_fit(plane, r, z, turns_along, line):
+def surface_fit(plane, r, z, turns_along, line, harmonics):
     """R and Z of the traced surface against its straight-field-line angle in each
     plane, [plane, harmonic], with the surface iota that makes the fit closest."""
     nplanes = len(line)
@@ -395,7 +441,7 @@ def surface_fit(plane, r, z, turns_along, line):
         method="bounded",
         options={"xatol": 1e-10},
     ).x
-    coef, worst = fit(iota, HARMONICS)
+    coef, worst = fit(iota, harmonics)
     return coef, iota, worst
 
 
@@ -436,6 +482,124 @@ def axis_curve(wout, phi):
     return np.stack([r[:, 0], z[:, 0]], axis=1)
 
 
+class InteriorMap:
+    """R and Z of an interior as functions of rho = sqrt(s), theta and phi; the
+    coefficient mn has the toroidal mode number xn[mn] / toroidal_transits in phi."""
+
+    def __init__(self, wout):
+        self.m = np.asarray(wout.xm, dtype=float)
+        self.n = np.asarray(wout.xn, dtype=float) / wout.toroidal_transits
+        rho = np.sqrt(np.linspace(0.0, 1.0, int(wout.ns)))
+        # the coefficients of m >= 1 vanish as rho^m on the axis, which a cubic in rho
+        # through rho = 0 carries
+        self.r = CubicSpline(rho, np.asarray(wout.rmnc).T, axis=0)
+        self.z = CubicSpline(rho, np.asarray(wout.zmns).T, axis=0)
+
+    def jet(self, rho, theta, phi):
+        """R, Z and their derivatives in rho, theta and phi at the points."""
+        angle = self.m * theta[:, None] - self.n * phi[:, None]
+        cos, sin = np.cos(angle), np.sin(angle)
+        rc, rc_d, zs, zs_d = self.r(rho), self.r(rho, 1), self.z(rho), self.z(rho, 1)
+        return {
+            "r": np.sum(rc * cos, 1),
+            "z": np.sum(zs * sin, 1),
+            "r_rho": np.sum(rc_d * cos, 1),
+            "z_rho": np.sum(zs_d * sin, 1),
+            "r_theta": -np.sum(rc * sin * self.m, 1),
+            "z_theta": np.sum(zs * cos * self.m, 1),
+            "r_phi": np.sum(rc * sin * self.n, 1),
+            "z_phi": -np.sum(zs * cos * self.n, 1),
+        }
+
+    def locate(self, r0, phi0, z0):
+        """(rho, theta) of the laboratory points (r0, phi0, z0): the nearest point of a
+        grid in each plane, refined by Newton steps that do not cross the axis."""
+        grid_rho, grid_theta = (
+            a.ravel()
+            for a in np.meshgrid(
+                np.linspace(0.05, 1.0, 24),
+                2.0 * np.pi * np.arange(64) / 64,
+                indexing="ij",
+            )
+        )
+        rho, theta = np.empty_like(r0), np.empty_like(r0)
+        for value in np.unique(phi0):
+            sel = phi0 == value
+            j = self.jet(grid_rho, grid_theta, np.full_like(grid_rho, value))
+            d = (j["r"] - r0[sel, None]) ** 2 + (j["z"] - z0[sel, None]) ** 2
+            k = np.argmin(d, axis=1)
+            rho[sel], theta[sel] = grid_rho[k], grid_theta[k]
+        for _ in range(40):
+            j = self.jet(rho, theta, phi0)
+            fr, fz = j["r"] - r0, j["z"] - z0
+            det = j["r_rho"] * j["z_theta"] - j["r_theta"] * j["z_rho"]
+            d_rho = (j["z_theta"] * fr - j["r_theta"] * fz) / det
+            d_theta = (j["r_rho"] * fz - j["z_rho"] * fr) / det
+            # halve a step that would cross the axis
+            scale = np.ones_like(rho)
+            cross = d_rho > rho
+            scale[cross] = 0.5 * rho[cross] / d_rho[cross]
+            rho, theta = rho - scale * d_rho, theta - scale * d_theta
+            if np.max(np.hypot(fr, fz)) < 1e-12:
+                break
+        return rho, theta
+
+    def radial(self, rho, theta, phi):
+        """Grad rho / |grad rho| at the points, cylindrical components (R, phi, Z):
+
+        grad rho = e_theta x e_phi / sqrt(g).
+        """
+        j = self.jet(rho, theta, phi)
+        zero = np.zeros_like(j["r"])
+        e_rho = np.stack([j["r_rho"], zero, j["z_rho"]], -1)
+        normal = np.cross(
+            np.stack([j["r_theta"], zero, j["z_theta"]], -1),
+            np.stack([j["r_phi"], j["r"], j["z_phi"]], -1),
+        )
+        grad = normal / np.sum(e_rho * normal, -1)[:, None]
+        return grad / np.linalg.norm(grad, axis=1)[:, None]
+
+    def vectors(self, r, phi, z, b):
+        """Rho, theta and the radial and binormal unit vectors at the laboratory points,
+        the binormal b x e_r / |b x e_r| for the field b there."""
+        rho, theta = self.locate(r, phi, z)
+        e_r = self.radial(rho, theta, phi)
+        e_b = np.cross(b, e_r)
+        return rho, theta, e_r, e_b / np.linalg.norm(e_b, axis=1)[:, None]
+
+
+def island_coordinates(lines, interior, edge, planes):
+    """Step 7: rho and the radial and binormal unit vectors of the interior at the
+    crossings of lines traced inside its boundary, the binormal b x e_r / |b x e_r|
+    with b along the coil field."""
+    imap = InteriorMap(interior["output"].wout)
+    nzeta = len(planes)
+    count = edge["periods"] * nzeta
+    spread, lean = 0.0, 0.0
+    for f in (0.25, 0.5, 0.75, 0.95):
+        r, z = lines.crossings(
+            interior["r_o"] + f * edge["offset"],
+            0.0,
+            edge["transits"],
+            count,
+            4 * count,
+        )
+        phi = planes[(lines.sign * np.arange(1, len(r) + 1)) % nzeta]
+        pick = slice(None, None, max(1, len(r) // 200))
+        r, phi, z = r[pick], phi[pick], z[pick]
+        b = np.stack(lines.b(r, phi, z), -1)
+        b /= np.linalg.norm(b, axis=1)[:, None]
+        rho, _, e_r, _ = imap.vectors(r, phi, z, b)
+        spread = max(spread, float(np.ptp(rho)))
+        lean = max(lean, float(np.abs(np.sum(b * e_r, 1)).max()))
+    print(
+        f"island coordinates: on lines traced from 0.25 to 0.95 of the boundary offset, "
+        f"rho varies along each by at most {spread:.1e}, and the radial vector leans "
+        f"into the coil field by at most {lean:.1e}"
+    )
+    return imap
+
+
 def island(lines, s, planes, label, edge):
     """Steps 2 to 4 in the field the line tracer follows."""
     transits, periods = edge["transits"], edge["periods"]
@@ -456,7 +620,9 @@ def island(lines, s, planes, label, edge):
     steps = np.arange(1, closures * count + 1)
     plane = (lines.sign * steps) % nzeta
     turns_along = steps / count
-    coef, iota_surface, residual = surface_fit(plane, r, z, turns_along, line)
+    coef, iota_surface, residual = surface_fit(
+        plane, r, z, turns_along, line, s["harmonics"]
+    )
     print(f"{label}: O point R = {r_o:.6f} m on the midplane at phi = 0, where the")
     print(
         f"  {transits}-transit map turns the lines near it by {rotation:.5f} of a turn;"
@@ -469,7 +635,7 @@ def island(lines, s, planes, label, edge):
         f"  {closures * transits} transits, iota per transit "
         f"{iota_surface / transits:+.6f}, fit in"
     )
-    print(f"  {HARMONICS - 1} poloidal harmonics within {residual:.1e} m")
+    print(f"  {s['harmonics'] - 1} poloidal harmonics within {residual:.1e} m")
 
     # the boundary on a uniform grid of the straight-field-line angle, and the toroidal
     # flux through each cross-section from B_phi on a fan of triangles from the O point,
@@ -478,7 +644,7 @@ def island(lines, s, planes, label, edge):
     theta = 2.0 * np.pi * np.arange(128) / 128
     harmonics = np.column_stack(
         [np.ones_like(theta)]
-        + [f(m * theta) for m in range(1, HARMONICS) for f in (np.cos, np.sin)]
+        + [f(m * theta) for m in range(1, s["harmonics"]) for f in (np.cos, np.sin)]
     )
     rb, zb = coef[0] @ harmonics.T, coef[1] @ harmonics.T
     flux = np.empty(nzeta)
@@ -842,8 +1008,11 @@ def main():
     parser.add_argument("--full", action="store_true", help="resolve the coil ripple")
     parser.add_argument("--edge", choices=list(EDGES), default="5/5")
     args = parser.parse_args()
-    s = SETTINGS["full" if args.full else "default"]
-    edge = EDGES[args.edge]
+    s = dict(SETTINGS["full" if args.full else "default"])
+    edge = dict(EDGES[args.edge])
+    edge["offset"] = edge["offset"][1 if args.full else 0]
+    # the harmonic n has the toroidal mode number n periods / transits in phi
+    s["ntor"] = math.ceil(s["modes"] * edge["transits"] / edge["periods"])
     nzeta = 2 * s["ntor"] + 8
     # the planes of one field period of the island's domain
     planes = (
@@ -852,6 +1021,7 @@ def main():
 
     lines = FieldLines(s["cells"], s["degree"], edge["planar"], edge["rotation"])
     vacuum = island(lines, s, planes, "coil field", edge)
+    island_coordinates(lines, vacuum, edge, planes)
 
     if args.full:
         # The slowest modes of the interior converge slowly: between ftol 1e-11 and
@@ -885,7 +1055,11 @@ def main():
     # the surface traced with the core, and the vacuum island traced from the same
     # offset as the reference for the displacement
     inner = {**edge, "offset": edge["offset_with_core"]}
-    reference = island(lines, s, planes, "coil field", inner)
+    reference = (
+        vacuum
+        if edge["offset_with_core"] == edge["offset"]
+        else island(lines, s, planes, "coil field", inner)
+    )
     start = time.time()
     cores = core_runs(lines, s, edge)
     field = CoreField(cores, reference, planes, s)
