@@ -34,6 +34,7 @@ except ImportError:  # jax < 0.7, the last releases for Python 3.10
 from vmecpp import _util, autodiff_wout
 from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
+from vmecpp._coupled import Placement, run_coupled
 from vmecpp._free_boundary import (
     MagneticFieldFunction,
     MagneticFieldResponseTable,
@@ -2561,6 +2562,72 @@ class Threed1ShafranovIntegrals(BaseModelWithNumpy):
         return Threed1ShafranovIntegrals(**values)
 
 
+class Threed1FreeBoundary(BaseModelWithNumpy):
+    """Python equivalent of the boundary data of a free-boundary run, freeb_data in
+    Fortran VMEC: the boundary points, the pressures on either side of the boundary,
+    and the cylindrical field components on either side, on the grid of the vacuum
+    solve.
+
+    Every array is (nzeta, ntheta) over one field period, with ``zeta = 2 pi k /
+    (nzeta nfp)`` and ``theta = 2 pi l / ntheta_even`` for ``l`` up to ``ntheta - 1``,
+    which covers ``[0, pi]`` for a stellarator-symmetric run and ``[0, 2 pi)`` with
+    ``lasym=True``. All arrays are zero for a fixed-boundary run.
+    """
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    rb: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical coordinate R of the boundary points."""
+
+    phib: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Geometric toroidal angle of the boundary points."""
+
+    zb: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical coordinate Z of the boundary points."""
+
+    bsqmhdi: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Total pressure of the plasma at the boundary when the vacuum field was first
+    established."""
+
+    bsqvaci: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum magnetic pressure ``|B|^2 / 2`` at the boundary at that moment."""
+
+    bsqmhdf: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Total pressure of the plasma at the boundary at the end of the run."""
+
+    bsqvacf: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum magnetic pressure ``|B|^2 / 2`` at the boundary at the end of the run."""
+
+    bredge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^R on the plasma side of the boundary."""
+
+    bpedge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^phi on the plasma side of the boundary."""
+
+    bzedge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^Z on the plasma side of the boundary."""
+
+    brv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^R of the vacuum field at the boundary."""
+
+    bphiv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^phi of the vacuum field at the boundary."""
+
+    bzv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^Z of the vacuum field at the boundary."""
+
+    @staticmethod
+    def _from_cpp_threed1_free_boundary(
+        cpp_threed1_free_boundary: _vmecpp.Threed1FreeBoundary,
+    ) -> Threed1FreeBoundary:
+        return Threed1FreeBoundary(
+            **{
+                attr: np.array(getattr(cpp_threed1_free_boundary, attr))
+                for attr in own_model_fields(Threed1FreeBoundary)
+            }
+        )
+
+
 class Mercier(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
@@ -2760,6 +2827,9 @@ class VmecOutput(BaseModelWithNumpy):
     threed1_shafranov_integrals: Threed1ShafranovIntegrals
     """Python equivalent of the Shafranov surface integrals in VMEC's "threed1" file."""
 
+    threed1_free_boundary: Threed1FreeBoundary
+    """The boundary data of a free-boundary run, freeb_data in Fortran VMEC."""
+
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""
 
@@ -2805,6 +2875,9 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
             Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
                 cpp_output_quantities.threed1_shafranov_integrals
             )
+        ),
+        "threed1_free_boundary": Threed1FreeBoundary._from_cpp_threed1_free_boundary(
+            cpp_output_quantities.threed1_free_boundary
         ),
     }
 
@@ -2953,6 +3026,7 @@ def _run_traced(
                     "threed1_axis",
                     "threed1_betas",
                     "threed1_shafranov_integrals",
+                    "threed1_free_boundary",
                 )
             )
         else:
@@ -3460,6 +3534,8 @@ __all__ = [  # noqa: RUF022
     "HotRestartMismatchError",
     "run",
     "interpolate_solution",
+    "run_coupled",
+    "Placement",
     "rescale",
     "VmecInput",
     "VmecOutput",
