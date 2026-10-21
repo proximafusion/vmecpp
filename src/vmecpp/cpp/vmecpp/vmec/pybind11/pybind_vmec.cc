@@ -1038,6 +1038,7 @@ PYBIND11_MODULE(_vmecpp, m) {
           // numerical resolution, symmetry assumption
           .def_readwrite("lasym", &VmecINDATA::lasym)
           .def_readwrite("nfp", &VmecINDATA::nfp)
+          .def_readwrite("toroidal_transits", &VmecINDATA::toroidal_transits)
           .def_readonly("mpol", &VmecINDATA::mpol)  // readonly!
           .def_readonly("ntor", &VmecINDATA::ntor)  // readonly!
           .def_readwrite("ntheta", &VmecINDATA::ntheta)
@@ -1396,6 +1397,21 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("delta2", &vmecpp::Threed1ShafranovIntegrals::delta2)
       .def_readonly("delta3", &vmecpp::Threed1ShafranovIntegrals::delta3);
 
+  py::class_<vmecpp::Threed1FreeBoundary>(m, "Threed1FreeBoundary")
+      .def_readonly("rb", &vmecpp::Threed1FreeBoundary::rb)
+      .def_readonly("phib", &vmecpp::Threed1FreeBoundary::phib)
+      .def_readonly("zb", &vmecpp::Threed1FreeBoundary::zb)
+      .def_readonly("bsqmhdi", &vmecpp::Threed1FreeBoundary::bsqmhdi)
+      .def_readonly("bsqvaci", &vmecpp::Threed1FreeBoundary::bsqvaci)
+      .def_readonly("bsqmhdf", &vmecpp::Threed1FreeBoundary::bsqmhdf)
+      .def_readonly("bsqvacf", &vmecpp::Threed1FreeBoundary::bsqvacf)
+      .def_readonly("bredge", &vmecpp::Threed1FreeBoundary::bredge)
+      .def_readonly("bpedge", &vmecpp::Threed1FreeBoundary::bpedge)
+      .def_readonly("bzedge", &vmecpp::Threed1FreeBoundary::bzedge)
+      .def_readonly("brv", &vmecpp::Threed1FreeBoundary::brv)
+      .def_readonly("bphiv", &vmecpp::Threed1FreeBoundary::bphiv)
+      .def_readonly("bzv", &vmecpp::Threed1FreeBoundary::bzv);
+
   py::class_<vmecpp::WOutFileContents>(m, "WOutFileContents")
       .def(py::init<const vmecpp::WOutFileContents &>(), py::arg("wout"))
       .def(py::init())
@@ -1425,6 +1441,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("ai_aux_f", &vmecpp::WOutFileContents::ai_aux_f)
       //
       .def_readwrite("nfp", &vmecpp::WOutFileContents::nfp)
+      .def_readwrite("toroidal_transits",
+                     &vmecpp::WOutFileContents::toroidal_transits)
       .def_readwrite("mpol", &vmecpp::WOutFileContents::mpol)
       .def_readwrite("ntor", &vmecpp::WOutFileContents::ntor)
       .def_readwrite("lasym", &vmecpp::WOutFileContents::lasym)
@@ -1583,6 +1601,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("threed1_betas", &vmecpp::OutputQuantities::threed1_betas)
       .def_readonly("threed1_shafranov_integrals",
                     &vmecpp::OutputQuantities::threed1_shafranov_integrals)
+      .def_readonly("threed1_free_boundary",
+                    &vmecpp::OutputQuantities::threed1_free_boundary)
       .def_readonly("wout", &vmecpp::OutputQuantities::wout)
       .def_readonly("indata", &vmecpp::OutputQuantities::indata)
       .def(
@@ -1662,6 +1682,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("ntheta_eff", &vmecpp::HalfGridFields::ntheta_eff)
       .def_readonly("nzeta", &vmecpp::HalfGridFields::nzeta)
       .def_readonly("nfp", &vmecpp::HalfGridFields::nfp)
+      .def_readonly("toroidal_transits",
+                    &vmecpp::HalfGridFields::toroidal_transits)
       .def_readonly("signgs", &vmecpp::HalfGridFields::signgs);
   py::class_<vmecpp::SolverState>(m, "SolverState")
       .def_readonly("iteration", &vmecpp::SolverState::iteration)

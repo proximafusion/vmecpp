@@ -1777,6 +1777,7 @@ HalfGridFields Vmec::HalfGridState() const {
       .ntheta_eff = s_.nThetaEff,
       .nzeta = s_.nZeta,
       .nfp = s_.nfp,
+      .toroidal_transits = s_.toroidal_transits,
       .signgs = indata_.signgs,
   };
   for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
