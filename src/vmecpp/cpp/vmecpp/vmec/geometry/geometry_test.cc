@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/vmec/geometry/geometry.h"
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -62,6 +63,28 @@ TEST(GeometryTest, EvaluatesKnownFourierSeriesAndDerivatives) {
   EXPECT_DOUBLE_EQ(point.toroidal_flux[0], 2.0 * s);
   EXPECT_DOUBLE_EQ(point.toroidal_flux[1], 2.0);
   EXPECT_DOUBLE_EQ(point.poloidal_flux[0], 0.8 * s);
+}
+
+TEST(GeometryTest, ToroidalTransitsDivideTheToroidalModeNumber) {
+  // over two transits the harmonics vary half as fast in zeta
+  const Geometry one_transit = ExampleGeometry();
+  Geometry two_transits = ExampleGeometry();
+  two_transits.dimensions.toroidal_transits = 2;
+  const double s = 0.25;
+  const double theta = 0.7;
+  const double zeta = -0.2;
+  const GeometryPoint fast = EvaluateGeometry(one_transit, s, theta, zeta);
+  const GeometryPoint slow =
+      EvaluateGeometry(two_transits, s, theta, 2.0 * zeta);
+  // the number of zeta derivatives in each entry of the jet
+  const std::array<int, kGeometryJetSize> zeta_order = {0, 0, 0, 1, 0,
+                                                        0, 1, 0, 1, 2};
+  for (int i = 0; i < kGeometryJetSize; ++i) {
+    const double scale = std::pow(0.5, zeta_order[i]);
+    EXPECT_NEAR(slow.r[i], scale * fast.r[i], 1e-14) << i;
+    EXPECT_NEAR(slow.z[i], scale * fast.z[i], 1e-14) << i;
+    EXPECT_NEAR(slow.lambda[i], scale * fast.lambda[i], 1e-14) << i;
+  }
 }
 
 TEST(GeometryTest, CubicRadialProfileHasExactValueAndDerivative) {

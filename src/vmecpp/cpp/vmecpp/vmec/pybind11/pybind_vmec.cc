@@ -1639,7 +1639,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("ns", &vmecpp::GeometryDimensions::ns)
       .def_readonly("mpol", &vmecpp::GeometryDimensions::mpol)
       .def_readonly("ntor", &vmecpp::GeometryDimensions::ntor)
-      .def_readonly("nfp", &vmecpp::GeometryDimensions::nfp);
+      .def_readonly("nfp", &vmecpp::GeometryDimensions::nfp)
+      .def_readonly("toroidal_transits",
+                    &vmecpp::GeometryDimensions::toroidal_transits);
   py::class_<vmecpp::GeometryCoefficients>(m, "GeometryCoefficients")
       .def_readonly("r_cc", &vmecpp::GeometryCoefficients::r_cc)
       .def_readonly("r_ss", &vmecpp::GeometryCoefficients::r_ss)
