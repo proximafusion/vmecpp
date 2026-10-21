@@ -12,10 +12,10 @@ island of the chain at the edge of W7-X. The 5/5 chain of the standard configura
 consists of five islands that close after one toroidal transit each, which
 J. C. Schmitt et al., Plasma Phys. Control. Fusion 64, 055022 (2022), solve in vacuum as
 a fixed-boundary VMEC run. With --edge 5/4 or 5/6 the planar coils carry -0.23 or +0.25
-times the current of the non-planar ones, the high-iota and low-iota configurations
-(R. Davies et al., arXiv:2607.14722, table 2), and the chain is one island that closes
-on itself after 4 or 6 transits. Schmitt et al. note that VMEC does not support these;
-with toroidal_transits = 4 or 6 each is a single VMEC++ domain.
+times the current of the non-planar ones, which selects the 5/4 or 5/6 resonance at the
+edge (R. Davies et al., arXiv:2607.14722, section 2), and the chain is one island that
+closes on itself after 4 or 6 transits. Schmitt et al. note that VMEC does not support
+these; with toroidal_transits = 4 or 6 each is a single VMEC++ domain.
 
 1. The vacuum field of the W7-X coils of SIMSOPT, interpolated over one field period.
 2. The O point on the outboard midplane of the bean-shaped plane phi = 0; the 5/6 chain
@@ -53,9 +53,12 @@ with toroidal_transits = 4 or 6 each is a single VMEC++ domain.
    coil field only to the resolution of its run, and the run without pressure carries
    that error in its casing field as well; the difference of the two keeps the field of
    the pressure-driven currents. Steps 2 to 4 are repeated in the coil field plus that
-   field, traced by RK4 in the toroidal angle. A. Knieps et al., Nucl. Fusion 62, 026011
-   (2022), compute with HINT how beta changes the edge of three configurations of
-   different edge iota.
+   field, traced by RK4 in the toroidal angle, for a surface nearer the O point: the
+   field of the core changes how fast the lines turn about the O point and moves the
+   island's internal resonances toward it. The vacuum island with a surface traced
+   from the same offset is the reference for the displacement. A. Knieps et al., Nucl.
+   Fusion 62, 026011 (2022), compute with HINT how beta changes the edge of three
+   configurations of different edge iota.
 
 Both resolutions resolve the toroidal harmonics of the ripple of the 50 coils, n = 50,
 which the boundaries of these large island surfaces carry; --full refines the
@@ -70,6 +73,7 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import RectBivariateSpline
 from scipy.optimize import brentq, minimize_scalar
+from scipy.spatial import cKDTree
 from simsopt.field import (
     BiotSavart,
     Coil,
@@ -118,10 +122,10 @@ SETTINGS = {
 # iota, the transits after which an island closes and the field periods of its domain,
 # the interval of the O point on the outboard midplane of phi = 0, the offset of the
 # traced surface from it and that of the separatrix, the interval of the magnetic axis
-# there, the offset of the boundary of the core from the axis, and the force tolerance
-# of the island run: the cross-sections of the 5/4 and 5/6 islands are slivers many
-# times longer than wide, whose last decades of residual take tens of thousands of
-# iterations
+# there, the offset of the boundary of the core from the axis, the offset of the surface
+# traced with the core, and the force tolerance of the island run: the cross-sections
+# of the 5/4 and 5/6 islands are slivers many times longer than wide, whose last
+# decades of residual take tens of thousands of iterations
 EDGES = {
     "5/5": {
         "planar": 0.0,
@@ -134,6 +138,7 @@ EDGES = {
         "separatrix": 0.029,
         "axis": (5.90, 6.00),
         "core_offset": 0.22,
+        "offset_with_core": 0.010,
         "ftol": 1e-13,
     },
     "5/4": {
@@ -147,6 +152,7 @@ EDGES = {
         "separatrix": 0.0058,
         "axis": (5.90, 6.00),
         "core_offset": 0.15,
+        "offset_with_core": 0.002,
         "ftol": 1e-11,
     },
     "5/6": {
@@ -160,6 +166,7 @@ EDGES = {
         "separatrix": 0.072,
         "axis": (5.15, 5.25),
         "core_offset": 0.45,
+        "offset_with_core": 0.030,
         "ftol": 1e-11,
     },
 }
@@ -170,6 +177,9 @@ HARMONICS = 12
 PRESSURES = (100.0, 400.0)
 CORE_PRESSURE = 5.0e4
 RK4_STEPS = 8  # per plane of the island run
+# the least distance of the grid of the core field from the casing points, over their
+# spacing
+CASING_MARGIN = 1.5
 
 
 class FieldLines:
@@ -683,19 +693,17 @@ def casing_field(points, currents, targets, chunk=64):
     """Field at the targets [n, 3] of the surface currents at the points, the sum of.
 
     k x (x - y) / |x - y|^3 written as (sum w k) x x - sum w (k x y) with
-    w = |x - y|^-3, and the smallest distance from a target to a point.
+    w = |x - y|^-3.
     """
     k_cross_y = np.cross(currents, points)
     y2 = np.einsum("sk,sk->s", points, points)
     out = np.empty_like(targets)
-    nearest = np.inf
     for i in range(0, len(targets), chunk):
         t = targets[i : i + chunk]
         d2 = np.einsum("tk,tk->t", t, t)[:, None] + y2[None, :] - 2.0 * (t @ points.T)
-        nearest = min(nearest, float(d2.min()))
         w = 1.0 / (d2 * np.sqrt(d2))
         out[i : i + chunk] = np.cross(w @ currents, t) - w @ k_cross_y
-    return out, np.sqrt(nearest)
+    return out
 
 
 class CoreField:
@@ -731,9 +739,8 @@ class CoreField:
             reach = np.array(
                 [np.abs(across - bend * along**2).max(), np.abs(along).max()]
             )
-            # beyond the island boundary by a fifth and 6 mm: the island moves within
-            # this, and the grid stays as far from the core boundary as the casing
-            # sum's quadrature needs
+            # beyond the island boundary by a fifth and 6 mm, within which the island
+            # moves
             extent = 1.2 * reach + 0.006
             u = np.linspace(-extent[1], extent[1], nu)
             v = np.linspace(-extent[0], extent[0], nv)
@@ -748,16 +755,30 @@ class CoreField:
             )
             self.frames.append((vectors[:, 1], vectors[:, 0], u, v, bend))
         targets = np.concatenate(targets)
-        b = np.zeros_like(targets)
         # the trapezoidal rule of the casing sum is accurate where the spacing of its
-        # points is well below their distance from the grid
-        self.distance, self.spacing = np.inf, 0.0
-        for core, sign in zip(cores, (1.0, -1.0), strict=True):
-            points, currents, spacing = casing(core, s["upsampling"])
-            field, distance = casing_field(points, currents, targets)
-            b += sign * field
-            self.distance = min(self.distance, distance)
-            self.spacing = max(self.spacing, spacing)
+        # points is well below their distance from the grid: the boundary grid is
+        # refined until that distance is CASING_MARGIN spacings
+        upsampling = np.array(s["upsampling"])
+        while True:
+            sums = [casing(core, upsampling) for core in cores]
+            self.spacing = max(spacing for _, _, spacing in sums)
+            self.distance = min(
+                float(cKDTree(points).query(targets)[0].min()) for points, _, _ in sums
+            )
+            if self.distance >= CASING_MARGIN * self.spacing:
+                break
+            factor = CASING_MARGIN * self.spacing / self.distance
+            if factor * upsampling.max() > 4 * max(s["upsampling"]):
+                msg = (
+                    f"the grid of the core field comes within {self.distance:.3f} m "
+                    "of the core boundary; a smaller core_offset or offset_with_core "
+                    "keeps them apart"
+                )
+                raise ValueError(msg)
+            upsampling = np.ceil(upsampling * factor).astype(int)
+        b = np.zeros_like(targets)
+        for (points, currents, _), sign in zip(sums, (1.0, -1.0), strict=True):
+            b += sign * casing_field(points, currents, targets)
         phi = np.repeat(planes, nu * nv)
         b_cyl = np.stack(
             [
@@ -861,9 +882,13 @@ def main():
                 f"axis shifted by up to {shift.max():.2e} m"
             )
 
+    # the surface traced with the core, and the vacuum island traced from the same
+    # offset as the reference for the displacement
+    inner = {**edge, "offset": edge["offset_with_core"]}
+    reference = island(lines, s, planes, "coil field", inner)
     start = time.time()
     cores = core_runs(lines, s, edge)
-    field = CoreField(cores, vacuum, planes, s)
+    field = CoreField(cores, reference, planes, s)
     print(
         f"field of the pressure-driven core currents around the island: "
         f"{field.magnitude.min():.1e} .. {field.magnitude.max():.1e} T, from casing "
@@ -871,15 +896,16 @@ def main():
         f"{field.distance * 1e3:.0f} mm from the grid ({time.time() - start:.0f} s)"
     )
     tracer = PlaneTracer(lines, field, edge["transits"], edge["periods"] * nzeta)
-    coupled = island(tracer, s, planes, "with the core", edge)
-    shift = coupled["line"] - vacuum["line"]
+    coupled = island(tracer, s, planes, "with the core", inner)
+    shift = coupled["line"] - reference["line"]
     axis_shift = axis_curve(coupled["output"].wout, planes) - axis_curve(
-        vacuum["output"].wout, planes
+        reference["output"].wout, planes
     )
     print(
-        f"island moved by the core: O point by {coupled['r_o'] - vacuum['r_o']:+.2e} m at "
-        f"phi = 0, O-point line by up to {np.hypot(*shift.T).max():.2e} m, magnetic axis "
-        f"of the interior by up to {np.hypot(*axis_shift.T).max():.2e} m"
+        f"island moved by the core: O point by "
+        f"{coupled['r_o'] - reference['r_o']:+.2e} m at phi = 0, O-point line by up to "
+        f"{np.hypot(*shift.T).max():.2e} m, magnetic axis of the interior by up to "
+        f"{np.hypot(*axis_shift.T).max():.2e} m"
     )
 
 
