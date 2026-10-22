@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Reconstruction of the pressure and current profiles of a W7-X equilibrium from
-synthetic diagnostics, with Jacobians from the implicit adjoint. Needs a build with
+"""Reconstruction of the W7-X pressure and current profiles from synthetic diagnostics.
+
+The Jacobians come from the implicit adjoint, which needs a build with
 -DVMECPP_ENABLE_ENZYME=ON.
 
     python examples/equilibrium_reconstruction.py [--taylor] [--coverage N]
@@ -26,15 +27,16 @@ INPUT = Path(__file__).resolve().parent / "data" / "w7x.json"
 MPOL = NTOR = 6
 NS = 31
 
-# Unknowns: the pressure coefficients am (Pa), the shape c of the current density
-# I'(s) = s + c s^2, and the total toroidal current curtor (A).
+# The unknowns, in units of SCALE, are the pressure coefficients am (Pa), the shape c
+# of the current density I'(s) = s + c s^2 and the total toroidal current curtor (A).
 NAMES = ("am[0]", "am[1]", "am[2]", "c", "curtor")
 SCALE = np.array([1.0e5, 1.0e5, 1.0e5, 1.0, 1.0e4])
 TRUTH = np.array([1.0e5, -2.0e5, 1.0e5, -1.0, 2.0e4]) / SCALE
 START = np.array([0.6e5, -0.6e5, 0.0, 0.0, 1.5e4]) / SCALE
 
-# Thomson pressures and MSE pitch angles on the midplane chord of the phi = 0 plane,
-# placed at these flux labels of the true equilibrium, outboard (+) and inboard (-).
+# The Thomson pressures are taken outboard and inboard of the axis and the MSE pitch
+# angles outboard, on the midplane chord of the \phi = 0 plane, at the radii of these
+# flux labels in the true equilibrium.
 THOMSON_S = np.linspace(0.05, 0.85, 9)
 MSE_S = np.linspace(0.1, 0.8, 8)
 SIGMA_PRESSURE = 3.0e3  # Pa
@@ -63,12 +65,12 @@ def base_input() -> vmecpp.VmecInput:
     )
 
 
-def profiles(theta) -> dict:
-    theta = jnp.asarray(theta) * SCALE
+def profiles(x) -> dict:
+    values = jnp.asarray(x) * SCALE
     return {
-        "am": theta[:3],
-        "ac": jnp.stack([jnp.zeros(()), jnp.ones(()), theta[3]]),
-        "curtor": theta[4],
+        "am": values[:3],
+        "ac": jnp.stack([jnp.zeros(()), jnp.ones(()), values[3]]),
+        "curtor": values[4],
     }
 
 
@@ -90,8 +92,9 @@ def lagrange(values, first: float, step: float, s):
 
 
 class Midplane:
-    """Fourier series of a wout on the chord theta = 0 (side +1) and pi (side -1)
-    of the phi = 0 plane, where Z = 0, dR/dtheta = 0 and dR/dphi = 0."""
+    r"""The Fourier series of a wout on the midplane chord of the \phi = 0 plane, at
+    \theta = 0 (side +1) or \theta = \pi (side -1), where Z, \partial_\theta R and
+    \partial_\phi R vanish."""
 
     def __init__(self, wout, side: int) -> None:
         self.full = 1.0 / (NS - 1)
@@ -108,8 +111,8 @@ class Midplane:
         return lagrange(self.r, 0.0, self.full, s)
 
     def flux_label(self, radius):
-        """s with R(s) = radius: Newton without gradient, then one step with it, whose
-        derivative is the implicit one at the converged root."""
+        """The flux label s with R(s) = radius: Newton without gradient, then one step
+        with it, whose derivative is the implicit one at the converged root."""
         frozen = jax.lax.stop_gradient(self.r)
 
         def r_of(values, s):
@@ -125,7 +128,8 @@ class Midplane:
         return step(self.r, jax.lax.stop_gradient(s))
 
     def pitch(self, s):
-        """atan(B_Z / B_phi) with B_Z = B^theta dZ/dtheta + B^phi dZ/dphi."""
+        r"""The pitch angle \arctan(B_Z / B_\phi) of the field, with B_\phi = R B^\phi
+        and B_Z = B^\theta \partial_\theta Z + B^\phi \partial_\phi Z."""
         b_theta = lagrange(self.b_theta, 0.5 * self.full, self.full, s)
         b_phi = lagrange(self.b_phi, 0.5 * self.full, self.full, s)
         z_theta = lagrange(self.z_theta, 0.0, self.full, s)
@@ -135,13 +139,13 @@ class Midplane:
         )
 
 
-def pressure(theta, s):
-    am = jnp.asarray(theta)[:3] * SCALE[:3]
+def pressure(x, s):
+    am = jnp.asarray(x)[:3] * SCALE[:3]
     return am[0] + am[1] * s + am[2] * s**2
 
 
-def solve(theta, base):
-    return vmecpp.run(base.model_copy(update=profiles(theta)), verbose=False).wout
+def solve(x, base):
+    return vmecpp.run(base.model_copy(update=profiles(x)), verbose=False).wout
 
 
 def positions(base) -> dict:
@@ -155,18 +159,18 @@ def positions(base) -> dict:
     }
 
 
-def predict(theta, base, where):
-    wout = solve(theta, base)
+def predict(x, base, where):
+    wout = solve(x, base)
     out, inside = Midplane(wout, +1), Midplane(wout, -1)
     s_out = out.flux_label(jnp.asarray(where["thomson_out"]))
     s_in = inside.flux_label(jnp.asarray(where["thomson_in"]))
     s_mse = out.flux_label(jnp.asarray(where["mse"]))
     return {
-        "pressure": jnp.concatenate([pressure(theta, s_out), pressure(theta, s_in)]),
+        "pressure": jnp.concatenate([pressure(x, s_out), pressure(x, s_in)]),
         "pitch": out.pitch(s_mse),
         "energy": jnp.atleast_1d(wout.wp),
         "axis": jnp.atleast_1d(out.radius(0.0)),
-        "current": jnp.atleast_1d(jnp.asarray(theta)[4] * SCALE[4]),
+        "current": jnp.atleast_1d(jnp.asarray(x)[4] * SCALE[4]),
     }
 
 
@@ -186,8 +190,8 @@ class Problem:
     def __init__(self, base, where, data, sigma) -> None:
         self.base, self.where, self.data, self.sigma = base, where, data, sigma
 
-        def residuals(theta):
-            prediction = predict(theta, base, where)
+        def residuals(x):
+            prediction = predict(x, base, where)
             return jnp.concatenate(
                 [(prediction[k] - data[k]) / sigma[k] for k in sorted(data)]
             )
@@ -246,29 +250,29 @@ def report(result, covariance, sigma, chi2, dof) -> None:
         jnp.asarray(result.x), jnp.asarray(s)
     )
     band = np.sqrt(np.einsum("ij,jk,ik->i", np.asarray(gradient), covariance, gradient))
-    for x, p, b, t in zip(
+    for s_k, p, b, t in zip(
         s, pressure(result.x, s), band, pressure(TRUTH, s), strict=True
     ):
-        print(f"p({x:.1f}) = {p:9.0f} +- {b:6.0f} Pa (truth {t:9.0f})")
+        print(f"p({s_k:.1f}) = {p:9.0f} +- {b:6.0f} Pa (truth {t:9.0f})")
 
 
 def taylor(base, where, truth_prediction) -> None:
-    """Remainders of the first-order expansion of the misfit along a random
-    direction, against re-solved equilibria; second order shows as a hundredfold
-    drop per decade of the step."""
+    """Remainders of the first-order expansion of the misfit along a random direction,
+    against re-solved equilibria; second order shows as a hundredfold drop per decade of
+    the step."""
     problem = Problem(
         base,
         where,
         synthetic(truth_prediction, 0),
         sigmas(truth_prediction),
     )
-    theta = jnp.asarray(START)
-    r = np.asarray(problem.residuals(theta))
-    gradient = np.asarray(problem.jacobian(theta)).T @ r
-    direction = np.random.default_rng(1).standard_normal(theta.size)
+    x = jnp.asarray(START)
+    r = np.asarray(problem.residuals(x))
+    gradient = np.asarray(problem.jacobian(x)).T @ r
+    direction = np.random.default_rng(1).standard_normal(x.size)
     misfit = 0.5 * r @ r
     for step in (1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4):
-        shifted = np.asarray(problem.residuals(theta + step * direction))
+        shifted = np.asarray(problem.residuals(x + step * direction))
         remainder = abs(0.5 * shifted @ shifted - misfit - step * gradient @ direction)
         print(f"step {step:.0e}: remainder {remainder:.3e}")
 
