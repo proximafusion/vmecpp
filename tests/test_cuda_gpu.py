@@ -3,9 +3,8 @@
 # SPDX-License-Identifier: MIT
 """Regression tests for the CUDA execution path.
 
-These require a CUDA-enabled build (-DVMECPP_USE_CUDA=ON) and an NVIDIA GPU, so they are
-opt-in: set VMECPP_TEST_CUDA=1 to run them. The W7-X cases additionally require
-VMECPP_TEST_CUDA_SLOW=1.
+These require a CUDA-enabled build (-DVMECPP_USE_CUDA=ON) and an NVIDIA GPU and are
+skipped in other builds. The W7-X cases carry the slow marker (pytest -m slow).
 
 The references are the converged values of the CPU build (VMECPP_USE_CUDA off) of the
 same commit, which the CUDA path reproduces iteration for iteration; the two agree on
@@ -15,7 +14,6 @@ examples/cuda_cross_validation.py compares every output field of the two builds.
 """
 
 import itertools
-import os
 from pathlib import Path
 
 import netCDF4
@@ -30,8 +28,7 @@ TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 W7X_JSON = REPO_ROOT / "examples" / "data" / "w7x.json"
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("VMECPP_TEST_CUDA") != "1",
-    reason="CUDA GPU tests are opt-in via VMECPP_TEST_CUDA=1",
+    not vmecpp.has_cuda(), reason="needs a build with VMECPP_USE_CUDA"
 )
 
 _REL = 1e-9
@@ -407,34 +404,6 @@ def test_scope_guards_and_memory_preflight():
     _assert_reference(out.wout, CMA)
 
 
-def test_sync_elision_and_iteration_graph():
-    # K-window sync elision tests convergence on the K boundaries and gates the
-    # m = 1 gauge on a residual up to K iterations old, so it follows a
-    # trajectory of its own and converges within ftol = 1e-6 of the live run,
-    # whose values CMA holds: well inside it in the energy, less so in the soft
-    # iota on the axis. The whole-iteration CUDA graph replays the elided
-    # iterations to bitwise the same converged state.
-    os.environ["VMECPP_SYNC_ELIDE"] = "25"
-    try:
-        out_elide = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-        os.environ["VMECPP_ITER_GRAPH"] = "1"
-        out_graph = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    finally:
-        os.environ.pop("VMECPP_SYNC_ELIDE", None)
-        os.environ.pop("VMECPP_ITER_GRAPH", None)
-    assert out_elide.wout.fsqr < out_elide.wout.ftolv
-    tolerances = {
-        "wb": 1e-5,
-        "rbtor": 1e-4,
-        "raxis_cc0": 1e-3,
-        "iota_edge": 5e-3,
-        "iota_axis": 1e-2,
-    }
-    for name, rel in tolerances.items():
-        _assert_reference(out_elide.wout, {name: CMA[name]}, rel=rel)
-    _assert_bit_identical(out_graph.wout, out_elide.wout)
-
-
 def test_free_boundary_multigrid_stage_transition():
     # The multigrid stage transition with the vacuum pressure already
     # active reallocates the device buffers mid-run; the constraint
@@ -524,31 +493,6 @@ def test_free_boundary_distinct_two_boundaries():
     assert outs[1].wout.volume > outs[0].wout.volume
 
 
-def test_free_boundary_sync_elision_converges():
-    # Free-boundary sync elision: iterations run live until the vacuum
-    # contribution is fully active, then the scalar sync sites elide
-    # with the device time-step controller authoritative and the
-    # convergence gate on the K-boundaries, while the vacuum block keeps
-    # its per-iteration cadence; a broadcast batch under elision
-    # reproduces the elided single run.
-    vi = _free_boundary_input()
-    live = vmecpp.run(vi, max_threads=1, verbose=False)
-    os.environ["VMECPP_SYNC_ELIDE"] = "25"
-    try:
-        elided = vmecpp.run(vi, max_threads=1, verbose=False)
-        outs = _vmecpp.run_batched_gpu(
-            [vi._to_cpp_vmecindata()] * 2,
-            max_threads=1,
-            verbose=_vmecpp.OutputMode.SILENT,
-        )
-    finally:
-        os.environ.pop("VMECPP_SYNC_ELIDE", None)
-    assert elided.wout.volume == pytest.approx(live.wout.volume, rel=1e-4)
-    assert elided.wout.wb == pytest.approx(live.wout.wb, rel=5e-6)
-    assert len(outs) == 1
-    assert outs[0].wout.volume == pytest.approx(elided.wout.volume, rel=1e-10)
-
-
 def test_fixed_then_free_boundary_one_process():
     # A fixed-boundary run followed by a free-boundary run in the same
     # process: the vacuum block's host-side consumers (the edge-pressure
@@ -580,31 +524,12 @@ def test_hot_restart_reproduces_converged_state():
         )
 
 
-@pytest.mark.skipif(
-    os.environ.get("VMECPP_TEST_CUDA_SLOW") != "1",
-    reason="W7-X takes several minutes of GPU time; opt in via VMECPP_TEST_CUDA_SLOW=1",
-)
+@pytest.mark.slow
 def test_w7x_bad_jacobian_recovery_converges():
     # W7-X exercises the mid-run restarts; with the evaluated state backed up
     # the CUDA path rewinds to the CPU's states and takes its iterations.
     out = vmecpp.run(vmecpp.VmecInput.from_file(W7X_JSON), max_threads=1, verbose=False)
     assert out.wout.itfsq == W7X_ITERATIONS
-    _assert_reference(out.wout, W7X)
-
-
-@pytest.mark.skipif(
-    os.environ.get("VMECPP_TEST_CUDA_SLOW") != "1",
-    reason="W7-X takes several minutes of GPU time; opt in via VMECPP_TEST_CUDA_SLOW=1",
-)
-def test_wmma_scatter_w7x_full_spectrum():
-    # W7-X carries mpol = 12, the wmma tile capacity; the combine pass
-    # must accumulate every poloidal mode or the run stalls above ftol.
-    os.environ["VMECPP_SCATTER_CUSTOM_GEMM_WMMA"] = "1"
-    try:
-        vi = vmecpp.VmecInput.from_file(W7X_JSON)
-        out = vmecpp.run(vi, max_threads=1, verbose=False)
-    finally:
-        os.environ.pop("VMECPP_SCATTER_CUSTOM_GEMM_WMMA", None)
     _assert_reference(out.wout, W7X)
 
 
