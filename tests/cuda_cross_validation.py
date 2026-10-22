@@ -140,27 +140,7 @@ def _summary(wout: vmecpp.VmecWOut, seconds: float) -> dict:
     }
 
 
-def _solve_with_fixed_m1_gauge(
-    indata: vmecpp.VmecInput, threads: int | None
-) -> vmecpp.VmecWOut:
-    """The solve with the m = 1 Z force zeroed from the first iteration and the gauge
-    set from the boundary at every multigrid step, through the C++ run that carries the
-    switch."""
-    cpp_indata = indata._to_cpp_vmecindata()
-    cpp_indata.always_fix_m1_gauge = True
-    output = vmecpp._vmecpp.run(
-        cpp_indata, max_threads=threads, verbose=vmecpp._vmecpp.OutputMode.SILENT
-    )
-    return vmecpp.VmecWOut._from_cpp_wout(output.wout)
-
-
-def _run_cases(
-    out: Path,
-    names: list[str],
-    threads: int | None,
-    make_run,
-    fix_m1_gauge: bool = False,
-) -> None:
+def _run_cases(out: Path, names: list[str], threads: int | None, make_run) -> None:
     out.mkdir(parents=True, exist_ok=True)
     status_path = out / "status.json"
     status = json.loads(status_path.read_text()) if status_path.exists() else {}
@@ -168,12 +148,7 @@ def _run_cases(
         start = time.perf_counter()
         try:
             indata, kwargs = make_run(name)
-            if fix_m1_gauge:
-                wout = _solve_with_fixed_m1_gauge(indata, threads)
-            else:
-                wout = vmecpp.run(
-                    indata, max_threads=threads, verbose=False, **kwargs
-                ).wout
+            wout = vmecpp.run(indata, max_threads=threads, verbose=False, **kwargs).wout
         except Exception as error:
             status[name] = {"error": f"{type(error).__name__}: {error}"}
             print(f"{name}: {status[name]['error']}", flush=True)
@@ -191,7 +166,6 @@ def run(args: argparse.Namespace) -> None:
         _selected(args.cases),
         args.threads,
         lambda name: (load_input(name), {}),
-        fix_m1_gauge=args.fix_m1_gauge,
     )
 
 
@@ -322,12 +296,6 @@ def main() -> None:
         sub.add_argument("tag", help="the subdirectory that receives the outputs")
         sub.add_argument("--threads", type=int, default=None)
         sub.add_argument("--cases")
-        if command == "run":
-            sub.add_argument(
-                "--fix-m1-gauge",
-                action="store_true",
-                help="zero the m = 1 Z force throughout, as the CUDA path does",
-            )
         sub.set_defaults(function=function)
     sub = commands.add_parser("compare", help=compare.__doc__)
     sub.add_argument("dir")
