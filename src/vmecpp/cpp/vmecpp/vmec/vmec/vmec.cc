@@ -1891,27 +1891,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
   return SolveEqLoopStatus::NORMAL_TERMINATION;
 }
 
-#ifdef VMECPP_USE_CUDA
-namespace {
-// Marks the configurations whose Jacobian changed sign in the latest force
-// evaluation, from the per-configuration extrema of tau; empty when the cache
-// does not hold n_cfg configurations.
-std::vector<std::uint8_t> BadJacobianPerCfg(int n_cfg) {
-  const std::vector<double>& jac = vmecpp::GetJacMinmaxPerCfgCache();
-  std::vector<std::uint8_t> bad;
-  if (static_cast<int>(jac.size()) != 2 * n_cfg) {
-    return bad;
-  }
-  bad.resize(n_cfg);
-  for (int c = 0; c < n_cfg; ++c) {
-    const double prod = jac[2 * c] * jac[2 * c + 1];
-    bad[c] = (prod < 0.0 || !std::isfinite(prod)) ? 1 : 0;
-  }
-  return bad;
-}
-}  // namespace
-#endif  // VMECPP_USE_CUDA
-
 void Vmec::ApplyPerConfigurationRestarts(int iter2) {
 #ifdef VMECPP_USE_CUDA
   const int n_cfg = static_cast<int>(fc_.active_per_cfg.size());
@@ -2053,9 +2032,9 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
     // cfgs that didn't trigger BAD_JACOBIAN at their current d_pts_x state.
     {
       const int n_cfg_cuda = vmecpp::GetNConfigMaxCuda();
-      const std::vector<std::uint8_t> mask = n_cfg_cuda > 1
-                                                 ? BadJacobianPerCfg(n_cfg_cuda)
-                                                 : std::vector<std::uint8_t>();
+      const std::vector<std::uint8_t> mask =
+          n_cfg_cuda > 1 ? vmecpp::BadJacobianPerCfgCuda(n_cfg_cuda)
+                         : std::vector<std::uint8_t>();
       if (std::find(mask.begin(), mask.end(), 1) != mask.end()) {
         vmecpp::RestorePtsXFromBackupPerCfgCuda(mask);
       } else {
@@ -2191,7 +2170,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       // bad Jacobian in the first iteration of a stage ends the
       // configuration, as it ends its single run.
       const int n_cfg = static_cast<int>(fc_.active_per_cfg.size());
-      const std::vector<std::uint8_t> bad_jacobian = BadJacobianPerCfg(n_cfg);
+      const std::vector<std::uint8_t> bad_jacobian =
+          vmecpp::BadJacobianPerCfgCuda(n_cfg);
       for (int c = 0; c < n_cfg; ++c) {
         if (fc_.active_per_cfg[c] == 0) {
           continue;
@@ -2278,6 +2258,13 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         bool all_done = true;
         for (int c = 0; c < n_cfg; ++c) {
           if (fc_.active_per_cfg[c]) {
+            if (fc_.per_cfg_control &&
+                fc_.restart_reason_per_cfg[c] == RestartReason::BAD_JACOBIAN) {
+              // A configuration whose Jacobian changed sign left this force
+              // evaluation and holds the residuals of its last one.
+              all_done = false;
+              continue;
+            }
             if (!std::isfinite(fc_.fsqr_per_cfg[c]) ||
                 !std::isfinite(fc_.fsqz_per_cfg[c]) ||
                 !std::isfinite(fc_.fsql_per_cfg[c])) {
@@ -2423,7 +2410,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       const bool have_energies = static_cast<int>(energies.size()) == 3 * n_cfg;
       const std::vector<std::uint8_t> bad_jacobian =
           fc_.restart_reason == RestartReason::BAD_JACOBIAN
-              ? BadJacobianPerCfg(n_cfg)
+              ? vmecpp::BadJacobianPerCfgCuda(n_cfg)
               : std::vector<std::uint8_t>();
       const bool per_cfg_jacobian =
           std::find(bad_jacobian.begin(), bad_jacobian.end(), 1) !=
@@ -2691,6 +2678,13 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   if (!reached_checkpoint.ok()) {
     return reached_checkpoint;
   }
+#ifdef VMECPP_USE_CUDA
+  // Every active configuration takes the time step, including those that left
+  // the force evaluation with a Jacobian that changed sign.
+  if (fc_.per_cfg_control) {
+    vmecpp::StagePhaseDActiveCuda(fc_.active_per_cfg);
+  }
+#endif  // VMECPP_USE_CUDA
 
   // triggered at activation of vacuum forces.
   // all threads return the same value for this flag.

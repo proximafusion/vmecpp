@@ -150,6 +150,19 @@ void ComputeJacobianCuda(
   bad_jacobian = (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
 }
 
+std::vector<std::uint8_t> BadJacobianPerCfgCuda(int n_cfg) {
+  std::vector<std::uint8_t> bad;
+  if (static_cast<int>(g_jac_minmax_cache.size()) != 2 * n_cfg) {
+    return bad;
+  }
+  bad.resize(n_cfg);
+  for (int c = 0; c < n_cfg; ++c) {
+    const double prod = g_jac_minmax_cache[2 * c] * g_jac_minmax_cache[2 * c + 1];
+    bad[c] = (prod < 0.0 || !std::isfinite(prod)) ? 1 : 0;
+  }
+  return bad;
+}
+
 // ============================================================================
 // ComputeMetricElementsCuda: CUDA port of IdealMhdModel::computeMetricElements.
 // Reads d_r1_e/o, d_ru_e/o, d_zu_e/o, d_rv_e/o, d_zv_e/o (from forward FFT) plus

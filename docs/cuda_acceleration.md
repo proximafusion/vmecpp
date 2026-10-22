@@ -184,9 +184,9 @@ changed sign 75 times ends as not converged and sits out the later stages; a
 distinct batch never retries from three surfaces. Each configuration
 updates its radial preconditioner, force norms and constraint-force
 multiplier on the cadence of its single run and counts the edge forces of a
-nearly converged residual from its own latest restart. The batch counts the
-cadence of the vacuum solve from the latest restart of any configuration,
-takes its largest residual to switch on the vacuum pressure, and skips the
-force evaluation of every configuration in an iteration in which
-configuration zero's Jacobian changes sign. A broadcast batch shares
-one restart control.
+nearly converged residual from its own latest restart; a configuration whose
+Jacobian changes sign leaves the rest of that iteration's force evaluation,
+as its single run does. The batch counts the cadence of the vacuum solve
+from the latest restart of any configuration and takes its largest residual
+to switch on the vacuum pressure. A broadcast batch shares one restart
+control.

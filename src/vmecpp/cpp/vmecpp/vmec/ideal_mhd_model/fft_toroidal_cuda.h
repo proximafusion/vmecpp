@@ -496,6 +496,11 @@ const std::vector<double>& GetFnormScalarsPerCfgCache();
 // host-side from the sign and finiteness of the product.
 const std::vector<double>& GetJacMinmaxPerCfgCache();
 
+// Marks the configurations whose Jacobian changed sign in the latest force
+// evaluation, from the per-configuration extrema of tau; empty when the cache
+// does not hold n_cfg configurations.
+std::vector<std::uint8_t> BadJacobianPerCfgCuda(int n_cfg);
+
 // Cached per-configuration energy-scalar accessor. Layout: 3*n_cfg doubles
 // ordered [thermal_0, magnetic_0, mhd_0, thermal_1, ...]. Populated by
 // PressureAndEnergiesCuda's per-configuration device-to-host transfer.

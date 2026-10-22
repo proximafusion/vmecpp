@@ -519,9 +519,11 @@ class IdealMhdModel {
   // update, as HandoverStorage holds it for a single run
   std::vector<double> fnorm_rz_per_cfg_;
 
-  // Under per-configuration restart control: the configurations due for a
-  // radial preconditioner update in this iteration, and those whose
+  // Under per-configuration restart control: the configurations this force
+  // evaluation takes (the active ones whose Jacobian kept its sign), those due
+  // for a radial preconditioner update in this iteration, and those whose
   // invariant residuals count the edge R and Z forces
+  std::vector<std::uint8_t> evaluated_per_cfg_;
   std::vector<std::uint8_t> precond_due_;
   std::vector<std::uint8_t> edge_per_cfg_;
 

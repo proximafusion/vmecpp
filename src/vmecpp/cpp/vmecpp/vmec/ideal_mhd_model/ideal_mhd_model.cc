@@ -472,6 +472,11 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
       const double pv_fallback = m_h_.plasmaVolume;
       const double lamscale = constants_.lamscale;
       for (int c = 0; c < n_cfg; ++c) {
+        // A configuration this force evaluation left out keeps the residuals
+        // of its last one.
+        if (m_fc_.per_cfg_control && evaluated_per_cfg_[c] == 0) {
+          continue;
+        }
         const double fResR_c = res_cache[3 * c + 0];
         const double fResZ_c = res_cache[3 * c + 1];
         const double fResL_c = res_cache[3 * c + 2];
@@ -601,6 +606,9 @@ void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
       const bool fnorm1_per_cfg_valid =
           static_cast<int>(fnorm1_cache.size()) == n_cfg;
       for (int c = 0; c < n_cfg; ++c) {
+        if (m_fc_.per_cfg_control && evaluated_per_cfg_[c] == 0) {
+          continue;
+        }
         const double fResR_c = res_cache[3 * c + 0];
         const double fResZ_c = res_cache[3 * c + 1];
         const double fResL_c = res_cache[3 * c + 2];
@@ -799,6 +807,37 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }
 #endif
 
+#ifdef VMECPP_USE_CUDA
+  // Under per-configuration restart control a configuration whose Jacobian
+  // changed sign leaves the rest of this force evaluation, as its single run
+  // returns from it, and the device mask narrows to the others.
+  if (m_fc_.per_cfg_control) {
+    evaluated_per_cfg_ = m_fc_.active_per_cfg;
+    const std::vector<std::uint8_t> bad = vmecpp::BadJacobianPerCfgCuda(
+        static_cast<int>(evaluated_per_cfg_.size()));
+    if (!bad.empty()) {
+      bool any_bad = false;
+      bool any_evaluated = false;
+      for (size_t c = 0; c < evaluated_per_cfg_.size(); ++c) {
+        if (evaluated_per_cfg_[c] == 0) {
+          continue;
+        }
+        if (bad[c] != 0) {
+          evaluated_per_cfg_[c] = 0;
+          any_bad = true;
+        } else {
+          any_evaluated = true;
+        }
+      }
+      m_fc_.restart_reason = any_evaluated ? RestartReason::NO_RESTART
+                                           : RestartReason::BAD_JACOBIAN;
+      if (any_evaluated && any_bad) {
+        vmecpp::StagePhaseDActiveCuda(evaluated_per_cfg_);
+      }
+    }
+  }
+#endif  // VMECPP_USE_CUDA
+
   if (m_fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
     // bad jacobian and not final iteration yet
     //   (would be indicated by iequi.eq.1)
@@ -946,7 +985,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
     precond_due_.assign(n_cfg, 0);
     update_preconditioner = false;
     for (int c = 0; c < n_cfg; ++c) {
-      if (m_fc_.active_per_cfg[c] != 0 &&
+      if (evaluated_per_cfg_[c] != 0 &&
           (m_fc_.iter2_per_cfg[c] - m_fc_.iter1_per_cfg[c]) %
                   m_fc_.kPreconditionerUpdateInterval ==
               0) {
@@ -1006,7 +1045,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }  // update radial preconditioner?
 #ifdef VMECPP_USE_CUDA
   if (m_fc_.per_cfg_control && update_preconditioner) {
-    vmecpp::StagePhaseDActiveCuda(m_fc_.active_per_cfg);
+    vmecpp::StagePhaseDActiveCuda(evaluated_per_cfg_);
   }
 #endif  // VMECPP_USE_CUDA
 
