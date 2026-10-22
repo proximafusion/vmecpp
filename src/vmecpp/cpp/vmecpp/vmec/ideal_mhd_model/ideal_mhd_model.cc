@@ -455,13 +455,17 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
     // branch is pure host arithmetic over arrays that have already been
     // transferred; no additional device synchronization is required. The
     // per-configuration values produced here are consumed by the
-    // per-configuration termination gate inside the iteration controller.
+    // per-configuration termination gate inside the iteration controller. A
+    // batch normalizes the R and Z residuals of each configuration with the
+    // fNormRZ of its latest force-norm update, as a single run does.
     const auto& res_cache = vmecpp::GetResidualsPerCfgCacheInvar();
     const auto& fnorm_cache = vmecpp::GetFnormScalarsPerCfgCache();
     const auto& pres_cache = vmecpp::GetPressureScalarsPerCfgCache();
     const auto& vol_cache = vmecpp::GetPlasmaVolumePerCfgCache();
     const int n_cfg = static_cast<int>(m_fc_.active_per_cfg.size());
     const bool vol_per_cfg_valid = static_cast<int>(vol_cache.size()) == n_cfg;
+    const bool fnorm_rz_per_cfg_valid =
+        n_cfg > 1 && static_cast<int>(fnorm_rz_per_cfg_.size()) == n_cfg;
     if (n_cfg > 0 && static_cast<int>(res_cache.size()) == 3 * n_cfg &&
         static_cast<int>(fnorm_cache.size()) == 2 * n_cfg &&
         static_cast<int>(pres_cache.size()) == 3 * n_cfg) {
@@ -478,7 +482,9 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
         const double pv_c = vol_per_cfg_valid ? vol_cache[c] : pv_fallback;
         const double energyDensity_c = std::max(magnetic_c, thermal_c) / pv_c;
         const double fNormRZ_c =
-            1.0 / (sum_rz_c * energyDensity_c * energyDensity_c);
+            fnorm_rz_per_cfg_valid
+                ? fnorm_rz_per_cfg_[c]
+                : 1.0 / (sum_rz_c * energyDensity_c * energyDensity_c);
         const double fNormL_c = 1.0 / (sum_l_c * lamscale * lamscale);
         m_fc_.fResInvar_per_cfg[c] = Eigen::Vector3d(fResR_c, fResZ_c, fResL_c);
         m_fc_.fsqr_per_cfg[c] = fResR_c * fNormRZ_c * r1scale;
@@ -2764,6 +2770,28 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
                           m_h_.thermalEnergy, m_h_.plasmaVolume,
                           constants_.lamscale, forceNorm1_host, m_h_.fNormRZ,
                           m_h_.fNormL, m_h_.fNorm1);
+    // In a batch, each configuration's fNormRZ from the energy density of
+    // this update, which its residuals keep until the next one, as a single
+    // run's do.
+    const auto& fnorm_cache = vmecpp::GetFnormScalarsPerCfgCache();
+    const auto& pres_cache = vmecpp::GetPressureScalarsPerCfgCache();
+    const auto& vol_cache = vmecpp::GetPlasmaVolumePerCfgCache();
+    const int n_cfg = static_cast<int>(m_fc_.active_per_cfg.size());
+    if (n_cfg > 1 && static_cast<int>(fnorm_cache.size()) == 2 * n_cfg &&
+        static_cast<int>(pres_cache.size()) == 3 * n_cfg &&
+        static_cast<int>(vol_cache.size()) == n_cfg) {
+      fnorm_rz_per_cfg_.resize(n_cfg, 0.0);
+      for (int c = 0; c < n_cfg; ++c) {
+        if (m_fc_.active_per_cfg[c] == 0) {
+          continue;
+        }
+        const double energy_density =
+            std::max(pres_cache[3 * c + 1], pres_cache[3 * c + 0]) /
+            vol_cache[c];
+        fnorm_rz_per_cfg_[c] =
+            1.0 / (fnorm_cache[2 * c + 0] * energy_density * energy_density);
+      }
+    }
     return;
   }
 #endif  // VMECPP_USE_CUDA

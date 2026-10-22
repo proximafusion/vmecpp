@@ -186,7 +186,5 @@ cadences of the radial preconditioner and of the vacuum solve from the
 latest restart of any configuration, takes its largest residual to switch
 on the vacuum pressure and the edge forces of a nearly converged residual,
 and skips the force evaluation of every configuration in an iteration in
-which configuration zero's Jacobian changes sign; it normalizes each
-configuration's residuals with the current energy density, where a single run
-keeps the one of its latest preconditioner update. A broadcast batch shares
+which configuration zero's Jacobian changes sign. A broadcast batch shares
 one restart control.

@@ -391,6 +391,26 @@ def test_distinct_batch_outputs_follow_their_single_runs():
         _assert_same_equilibrium(out.wout, single.wout, rel=1e-10)
 
 
+def test_distinct_batch_traces_follow_their_single_runs():
+    # Three scaled cth_like boundaries take different iteration counts; in one
+    # distinct batch each takes those of its single run, with its residual
+    # trace and its equilibrium.
+    vi = _cth_like_input()
+    inputs = [
+        vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
+        for f in (1.0, 1.0 + 0.02 / 6, 1.0 + 0.04 / 6)
+    ]
+    outs = vmecpp.run_batch(inputs, max_threads=1)
+    assert len({out.wout.niter for out in outs}) == 3
+    for inp, out in zip(inputs, outs, strict=True):
+        single = vmecpp.run(inp, max_threads=1, verbose=False)
+        assert out.wout.niter == single.wout.niter
+        np.testing.assert_allclose(
+            np.asarray(out.wout.fsqt), np.asarray(single.wout.fsqt), rtol=1e-9
+        )
+        _assert_same_equilibrium(out.wout, single.wout, rel=1e-12)
+
+
 def test_mixed_configuration_counts_one_process():
     # distinct N=2, broadcast N=4, distinct N=2, single: the
     # per-configuration buffers reallocate across the count changes and

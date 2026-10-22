@@ -515,6 +515,10 @@ class IdealMhdModel {
   // get_delbsq of each configuration of a batched free-boundary run
   std::vector<double> delbsq_per_cfg_;
 
+  // fNormRZ of each configuration of a batch, from its latest force-norm
+  // update, as HandoverStorage holds it for a single run
+  std::vector<double> fnorm_rz_per_cfg_;
+
   /**********************************************/
 
   // real-space forces
