@@ -70,33 +70,56 @@ iteration API (`VmecModel`, `vmecpp.iterate`, `solve_equilibrium`,
 state through the host arrays and is not available in the CUDA build:
 `VmecModel.create` raises. `vmecpp.has_cuda()` reports the build.
 
-The `<M>` column of the progress printout evaluates the current iteration
-state under the CUDA build and the restart backup under the CPU build, so the
-printed column can differ in the trailing digit at a given iteration. The
-spectral width in the output file is computed by the output phase from the
-converged state.
-
 ## Correctness contract
 
-Against the CPU implementation, on the fixed-boundary test cases through the
-full multigrid ramp: `aspect_ratio` and the volume agree to 2e-15 relative;
-the volume-averaged and field-line-derived output quantities match within a
-drift family of 1e-5 to 3e-3 relative (the widest is the axis rotational
-transform on `cma`), from summation-order differences in the reductions
-marked at their kernel definitions in `fft_toroidal_cuda_kernels.cu`; the
-Mercier profile, a second radial derivative, amplifies the drift to 36% at
-mid-radius on `cma`. Restart-reason sequences and multigrid stage transitions
-match the CPU trajectory. Iteration counts match on the axisymmetric cases
-and differ by a few percent on three-dimensional ones (`cma` converges in
-214 iterations against the CPU's 207, `cth_like_fixed_bdy` in 118 against
-121, W7-X in 3146 against 2954), to the same equilibrium within the drift
-family. On free-boundary runs the boundary responds to the vacuum
-field through the drift-sensitive trajectory, so every converged output
-carries the drift family. The residual triples that feed the time-step
-controller and the convergence gate use serial or order-preserving device
-reductions. `tests/test_cuda_gpu.py` holds the regression battery, opt-in
-via `VMECPP_TEST_CUDA=1`; the W7-X case additionally needs
-`VMECPP_TEST_CUDA_SLOW=1`.
+The CUDA path runs the algorithm of the CPU path: the m = 1 Z force is zeroed
+under the same gate (`always_fix_m1_gauge`, `fsqz < 1e-6` on the previous
+iteration, or `iter2 < 2`), a restart rewinds to the same backup (the state of
+the latest force evaluation under `backup_evaluated_state`), and the
+convergence test and the multigrid transitions are the CPU's. It therefore
+takes the CPU build's iterations, restart for restart, on every input of
+`tests/cuda_cross_validation.py`: axisymmetric and three-dimensional
+boundaries, prescribed current and prescribed iota, power-series and spline
+pressure, vacuum, `lbsubs`, nfp from 1 to 5, an odd nzeta, a missing axis
+guess, a bad initial Jacobian, W7-X with its mid-run restarts, 1101 radial
+surfaces, the largest poloidal grid the device kernels accept, and free
+boundary at two vacuum cadences and through a multigrid transition.
+
+The toroidal transforms run in cuFFT, whose summation order differs from the
+CPU's: the first force residuals agree to 1e-13 relative in three dimensions
+and 1e-15 in two. The difference grows slowly enough that every `wout` field,
+the spectral width included, agrees with the CPU build within ten times the
+spread between CPU runs on one and on eight threads, which partition the
+radial reductions differently, or to 1e-11 relative where that spread is
+smaller; the interior quantities that
+`tests/test_cuda_gpu.py` checks agree to 5e-11 relative or better. The
+residual triples that feed the time-step controller and the convergence gate
+use serial or order-preserving device reductions.
+
+Sync elision (`VMECPP_SYNC_ELIDE`) tests convergence on the K-window
+boundaries and gates the m = 1 gauge on a residual up to K iterations old, so
+it follows a trajectory of its own and converges within the force tolerance
+of the live result.
+
+## Validation
+
+`tests/cuda_cross_validation.py` compares the two builds of one commit, one
+configured with `-DVMECPP_USE_CUDA=ON` and one without. Each solves the same
+inputs in its own process; every `wout` field of the CUDA run is compared with
+the CPU run on one thread against the spread of the CPU runs on one and on
+eight threads, each build is hot-restarted from the other's converged state,
+and the residual traces of the first iterations are compared. The script's
+docstring lists the commands.
+
+`pytest tests/` runs the whole suite on a CUDA build: every test of an input
+the build accepts solves on the GPU and is held to the CPU's references, and
+a test that needs a `lasym` or `lforbal` input or the `VmecModel` iteration
+API is reported as skipped with the build's refusal (`tests/conftest.py`).
+`tests/test_cuda_gpu.py` adds the CUDA-specific cases, opt-in via
+`VMECPP_TEST_CUDA=1`; the W7-X cases additionally need
+`VMECPP_TEST_CUDA_SLOW=1`. The `Build the CUDA path` workflow compiles the
+CUDA iteration body and links the Python module on every pull request; its
+runners have no GPU.
 
 ## Batched execution
 
@@ -143,7 +166,13 @@ the Jacobian changes sign or the residual stops improving. Under the CUDA
 build the protocol operates on device-resident state. The device backup of
 the six spectral position components is armed at the start of every
 multigrid stage and refreshed at the host backup cadence by one fused copy
-kernel (`k_backup_pts_x`). A restore replays the backup into the position
+kernel (`k_backup_pts_x`). Under `backup_evaluated_state`, the default, the
+backup takes the state of the latest force evaluation, which
+`SnapshotEvaluatedPtsXCuda` saves before each time step advances the position
+buffers, as the CPU path keeps `last_evaluated_x`; the free-boundary soft
+start at vacuum activation rewinds to it as well. The progress printout's
+`<M>` column and the spectral width in the output file are taken from this
+backup, as on the CPU. A restore replays the backup into the position
 buffers and zeroes the integrator velocity; in batched mode the restore is
 gated per configuration by the restart mask. A bad Jacobian during the first
 iterations triggers the magnetic-axis recomputation and a retry from scratch,
@@ -183,8 +212,9 @@ knobs parse as `atoi(value) > 0`; "default ON" means active when unset, with
 
 ### Production-path switches (default ON)
 
-`=0` selects the alternative in the second column. Every setting preserves
-the bit-exact `aspect_ratio` contract.
+`=0` selects the alternative in the second column. Each alternative takes the
+default's iterations to its converged state, to the last bit except the
+serial residual reduction, whose different rounding moves it by 1e-13.
 
 | Variable | `=0` selects |
 |---|---|

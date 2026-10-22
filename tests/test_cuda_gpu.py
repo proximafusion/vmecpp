@@ -4,10 +4,17 @@
 """Regression tests for the CUDA execution path.
 
 These require a CUDA-enabled build (-DVMECPP_USE_CUDA=ON) and an NVIDIA GPU, so they are
-opt-in: set VMECPP_TEST_CUDA=1 to run them. The W7-X case additionally requires
-VMECPP_TEST_CUDA_SLOW=1 (several minutes of GPU time).
+opt-in: set VMECPP_TEST_CUDA=1 to run them. The W7-X cases additionally require
+VMECPP_TEST_CUDA_SLOW=1.
+
+The references are the converged values of the CPU build (VMECPP_USE_CUDA off) of the
+same commit, which the CUDA path reproduces iteration for iteration; the two agree on
+them to 5e-11 relative or better. They are quantities of the solved interior: volume and
+aspect ratio of a fixed-boundary run follow from its input boundary alone.
+tests/cuda_cross_validation.py compares every output field of the two builds.
 """
 
+import itertools
 import os
 from pathlib import Path
 
@@ -27,16 +34,128 @@ pytestmark = pytest.mark.skipif(
     reason="CUDA GPU tests are opt-in via VMECPP_TEST_CUDA=1",
 )
 
-# Converged cma references, validated bit-identical across sm_80, sm_86,
-# and sm_89 (see the PR validation battery). The distinct-mode values
-# correspond to the unscaled boundary and the 1.02-scaled boundary.
-CMA_VOLUME = 0.501352745718
-CMA_ASPECT = 6.107316546103
-CMA_VOLUME_SCALED = 0.532039544578
+_REL = 1e-9
+
+CMA = {
+    "wb": 0.0011391226791305227,
+    "raxis_cc0": 0.9994198576413145,
+    "iota_axis": 0.570264288752222,
+    "iota_edge": 0.6218448872334087,
+    "rbtor": 0.47722561589354373,
+}
+# cma with its boundary scaled by 1.02
+CMA_SCALED = {
+    "wb": 0.001116786940324043,
+    "raxis_cc0": 1.0194082547955607,
+    "iota_axis": 0.5702642887440372,
+    "iota_edge": 0.6218448872372695,
+    "rbtor": 0.46786825087607187,
+}
+CTH_LIKE = {
+    "wb": 0.0012834668943108437,
+    "raxis_cc0": 0.7841884662485746,
+    "iota_axis": 1.2427503576420111,
+    "iota_edge": 0.8342641484308997,
+    "rbtor": -0.4514075779540231,
+    "rbtor0": -0.4613299766938168,
+    "ctor": 43229.12865555726,
+}
+CTH_LIKE_ITERATIONS = 119
+CTH_LIKE_FSQT = (0.06042998432095694, 0.038753752806344216, 0.06251715684555496)
+# cth_like_fixed_bdy with the enclosed current set to zero from the first iteration
+CTH_LIKE_ZERO_CURRENT = {
+    "wb": 0.0012705664179153695,
+    "raxis_cc0": 0.7855978015543246,
+    "iota_axis": 0.2964248061428383,
+    "iota_edge": 0.3553193105083082,
+    "rbtor": -0.45662957807029814,
+}
+CTH_LIKE_ZERO_CURRENT_ITERATIONS = 150
+# Free-boundary references: the boundary moves, so volume and aspect test the solve.
+CTH_LIKE_FREE = {
+    "wb": 0.0012836107618590692,
+    "raxis_cc0": 0.7733364878403519,
+    "iota_axis": 1.2689320157649617,
+    "iota_edge": 0.8648074234240525,
+    "rbtor": -0.4512378780387714,
+    "volume": 0.3069922312210493,
+    "aspect": 5.433239629580864,
+}
+CTH_LIKE_FREE_MULTIGRID = {
+    "wb": 0.0012835936403525823,
+    "raxis_cc0": 0.7732589827642743,
+    "iota_axis": 1.263373431557459,
+    "iota_edge": 0.8689195897543645,
+    "rbtor": -0.4512154065653895,
+    "volume": 0.3074177738719778,
+    "aspect": 5.433277155589305,
+}
+W7X = {
+    "wb": 1.858625986815991,
+    "raxis_cc0": 5.644890869920212,
+    "iota_axis": 0.8763403560504495,
+    "iota_edge": 0.9513372862491,
+    "rbtor": -13.684233703331365,
+}
+W7X_ITERATIONS = 2790
+
+# The quantities whose bit identity across runs and modes the tests require.
+_INTERIOR_FIELDS = (
+    "rmnc",
+    "zmns",
+    "lmns",
+    "iotaf",
+    "bmnc",
+    "gmnc",
+    "bsupumnc",
+    "bsupvmnc",
+    "wb",
+    "rbtor",
+)
+
+
+def _quantities(wout) -> dict[str, float]:
+    return {
+        "wb": wout.wb,
+        "raxis_cc0": wout.raxis_cc[0],
+        "iota_axis": wout.iotaf[0],
+        "iota_edge": wout.iotaf[-1],
+        "rbtor": wout.rbtor,
+        "rbtor0": wout.rbtor0,
+        "ctor": wout.ctor,
+        "b0": wout.b0,
+        "volume": wout.volume,
+        "aspect": wout.aspect,
+    }
+
+
+def _assert_reference(wout, reference: dict[str, float], rel: float = _REL) -> None:
+    actual = _quantities(wout)
+    for name, value in reference.items():
+        assert actual[name] == pytest.approx(value, rel=rel), name
+
+
+def _assert_bit_identical(actual, expected) -> None:
+    for name in _INTERIOR_FIELDS:
+        np.testing.assert_array_equal(
+            np.asarray(getattr(actual, name)),
+            np.asarray(getattr(expected, name)),
+            err_msg=name,
+        )
 
 
 def _cma_input():
     return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+
+
+def _cth_like_input():
+    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+
+
+def _free_boundary_input(name: str = "cth_like_free_bdy"):
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json")
+    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
+    return vi
 
 
 def _single_env():
@@ -56,8 +175,97 @@ def _distinct_pair():
 def test_single_cma_canonical():
     _single_env()
     out = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    assert out.wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
-    assert out.wout.aspect == pytest.approx(CMA_ASPECT, rel=1e-11)
+    _assert_reference(out.wout, CMA)
+
+
+def test_three_dimensional_trajectory_follows_the_cpu():
+    # The CUDA path gates the m = 1 Z force and backs up the evaluated state as
+    # the CPU path does, so a three-dimensional run takes the CPU's iterations;
+    # the first residuals differ only by the summation order of the transforms.
+    _single_env()
+    out = vmecpp.run(_cth_like_input(), max_threads=1, verbose=False)
+    assert out.wout.itfsq == CTH_LIKE_ITERATIONS
+    np.testing.assert_allclose(
+        np.asarray(out.wout.fsqt)[1:4], CTH_LIKE_FSQT, rtol=1e-10
+    )
+    _assert_reference(out.wout, CTH_LIKE)
+
+
+def test_toroidal_current_scalars_are_reported():
+    # rbtor, rbtor0 and ctor come from the last force evaluation's bvcoH and
+    # bucoH, which the end-of-run flush brings to the host.
+    _single_env()
+    wout = vmecpp.run(_cth_like_input(), max_threads=1, verbose=False).wout
+    for name in ("rbtor", "rbtor0", "ctor"):
+        assert getattr(wout, name) == pytest.approx(CTH_LIKE[name], rel=_REL), name
+
+
+def test_iteration_callback_receives_the_current_state():
+    # The state the callback reads is the device state of that iteration, and a
+    # callback that changes nothing leaves the run unchanged to the last bit.
+    _single_env()
+    geometries = []
+
+    def record(state):
+        geometries.append(np.asarray(state.geometry.r_cc).copy())
+
+    with_callback = vmecpp.run(
+        _cth_like_input(), max_threads=1, verbose=False, iteration_callback=record
+    )
+    for earlier, later in itertools.pairwise(geometries[:6]):
+        assert np.any(earlier != later)
+    without = vmecpp.run(_cth_like_input(), max_threads=1, verbose=False)
+    _assert_bit_identical(with_callback.wout, without.wout)
+
+
+def test_iteration_callback_current_reaches_the_device():
+    # A current the callback prescribes is staged to the device for the
+    # following force evaluations, as on the CPU path.
+    _single_env()
+
+    def zero_current(state):
+        state.curr_h[:] = 0.0
+
+    wout = vmecpp.run(
+        _cth_like_input(), max_threads=1, verbose=False, iteration_callback=zero_current
+    ).wout
+    assert wout.itfsq == CTH_LIKE_ZERO_CURRENT_ITERATIONS
+    assert abs(wout.ctor) < 1e-6 * abs(CTH_LIKE["ctor"])
+    _assert_reference(wout, CTH_LIKE_ZERO_CURRENT)
+
+
+def test_hot_restart_takes_its_own_state():
+    # A hot restart that converges on its first evaluation reports the state it
+    # was given, not the device state the previous run left behind.
+    _single_env()
+    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    base = vmecpp.run(vi, max_threads=1, verbose=False)
+    rescaled = vmecpp.rescale(base, b_scale=1.5, r_scale=2.0, scale_pressure=True)
+    np.testing.assert_allclose(
+        np.asarray(rescaled.wout.rmnc), 2.0 * np.asarray(base.wout.rmnc), rtol=1e-12
+    )
+
+
+def test_geometry_cap_freezes_the_capped_modes():
+    # mpol_geometry and ntor_geometry hold R and Z above the cap at zero on the
+    # device state while lambda is resolved there.
+    _single_env()
+    vi = _cma_input().model_copy(
+        update={
+            "mpol_geometry": 3,
+            "ntor_geometry": 4,
+            "ns_array": np.array([25]),
+            "ftol_array": np.array([1e-12]),
+            "niter_array": np.array([80]),
+            "return_outputs_even_if_not_converged": True,
+        }
+    )
+    wout = vmecpp.run(vi, max_threads=1, verbose=False).wout
+    xm, xn = np.asarray(wout.xm), np.asarray(wout.xn)
+    above = (xm >= 3) | (np.abs(xn) // vi.nfp > 4)
+    assert np.max(np.abs(np.asarray(wout.rmnc)[above])) == 0.0
+    assert np.max(np.abs(np.asarray(wout.zmns)[above])) == 0.0
+    assert np.max(np.abs(np.asarray(wout.lmns)[above])) > 1e-10
 
 
 def test_repeated_run_bit_identical():
@@ -66,9 +274,7 @@ def test_repeated_run_bit_identical():
     _single_env()
     first = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
     second = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    assert second.wout.volume == first.wout.volume
-    assert second.wout.aspect == first.wout.aspect
-    assert second.wout.wb == first.wout.wb
+    _assert_bit_identical(second.wout, first.wout)
 
 
 def test_broadcast_returns_single_output():
@@ -82,7 +288,7 @@ def test_broadcast_returns_single_output():
         [vi._to_cpp_vmecindata()] * 4, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
     )
     assert len(outs) == 1
-    assert outs[0].wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), CMA)
 
 
 def test_two_call_distinct_identical():
@@ -92,9 +298,11 @@ def test_two_call_distinct_identical():
     _single_env()
     os.environ["VMECPP_BATCH_DISTINCT"] = "1"
     try:
-        inds = _distinct_pair()
         outs1, sp1 = _vmecpp.run_batched_gpu(
-            inds, max_threads=1, verbose=_vmecpp.OutputMode.SILENT, return_spectra=True
+            _distinct_pair(),
+            max_threads=1,
+            verbose=_vmecpp.OutputMode.SILENT,
+            return_spectra=True,
         )
         outs2, sp2 = _vmecpp.run_batched_gpu(
             _distinct_pair(),
@@ -105,11 +313,13 @@ def test_two_call_distinct_identical():
     finally:
         os.environ.pop("VMECPP_BATCH_DISTINCT", None)
     assert len(outs1) == 2
-    assert outs1[0].wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
-    assert outs1[1].wout.volume == pytest.approx(CMA_VOLUME_SCALED, rel=1e-11)
+    first = [vmecpp.VmecWOut._from_cpp_wout(o.wout) for o in outs1]
+    second = [vmecpp.VmecWOut._from_cpp_wout(o.wout) for o in outs2]
+    _assert_reference(first[0], CMA)
+    _assert_reference(first[1], CMA_SCALED)
     assert np.array_equal(sp1, sp2)
-    assert outs2[0].wout.volume == outs1[0].wout.volume
-    assert outs2[1].wout.volume == outs1[1].wout.volume
+    for actual, expected in zip(second, first, strict=True):
+        _assert_bit_identical(actual, expected)
 
 
 def test_run_batch_distinct_api():
@@ -123,14 +333,14 @@ def test_run_batch_distinct_api():
     vi2.zbs = vi2.zbs * 1.02
     outs = vmecpp.run_batch([vi, vi2], max_threads=1)
     assert len(outs) == 2
-    assert outs[0].wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
-    assert outs[1].wout.volume == pytest.approx(CMA_VOLUME_SCALED, rel=1e-11)
+    _assert_reference(outs[0].wout, CMA)
+    _assert_reference(outs[1].wout, CMA_SCALED)
     assert "VMECPP_BATCH_DISTINCT" not in os.environ
 
     # A single-input broadcast call returns exactly one output.
     single = vmecpp.run_batch([vi], distinct=False, max_threads=1)
     assert len(single) == 1
-    assert single[0].wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
+    _assert_reference(single[0].wout, CMA)
 
 
 def test_mixed_configuration_counts_one_process():
@@ -142,7 +352,7 @@ def test_mixed_configuration_counts_one_process():
     outs = _vmecpp.run_batched_gpu(
         _distinct_pair(), max_threads=1, verbose=_vmecpp.OutputMode.SILENT
     )
-    assert outs[1].wout.volume == pytest.approx(CMA_VOLUME_SCALED, rel=1e-11)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[1].wout), CMA_SCALED)
 
     os.environ.pop("VMECPP_BATCH_DISTINCT", None)
     vi = _cma_input()
@@ -150,7 +360,7 @@ def test_mixed_configuration_counts_one_process():
         [vi._to_cpp_vmecindata()] * 4, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
     )
     assert len(outs) == 1
-    assert outs[0].wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), CMA)
 
     os.environ["VMECPP_BATCH_DISTINCT"] = "1"
     try:
@@ -159,12 +369,12 @@ def test_mixed_configuration_counts_one_process():
         )
     finally:
         os.environ.pop("VMECPP_BATCH_DISTINCT", None)
-    assert outs[0].wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
-    assert outs[1].wout.volume == pytest.approx(CMA_VOLUME_SCALED, rel=1e-11)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), CMA)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[1].wout), CMA_SCALED)
 
     _single_env()
     out = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    assert out.wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
+    _assert_reference(out.wout, CMA)
 
 
 def test_scope_guards_and_memory_preflight():
@@ -194,42 +404,50 @@ def test_scope_guards_and_memory_preflight():
 
     # The same process recovers and runs normally after the rejections.
     out = vmecpp.run(vi, max_threads=1, verbose=False)
-    assert out.wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
+    _assert_reference(out.wout, CMA)
 
 
-def test_sync_elision_and_iteration_graph_bit_identical():
-    # K-window sync elision converges cma to the canonical result, and
-    # the whole-iteration CUDA graph replays the elided iterations to
-    # bitwise the same converged state.
+def test_sync_elision_and_iteration_graph():
+    # K-window sync elision tests convergence on the K boundaries and gates the
+    # m = 1 gauge on a residual up to K iterations old, so it follows a
+    # trajectory of its own and converges within ftol = 1e-6 of the live run,
+    # whose values CMA holds: well inside it in the energy, less so in the soft
+    # iota on the axis. The whole-iteration CUDA graph replays the elided
+    # iterations to bitwise the same converged state.
     _single_env()
-    vi = _cma_input()
     os.environ["VMECPP_SYNC_ELIDE"] = "25"
     try:
-        out_elide = vmecpp.run(vi, max_threads=1, verbose=False)
+        out_elide = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
         os.environ["VMECPP_ITER_GRAPH"] = "1"
         out_graph = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
     finally:
         os.environ.pop("VMECPP_SYNC_ELIDE", None)
         os.environ.pop("VMECPP_ITER_GRAPH", None)
-    assert out_elide.wout.volume == pytest.approx(CMA_VOLUME, rel=1e-11)
-    assert out_graph.wout.volume == out_elide.wout.volume
-    assert out_graph.wout.aspect == out_elide.wout.aspect
+    assert out_elide.wout.fsqr < out_elide.wout.ftolv
+    tolerances = {
+        "wb": 1e-5,
+        "rbtor": 1e-4,
+        "raxis_cc0": 1e-3,
+        "iota_edge": 5e-3,
+        "iota_axis": 1e-2,
+    }
+    for name, rel in tolerances.items():
+        _assert_reference(out_elide.wout, {name: CMA[name]}, rel=rel)
+    _assert_bit_identical(out_graph.wout, out_elide.wout)
 
 
-def test_ozaki3_scatter_converges_in_family():
-    # The 3-slice Ozaki FP32 scatter is the converging FP32-multiplication
-    # path; it lands within a few ULP of the FP64 result.
+def test_ozaki3_scatter_converges_to_the_reference():
+    # The 3-slice Ozaki FP32 scatter is the converging FP32-multiplication path.
     _single_env()
     os.environ["VMECPP_SCATTER_OZAKI3_FP32"] = "1"
     try:
         out = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
     finally:
         os.environ.pop("VMECPP_SCATTER_OZAKI3_FP32", None)
-    assert out.wout.volume == pytest.approx(CMA_VOLUME, rel=1e-12)
-    assert out.wout.aspect == pytest.approx(CMA_ASPECT, rel=1e-12)
+    _assert_reference(out.wout, CMA)
 
 
-def test_i8gemm_staged_limb_descent_converges_in_family():
+def test_i8gemm_staged_limb_descent_converges_to_the_reference():
     # The batched int8-Ozaki scatter under the staged limb descent:
     # 4-limb operands above the IR residual threshold, 8 below, with
     # the width transition (and its whole-iteration-graph drop)
@@ -242,8 +460,7 @@ def test_i8gemm_staged_limb_descent_converges_in_family():
     finally:
         os.environ.pop("VMECPP_SCATTER_I8GEMM", None)
         os.environ.pop("VMECPP_IR_STAGED", None)
-    assert out.wout.volume == pytest.approx(CMA_VOLUME, rel=1e-12)
-    assert out.wout.aspect == pytest.approx(CMA_ASPECT, rel=1e-12)
+    _assert_reference(out.wout, CMA)
 
 
 def test_free_boundary_multigrid_stage_transition():
@@ -252,64 +469,55 @@ def test_free_boundary_multigrid_stage_transition():
     # origins enter the new stage zero-initialized because
     # rzConIntoVolume does not run there.
     _single_env()
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy_multigrid.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
-    out = vmecpp.run(vi, max_threads=1, verbose=False)
-    assert out.wout.volume == pytest.approx(0.307417552669009, rel=1e-4)
-    assert out.wout.aspect == pytest.approx(5.43327695325949, rel=1e-5)
-    assert out.wout.wb == pytest.approx(0.00128359365632895, rel=1e-5)
+    out = vmecpp.run(
+        _free_boundary_input("cth_like_free_bdy_multigrid"),
+        max_threads=1,
+        verbose=False,
+    )
+    _assert_reference(out.wout, CTH_LIKE_FREE_MULTIGRID)
 
 
 def test_free_boundary_cth_like():
-    # Free-boundary results carry the documented drift family rather
-    # than the fixed-boundary bit-exact contract; the tolerances sit
-    # just above the measured sm_80/sm_86 drift.
     _single_env()
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
-    out = vmecpp.run(vi, max_threads=1, verbose=False)
-    assert out.wout.volume == pytest.approx(0.306991716407886, rel=5e-5)
-    assert out.wout.aspect == pytest.approx(5.43323902318826, rel=5e-6)
-    assert out.wout.wb == pytest.approx(0.00128361063819129, rel=5e-6)
+    out = vmecpp.run(_free_boundary_input(), max_threads=1, verbose=False)
+    _assert_reference(out.wout, CTH_LIKE_FREE)
 
 
 def test_free_boundary_wout_fields_match_reference():
-    # Converged free-boundary wout against the committed reference,
-    # per-field tolerances in the drift family (loosest for the
-    # finite-difference current densities). Requires at least eight
-    # fields to compare.
+    # Converged free-boundary wout against the committed reference file, at
+    # the tolerance the CPU build is held to (tests/test_init.py); like the
+    # reference, the run restarts from the advanced state.
     _single_env()
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
+    vi = _free_boundary_input()
+    vi.backup_evaluated_state = False
     out = vmecpp.run(vi, max_threads=1, verbose=False)
     ref = netCDF4.Dataset(TEST_DATA_DIR / "wout_cth_like_free_bdy.nc")
 
     fields = [
-        ("volume_p", "volume", 5e-5),
-        ("aspect", "aspect", 5e-6),
-        ("wb", "wb", 5e-6),
-        ("b0", "b0", 5e-5),
-        ("betatotal", "betatotal", 5e-4),
-        ("rbtor", "rbtor", 5e-5),
-        ("iotaf", "iotaf", 5e-4),
-        ("presf", "presf", 5e-4),
-        ("phipf", "phipf", 5e-5),
-        ("chipf", "chipf", 5e-4),
-        ("jcuru", "jcuru", 5e-3),
-        ("jcurv", "jcurv", 5e-3),
-        ("q_factor", "q_factor", 5e-4),
-        ("specw", "specw", 5e-4),
+        ("volume_p", "volume"),
+        ("aspect", "aspect"),
+        ("wb", "wb"),
+        ("b0", "b0"),
+        ("betatotal", "betatotal"),
+        ("rbtor", "rbtor"),
+        ("iotaf", "iotaf"),
+        ("presf", "presf"),
+        ("phipf", "phipf"),
+        ("jcuru", "jcuru"),
+        ("jcurv", "jcurv"),
+        ("q_factor", "q_factor"),
+        ("specw", "specw"),
     ]
     compared = 0
-    for nc_name, attr, rel in fields:
+    for nc_name, attr in fields:
         if nc_name not in ref.variables or not hasattr(out.wout, attr):
             continue
         expected = np.asarray(ref[nc_name][...], dtype=float)
         actual = np.asarray(getattr(out.wout, attr), dtype=float)
         assert expected.shape == actual.shape, (nc_name, expected.shape, actual.shape)
-        scale = max(float(np.max(np.abs(expected))), 1e-30)
-        err = float(np.max(np.abs(actual - expected))) / scale
-        assert err <= rel, f"{nc_name}: max rel err {err:.3e} > {rel:.1e}"
+        np.testing.assert_allclose(
+            actual, expected, rtol=1e-6, atol=1e-7, err_msg=nc_name
+        )
         compared += 1
     assert compared >= 8, f"only {compared} fields compared"
 
@@ -317,13 +525,9 @@ def test_free_boundary_wout_fields_match_reference():
 def test_free_boundary_broadcast_matches_single():
     # Free-boundary broadcast: per-configuration vacuum solves under a
     # batch-wide activation gate and ivacskip cadence. Configuration
-    # zero's result agrees with the single run far inside the
-    # free-boundary drift family (the n > 1 residual and controller
-    # arithmetic differs from the single path at the ulp level and the
-    # free-boundary trajectory carries it).
+    # zero's result agrees with the single run.
     _single_env()
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
+    vi = _free_boundary_input()
     single = vmecpp.run(vi, max_threads=1, verbose=False)
     outs = _vmecpp.run_batched_gpu(
         [vi._to_cpp_vmecindata()] * 2, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
@@ -336,13 +540,11 @@ def test_free_boundary_broadcast_matches_single():
 def test_free_boundary_distinct_two_boundaries():
     # Distinct free-boundary batch: two boundaries against one coil set
     # converge to their own equilibria in one batched run. The batch
-    # shares the vacuum activation iteration and the NESTOR cadence, so
-    # each configuration sits in the drift family of its single run.
+    # shares the vacuum activation iteration and the NESTOR cadence.
     _single_env()
     os.environ["VMECPP_BATCH_DISTINCT"] = "1"
     try:
-        a = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-        a.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
+        a = _free_boundary_input()
         b = a.model_copy(deep=True)
         b.rbc = b.rbc * 1.005
         b.zbs = b.zbs * 1.005
@@ -354,7 +556,7 @@ def test_free_boundary_distinct_two_boundaries():
     finally:
         os.environ.pop("VMECPP_BATCH_DISTINCT", None)
     assert len(outs) == 2
-    assert outs[0].wout.volume == pytest.approx(0.306991716407886, rel=5e-4)
+    assert outs[0].wout.volume == pytest.approx(CTH_LIKE_FREE["volume"], rel=5e-4)
     assert outs[1].wout.volume > outs[0].wout.volume
 
 
@@ -363,22 +565,14 @@ def test_free_boundary_sync_elision_converges():
     # contribution is fully active, then the scalar sync sites elide
     # with the device time-step controller authoritative and the
     # convergence gate on the K-boundaries, while the vacuum block keeps
-    # its per-iteration cadence. The converged equilibria land in the
-    # documented free-boundary drift family: both cth-like forms against
-    # their committed references, the elided run against the live run,
-    # and a broadcast batch under elision against the elided single run.
+    # its per-iteration cadence; a broadcast batch under elision
+    # reproduces the elided single run.
     _single_env()
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
+    vi = _free_boundary_input()
     live = vmecpp.run(vi, max_threads=1, verbose=False)
     os.environ["VMECPP_SYNC_ELIDE"] = "25"
     try:
         elided = vmecpp.run(vi, max_threads=1, verbose=False)
-        vi_mg = vmecpp.VmecInput.from_file(
-            TEST_DATA_DIR / "cth_like_free_bdy_multigrid.json"
-        )
-        vi_mg.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
-        elided_mg = vmecpp.run(vi_mg, max_threads=1, verbose=False)
         outs = _vmecpp.run_batched_gpu(
             [vi._to_cpp_vmecindata()] * 2,
             max_threads=1,
@@ -386,13 +580,8 @@ def test_free_boundary_sync_elision_converges():
         )
     finally:
         os.environ.pop("VMECPP_SYNC_ELIDE", None)
-    assert elided.wout.volume == pytest.approx(0.306991716407886, rel=1e-4)
-    assert elided.wout.aspect == pytest.approx(5.43323902318826, rel=5e-6)
-    assert elided.wout.wb == pytest.approx(0.00128361063819129, rel=5e-6)
     assert elided.wout.volume == pytest.approx(live.wout.volume, rel=1e-4)
     assert elided.wout.wb == pytest.approx(live.wout.wb, rel=5e-6)
-    assert elided_mg.wout.volume == pytest.approx(0.307417552669009, rel=1e-4)
-    assert elided_mg.wout.wb == pytest.approx(0.00128359365632895, rel=1e-5)
     assert len(outs) == 1
     assert outs[0].wout.volume == pytest.approx(elided.wout.volume, rel=1e-10)
 
@@ -404,18 +593,13 @@ def test_fixed_then_free_boundary_one_process():
     # whatever the reallocated host arrays inherited from the prior run.
     _single_env()
     vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
-    vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
-    out = vmecpp.run(vi, max_threads=1, verbose=False)
-    assert out.wout.volume == pytest.approx(0.306991716407886, rel=5e-5)
-    assert out.wout.wb == pytest.approx(0.00128361063819129, rel=5e-6)
+    out = vmecpp.run(_free_boundary_input(), max_threads=1, verbose=False)
+    _assert_reference(out.wout, CTH_LIKE_FREE)
 
 
 def test_hot_restart_reproduces_converged_state():
-    # A run restarted from its own converged output must terminate at
-    # the same equilibrium; the restart path stages the device state
-    # from the hot-restart host vectors rather than the cold initial
-    # guess. Hot restart requires a single-stage ns_array.
+    # A run restarted from its own converged output terminates at once, at
+    # the same equilibrium. Hot restart requires a single-stage ns_array.
     _single_env()
     vi = _cma_input()
     vi.ns_array = vi.ns_array[-1:]
@@ -423,8 +607,16 @@ def test_hot_restart_reproduces_converged_state():
     vi.niter_array = vi.niter_array[-1:]
     cold = vmecpp.run(vi, max_threads=1, verbose=False)
     hot = vmecpp.run(vi, max_threads=1, verbose=False, restart_from=cold)
-    assert hot.wout.volume == pytest.approx(cold.wout.volume, rel=1e-11)
-    assert hot.wout.aspect == pytest.approx(cold.wout.aspect, rel=1e-11)
+    assert hot.wout.itfsq == 0
+    for name in _INTERIOR_FIELDS:
+        expected = np.asarray(getattr(cold.wout, name))
+        np.testing.assert_allclose(
+            np.asarray(getattr(hot.wout, name)),
+            expected,
+            rtol=0.0,
+            atol=1e-12 * np.max(np.abs(expected)),
+            err_msg=name,
+        )
 
 
 @pytest.mark.skipif(
@@ -432,16 +624,12 @@ def test_hot_restart_reproduces_converged_state():
     reason="W7-X takes several minutes of GPU time; opt in via VMECPP_TEST_CUDA_SLOW=1",
 )
 def test_w7x_bad_jacobian_recovery_converges():
-    # W7-X exercises the mid-run bad-Jacobian recovery path. The CUDA
-    # build converges to the CPU build's equilibrium; the iteration count
-    # differs within the documented drift family, so the assertions pin
-    # the converged scalars rather than the trajectory.
+    # W7-X exercises the mid-run restarts; with the evaluated state backed up
+    # the CUDA path rewinds to the CPU's states and takes its iterations.
     _single_env()
-    vi = vmecpp.VmecInput.from_file(W7X_JSON)
-    out = vmecpp.run(vi, max_threads=1, verbose=False)
-    assert out.wout.wb == pytest.approx(1.858625991022547, rel=1e-7)
-    assert out.wout.volume == pytest.approx(27.782541690234815, rel=1e-7)
-    assert out.wout.aspect == pytest.approx(10.972491914829975, rel=1e-7)
+    out = vmecpp.run(vmecpp.VmecInput.from_file(W7X_JSON), max_threads=1, verbose=False)
+    assert out.wout.itfsq == W7X_ITERATIONS
+    _assert_reference(out.wout, W7X)
 
 
 @pytest.mark.skipif(
@@ -458,21 +646,29 @@ def test_wmma_scatter_w7x_full_spectrum():
         out = vmecpp.run(vi, max_threads=1, verbose=False)
     finally:
         os.environ.pop("VMECPP_SCATTER_CUSTOM_GEMM_WMMA", None)
-    assert out.wout.volume == pytest.approx(27.782541690234815, rel=1e-7)
-    assert out.wout.wb == pytest.approx(1.858625991022547, rel=1e-7)
+    _assert_reference(out.wout, W7X)
 
 
 # ---------------------------------------------------------------------------
 # Axisymmetric (ntor = 0) coverage. The 2D path runs nZeta = 1 through the
-# 3D-symmetric device kernels and bypasses cuFFT, so it is bit-exact to the
-# CPU build. References validated CUDA-vs-CPU across the single-grid,
-# multigrid (solovev ns_array = [5, 11, 55]), and batched modes.
+# 3D-symmetric device kernels and bypasses cuFFT; it agrees with the CPU
+# build to 1e-14 across the single-grid, multigrid (solovev ns_array =
+# [5, 11, 55]), and batched modes.
 # ---------------------------------------------------------------------------
-SOLOVEV_B0 = 0.203331055805
-SOLOVEV_VOLUME = 126.871927645233
-SOLOVEV_ASPECT = 3.117998343734
-CIRCULAR_TOKAMAK_B0 = 5.241673569885
-CIRCULAR_TOKAMAK_VOLUME = 473.741011252289
+SOLOVEV = {
+    "wb": 0.0645507521742048,
+    "raxis_cc0": 3.989401072835298,
+    "b0": 0.20333105580548258,
+    "rbtor": 0.7230383356305398,
+}
+# solovev with its pressure scaled by 1.05
+SOLOVEV_PRESSURE = {"raxis_cc0": 3.9894012650815647, "b0": 0.2033310263187132}
+CIRCULAR_TOKAMAK = {
+    "wb": 172.39494071067708,
+    "raxis_cc0": 6.132188475454839,
+    "b0": 5.241673569885228,
+    "rbtor": 31.330680063374572,
+}
 
 
 def _solovev_input():
@@ -484,35 +680,28 @@ def _circular_tokamak_input():
 
 
 def test_ntor0_solovev_canonical():
-    # Axisymmetric multigrid solovev converges to the CPU build's equilibrium.
     _single_env()
     out = vmecpp.run(_solovev_input(), max_threads=1, verbose=False)
-    assert out.wout.b0 == pytest.approx(SOLOVEV_B0, rel=1e-11)
-    assert out.wout.volume == pytest.approx(SOLOVEV_VOLUME, rel=1e-11)
-    assert out.wout.aspect == pytest.approx(SOLOVEV_ASPECT, rel=1e-11)
+    _assert_reference(out.wout, SOLOVEV)
 
 
 def test_ntor0_circular_tokamak_canonical():
     # A second axisymmetric boundary (mpol = 8, single-grid ns = 17).
     _single_env()
     out = vmecpp.run(_circular_tokamak_input(), max_threads=1, verbose=False)
-    assert out.wout.b0 == pytest.approx(CIRCULAR_TOKAMAK_B0, rel=1e-11)
-    assert out.wout.volume == pytest.approx(CIRCULAR_TOKAMAK_VOLUME, rel=1e-11)
+    _assert_reference(out.wout, CIRCULAR_TOKAMAK)
 
 
 def test_ntor0_repeated_run_bit_identical():
-    # The same axisymmetric input run twice in one process is bitwise-identical;
-    # the persistent device state carries nothing between runs.
     _single_env()
     first = vmecpp.run(_solovev_input(), max_threads=1, verbose=False)
     second = vmecpp.run(_solovev_input(), max_threads=1, verbose=False)
-    assert second.wout.b0 == first.wout.b0
-    assert second.wout.volume == first.wout.volume
+    _assert_bit_identical(second.wout, first.wout)
 
 
 def test_ntor0_distinct_batch():
-    # Batched distinct-mode axisymmetric run: configuration zero matches the
-    # single-run reference and the pressure-scaled configuration differs.
+    # Batched distinct-mode axisymmetric run: each configuration converges to
+    # its own single-run result.
     _single_env()
     os.environ["VMECPP_BATCH_DISTINCT"] = "1"
     try:
@@ -527,8 +716,8 @@ def test_ntor0_distinct_batch():
     finally:
         os.environ.pop("VMECPP_BATCH_DISTINCT", None)
     assert len(outs) == 2
-    assert outs[0].wout.b0 == pytest.approx(SOLOVEV_B0, rel=1e-9)
-    assert abs(outs[1].wout.b0 - outs[0].wout.b0) > 1e-9
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), SOLOVEV)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[1].wout), SOLOVEV_PRESSURE)
 
 
 def test_ntor0_broadcast_returns_single_output():
@@ -542,4 +731,4 @@ def test_ntor0_broadcast_returns_single_output():
         verbose=_vmecpp.OutputMode.SILENT,
     )
     assert len(outs) == 1
-    assert outs[0].wout.b0 == pytest.approx(SOLOVEV_B0, rel=1e-11)
+    _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), SOLOVEV)
