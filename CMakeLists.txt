@@ -258,9 +258,9 @@ include_directories(${abseil-cpp_SOURCE_DIR})
 # specified relative to `${PROJECT_SOURCE_DIR}/src/vmecpp/cpp`.
 include_directories(${PROJECT_SOURCE_DIR}/src/vmecpp/cpp)
 
-# CUDA-backed toroidal FFT (optional). Must be enabled BEFORE add_subdirectory
-# so the .cu source gets picked up by the ideal_mhd_model subdir's CMakeLists.
-option(VMECPP_USE_CUDA "Use CUDA-backed toroidal FFT kernels (requires CUDA toolkit + cuFFT)" OFF)
+# CUDA iteration body (optional). Must be enabled BEFORE add_subdirectory so
+# the .cu sources get picked up by the ideal_mhd_model subdir's CMakeLists.
+option(VMECPP_USE_CUDA "Run the iteration body on an NVIDIA GPU (requires the CUDA toolkit with cuFFT)" OFF)
 if(VMECPP_USE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)

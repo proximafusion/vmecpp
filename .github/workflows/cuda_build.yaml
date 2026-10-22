@@ -32,15 +32,16 @@ jobs:
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build zlib1g-dev libomp-dev \
-            cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcufft-dev-12-6 libcublas-dev-12-6
+            cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcufft-dev-12-6
           echo "/usr/local/cuda-12.6/bin" >> "$GITHUB_PATH"
       - name: Build the wheel with the CUDA iteration body
         env:
           CMAKE_ARGS: -DVMECPP_USE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
           CMAKE_BUILD_PARALLEL_LEVEL: 4
         run: python -m pip wheel . --no-deps --wheel-dir dist
-      - name: Check that the core library links the CUDA runtime, cuFFT and cuBLAS
+      - name: Check that the core library links the CUDA runtime and cuFFT
         run: |
           python -m zipfile -e dist/*.whl wheel
           core=$(find wheel -name "libvmecpp_core.so" | head -1)
-          ldd "$core" | grep -E "libcudart|libcufft|libcublas"
+          ldd "$core" | grep libcudart
+          ldd "$core" | grep libcufft
