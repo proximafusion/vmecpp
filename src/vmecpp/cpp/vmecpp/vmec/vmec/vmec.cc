@@ -403,12 +403,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                         "input has nThetaReduced = %d",
                         s_.nThetaReduced));
   }
-  // The reset re-reads VMECPP_N_CONFIG_MAX for this run; it must precede
-  // the memory pre-flight below so the budget is computed against this
-  // run's configuration count rather than the previous run's. The other
-  // run-scoped gates re-read with the same per-run scope.
-  vmecpp::ResetCudaStateForNewVmecRun();
-  per_cfg_niter_cap_ = -1;
+  // The reset sets this run's configuration count; it must precede the
+  // memory pre-flight below so the budget is computed against this run's
+  // count rather than the previous run's.
+  vmecpp::ResetCudaStateForNewVmecRun(batch_size_, !batch_indata_.empty());
   vmecpp::SetFreeBoundaryRunCuda(indata_.lfreeb ? 1 : 0);
   if (indata_.lfreeb && vmecpp::GetNConfigMaxCuda() > 1 &&
       indata_.free_boundary_method != FreeBoundaryMethod::NESTOR) {
@@ -438,8 +436,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       return absl::ResourceExhaustedError(absl::StrFormat(
           "the CUDA device does not have enough free memory for this run: "
           "estimated need %lld MiB for %d configuration slot(s) at "
-          "ns = %d, free %lld MiB; reduce VMECPP_N_CONFIG_MAX or the "
-          "radial resolution",
+          "ns = %d, free %lld MiB; reduce the number of configurations or "
+          "the radial resolution",
           needed_bytes >> 20, vmecpp::GetNConfigMaxCuda(), ns_max,
           free_bytes >> 20));
     }
@@ -503,14 +501,13 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   fc_.delt0r = indata_.delt;
 
   // Allocate the per-configuration state vectors on the FlowControl
-  // instance for the batched CUDA execution mode. The effective
-  // configuration count is queried from the CUDA-side cache populated
-  // from the VMECPP_N_CONFIG_MAX environment variable. Under
-  // single-configuration execution the resized vectors degenerate to
-  // length one and the single-configuration scalar fields remain
-  // authoritative for the convergence test; under multi-configuration
-  // execution the vectors hold the per-configuration residuals and
-  // restart-state values consumed by the convergence gate further below.
+  // instance for the batched CUDA execution mode, at the configuration
+  // count the reset above set. Under single-configuration execution the
+  // resized vectors degenerate to length one and the single-configuration
+  // scalar fields remain authoritative for the convergence test; under
+  // multi-configuration execution the vectors hold the per-configuration
+  // residuals and restart-state values consumed by the convergence gate
+  // further below.
 #ifdef VMECPP_USE_CUDA
   // The persistent device state was reset alongside the scope guards
   // above. Without that reset, a second run in the same process finds
@@ -2065,24 +2062,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         // Per-cfg gate. The device k_check_convergence flag decides each
         // cfg's termination when its buffers exist (the normalized-residual
         // arithmetic of evalFResInvar); the host comparison applies otherwise.
-        // Per-cfg niter cap. Read once at first entry. When set, any active
-        // cfg whose iter2_per_cfg has reached the cap is marked timed-out so
-        // the batch can terminate when only the slow cfgs remain. Without
-        // the cap (legacy default), the loop waits for every cfg or hits
-        // the shared niterv.
-        if (per_cfg_niter_cap_ < 0) {
-          const char* e = std::getenv("VMECPP_PER_CFG_NITER_CAP");
-          per_cfg_niter_cap_ = (e && std::atoi(e) > 0)
-                                   ? std::atoi(e)
-                                   : std::numeric_limits<int>::max();
-          if (per_cfg_niter_cap_ != std::numeric_limits<int>::max()) {
-            std::fprintf(
-                stderr,
-                "[vmec.cc] per-cfg niter cap = %d (VMECPP_PER_CFG_NITER_CAP)\n",
-                per_cfg_niter_cap_);
-          }
-        }
-        fc_.niter_max_per_cfg = per_cfg_niter_cap_;
         // Lazily size iter2_per_cfg and converged_per_cfg if ResizeForBatch
         // happened in a path that pre-dates these fields.
         if (static_cast<int>(fc_.iter2_per_cfg.size()) != n_cfg) {
@@ -2092,8 +2071,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
           fc_.converged_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
         }
         bool all_done = true;
-        int any_converged_count = 0;
-        int any_timed_out_count = 0;
         for (int c = 0; c < n_cfg; ++c) {
           if (fc_.active_per_cfg[c]) {
             ++fc_.iter2_per_cfg[c];
@@ -2106,51 +2083,23 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #else
             const bool cfg_done = host_done;
 #endif
-            const bool timed_out =
-                (fc_.iter2_per_cfg[c] >= fc_.niter_max_per_cfg);
-            if (cfg_done || timed_out) {
+            if (cfg_done) {
               fc_.active_per_cfg[c] = 0;
-              fc_.converged_per_cfg[c] = static_cast<std::uint8_t>(cfg_done);
+              fc_.converged_per_cfg[c] = 1;
 #ifdef VMECPP_USE_CUDA
               // Freeze this cfg's state at the iteration it stopped; the
               // live device slice keeps being modified while the rest of
               // the batch iterates.
               vmecpp::SnapshotInactiveCfgCuda(c);
 #endif
-              if (!cfg_done) {
-                std::fprintf(
-                    stderr,
-                    "[vmec.cc] cfg %d timed out at iter2_per_cfg=%d "
-                    "(cap=%d) fsqr=%.3e fsqz=%.3e fsql=%.3e ftolv=%.3e\n",
-                    c, fc_.iter2_per_cfg[c], fc_.niter_max_per_cfg,
-                    fc_.fsqr_per_cfg[c], fc_.fsqz_per_cfg[c],
-                    fc_.fsql_per_cfg[c], fc_.ftolv);
-              }
             } else {
               all_done = false;
             }
           }
-          if (fc_.converged_per_cfg[c]) ++any_converged_count;
-          if (!fc_.active_per_cfg[c] && !fc_.converged_per_cfg[c]) {
-            ++any_timed_out_count;
-          }
         }
         if (all_done) {
           m_liter_flag = false;
-          // The batch terminates successfully when at least one cfg met
-          // ftolv. If every active cfg timed out without converging, the
-          // batch is reported as a non-success run; the per-cfg outcome
-          // is still surfaced via converged_per_cfg.
-          if (any_converged_count > 0) {
-            status_ = VmecStatus::SUCCESSFUL_TERMINATION;
-          }
-          if (any_timed_out_count > 0) {
-            std::fprintf(stderr,
-                         "[vmec.cc] batch terminated: %d cfg(s) converged, "
-                         "%d cfg(s) timed out (per-cfg niter cap=%d)\n",
-                         any_converged_count, any_timed_out_count,
-                         fc_.niter_max_per_cfg);
-          }
+          status_ = VmecStatus::SUCCESSFUL_TERMINATION;
         }
       } else {
         // Fallback single-cfg gate (n_cfg vectors not yet sized, e.g. CPU

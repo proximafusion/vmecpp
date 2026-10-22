@@ -1,5 +1,4 @@
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal_cuda_common.cuh"
-#include "vmecpp/common/util/os_compat.h"  // setenv on MSVC
 
 namespace vmecpp {
 // Definitions of the globals declared extern in the common header.
@@ -13,9 +12,8 @@ std::vector<double> g_fnorm1_per_cfg_cache;
 // Per-config normalized {fsqr,fsqz,fsql} snapshotted from the last iteration
 // each configuration was active; see MutableFsqrPerCfgCache below.
 std::vector<double> g_fsqr_per_cfg_cache;
-int g_n_config_run = -1;
-int g_batch_upscale_env = -1;
-int g_batch_upscale_kernel_env = -1;
+int g_n_config_run = 1;
+bool g_batch_distinct_run = false;
 
 // Prelude functions declared in the common header.
 const std::vector<double>& GetResidualsPerCfgCacheInvar() {
@@ -119,37 +117,27 @@ void SetFreeBoundaryRunCuda(int enabled) {
 }
 
 // Resets the thread-local CudaToroidalState at the start of each Vmec::run so
-// persistent device buffers carry nothing between runs in one process. Safe
-// to invoke before the stream exists.
-void ResetCudaStateForNewVmecRun() {
-  // Re-read the configuration count so a run can carry a different
-  // VMECPP_N_CONFIG_MAX than its predecessor; the next Reshape resizes
-  // the per-configuration buffers to the fresh value.
-  {
-    const char* env = std::getenv("VMECPP_N_CONFIG_MAX");
-    g_n_config_run = (env != nullptr) ? std::max(1, std::atoi(env)) : 1;
-  }
-  // The multigrid-upscale and residuals-partition gates re-read with the same
-  // per-run scope.
-  g_batch_upscale_env = -1;
-  g_batch_upscale_kernel_env = -1;
+// persistent device buffers carry nothing between runs in one process, and
+// sets the run's configuration count and whether its configurations carry
+// their own inputs. Safe to invoke before the stream exists.
+void ResetCudaStateForNewVmecRun(int n_config, bool distinct) {
+  g_n_config_run = std::max(1, n_config);
+  g_batch_distinct_run = distinct;
   g_residuals_k_run = -1;
   g_free_boundary_run = false;
   State().ResetForNewVmecRun();
 }
 
-// In-memory batch staging blocks (typed batch path). pybind
-// run_batched_gpu hands the per-cfg spectral inputs and the per-cfg
-// decomposed-position blocks here, both in the [sp][cfg][spec] layout the
-// file pipeline uses; the staging loaders consume them ahead of the
-// VMECPP_BATCH_INPUTS_FILE / VMECPP_BATCH_DEC_X_FILE fallback.
+// In-memory batch staging blocks. pybind run_batched_gpu hands the per-cfg
+// spectral inputs and the per-cfg decomposed-position blocks here, both in
+// [sp][cfg][spec] layout.
 std::vector<double> g_batch_inputs_mem;
 std::vector<double> g_batch_dec_x_mem;
 int g_batch_mem_shape[4] = {0, 0, 0, 0};  // n_cfg, ns, mpol, ntor
 
-// End-of-run converged spectra of a multi-configuration run, the same
-// [sp][cfg][spec] block the VMECPP_BATCH_OUTPUTS_FILE dump writes. Filled
-// by the end-of-run flush; read back by GetBatchOutputSpectraCuda.
+// End-of-run converged spectra of a multi-configuration run in
+// [sp][cfg][spec] layout. Filled by the end-of-run flush; read back by
+// GetBatchOutputSpectraCuda.
 std::vector<double> g_batch_outputs_mem;
 int g_batch_outputs_shape[4] = {0, 0, 0, 0};
 

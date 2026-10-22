@@ -350,6 +350,9 @@ class Vmec {
   // configuration's plasma profiles are honored on the device instead of the
   // seed's being broadcast. Empty for ordinary runs.
   std::vector<VmecINDATA> batch_indata_;
+  // Configuration slots of a batched GPU run, which the run_batched_gpu
+  // binding sets on the seed Vmec in either mode; one for ordinary runs.
+  int batch_size_ = 1;
   // Per-configuration RadialProfiles for a distinct-mode batched run, built
   // from batch_indata_ and mirroring p_ across multigrid levels so the device
   // stages each configuration's profiles instead of broadcasting the seed's.
@@ -493,13 +496,6 @@ class Vmec {
 
   // iter2 at last full update (ivacskip = 0) of Nestor
   int last_full_update_nestor_;
-
-  // Run-scoped caches of per-run environment gates: reset to a sentinel at the
-  // start of each Vmec::run and lazily read from the environment on first use,
-  // so successive runs in one process can carry different settings. Formerly
-  // file-scope statics; scoping them to the Vmec keeps this run state on the
-  // object.
-  int per_cfg_niter_cap_ = -1;  // VMECPP_PER_CFG_NITER_CAP
 };
 
 }  // namespace vmecpp

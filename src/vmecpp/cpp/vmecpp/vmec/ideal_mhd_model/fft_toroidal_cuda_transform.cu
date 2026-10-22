@@ -236,84 +236,26 @@ void FourierToReal3DSymmFastPoloidalCuda(
     const double* src[6] = {physical_x.rmncc.data(), physical_x.rmnss.data(),
                             physical_x.zmnsc.data(), physical_x.zmncs.data(),
                             physical_x.lmnsc.data(), physical_x.lmncs.data()};
-    // Distinct-boundary spectral input pipeline. When the
-    // VMECPP_BATCH_INPUTS_FILE environment variable identifies a
-    // binary file, that file holds N_cfg * 6 * one_spec_doubles
-    // double-precision values arranged in the layout
-    // [sp][cfg][specs...], and the per-configuration spectral slots
-    // are loaded from the file rather than being broadcast from the
-    // host physical_x buffer of the seed Vmec instance. The file is
-    // read exactly once per process and cached thereafter in pinned
-    // host memory.
-    // The staging cache lives in the State so ResetForNewVmecRun rearms
-    // it; the consumed flag keeps the one-shot semantics within a run
-    // (the iter-1 retry after the axis recompute must see the host
-    // m_physical_x, not a reload of the pre-init staging).
-    if (S.batch_inputs_loaded < 0 && !g_batch_inputs_mem.empty() &&
-        g_batch_mem_shape[0] == n_cfg && g_batch_mem_shape[1] == ns_local &&
-        g_batch_mem_shape[2] == mpol && g_batch_mem_shape[3] == ntor) {
-      // In-memory block from SetBatchStagingCuda; same one-shot consume
-      // semantics as the file path.
-      const size_t total = g_batch_inputs_mem.size();
-      cuda_check(cudaMallocHost(&S.batch_inputs_pinned,
-                                sizeof(double) * total),
-                 "alloc batch inputs pinned");
-      std::memcpy(S.batch_inputs_pinned, g_batch_inputs_mem.data(),
-                  sizeof(double) * total);
-      S.batch_inputs_n_cfg = n_cfg;
-      S.batch_inputs_one_spec_doubles =
-          (size_t)ns_local * mpol * (ntor + 1);
-      S.batch_inputs_loaded = 1;
-    }
+    // Distinct batches: the per-configuration spectral inputs come from the
+    // run_batched_gpu staging block ([sp][cfg][spec] layout) instead of the
+    // seed's physical_x broadcast to every slot. The staging cache lives in
+    // the State so ResetForNewVmecRun rearms it; the consumed flag keeps it
+    // one-shot within a run (the iteration-1 retry after the axis recompute
+    // must see the host m_physical_x, not a reload of the pre-init staging).
     if (S.batch_inputs_loaded < 0) {
-      const char* path = std::getenv("VMECPP_BATCH_INPUTS_FILE");
-      if (path && *path) {
-        FILE* f = std::fopen(path, "rb");
-        if (f) {
-          // File header: int32 N, int32 ns_local, int32 mpol, int32 ntor.
-          int32_t header[4] = {0, 0, 0, 0};
-          size_t hread = std::fread(header, sizeof(int32_t), 4, f);
-          int N_file = header[0];
-          int ns_file = header[1];
-          int mpol_file = header[2];
-          int ntor_file = header[3];
-          size_t expect_per_spec = (size_t)ns_file * mpol_file * (ntor_file + 1);
-          size_t total_doubles = (size_t)N_file * 6 * expect_per_spec;
-          if (hread == 4 && N_file == n_cfg && ns_file == ns_local &&
-              mpol_file == mpol && ntor_file == ntor) {
-            cuda_check(cudaMallocHost(&S.batch_inputs_pinned,
-                                      sizeof(double) * total_doubles),
-                       "alloc batch inputs pinned");
-            size_t r = std::fread(S.batch_inputs_pinned, sizeof(double),
-                                  total_doubles, f);
-            if (r == total_doubles) {
-              S.batch_inputs_n_cfg = N_file;
-              S.batch_inputs_one_spec_doubles = expect_per_spec;
-              S.batch_inputs_loaded = 1;
-              std::fprintf(stderr,
-                  "[fft_toroidal_cuda] batch inputs loaded: N=%d ns=%d "
-                  "mpol=%d ntor=%d (%zu doubles from %s)\n",
-                  N_file, ns_file, mpol_file, ntor_file, total_doubles, path);
-            } else {
-              std::fprintf(stderr,
-                  "[fft_toroidal_cuda] batch inputs file truncated "
-                  "(expected %zu doubles, got %zu); using broadcast\n",
-                  total_doubles, r);
-              S.batch_inputs_loaded = 0;
-            }
-          } else {
-            std::fprintf(stderr,
-                "[fft_toroidal_cuda] batch inputs file shape mismatch "
-                "(file N=%d ns=%d mpol=%d ntor=%d vs run N=%d ns=%d mpol=%d "
-                "ntor=%d); using broadcast\n",
-                N_file, ns_file, mpol_file, ntor_file,
-                n_cfg, ns_local, mpol, ntor);
-            S.batch_inputs_loaded = 0;
-          }
-          std::fclose(f);
-        } else {
-          S.batch_inputs_loaded = 0;
-        }
+      if (!g_batch_inputs_mem.empty() && g_batch_mem_shape[0] == n_cfg &&
+          g_batch_mem_shape[1] == ns_local && g_batch_mem_shape[2] == mpol &&
+          g_batch_mem_shape[3] == ntor) {
+        const size_t total = g_batch_inputs_mem.size();
+        cuda_check(cudaMallocHost(&S.batch_inputs_pinned,
+                                  sizeof(double) * total),
+                   "alloc batch inputs pinned");
+        std::memcpy(S.batch_inputs_pinned, g_batch_inputs_mem.data(),
+                    sizeof(double) * total);
+        S.batch_inputs_n_cfg = n_cfg;
+        S.batch_inputs_one_spec_doubles =
+            (size_t)ns_local * mpol * (ntor + 1);
+        S.batch_inputs_loaded = 1;
       } else {
         S.batch_inputs_loaded = 0;
       }
@@ -969,61 +911,24 @@ void RecomposeToPhysicalCuda(
   }
 
   // First-iter init: H2D host m_decomposed_x -> d_pts_x. Subsequent iters
-  // skip this; d_pts_x persists from PerformTimeStepCuda's update.
-  //
-  // Distinct-mode override (VMECPP_BATCH_DEC_X_FILE): when the per-cfg
-  // decomposed_x file is set, pybind has already extracted the post-init
-  // decomposed_x_[0] state for each cfg and written it to disk. We load
-  // the full N * 6 * one_spec_doubles payload and memcpy per-cfg slices
-  // into d_pts_x_*, overriding the seed-broadcast path that would otherwise
-  // overwrite per-cfg initialization with single-cfg host data. The file
-  // format mirrors batch_inputs: int32 header (N, ns_local, mpol, ntor)
-  // followed by [sp][cfg][specs...] in row-major double-precision layout.
+  // skip this; d_pts_x persists from PerformTimeStepCuda's update. Distinct
+  // batches load each configuration's decomposed position from the
+  // run_batched_gpu staging block ([sp][cfg][spec] layout) instead, as
+  // PerformTimeStepCuda's init does.
   size_t x_bytes_one = sizeof(double) * ns_local * mpol * (ntor + 1);
   if (!S.pts_x_initialized) {
     size_t one_spec_doubles = (size_t)ns_local * mpol * (ntor + 1);
-    const char* dec_x_path = std::getenv("VMECPP_BATCH_DEC_X_FILE");
-    bool dec_x_loaded = false;
-    std::vector<double> dec_x_host_buf;
-    if (!g_batch_dec_x_mem.empty() &&
-        g_batch_mem_shape[0] == S.n_config_max &&
+    const bool dec_x_loaded =
+        !g_batch_dec_x_mem.empty() && g_batch_mem_shape[0] == S.n_config_max &&
         g_batch_mem_shape[1] == ns_local && g_batch_mem_shape[2] == mpol &&
-        g_batch_mem_shape[3] == ntor && S.n_config_max > 1) {
-      dec_x_host_buf = g_batch_dec_x_mem;
-      dec_x_loaded = true;
-    }
-    if (!dec_x_loaded && dec_x_path && *dec_x_path && S.n_config_max > 1) {
-      FILE* f = std::fopen(dec_x_path, "rb");
-      if (f) {
-        int32_t header[4] = {0, 0, 0, 0};
-        if (std::fread(header, sizeof(int32_t), 4, f) == 4 &&
-            header[0] == S.n_config_max &&
-            header[1] == ns_local &&
-            header[2] == mpol &&
-            header[3] == ntor) {
-          size_t total_doubles = (size_t)6 * S.n_config_max * one_spec_doubles;
-          dec_x_host_buf.resize(total_doubles);
-          size_t got = std::fread(dec_x_host_buf.data(), sizeof(double),
-                                   total_doubles, f);
-          dec_x_loaded = (got == total_doubles);
-        } else {
-          std::fprintf(stderr,
-              "[fft_toroidal_cuda] dec_x file header mismatch in %s "
-              "(got N=%d ns=%d mpol=%d ntor=%d; expected N=%d ns=%d "
-              "mpol=%d ntor=%d); falling back to broadcast\n",
-              dec_x_path, header[0], header[1], header[2], header[3],
-              S.n_config_max, ns_local, mpol, ntor);
-        }
-        std::fclose(f);
-      }
-    }
+        g_batch_mem_shape[3] == ntor && S.n_config_max > 1;
     double* dst_x[6] = {S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
                         S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs};
     if (dec_x_loaded) {
       for (int sp = 0; sp < 6; ++sp) {
         for (int cfg = 0; cfg < S.n_config_max; ++cfg) {
           const double* src =
-              dec_x_host_buf.data() +
+              g_batch_dec_x_mem.data() +
               (size_t)sp * S.n_config_max * one_spec_doubles +
               (size_t)cfg * one_spec_doubles;
           cuda_check(cudaMemcpyAsync(

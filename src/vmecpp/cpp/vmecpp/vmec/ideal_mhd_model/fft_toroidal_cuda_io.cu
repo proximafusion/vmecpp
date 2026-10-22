@@ -142,21 +142,11 @@ void FlushForOutputQuantitiesCuda(
   // (Per-config batched flush is provided by FlushAllConfigsForOutputCuda;
   //  see below.)
 
-  // When the VMECPP_BATCH_OUTPUTS_FILE environment variable names a
-  // destination path and the run carries more than one configuration,
-  // the final per-configuration decomposed spectra are dumped to that
-  // path. The six spectral components -- rmncc, rmnss, zmnsc, zmncs,
-  // lmnsc, and lmncs -- are read from the device buffers d_pts_x_rcc,
-  // d_pts_x_rss, d_pts_x_zsc, d_pts_x_zcs, d_pts_x_lsc, and
-  // d_pts_x_lcs across all configurations and written to disk for
-  // downstream per-equilibrium consumers (such as the per-cfg
-  // aspect-ratio and metric reconstruction). The on-disk format
-  // mirrors the input-side counterpart consumed by the file-based
-  // batched-input pipeline: a four-element int32 header carrying
-  // (N, ns_local, mpol, ntor), followed by
-  // N * 6 * ns_local * mpol * (ntor + 1) double-precision values in
-  // [spectral_component][configuration][spectra] order.
-  const char* batch_out_path = std::getenv("VMECPP_BATCH_OUTPUTS_FILE");
+  // A multi-configuration run keeps the final per-configuration decomposed
+  // spectra (rmncc, rmnss, zmnsc, zmncs, lmnsc and lmncs, from d_pts_x_* or
+  // from the converged-state snapshot of a configuration that went
+  // inactive) in g_batch_outputs_mem in [sp][cfg][spec] order, where
+  // GetBatchOutputSpectraCuda reads them.
   if (S.n_config_max > 1 && S.pts_x_initialized) {
     int N_out = S.n_config_max;
     int ns_out = S.ns_local_cached;
@@ -205,24 +195,6 @@ void FlushForOutputQuantitiesCuda(
     g_batch_outputs_shape[1] = ns_out;
     g_batch_outputs_shape[2] = mpol_out;
     g_batch_outputs_shape[3] = ntor_out;
-    if (batch_out_path && *batch_out_path) {
-      FILE* f = std::fopen(batch_out_path, "wb");
-      if (f) {
-        int32_t header[4] = {N_out, ns_out, mpol_out, ntor_out};
-        std::fwrite(header, sizeof(int32_t), 4, f);
-        std::fwrite(h_buf, sizeof(double), total_doubles, f);
-        std::fclose(f);
-        std::fprintf(stderr,
-            "[fft_toroidal_cuda] batch outputs written: N=%d ns=%d mpol=%d "
-            "ntor=%d (%zu doubles to %s)\n",
-            N_out, ns_out, mpol_out, ntor_out, total_doubles, batch_out_path);
-      } else {
-        std::fprintf(stderr,
-            "[fft_toroidal_cuda] could not open %s for writing batch "
-            "outputs\n",
-            batch_out_path);
-      }
-    }
     cudaFreeHost(h_buf);
   }
 

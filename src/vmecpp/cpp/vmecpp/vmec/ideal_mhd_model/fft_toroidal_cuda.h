@@ -386,13 +386,10 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
 // available and contain a single slot whose contents match the equivalent
 // scalar quantities returned by the single-cfg paths.
 
-// Returns the effective n_config_max for the current process. The value is
-// read once from the VMECPP_N_CONFIG_MAX environment variable and cached
-// for the lifetime of the process; a return value of one indicates
-// single-configuration execution. The accessor is invoked from Vmec::run
-// at run initialization to size the per-configuration vectors in
-// FlowControl before any CUDA kernel has fired, since the static cache
-// inside CudaForward is populated only on the first kernel invocation.
+// Returns the configuration count of the current run, which
+// ResetCudaStateForNewVmecRun sets at the start of every Vmec::run; one
+// indicates single-configuration execution. Vmec::run reads it to size the
+// per-configuration vectors in FlowControl before any CUDA kernel has fired.
 int GetNConfigMaxCuda();
 
 // Largest ns the CUDA radial tridiagonal solver supports on the active device.
@@ -428,9 +425,7 @@ int GetConvergenceFlag(int cfg);
 // Hands the distinct-mode per-cfg staging blocks to the CUDA layer in
 // memory: the spectral inputs consumed by the first forward transform and
 // the decomposed-position block consumed by the time integrator's init,
-// both in the [sp][cfg][spec] layout of the batch files. The staging
-// loaders consume these ahead of the VMECPP_BATCH_INPUTS_FILE /
-// VMECPP_BATCH_DEC_X_FILE fallback, which remains for external drivers.
+// both in [sp][cfg][spec] layout.
 void SetBatchStagingCuda(const double* inputs, const double* dec_x, int n_cfg,
                          int ns, int mpol, int ntor);
 
@@ -449,8 +444,8 @@ void SetBatchProfilesCuda(int n_cfg, int ns_h, int ns_f, const double* phipF,
 void ClearBatchProfilesCuda();
 
 // Reads back the converged per-cfg spectra of the last multi-configuration
-// run, the same [sp][cfg][spec] block the VMECPP_BATCH_OUTPUTS_FILE dump
-// writes. Returns false when no multi-configuration run has completed.
+// run in [sp][cfg][spec] layout. Returns false when no multi-configuration
+// run has completed.
 bool GetBatchOutputSpectraCuda(std::vector<double>* out, int* n_cfg, int* ns,
                                int* mpol, int* ntor);
 
@@ -586,8 +581,10 @@ void RecomposeToPhysicalCuda(
 // new run completes. The routine is safe to call before any FFT call,
 // returning as a no-op when the device stream has not yet been allocated.
 // The expected call site is Vmec::run, immediately before the first
-// IdealMhdModel iteration.
-void ResetCudaStateForNewVmecRun();
+// IdealMhdModel iteration. n_config sets the run's configuration count;
+// distinct marks configurations that carry their own inputs, whose state
+// the device interpolates per configuration at the multigrid transitions.
+void ResetCudaStateForNewVmecRun(int n_config, bool distinct);
 
 // Commits the host-side writes that FourierToReal3DSymmFastPoloidalCuda
 // defers as part of its no-end-sync optimization. The forward FFT routine

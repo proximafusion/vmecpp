@@ -204,9 +204,7 @@ void PerformTimeStepCuda(
     // the freshly-allocated d_pts_x. This preserves per-cfg state across
     // multigrid stages in distinct mode (host m_decomposed_x is single-cfg
     // and would otherwise wipe cfg != 0 via the broadcast fallback below).
-    const int upscale_kernel_env =
-        RunEnvFlag(&g_batch_upscale_kernel_env, "VMECPP_BATCH_UPSCALE_KERNEL");
-    if (upscale_kernel_env > 0 && S.pts_x_prev_valid && S.pts_x_prev_ns > 0 &&
+    if (g_batch_distinct_run && S.pts_x_prev_valid && S.pts_x_prev_ns > 0 &&
         S.pts_x_prev_size > 0 && S.d_scalxc) {
       int ns_old = S.pts_x_prev_ns;
       int ns_new = ns_local;
@@ -298,55 +296,23 @@ void PerformTimeStepCuda(
       initialized_by_upscale = true;
     }
     if (!initialized_by_upscale) {
-    // Distinct-mode override: load per-cfg decomposed_x from the file
-    // populated by pybind run_batched_gpu's distinct branch. Same file
-    // format as RecomposeToPhysicalCuda's loader (header + [sp][cfg][specs])
-    // and the two paths share the same d_pts_x_* destinations, so whichever
-    // fires first on iter 1 populates and the other's init branch is
-    // skipped via pts_x_initialized.
+    // Distinct batches: load each configuration's decomposed position from
+    // the run_batched_gpu staging block ([sp][cfg][spec] layout).
+    // RecomposeToPhysicalCuda loads the same block into the same d_pts_x_*
+    // destinations, so whichever runs first on iteration 1 populates them and
+    // the other's init branch is skipped via pts_x_initialized.
     size_t one_spec_doubles = (size_t)ns_local * mpol * (ntor + 1);
-    const char* dec_x_path = std::getenv("VMECPP_BATCH_DEC_X_FILE");
-    bool dec_x_loaded = false;
-    std::vector<double> dec_x_host_buf;
-    if (!g_batch_dec_x_mem.empty() &&
-        g_batch_mem_shape[0] == S.n_config_max &&
+    const bool dec_x_loaded =
+        !g_batch_dec_x_mem.empty() && g_batch_mem_shape[0] == S.n_config_max &&
         g_batch_mem_shape[1] == ns_local && g_batch_mem_shape[2] == mpol &&
-        g_batch_mem_shape[3] == ntor && S.n_config_max > 1) {
-      dec_x_host_buf = g_batch_dec_x_mem;
-      dec_x_loaded = true;
-    }
-    if (!dec_x_loaded && dec_x_path && *dec_x_path && S.n_config_max > 1) {
-      FILE* f = std::fopen(dec_x_path, "rb");
-      if (f) {
-        int32_t header[4] = {0, 0, 0, 0};
-        if (std::fread(header, sizeof(int32_t), 4, f) == 4 &&
-            header[0] == S.n_config_max &&
-            header[1] == ns_local &&
-            header[2] == mpol &&
-            header[3] == ntor) {
-          size_t total_doubles = (size_t)6 * S.n_config_max * one_spec_doubles;
-          dec_x_host_buf.resize(total_doubles);
-          size_t got = std::fread(dec_x_host_buf.data(), sizeof(double),
-                                   total_doubles, f);
-          dec_x_loaded = (got == total_doubles);
-        } else {
-          std::fprintf(stderr,
-              "[fft_toroidal_cuda] dec_x file header mismatch in %s "
-              "(got N=%d ns=%d mpol=%d ntor=%d; expected N=%d ns=%d "
-              "mpol=%d ntor=%d); falling back to broadcast\n",
-              dec_x_path, header[0], header[1], header[2], header[3],
-              S.n_config_max, ns_local, mpol, ntor);
-        }
-        std::fclose(f);
-      }
-    }
+        g_batch_mem_shape[3] == ntor && S.n_config_max > 1;
     double* dst_x[6] = {S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
                         S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs};
     if (dec_x_loaded) {
       for (int sp = 0; sp < 6; ++sp) {
         for (int cfg = 0; cfg < S.n_config_max; ++cfg) {
           const double* src =
-              dec_x_host_buf.data() +
+              g_batch_dec_x_mem.data() +
               (size_t)sp * S.n_config_max * one_spec_doubles +
               (size_t)cfg * one_spec_doubles;
           cuda_check(cudaMemcpyAsync(
@@ -355,11 +321,6 @@ void PerformTimeStepCuda(
               "h2d per-cfg dec_x (PerformTimeStep)");
         }
       }
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] loaded per-cfg dec_x from %s into "
-          "d_pts_x (PerformTimeStep init; N=%d ns=%d mpol=%d ntor=%d)\n",
-          (dec_x_path && *dec_x_path) ? dec_x_path : "memory",
-          S.n_config_max, ns_local, mpol, ntor);
     } else {
       const double* src_x[6] = {m_dec_x_rcc, m_dec_x_rss,
                                 m_dec_x_zsc, m_dec_x_zcs,
@@ -549,17 +510,7 @@ void StagePhaseDActiveCuda(const std::vector<std::uint8_t>& active_per_cfg) {
   }
 }
 
-int GetNConfigMaxCuda() {
-  // Frozen per run, not per process: ResetCudaStateForNewVmecRun re-reads
-  // the environment at the start of every Vmec::run, so successive runs in
-  // one process can carry different configuration counts. Within a run the
-  // value is stable for every consumer.
-  if (g_n_config_run < 0) {
-    const char* env = std::getenv("VMECPP_N_CONFIG_MAX");
-    g_n_config_run = (env != nullptr) ? std::max(1, std::atoi(env)) : 1;
-  }
-  return g_n_config_run;
-}
+int GetNConfigMaxCuda() { return g_n_config_run; }
 
 int CudaMaxRadialResolution() {
   // ns <= 1024 uses the PCR solver (one thread per radial row, bounded by the
@@ -589,9 +540,6 @@ bool CudaVramBudgetCuda(long long n_cfg, long long ns, long long mpol,
   long long needed = CudaBudgetRawBytes(n_cfg, ns, mpol, ntor, nZeta,
                                         nThetaEff);
   needed += needed / 8 + (256LL << 20);
-  // Resolve the same device ordinal that OneTimeInit selects, so the
-  // free-memory query reflects the device the run executes on rather
-  // than device 0.
   int device_count = 0;
   if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
     // No queryable device; let the allocations themselves decide.
@@ -599,16 +547,9 @@ bool CudaVramBudgetCuda(long long n_cfg, long long ns, long long mpol,
     if (free_bytes) *free_bytes = -1;
     return true;
   }
-  int device_index = 0;
-  if (const char* e = std::getenv("VMECPP_CUDA_DEVICE")) {
-    const int requested = std::atoi(e);
-    if (requested >= 0 && requested < device_count) {
-      device_index = requested;
-    }
-  }
   size_t free_sz = 0;
   size_t total_sz = 0;
-  if (cudaSetDevice(device_index) != cudaSuccess ||
+  if (cudaSetDevice(0) != cudaSuccess ||
       cudaMemGetInfo(&free_sz, &total_sz) != cudaSuccess) {
     if (needed_bytes) *needed_bytes = needed;
     if (free_bytes) *free_bytes = -1;

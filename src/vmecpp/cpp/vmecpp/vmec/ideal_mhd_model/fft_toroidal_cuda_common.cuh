@@ -121,28 +121,15 @@ const std::vector<double>& GetPlasmaVolumePerCfgCache();
 
 const std::vector<double>& GetFnorm1PerCfgCache();
 
-// Effective configuration count for the current run. Negative means
-// unread; GetNConfigMaxCuda resolves it from VMECPP_N_CONFIG_MAX on
-// first use and ResetCudaStateForNewVmecRun re-reads it at the start
-// of every Vmec::run, so the count can change between runs in one
-// process while staying frozen within a run.
+// Configuration count of the current run, set by ResetCudaStateForNewVmecRun
+// at the start of every Vmec::run and stable within the run.
 extern int g_n_config_run;
 
-// Run-scoped boolean gates for the per-configuration multigrid upscale.
-// Re-read at the start of every Vmec::run alongside the configuration
-// count, so mixed batched and single runs in one process do not freeze
-// the first run's setting: a process whose first run leaves the upscale
-// unset would otherwise disable the per-configuration stage transition
-// for every later distinct-mode run.
-extern int g_batch_upscale_env;
-extern int g_batch_upscale_kernel_env;
-static int RunEnvFlag(int* cache, const char* name) {
-  if (*cache < 0) {
-    const char* e = std::getenv(name);
-    *cache = (e != nullptr && std::atoi(e) > 0) ? 1 : 0;
-  }
-  return *cache;
-}
+// Whether the configurations of the current run carry their own inputs
+// (distinct mode of run_batched_gpu). Such a run interpolates each
+// configuration's state on the device at the multigrid transitions; the
+// other runs take the host interpolation.
+extern bool g_batch_distinct_run;
 
 // Slot indices for the 12 quantities transformed per (jF, m).
 enum Slot {
@@ -1006,11 +993,8 @@ struct CudaToroidalState {
     // Snapshot d_scalxc into d_scalxc_prev BEFORE freeing it. Pairs with the
     // d_pts_x_prev snapshot below so the upscale kernel can interpolate in
     // physical space (decomposed * scalxc_OLD) matching the host upscale.
-    // Gated on the same VMECPP_BATCH_MULTIGRID_UPSCALE knob; otherwise the
-    // existing free + re-alloc path is unchanged.
+    // Distinct batches only.
     {
-      const int scalxc_upscale_env =
-          RunEnvFlag(&g_batch_upscale_env, "VMECPP_BATCH_MULTIGRID_UPSCALE");
       // scalxc_staged is reset earlier in Reshape (line ~9580), so don't
       // check it here. d_scalxc != null is the right guard for the data:
       // the buffer still holds the OLD ns staged values until the
@@ -1018,7 +1002,7 @@ struct CudaToroidalState {
       // stage transition (position state live) from the first Reshape of
       // a fresh run after ResetForNewVmecRun, whose leftover scalxc
       // belongs to the prior run and must not arm the upscale.
-      if (scalxc_upscale_env > 0 && d_scalxc && pts_x_initialized &&
+      if (g_batch_distinct_run && d_scalxc && pts_x_initialized &&
           pts_x_ns > 0 && pts_x_ns != ns_local) {
         int scalxc_len_old = pts_x_ns * 2;
         size_t bytes_prev = sizeof(double) * (size_t)n_config_max *
@@ -1051,9 +1035,7 @@ struct CudaToroidalState {
     // init branch can dispatch the radial-interp kernel into the freshly
     // allocated buffers at the new ns_local. Required for distinct-mode
     // batched runs to preserve per-cfg state across stages.
-    const int upscale_env_reshape =
-        RunEnvFlag(&g_batch_upscale_env, "VMECPP_BATCH_MULTIGRID_UPSCALE");
-    if (upscale_env_reshape > 0 && pts_x_initialized && d_pts_x_rcc &&
+    if (g_batch_distinct_run && pts_x_initialized && d_pts_x_rcc &&
         pts_x_size > 0 && pts_x_ns > 0 &&
         ns_local != pts_x_ns) {
       auto cuda_free_inline = [](double*& p) {
@@ -1947,9 +1929,7 @@ struct CudaToroidalState {
     // in PerformTimeStepCuda's init branch can upscale per cfg into the
     // newly-allocated d_pts_x. Without this, the host m_decomposed_x
     // broadcast at the new ns washes out per-cfg state for cfg != 0.
-    const int upscale_env =
-        RunEnvFlag(&g_batch_upscale_env, "VMECPP_BATCH_MULTIGRID_UPSCALE");
-    bool snapshot = (upscale_env > 0 && pts_x_initialized && d_pts_x_rcc &&
+    bool snapshot = (g_batch_distinct_run && pts_x_initialized && d_pts_x_rcc &&
                       pts_x_size > 0 && pts_x_size != x_size &&
                       pts_x_ns > 0);
     if (snapshot) {
@@ -2220,21 +2200,9 @@ struct CudaToroidalState {
     if (device_count == 0) {
       throw std::runtime_error("[fft_toroidal_cuda] no CUDA device");
     }
-    // VMECPP_CUDA_DEVICE selects the device ordinal for this process;
-    // unset or invalid values fall back to device 0. Per-device batches
-    // across multiple GPUs run one process per device.
-    int device_index = 0;
-    if (const char* e = std::getenv("VMECPP_CUDA_DEVICE")) {
-      const int requested = std::atoi(e);
-      if (requested >= 0 && requested < device_count) {
-        device_index = requested;
-      } else {
-        std::fprintf(stderr,
-                     "[fft_toroidal_cuda] VMECPP_CUDA_DEVICE=%s out of range "
-                     "(%d device(s)); using device 0\n",
-                     e, device_count);
-      }
-    }
+    // The run uses the first visible device; CUDA_VISIBLE_DEVICES selects
+    // it, one process per device.
+    const int device_index = 0;
     cuda_check(cudaSetDevice(device_index), "cudaSetDevice");
     cudaDeviceProp prop;
     cuda_check(cudaGetDeviceProperties(&prop, device_index),

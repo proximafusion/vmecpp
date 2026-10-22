@@ -5,10 +5,6 @@
 #include "vmecpp/common/flow_control/flow_control.h"
 
 #include <algorithm>
-#include <climits>
-#include <cstdlib>
-#include <cstring>
-#include <limits>
 
 #include "absl/log/check.h"
 #include "vmecpp/common/util/os_compat.h"  // VMECPP_UNREACHABLE
@@ -68,43 +64,9 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
   fResPrecd.setZero();
 
   ns_old = 0;
-
-  // Default to no per-cfg niter cap; the convergence gate populates this
-  // from VMECPP_PER_CFG_NITER_CAP on first use when the per-cfg vectors
-  // are non-empty.
-  niter_max_per_cfg = std::numeric_limits<int>::max();
 }
 
 int FlowControl::max_threads() const { return max_threads_; }
-
-namespace {
-// Reads VMECPP_ACTIVE_PER_CFG_OVERRIDE_BITS to produce an initial
-// active-per-cfg mask. The env-var format is a string of ASCII 0/1
-// characters, one per cfg. When unset, the mask is all-ones (every cfg
-// active). The override is consumed by both ResizeForBatch and
-// ResetActivePerCfgForNextStage so that callers (such as the per-cfg
-// OutputQuantities reconstruction in pybind_vmec.cc's run_batched_gpu)
-// can scope a Vmec instance to a single active configuration even when
-// the CUDA state's cached n_config_max remains at the larger batched
-// value.
-std::vector<std::uint8_t> ResolveInitialActiveMask(int n_cfg) {
-  std::vector<std::uint8_t> mask(n_cfg, static_cast<std::uint8_t>(1));
-  const char* bits = std::getenv("VMECPP_ACTIVE_PER_CFG_OVERRIDE_BITS");
-  if (bits == nullptr) return mask;
-  const int len = static_cast<int>(std::strlen(bits));
-  const int limit = std::min(n_cfg, len);
-  for (int c = 0; c < limit; ++c) {
-    mask[c] = (bits[c] == '0') ? static_cast<std::uint8_t>(0)
-                               : static_cast<std::uint8_t>(1);
-  }
-  // Indices beyond the override length default to zero so callers can
-  // pass a shorter prefix and have the remainder treated as inactive.
-  for (int c = limit; c < n_cfg; ++c) {
-    mask[c] = static_cast<std::uint8_t>(0);
-  }
-  return mask;
-}
-}  // namespace
 
 // Allocates and initializes the per-configuration state vectors that
 // support the batched CUDA execution mode. The operation is idempotent
@@ -116,13 +78,13 @@ std::vector<std::uint8_t> ResolveInitialActiveMask(int n_cfg) {
 // Initial values mirror the single-configuration initialization performed
 // in the constructor: the residual fields are set to unity to suppress
 // premature convergence, the restart disposition starts at NO_RESTART,
-// the active mask comes from ResolveInitialActiveMask, and the component
-// residual vectors are zeroed.
+// every configuration starts active, and the component residual vectors
+// are zeroed.
 void FlowControl::ResizeForBatch(int n_cfg) {
   if (n_cfg <= 0) return;
   if (static_cast<int>(active_per_cfg.size()) == n_cfg) return;
   restart_reason_per_cfg.assign(n_cfg, RestartReason::NO_RESTART);
-  active_per_cfg = ResolveInitialActiveMask(n_cfg);
+  active_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(1));
   fsqr_per_cfg.assign(n_cfg, 1.0);
   fsqz_per_cfg.assign(n_cfg, 1.0);
   fsql_per_cfg.assign(n_cfg, 1.0);
@@ -136,16 +98,16 @@ void FlowControl::ResizeForBatch(int n_cfg) {
   converged_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
 }
 
-// Restores active_per_cfg to ones (subject to the
-// VMECPP_ACTIVE_PER_CFG_OVERRIDE_BITS override), zeros iter2_per_cfg,
-// and clears converged_per_cfg. Called at the start of every multigrid
-// stage. Configurations that converged against the coarser-stage
-// tolerance must re-iterate at the finer stage's tighter tolerance, so
-// the active mask is rebuilt rather than carried forward.
+// Restores active_per_cfg to ones, zeros iter2_per_cfg, and clears
+// converged_per_cfg. Called at the start of every multigrid stage.
+// Configurations that converged against the coarser-stage tolerance must
+// re-iterate at the finer stage's tighter tolerance, so the active mask is
+// rebuilt rather than carried forward.
 void FlowControl::ResetActivePerCfgForNextStage() {
   const int n_cfg = static_cast<int>(active_per_cfg.size());
   if (n_cfg <= 0) return;
-  active_per_cfg = ResolveInitialActiveMask(n_cfg);
+  std::fill(active_per_cfg.begin(), active_per_cfg.end(),
+            static_cast<std::uint8_t>(1));
   std::fill(iter2_per_cfg.begin(), iter2_per_cfg.end(), 0);
   std::fill(converged_per_cfg.begin(), converged_per_cfg.end(),
             static_cast<std::uint8_t>(0));
