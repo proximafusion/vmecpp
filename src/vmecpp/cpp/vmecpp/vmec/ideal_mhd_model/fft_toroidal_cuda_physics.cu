@@ -179,7 +179,7 @@ void ComputeJacobianCuda(
     }
   }
 
-  // Device-side tau min/max → 2 scalars per config (replaces tau D2H + host scan).
+  // Device-side tau min/max -> 2 scalars per config (replaces tau D2H + host scan).
   // Batched execution: launch n_config_max_max blocks, each writes out[cfg*2+0..1].
   S.EnsureJacMinmaxBuffer();
   k_tau_minmax<<<S.n_config_max, 256, 0, S.stream>>>(
@@ -732,8 +732,8 @@ void ComputeBContraCuda(
   // from S.d_chipF/S.d_phipF directly. The only live host consumer is
   // ComputeOutputQuantities at end of run (output_quantities.cc writes
   // chipF/chipH/iotaF/iotaH to the HDF5 wout). FlushForOutputQuantitiesCuda
-  // covers that one-shot D2H instead. Saves 4 small async D2Hs / iter ≈
-  // 50-100 μs / iter * 21597 iters ≈ 1-2s at N=64.
+  // covers that one-shot D2H instead. Saves 4 small async D2Hs / iter ~
+  // 50-100 us / iter * 21597 iters ~ 1-2s at N=64.
   (void)bsupu; (void)bsupv;
   (void)chipH_out; (void)iotaH_out; (void)chipF_out; (void)iotaF_out;
 }
@@ -879,7 +879,7 @@ void ComputePreconditioningMatrixCuda(
   // Keep host D2H too: ApplyM1PreconditionerCuda and ConstraintForceMultiplierCuda
   // still H2D ard/brd/azd/bzd from host. We could remove their H2Ds and read
   // d_pmat_* directly, but that expands scope; for now keep the host arrays
-  // consistent. Cost: ~20µs/precond-update.
+  // consistent. Cost: ~20us/precond-update.
   cuda_check(cudaMemcpyAsync(m_axm.data(), S.d_pm_axm,
                               sizeof(double) * ns_h * 2,
                               cudaMemcpyDeviceToHost, S.stream), "d2h pm axm");
@@ -1000,7 +1000,7 @@ void UpdateLambdaPreconditionerCuda(
   // line 8184 explicitly marks the host lambdaPreconditioner argument as
   // (void) and reads d_lambdaPreconditioner directly). Dropping the
   // D2Hs eliminates the per-preconditioner-update kernel launch + async
-  // copy overhead. 960 updates × 4 D2Hs ≈ ~80 ms total on the convergence
+  // copy overhead. 960 updates x 4 D2Hs ~80 ms total on the convergence
   // trajectory.
   (void)lambdaPreconditioner_host;
   (void)bLambda_out;
@@ -1460,7 +1460,7 @@ void UpdateVolumeCuda(
 // ============================================================================
 // ConstraintForceMultiplierCuda: CUDA port of IdealMhdModel::constraintForceMultiplier.
 // Inputs (device): d_ruFull, d_zuFull (from ComputeRuZuFullCuda), d_wInt.
-// Inputs (per-call H2D): ard, azd (each ns_force_local × 2 doubles).
+// Inputs (per-call H2D): ard, azd (each ns_force_local x 2 doubles).
 // Output: tcon (device + D2H). LCFS halving done host-side after D2H.
 // ============================================================================
 void ConstraintForceMultiplierCuda(
@@ -2005,7 +2005,7 @@ int ApplyRZPreconditionerCuda(
   (void)ar; (void)dr; (void)br_in; (void)az; (void)dz; (void)bz_in;
   (void)jMin_arr; (void)jMin_size;
 
-  // Device-side transpose decomposed shadow → cR/cZ.
+  // Device-side transpose decomposed shadow -> cR/cZ.
   // Batched execution: z-dim covers n_config_max configs.
   {
     const int TPB = 32;
@@ -2229,7 +2229,7 @@ int ApplyRZPreconditionerCuda(
   }
   S.TKEnd(CudaToroidalState::TK_APPLY_RZ);
 
-  // Device-side transpose cR/cZ → decomposed shadow.
+  // Device-side transpose cR/cZ -> decomposed shadow.
   // Batched execution: z-dim covers n_config_max configs.
   {
     const int TPB = 32;
@@ -2362,7 +2362,7 @@ void DeAliasConstraintForceCuda(
     S.dealias_faccon_staged = true;
   }
 
-  // Stage 1: forward poloidal+toroidal → gsc/gcs.
+  // Stage 1: forward poloidal+toroidal -> gsc/gcs.
   // Batched execution: z-dim = config * ns_force_local + jF.
   // TPB=16 keeps lane util at 11/16=69pct (ntor+1=11 active threads). TPB=32
   // was tested and regressed -0.8pct throughput at N=64 (120.0s vs 119.1s
@@ -2386,7 +2386,7 @@ void DeAliasConstraintForceCuda(
   DiagCfg01DiffCuda(S.d_dealias_gcs,
                     ns_force_local * mpol * (ntor + 1), "dealias_fwd:gcs");
 
-  // Stage 2: inverse poloidal+toroidal → m_gCon.
+  // Stage 2: inverse poloidal+toroidal -> m_gCon.
   // Batched execution: k_dealias_inv uses `m_gCon[dst] = acc` (not +=) and
   // covers every (cfg, jF, k, l) cell at lasym=false / nThetaEff==nThetaReduced.
   // Pre-zero memset is therefore redundant. (Re-enable if lasym support is

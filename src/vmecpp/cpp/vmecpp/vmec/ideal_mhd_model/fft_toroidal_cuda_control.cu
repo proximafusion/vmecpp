@@ -66,9 +66,9 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   }
   static int residuals_par_env = -1;
   if (residuals_par_env < 0) {
-    // Default ON. Parallel 256-thread tree reduce gives 3.0× wall reduction
+    // Default ON. Parallel 256-thread tree reduce gives 3.0x wall reduction
     // on the canonical production boundary with aspect_ratio bit-exact and
-    // all field-line metrics within the existing CPU↔CUDA drift family.
+    // all field-line metrics within the existing CPU<->CUDA drift family.
     // Set VMECPP_RESIDUALS_PAR=0 to roll back to the legacy 1-thread serial.
     const char* e = std::getenv("VMECPP_RESIDUALS_PAR");
     residuals_par_env = (e && std::atoi(e) == 0) ? 0 : 1;
@@ -115,7 +115,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
       last_k_printed = g_residuals_k_run;
       std::fprintf(stderr,
           "[fft_toroidal_cuda] residuals K-partition reduction ENABLED "
-          "(K=%d, n_config=%d → K*n_cfg=%d SM coverage; "
+          "(K=%d, n_config=%d -> K*n_cfg=%d SM coverage; "
           "set VMECPP_RESIDUALS_K=1 to revert)\n",
           g_residuals_k_run, S.n_config_max,
           g_residuals_k_run * S.n_config_max);
@@ -205,7 +205,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   // previous iter's memcpy via cudaEventSynchronize (much cheaper than
   // cudaStreamSynchronize because it doesn't drain unrelated stream work),
   // copies that previous iter's values into the cache, returns them, then
-  // queues this iter's memcpy. Saves ~50µs sync stall per iter at the
+  // queues this iter's memcpy. Saves ~50us sync stall per iter at the
   // cost of 1-iter-stale residual values feeding into evalFResInvar.
   static int defer_env = -1;
   if (defer_env < 0) {
@@ -243,7 +243,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   }
   // Only defer the INVAR path. The precd path runs after preconditioning
   // and uses a separate cache; deferring both would clobber the single
-  // pinned buffer. Near-convergence (stale residual sum within 10× ftolv),
+  // pinned buffer. Near-convergence (stale residual sum within 10x ftolv),
   // do an immediate sync so the convergence-check sees the current value
   // rather than the stale one; otherwise the iter declares premature
   // convergence on a non-equilibrium state.
@@ -452,7 +452,7 @@ void PerformTimeStepCuda(
       }
       std::fprintf(stderr,
           "[fft_toroidal_cuda] multigrid upscale: host-exact per-cfg interp "
-          "ns %d → %d (n_cfg=%d mpol=%d ntor=%d, scalxc_staged=%d)\n",
+          "ns %d -> %d (n_cfg=%d mpol=%d ntor=%d, scalxc_staged=%d)\n",
           ns_old, ns_new, S.n_config_max, mpol, ntor,
           (int)S.scalxc_staged);
       // Probe: D2H both cfg 0 and cfg 1 of d_pts_x_rcc post-upscale; the cfg

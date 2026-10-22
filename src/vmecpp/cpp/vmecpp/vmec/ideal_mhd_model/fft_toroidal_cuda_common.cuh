@@ -229,7 +229,7 @@ __device__ __forceinline__ double dd_to_double(DD a) {
 // effectively split into FP32 hi/lo via cast + residual, then the standard
 // DD add is applied. Used by Path 1 (FP64 mults, DD-pair sums) where the
 // inputs are FP64-precise but the accumulator wants DD compensation against
-// √n error growth across the inner loop.
+// sqrt(n) error growth across the inner loop.
 __device__ __forceinline__ DD dd_add_d(DD a, double b) {
   float b_hi = (float)b;
   float b_lo = (float)(b - (double)b_hi);
@@ -241,7 +241,7 @@ __device__ __forceinline__ DD dd_add_d(DD a, double b) {
 // TwoProduct via Dekker: splits a, b into FP32 hi/lo halves, then computes
 // the exact product as a DD pair (hi, lo). Six FP32 multiplies + a few
 // adds; ~96-bit precision when both operands are FP32. Used by Path 2
-// (DD × DD multiply) where inputs are FP32 and we want to recover full
+// (DD x DD multiply) where inputs are FP32 and we want to recover full
 // precision in the product before accumulating.
 __device__ __forceinline__ void fp32_twoprod_split(float a, float& ahi, float& alo) {
   // Dekker split with K = 2^12 + 1 = 4097 (single-precision boundary).
@@ -863,7 +863,7 @@ struct CudaToroidalState {
   double* d_chipF = nullptr;
   double* d_phipF = nullptr;
 
-  // rzConIntoVolume outputs (full-grid con range, ns_con_local × nZnT).
+  // rzConIntoVolume outputs (full-grid con range, ns_con_local x nZnT).
   double* d_rCon0 = nullptr;
   double* d_zCon0 = nullptr;
   int rzcon0_ns_con_cached = -1;
@@ -909,7 +909,7 @@ struct CudaToroidalState {
   double* d_lambdaPreconditioner = nullptr;
 
   // computePreconditioningMatrix scratch.
-  // ax: ns_h × 4, bx: ns_h × 3, cx: ns_h.
+  // ax: ns_h x 4, bx: ns_h x 3, cx: ns_h.
   double* d_ax_scratch = nullptr;
   double* d_bx_scratch = nullptr;
   double* d_cx_scratch = nullptr;
@@ -1039,10 +1039,10 @@ struct CudaToroidalState {
   double* d_pts_x_lsc = nullptr;
   double* d_pts_x_lcs = nullptr;
   // Device twin of host physical_x_backup. RestartIteration periodically
-  // saves d_pts_x → d_pts_x_backup on the NO_RESTART path and restores on
+  // saves d_pts_x -> d_pts_x_backup on the NO_RESTART path and restores on
   // BAD_JACOBIAN/BAD_PROGRESS. Mirrors the host backup mechanism so the
   // device state participates in rollback; required when the per-iter D2H
-  // of d_pts_x → host m_decomposed_x is removed.
+  // of d_pts_x -> host m_decomposed_x is removed.
   double* d_pts_x_backup_rcc = nullptr;
   double* d_pts_x_backup_rss = nullptr;
   double* d_pts_x_backup_zsc = nullptr;
@@ -1166,7 +1166,7 @@ struct CudaToroidalState {
   double* d_rz_x_saved_R = nullptr;
   double* d_rz_x_saved_Z = nullptr;
 
-  // computeMHDForces outputs (force grid, ns_force_local × nZnT each).
+  // computeMHDForces outputs (force grid, ns_force_local x nZnT each).
   double* d_armn_e = nullptr;
   double* d_armn_o = nullptr;
   double* d_azmn_e = nullptr;
@@ -1487,7 +1487,7 @@ struct CudaToroidalState {
                    "alloc d_scalxc_prev");
         cuda_check(cudaMemcpyAsync(d_scalxc_prev, d_scalxc, bytes_prev,
                                     cudaMemcpyDeviceToDevice, stream),
-                   "d2d scalxc → scalxc_prev (Reshape snapshot)");
+                   "d2d scalxc -> scalxc_prev (Reshape snapshot)");
         scalxc_prev_len = scalxc_len_old;
         scalxc_prev_valid = true;
         std::fprintf(stderr,
@@ -1535,13 +1535,13 @@ struct CudaToroidalState {
       for (int i = 0; i < 6; ++i) {
         cuda_check(cudaMemcpyAsync(dst[i], src[i], bytes_prev,
                                     cudaMemcpyDeviceToDevice, stream),
-                   "d2d pts_x → pts_x_prev (Reshape snapshot)");
+                   "d2d pts_x -> pts_x_prev (Reshape snapshot)");
       }
       pts_x_prev_size = pts_x_size;
       pts_x_prev_ns = pts_x_ns;
       pts_x_prev_valid = true;
       std::fprintf(stderr,
-          "[fft_toroidal_cuda] Reshape multigrid snapshot: ns %d → %d "
+          "[fft_toroidal_cuda] Reshape multigrid snapshot: ns %d -> %d "
           "(n_cfg=%d), %zu bytes/spec captured\n",
           pts_x_ns, ns_local, n_config_max, bytes_prev);
     }
@@ -2017,7 +2017,7 @@ struct CudaToroidalState {
   }
 
   // Allocate metric-element output buffers (gsqrt, guu, guv, gvv) at half-grid.
-  // Shares jac_array_bytes (same ns_h × nZnT shape).
+  // Shares jac_array_bytes (same ns_h x nZnT shape).
   void EnsureMetricBuffers(int ns_h, int nZnT) {
     EnsureJacobianBuffers(ns_h, nZnT);  // ensures jac arrays + d_sqrtSH exist
     auto cuda_free_if = [](void*& p) {
@@ -2232,7 +2232,7 @@ struct CudaToroidalState {
   }
 
   // Per-cfg restart mask: used by RestorePtsXFromBackupPerCfgCuda to gate
-  // the d_pts_x backup→main copy on a per-cfg basis. nullptr until the first
+  // the d_pts_x backup->main copy on a per-cfg basis. nullptr until the first
   // EnsureRestartMaskBuffer() call.
   std::uint8_t* d_restart_mask = nullptr;
   void EnsureRestartMaskBuffer() {
@@ -2534,7 +2534,7 @@ struct CudaToroidalState {
       for (int i = 0; i < 6; ++i) {
         cuda_check(cudaMemcpyAsync(dst[i], src[i], bytes_prev,
                                     cudaMemcpyDeviceToDevice, stream),
-                   "d2d pts_x → pts_x_prev (multigrid snapshot)");
+                   "d2d pts_x -> pts_x_prev (multigrid snapshot)");
       }
       pts_x_prev_size = pts_x_size;
       pts_x_prev_ns = pts_x_ns;
@@ -2542,7 +2542,7 @@ struct CudaToroidalState {
       pts_x_prev_ntor = ntor;
       pts_x_prev_valid = true;
       std::fprintf(stderr,
-          "[fft_toroidal_cuda] multigrid snapshot: ns %d → %d (mpol=%d ntor=%d "
+          "[fft_toroidal_cuda] multigrid snapshot: ns %d -> %d (mpol=%d ntor=%d "
           "n_cfg=%d), %zu bytes/spec\n",
           pts_x_ns, ns_local, mpol, ntor, n_config_max, bytes_prev);
     }
@@ -2752,7 +2752,7 @@ struct CudaToroidalState {
     }
   }
 
-  // rzConIntoVolume buffers (ns_con_local × nZnT each for rCon0, zCon0).
+  // rzConIntoVolume buffers (ns_con_local x nZnT each for rCon0, zCon0).
   void EnsureRzCon0Buffers(int ns_con_local, int nZnT) {
     if (rzcon0_ns_con_cached == ns_con_local && rzcon0_nZnT_cached == nZnT &&
         d_rCon0 != nullptr) {
@@ -4003,14 +4003,14 @@ __global__ void k_assemble_rz_preconditioner(
 
 // Template kernels (instantiated at their launch sites).
 // k_dealias_inv_tpl_mixed: mixed-precision variant of k_dealias_inv_tpl.
-// Inner (m, n) loop multiplies gsc/gcs × cosnv/sinnv at FP32 (Ada FP32 cores
+// Inner (m, n) loop multiplies gsc/gcs x cosnv/sinnv at FP32 (Ada FP32 cores
 // outnumber FP64 cores ~4:1), with the result cast to FP64 and added to a
 // FP64 accumulator. Outer accumulator + writes remain FP64. The sinmu/cosmu
 // product into acc also stays FP64.
 //
 // Tolerance: each FP32 mult has ~1e-7 relative error; with NTOR+1=11 mults
 // per (m) chain, w0/w1 accumulator error is ~1e-6 relative. The downstream
-// gCon feeds back through AssembleTotalForces → forces → residual norm; if
+// gCon feeds back through AssembleTotalForces -> forces -> residual norm; if
 // residual must converge below the FP32 noise floor, the iterative solver
 // will fail to terminate (the same failure mode observed with the FP32
 // cuFFT path). The relaxed contract here

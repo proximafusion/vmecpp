@@ -804,7 +804,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
         write_file("/tmp/vmecpp_fft_z2d_out_radix83.bin",
                    h_Y_radix.data(), Y_bytes);
         std::fprintf(stderr,
-            "[fft_toroidal_cuda] FFT_DUMP: dumped %d batches × (nhalf=%d "
+            "[fft_toroidal_cuda] FFT_DUMP: dumped %d batches x (nhalf=%d "
             "complex in, nZeta=%d real out) cuFFT + radix-8x3 to "
             "/tmp/vmecpp_fft_z2d_*.bin\n",
             total_batches, nhalf, nZeta);
@@ -1202,7 +1202,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
       } else if (scatter_custom_gemm_wmma_env) {
         // TF32 tensor-core dispatch via wmma::mma_sync. One block per
         // (cfg*ns_local, k) tile; 256 threads (8 warps). 3-slice Ozaki
-        // produces 9 cross-product wmma chains × 6 K-chunks = 54
+        // produces 9 cross-product wmma chains x 6 K-chunks = 54
         // wmma::mma_sync calls per tile, distributed across 8 warps.
         // Shared memory:
         //   doubles: kBatch*mpol + 4*mpol*nThetaReduced + mpol = 700
@@ -1742,7 +1742,7 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
     cuda_check(cudaGetLastError(), "k_inverse_fill launch");
   }
 
-  // Stage 2: forward FFT (D2Z) on (ns_local × mpol × kBatch) batches of
+  // Stage 2: forward FFT (D2Z) on (ns_local x mpol x kBatch) batches of
   // length nZeta=24, producing complex output X[jF, m, q, n] for n in [0,
   // nhalf=13).
   //
@@ -2161,7 +2161,7 @@ void PrepareStagePtsXCuda(
 // and CudaForward's H2D specs_block can be skipped (specs_populated_from_device
 // flag).
 //
-// First-call init: H2D host m_decomposed_x → d_pts_x. Subsequent calls read
+// First-call init: H2D host m_decomposed_x -> d_pts_x. Subsequent calls read
 // the device-resident d_pts_x updated by PerformTimeStepCuda at end of last
 // iter. scalxc staging is shared with DecomposeAndConstrainCuda's stage flag.
 // ============================================================================
@@ -2208,7 +2208,7 @@ void RecomposeToPhysicalCuda(
     S.scalxc_staged = true;
   }
 
-  // First-iter init: H2D host m_decomposed_x → d_pts_x. Subsequent iters
+  // First-iter init: H2D host m_decomposed_x -> d_pts_x. Subsequent iters
   // skip this; d_pts_x persists from PerformTimeStepCuda's update.
   //
   // Distinct-mode override (VMECPP_BATCH_DEC_X_FILE): when the per-cfg
@@ -2324,7 +2324,7 @@ void RecomposeToPhysicalCuda(
     }
   }
 
-  // Stage 1: decomposeInto → write d_specs_block sections from d_pts_x via
+  // Stage 1: decomposeInto -> write d_specs_block sections from d_pts_x via
   // multiplication by scalxc. Reuse k_decompose_into; the math is the same
   // (dest = source * scal) regardless of geometry-vs-forces semantics. ns_dec
   // for the geometry case is ns_local (loop range [nsMinF1, ns) which equals

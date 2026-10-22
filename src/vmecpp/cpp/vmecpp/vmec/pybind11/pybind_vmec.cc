@@ -1851,7 +1851,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         // with a heap corruption, while a fresh process carries no such
         // state.
         //
-        // Input arrays are flattened (ns × mpol × (ntor+1)) per the
+        // Input arrays are flattened (ns x mpol x (ntor+1)) per the
         // d_pts_x layout written by FlushAllConfigsForOutputCuda, with
         // ns selected from the matrix row count and mpol*(ntor+1)
         // from the column count. The conversion to wout-format

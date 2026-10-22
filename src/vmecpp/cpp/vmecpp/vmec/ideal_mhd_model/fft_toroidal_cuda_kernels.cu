@@ -667,8 +667,8 @@ __global__ void k_fwd_fused_L(
 }
 
 // k_forward_fft_fused: replaces the entire forward FFT chain
-// (k_fill_spectra → cuFFT batched Z2D → k_scatter_main_and_con) with one
-// kernel that goes directly spec → final real-space outputs. Per (cfg, jF, k, l)
+// (k_fill_spectra -> cuFFT batched Z2D -> k_scatter_main_and_con) with one
+// kernel that goes directly spec -> final real-space outputs. Per (cfg, jF, k, l)
 // thread:
 //   1. For each m, sum over n=0..ntor to inline the inverse toroidal DFT:
 //      rmkcc[k] = sum_n rmncc[m,n] * nscale[n] * cos(2*pi*n*k/nZeta)
@@ -1113,7 +1113,7 @@ __global__ void k_forward_dft_24_radix83(
   }
   __syncwarp();
 
-  // Stage 1: length-8 forward DFT, F_{n2}[k1] = Σ_{n1} x[3n1+n2] · w8F^{n1 k1}
+  // Stage 1: length-8 forward DFT, F_{n2}[k1] = sum_{n1} x[3n1+n2] * w8F^{n1 k1}
   // x is real, so F_re/F_im accumulate from x * (cos, -sin).
   double F_re = 0.0;
   double F_im = 0.0;
@@ -1128,7 +1128,7 @@ __global__ void k_forward_dft_24_radix83(
     F_im -= xr * s;
   }
 
-  // Stage 2: twiddle T = F · w24F^{n2 k1} where w24F = cos - i sin.
+  // Stage 2: twiddle T = F * w24F^{n2 k1} where w24F = cos - i sin.
   // T_re = F_re*c + F_im*s ; T_im = F_im*c - F_re*s
   double T_re, T_im;
   {
@@ -1144,7 +1144,7 @@ __global__ void k_forward_dft_24_radix83(
   __syncwarp();
 
   // Stage 3: length-3 forward DFT for this thread's (k1, k2).
-  // w3F = exp(-2πi/3) = -1/2 - i sqrt(3)/2
+  // w3F = exp(-2pii/3) = -1/2 - i sqrt(3)/2
   double T0_re = s_T_re[k1 * kRadix2 + 0];
   double T0_im = s_T_im[k1 * kRadix2 + 0];
   double T1_re = s_T_re[k1 * kRadix2 + 1];
@@ -1159,13 +1159,13 @@ __global__ void k_forward_dft_24_radix83(
     out_re = T0_re + T1_re + T2_re;
     out_im = T0_im + T1_im + T2_im;
   } else if (k2 == 1) {
-    // X[k] = T0 + T1·(-1/2 - i kS3) + T2·(-1/2 + i kS3)
+    // X[k] = T0 + T1*(-1/2 - i kS3) + T2*(-1/2 + i kS3)
     out_re = T0_re - 0.5 * T1_re + kS3 * T1_im
                    - 0.5 * T2_re - kS3 * T2_im;
     out_im = T0_im - 0.5 * T1_im - kS3 * T1_re
                    - 0.5 * T2_im + kS3 * T2_re;
   } else {  // k2 == 2
-    // X[k] = T0 + T1·(-1/2 + i kS3) + T2·(-1/2 - i kS3)
+    // X[k] = T0 + T1*(-1/2 + i kS3) + T2*(-1/2 - i kS3)
     out_re = T0_re - 0.5 * T1_re - kS3 * T1_im
                    - 0.5 * T2_re + kS3 * T2_im;
     out_im = T0_im - 0.5 * T1_im + kS3 * T1_re
@@ -2569,7 +2569,7 @@ __global__ void k_jacobian_metric_dvdsh_atomic(
   gvv[iHalf]   = gvv_v;
   guv[iHalf]   = guv_v;
 
-  // Atomic accumulator: signOfJacobian * gsqrt * wInt(l) → dVdsH[cfg, jH].
+  // Atomic accumulator: signOfJacobian * gsqrt * wInt(l) -> dVdsH[cfg, jH].
   // Order-nondeterministic; relaxed-contract path.
   int l = kl % nThetaEff;
   double contrib = signOfJacobian * gsqrt_v * wInt[l];
@@ -4513,12 +4513,12 @@ __global__ void k_rzcon_into_volume(
 //   1. k_inverse_fill: per (jF_local, m, q, k), Y[idx] = sum_l (force * basis_i),
 //      where basis_i is the integration-weighted poloidal basis (cosmui/sinmui/
 //      cosmumi/sinmumi). 12 slot types matching the forward kRmkcc..kLmkcsN.
-//   2. cuFFT R2C: nZeta-length real-to-complex over (jF, m, q) batches → X.
+//   2. cuFFT R2C: nZeta-length real-to-complex over (jF, m, q) batches -> X.
 //   3. k_inverse_scatter: per (jF_local, m, n), populate spec arrays (frcc, frss,
 //      fzsc, fzcs, flsc, flcs) from X with the inverse of the forward scaling.
 // ============================================================================
 
-// k_inverse_fill: real-space force arrays → Y[jF, m, q, k] (real, length nZeta).
+// k_inverse_fill: real-space force arrays -> Y[jF, m, q, k] (real, length nZeta).
 // Batched execution: configuration axis on blockIdx.z = config * ns_local + jF_local.
 // Per-config: force arrays (ns_force_local * nZnT), con arrays (ns_con_local *
 // nZnT), Y (ns_local * mpol * kBatch * nZeta). xmpq, cosmui/sinmui/cosmumi/
@@ -4683,7 +4683,7 @@ __global__ void k_inverse_fill(
   Y[y_idx] = acc;
 }
 
-// k_inverse_scatter: cuFFT R2C output → spec arrays.
+// k_inverse_scatter: cuFFT R2C output -> spec arrays.
 // Honors the CPU's range split: RZ forces (frcc/frss/fzsc/fzcs) written for
 // jF in [nsMinF, jMaxRZ); lambda forces (flsc/flcs) written for jF in
 // [max(nsMinF,jMinL), nsMaxFIncludingLcfs). Outside those, write 0 to match
@@ -4771,7 +4771,7 @@ __global__ void k_inverse_scatter(
 // k_compute_ru_zu_full: post-forward-FFT combine producing ruFull, zuFull at
 // each (jF_con, kl) where jF_con ranges over [nsMinF .. nsMaxFIncludingLcfs).
 // ruFull[idx] = ru_e[jF_local_full * nZnT + kl] + sqrtSF[jF_local_full] * ru_o[...]
-// Stores into d_ruFull, d_zuFull which are ns_con_local × nZnT.
+// Stores into d_ruFull, d_zuFull which are ns_con_local x nZnT.
 // Batched execution: configuration axis on blockIdx.z. ru_e/o/zu_e/o per-config full-grid;
 // ruFull/zuFull per-config con-grid; sqrtSF shared.
 __global__ void k_compute_ru_zu_full(int n_config, int ns_local,
@@ -4801,7 +4801,7 @@ __global__ void k_compute_ru_zu_full(int n_config, int ns_local,
 }
 
 // k_constraint_force_multiplier: per surface jF (one block, threads reduce kl).
-// Reduces (ruFull² * wInt) and (zuFull² * wInt) over kl, computes tcon[jF].
+// Reduces (ruFull^2 * wInt) and (zuFull^2 * wInt) over kl, computes tcon[jF].
 // Caller does the LCFS halving on host.
 // Batched execution: configuration axis on blockIdx.z. ruFull/zuFull per-config con-grid;
 // tcon per-config profile; ard/azd/wInt shared.
@@ -5058,7 +5058,7 @@ __global__ void k_apply_lambda_preconditioner(
 // (k_apply_rz_thomas removed: superseded by k_apply_rz_pcr; the serial Thomas
 //  was single-thread-per-block which was the largest GPU bottleneck.)
 
-// k_rz_transpose_in: spec (jF_local, m, n) → Thomas (mn, basis, jF_global).
+// k_rz_transpose_in: spec (jF_local, m, n) -> Thomas (mn, basis, jF_global).
 // jF_global = jF_local + nsMinF; rows outside the force range are zero-padded.
 // Batched execution: configuration axis on blockIdx.z. Spectra per-config (ns_local *
 // mnsize). Thomas buffer cR/cZ per-config (mnsize * num_basis * ns_total).
@@ -5105,7 +5105,7 @@ __global__ void k_rz_transpose_in(int n_config, int ns_local,
   }
 }
 
-// k_rz_transpose_out: Thomas (mn, basis, jF_global) → spec (jF_local, m, n).
+// k_rz_transpose_out: Thomas (mn, basis, jF_global) -> spec (jF_local, m, n).
 // Batched execution: configuration axis on blockIdx.z. Spectra per-config (ns_local *
 // mnsize). cR/cZ per-config (mnsize * num_basis * ns_total).
 __global__ void k_rz_transpose_out(int n_config, int ns_local,
@@ -5248,7 +5248,7 @@ __global__ void k_dealias_inv(
 
 
 
-// k_decompose_into: per (jF_dec, m, n), scale physical → decomposed.
+// k_decompose_into: per (jF_dec, m, n), scale physical -> decomposed.
 // Mirrors FourierCoeffs::decomposeInto for stellarator-symmetric (lasym=false).
 // jF range is [nsMin, jMaxIncludingBoundary). All RZ entries are written
 // (jMaxRZ == jMaxIncludingBoundary in the CPU code for our use case).
@@ -5672,7 +5672,7 @@ __global__ void k_residuals(
 //
 // Reduction order differs from the serial path by a few ULPs per call,
 // which compounds to <1e-10 relative drift on aspect_ratio over ~10^4
-// iters. That's well below the CPU↔CUDA drift family floor (1e-3 to
+// iters. That's well below the CPU<->CUDA drift family floor (1e-3 to
 // 1e-5 on the field-line metrics), so the change is invisible at
 // the production metric tolerances. The serial path remains the default; gated
 // by VMECPP_RESIDUALS_PAR=1.
@@ -6105,11 +6105,11 @@ __global__ void k_residuals_dd_fp32(
 }
 
 // k_scatter_main_and_con_dd_fp32: FP32 inner-multiplication variant of the
-// scatter step (spec→geometry). Inputs (Y, cosmu, sinmu, cosmum, sinmum)
+// scatter step (spec->geometry). Inputs (Y, cosmu, sinmu, cosmum, sinmum)
 // are loaded as FP64 but cast to FP32 inside the inner loop; the 18 per-
 // output running sums (r1_e/o, ru_e/o, rv_e/o, z1_e/o, zu_e/o, zv_e/o,
 // lu_e/o, lv_e/o, rCon, zCon) are kept as DD-pairs so the FP32 product
-// stream accumulates without √n amplification of the FP32 rounding.
+// stream accumulates without sqrt(n) amplification of the FP32 rounding.
 //
 // One thread per (cfg, jF_local, k, l) output. Serial m-loop within each
 // thread; no cross-thread reduction. cuFFT remains in FP64 (this kernel
@@ -6221,7 +6221,7 @@ __global__ void k_scatter_main_and_con_dd_fp32(
 
 // Path 1: FP64 multiplications + DD-pair accumulators. Same structure as
 // k_scatter_main_and_con_dd_fp32 but the inner mults run in native FP64
-// (no FP32 quantization). The DD accumulator catches √n drift in the
+// (no FP32 quantization). The DD accumulator catches sqrt(n) drift in the
 // running sum. Bit-exact-with-FP64 expected at the output. Gated by
 // VMECPP_SCATTER_DD_FP64MUL=1.
 __global__ void k_scatter_main_and_con_dd_fp64mul(
@@ -6328,7 +6328,7 @@ __global__ void k_scatter_main_and_con_dd_fp64mul(
   zCon[idx] = dd_to_double(zcon);
 }
 
-// Path 2: DD × DD multiplications + DD-pair accumulators. Inputs cast to
+// Path 2: DD x DD multiplications + DD-pair accumulators. Inputs cast to
 // FP32, products computed via TwoProduct (Dekker), accumulated in DD. ~96
 // bits of precision per product; six FP32 ops per mul; preserves FP64-
 // equivalent precision when inputs are FP32. Used where storage moves to
@@ -7232,7 +7232,7 @@ __device__ __forceinline__ float tf32_round_kernel(float a) {
 }
 
 // 3-slice Ozaki split of an FP64 operand into TF32 limbs. Returns
-// s0 + s1 + s2 ≈ v with each slice rounded to TF32 (10-bit mantissa).
+// s0 + s1 + s2 ~ v with each slice rounded to TF32 (10-bit mantissa).
 // Successive slices capture residuals at progressively smaller magnitude
 // bands (~10 mantissa bits per slice).
 __device__ __forceinline__ void slice_fp64_to_tf32_3(double v,
@@ -7253,7 +7253,7 @@ __device__ __forceinline__ void slice_fp64_to_tf32_3(double v,
 //   1. Cooperatively loads Y, basis (cosmu/sinmu/cosmum/sinmum), xmpq, sqrtSF.
 //   2. Builds A_tile[16, 48] = combined basis and B_tile[48, 16] = signed
 //      spec values with parity masking. The K dim (48) covers the 4 basis
-//      function variants × mpol values, padded for wmma.
+//      function variants x mpol values, padded for wmma.
 //   3. 3-slice Ozaki splits A_tile and B_tile into TF32 limbs.
 //   4. 9 cross-product wmma::mma_sync chains (one per (slice_i, slice_j) pair),
 //      each running 6 K-chunks across the K=48 sum.
@@ -7309,8 +7309,8 @@ __global__ void k_scatter_main_and_con_wmma_tf32(
   //   A_slice[3 slices][M_TILE * K_PAD]    = 3 * 16 * 48 = 2304 floats
   //   B_slice[3 slices][K_PAD * N_TILE]    = 3 * 48 * 16 = 2304 floats
   //   C_acc[9][M_TILE * N_TILE]            = 9 * 256 = 2304 floats
-  //   xmpq + double buffers above ≈ 5KB
-  // Total ≈ 5 KB doubles + 27.6 KB floats = 32.6 KB shared per block.
+  //   xmpq + double buffers above ~ 5KB
+  // Total ~ 5 KB doubles + 27.6 KB floats = 32.6 KB shared per block.
   extern __shared__ unsigned char smem_raw[];
   double* s_Y    = reinterpret_cast<double*>(smem_raw);
   double* s_cmu  = s_Y    + (size_t)kBatch * (size_t)mpol;
@@ -7443,7 +7443,7 @@ __global__ void k_scatter_main_and_con_wmma_tf32(
   }
   __syncthreads();
 
-  // --- wmma chain: 9 cross-products × 6 K-chunks = 54 wmma::mma_sync -----
+  // --- wmma chain: 9 cross-products x 6 K-chunks = 54 wmma::mma_sync -----
   // Distribute 9 cross-products (i,j) across 8 warps:
   //   warps 0..7 each own ceil(9/8) = 2 cross-products max.
   // Warp warp_id owns cross-products starting at index warp_id, plus
@@ -8263,7 +8263,7 @@ __global__ void k_assemble_rz_preconditioner(
             d_bzm[cfg_half_prof + jH_i * 2 + m_parity] * m * m);
   }
 
-  // Special: m=1 at jF=1 ⇒ dr += br, dz += bz.
+  // Special: m=1 at jF=1 => dr += br, dz += bz.
   if (jF == 1 && m == 1) {
     d_R += b_R;
     d_Z += b_Z;
@@ -8272,7 +8272,7 @@ __global__ void k_assemble_rz_preconditioner(
   // Edge pedestal + ZC_00 stabilization at the LCFS row (jF == ns_total - 1).
   // CPU applies this regardless of lfreeb, but in fixed-boundary the main loop
   // doesn't reach jF = ns - 1 (jMax = ns - 1, loop is exclusive), so the
-  // multiplied values are zero × pedestal = zero. Our in_range check excludes
+  // multiplied values are zero x pedestal = zero. Our in_range check excludes
   // jF = ns-1 in fixed-boundary (jF_upper = ns - 1), so we never reach here for
   // that case, with the same result.
   if (lcfs_owning && jF == ns_total - 1) {

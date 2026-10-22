@@ -53,7 +53,7 @@ void FlushDecomposedToHostCuda(
 // FlushForOutputQuantitiesCuda
 //
 // Flush the device-resident half-grid scalar fields back to their host-side
-// IdealMhdModel members so ComputeOutputQuantities → GatherDataFromThreads
+// IdealMhdModel members so ComputeOutputQuantities -> GatherDataFromThreads
 // reads correct data. wout.bmnc and friends are filled from these arrays;
 // without the flush they get the host buffers' uninitialized / denormal-noise
 // content and the Boozer transform downstream sees ~0.
@@ -434,7 +434,7 @@ void FlushAllConfigsForOutputCuda(
   }
 
   // Converged spectra (d_pts_x_*): the boundary-update results
-  // VMEC produced for each cfg. Layout per cfg: ns_local × mpol × (ntor+1).
+  // VMEC produced for each cfg. Layout per cfg: ns_local x mpol x (ntor+1).
   d2h(pts_x_rcc_host,     S.d_pts_x_rcc,     all_bytes_pts,   "flush all pts_x rcc");
   d2h(pts_x_zsc_host,     S.d_pts_x_zsc,     all_bytes_pts,   "flush all pts_x zsc");
   d2h(pts_x_lsc_host,     S.d_pts_x_lsc,     all_bytes_pts,   "flush all pts_x lsc");
@@ -449,7 +449,7 @@ void FlushAllConfigsForOutputCuda(
 
 // ============================================================================
 // Device-side physical_x_backup mirror + device rzNorm. Together these let
-// PerformTimeStepCuda drop its per-iter D2H of d_pts_x → host m_decomposed_x
+// PerformTimeStepCuda drop its per-iter D2H of d_pts_x -> host m_decomposed_x
 // plus the trailing cudaStreamSynchronize. The host backup mechanism (in
 // Vmec::RestartIteration) is replaced by device-to-device copies that keep
 // the rollback semantics under CUDA. Bit-exact match to CPU rzNorm is
@@ -497,7 +497,7 @@ void EnsurePTSBackupBuffers(CudaToroidalState& S) {
   S.pts_x_backup_initialized = true;
 }
 
-// Per-cfg restart kernels: copy d_pts_x_backup_* → d_pts_x_* and zero
+// Per-cfg restart kernels: copy d_pts_x_backup_* -> d_pts_x_* and zero
 // d_pts_v_* only for cfgs whose mask byte is non-zero. Per (cfg, idx) thread.
 __global__ void k_restore_pts_x_per_cfg(
     int n_cfg, int pts_x_size,
