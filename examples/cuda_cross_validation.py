@@ -1,17 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Cross-validation of the CUDA iteration body against the CPU one.
+"""Cross-validation of the CUDA build against the CPU build of the same commit.
 
-Two builds of one commit, one configured with ``-DVMECPP_USE_CUDA=ON`` and one without,
-run the same inputs in separate processes; every ``wout`` field of the CUDA run is then
-compared with the CPU run on one thread, against the spread between the CPU runs on one
-and on eight threads, which partition the radial reductions differently and so bound
-what a different summation order alone produces. Each build is also hot-restarted from
-the other's converged state: if both states solve the same discrete equations, the
-restart stops within the iterations a restart from its own state takes. The force
-residuals of the first iterations, before the two trajectories drift apart, compare the
-whole chain of kernels at once.
+``run`` solves the cases with the installed build, ``restart`` hot-restarts them from
+another run's converged states, and ``compare`` checks every ``wout`` field of the CUDA
+run against the spread between CPU runs on one and on eight threads.
 
     python examples/cuda_cross_validation.py run DIR cpu1 --threads 1     # CPU build
     python examples/cuda_cross_validation.py run DIR cpu8 --threads 8     # CPU build

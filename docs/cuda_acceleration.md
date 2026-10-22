@@ -103,13 +103,10 @@ of the live result.
 
 ## Validation
 
-`examples/cuda_cross_validation.py` compares the two builds of one commit, one
-configured with `-DVMECPP_USE_CUDA=ON` and one without. Each solves the same
-inputs in its own process; every `wout` field of the CUDA run is compared with
-the CPU run on one thread against the spread of the CPU runs on one and on
-eight threads, each build is hot-restarted from the other's converged state,
-and the residual traces of the first iterations are compared. The script's
-docstring lists the commands.
+`examples/cuda_cross_validation.py` compares the CUDA build with the CPU build
+of the same commit: every `wout` field against the spread between CPU runs on
+one and on eight threads, hot restarts in both directions, and the residual
+traces of the first iterations. Its docstring lists the commands.
 
 `pytest tests/` runs the whole suite on a CUDA build: every test of an input
 the build accepts solves on the GPU and is held to the CPU's references, and
