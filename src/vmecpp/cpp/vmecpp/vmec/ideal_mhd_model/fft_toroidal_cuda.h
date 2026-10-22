@@ -507,6 +507,11 @@ const std::vector<double>& GetPressureScalarsPerCfgCache();
 // normalization.
 const std::vector<double>& GetPlasmaVolumePerCfgCache();
 
+// Per-configuration normalized force residuals {fsqr, fsqz, fsql} of the
+// last iteration each configuration was active, three entries per
+// configuration.
+const std::vector<double>& GetFsqrPerCfgCache();
+
 // Cached per-configuration fNorm1 accessor. Layout: n_cfg doubles, each
 // the reciprocal rzNorm of that configuration's device-resident position
 // state, refreshed at the force-norm cadence by ComputeForceNormsCuda.

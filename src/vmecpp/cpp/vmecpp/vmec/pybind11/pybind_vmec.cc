@@ -33,14 +33,6 @@
 
 #ifdef VMECPP_USE_CUDA
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal_cuda.h"
-#ifdef VMECPP_USE_CUDA
-// Defined in fft_toroidal_cuda_state.cu; forward-declared here (not in the
-// widely included CUDA header) to avoid a full rebuild. Per-config normalized
-// {fsqr,fsqz,fsql} snapshot used to report batched per-config convergence.
-namespace vmecpp {
-const std::vector<double> &GetFsqrPerCfgCache();
-}  // namespace vmecpp
-#endif
 #endif  // VMECPP_USE_CUDA
 
 namespace py = pybind11;
