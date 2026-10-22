@@ -81,6 +81,32 @@ def _relative_difference(shell_wout, full_wout, cut: int) -> float:
     )
 
 
+CUT = 5
+
+
+@pytest.fixture(scope="module")
+def full_input() -> vmecpp.VmecInput:
+    """cth_like at ns = 25, the equilibrium the shell tests cut at surface CUT."""
+    return _input(EXAMPLES_DATA / "cth_like_fixed_bdy.json", 25, ftol=1.0e-12)
+
+
+@pytest.fixture(scope="module")
+def full(full_input: vmecpp.VmecInput) -> vmecpp.VmecOutput:
+    return vmecpp.run(full_input, max_threads=1, verbose=False)
+
+
+@pytest.fixture(scope="module")
+def shell_input(
+    full_input: vmecpp.VmecInput, full: vmecpp.VmecOutput
+) -> vmecpp.VmecInput:
+    return _shell(full_input, full.wout, CUT)
+
+
+@pytest.fixture(scope="module")
+def shell(shell_input: vmecpp.VmecInput) -> vmecpp.VmecOutput:
+    return vmecpp.run(shell_input, max_threads=1, verbose=False)
+
+
 @pytest.mark.parametrize(
     "path", [EXAMPLES_DATA / "cth_like_fixed_bdy.json", TEST_DATA / "up_down_asym.json"]
 )
@@ -177,32 +203,21 @@ def test_difference_from_the_cut_equilibrium_is_second_order() -> None:
     assert 1.6 < order < 2.4
 
 
-def test_shell_flux_and_volume() -> None:
-    ns, cut = 25, 6
-    full_input = _input(EXAMPLES_DATA / "cth_like_fixed_bdy.json", ns, ftol=1.0e-12)
-    full = vmecpp.run(full_input, max_threads=1, verbose=False)
-    shell_input = _shell(full_input, full.wout, cut)
-    wout = vmecpp.run(shell_input, max_threads=1, verbose=False).wout
-
+def test_shell_flux_and_volume(full, shell_input, shell) -> None:
+    wout = shell.wout
     s_inner = shell_input.inner_boundary_s
     np.testing.assert_allclose(
-        wout.phi, np.asarray(full.wout.phi)[cut:], rtol=1.0e-13, atol=0.0
+        wout.phi, np.asarray(full.wout.phi)[CUT:], rtol=1.0e-13, atol=0.0
     )
     np.testing.assert_allclose(wout.phi[0], s_inner * wout.phi[-1], rtol=1.0e-13)
     # the plasma fills the volume between the two boundaries
-    delta_s = (1.0 - s_inner) / (ns - cut - 1)
+    delta_s = (1.0 - s_inner) / (int(wout.ns) - 1)
     volume = 4.0 * np.pi**2 * np.sum(np.asarray(wout.vp)[1:]) * delta_s
     np.testing.assert_allclose(wout.volume_p, volume, rtol=1.0e-6)
     assert wout.volume_p < full.wout.volume_p
 
 
-def test_hot_restart_of_a_shell() -> None:
-    ns, cut = 25, 5
-    full_input = _input(EXAMPLES_DATA / "cth_like_fixed_bdy.json", ns, ftol=1.0e-12)
-    full = vmecpp.run(full_input, max_threads=1, verbose=False)
-    shell_input = _shell(full_input, full.wout, cut)
-    shell = vmecpp.run(shell_input, max_threads=1, verbose=False)
-
+def test_hot_restart_of_a_shell(full, shell_input, shell) -> None:
     restarted = vmecpp.run(
         shell_input, max_threads=1, verbose=False, restart_from=shell
     )
@@ -211,20 +226,14 @@ def test_hot_restart_of_a_shell() -> None:
 
     with pytest.raises(ValueError, match="inner_boundary_s"):
         vmecpp.run(
-            shell_input.model_copy(update={"ns_array": np.array([ns])}),
+            shell_input.model_copy(update={"ns_array": np.array([int(full.wout.ns)])}),
             max_threads=1,
             verbose=False,
             restart_from=full,
         )
 
 
-def test_continuation_of_a_shell() -> None:
-    ns, cut = 25, 5
-    full_input = _input(EXAMPLES_DATA / "cth_like_fixed_bdy.json", ns, ftol=1.0e-12)
-    full = vmecpp.run(full_input, max_threads=1, verbose=False)
-    shell_input = _shell(full_input, full.wout, cut)
-    shell = vmecpp.run(shell_input, max_threads=1, verbose=False)
-
+def test_continuation_of_a_shell(full_input, full, shell_input, shell) -> None:
     # at the same resolution only the half-grid lambda is recomputed
     same = vmecpp.interpolate_solution(shell, shell_input)
     np.testing.assert_allclose(
@@ -235,7 +244,7 @@ def test_continuation_of_a_shell() -> None:
     )
 
     schedule = shell_input.model_copy(deep=True)
-    schedule.ns_array = np.array([11, ns - cut])
+    schedule.ns_array = np.array([11, int(shell.wout.ns)])
     schedule.ftol_array = np.array([1.0e-8, 1.0e-12])
     schedule.niter_array = np.array([100000, 100000])
     schedule.mpol = [full_input.mpol - 1, full_input.mpol]
@@ -247,12 +256,7 @@ def test_continuation_of_a_shell() -> None:
         vmecpp.interpolate_solution(full, shell_input)
 
 
-def test_inner_boundary_input_is_validated() -> None:
-    ns, cut = 25, 5
-    full_input = _input(EXAMPLES_DATA / "cth_like_fixed_bdy.json", ns, ftol=1.0e-10)
-    full = vmecpp.run(full_input, max_threads=1, verbose=False)
-    shell_input = _shell(full_input, full.wout, cut)
-
+def test_inner_boundary_input_is_validated(full_input, shell_input) -> None:
     cpp_indata = _vmecpp.VmecINDATA.from_json(
         shell_input._to_cpp_vmecindata().to_json()
     )
