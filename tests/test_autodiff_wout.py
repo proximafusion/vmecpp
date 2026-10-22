@@ -500,8 +500,8 @@ def test_vjp_linearizes_at_the_forward_solve() -> None:
 
 
 def test_forward_solves_keep_no_cpp_objects() -> None:
-    """JAX keeps callback closures alive, so the forward cache is bounded, holds NumPy
-    data only, and the VJP consumes its entry."""
+    """The forward cache is bounded, holds NumPy data only, and keeps its entry
+    through a VJP."""
     indata = _cth_like_input()
     solver = autodiff._RunSolver(indata, max_threads=1)
     boundary = np.asarray(_boundary(indata))
@@ -515,7 +515,7 @@ def test_forward_solves_keep_no_cpp_objects() -> None:
             for value in solve["wout_fields"].values()
         )
     solver._solved_model(boundary * (1.0 + 2.0e-6))
-    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE - 1
+    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE
 
 
 def test_output_pytree_round_trip() -> None:
