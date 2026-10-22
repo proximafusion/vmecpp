@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -305,6 +306,22 @@ void FlushDecomposedXFromDevice(
   }
 }
 #endif  // VMECPP_USE_CUDA
+
+// Returns fn(). A CUDA error throws, and an exception must not leave a parallel
+// region, so on the CUDA build, whose parallel regions run one thread, the
+// exception becomes an internal error.
+template <typename Fn>
+auto CatchDeviceErrors(Fn&& fn) -> decltype(fn()) {
+#ifdef VMECPP_USE_CUDA
+  try {
+    return fn();
+  } catch (const std::exception& e) {
+    return absl::InternalError(e.what());
+  }
+#else
+  return fn();
+#endif  // VMECPP_USE_CUDA
+}
 }  // namespace
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
@@ -1375,9 +1392,12 @@ absl::StatusOr<bool> Vmec::SolveEquilibrium(
 #pragma omp barrier
 #endif  // _OPENMP
 
-      s = SolveEquilibriumLoop(
-          thread_id, iterations_before_checkpointing, checkpoint,
-          /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
+      s = CatchDeviceErrors([&] {
+        return SolveEquilibriumLoop(thread_id, iterations_before_checkpointing,
+                                    checkpoint,
+                                    /*m_lreset_internal=*/m_lreset_internal,
+                                    /*m_liter_flag=*/liter_flag);
+      });
     }
 // nowait because critical below has an implicit barrier
 #ifdef _OPENMP
@@ -2814,11 +2834,13 @@ absl::Status Vmec::EvaluateFinalState() {
 #endif  // _OPENMP
 
     bool need_restart = false;
-    const absl::StatusOr<bool> evaluated = m_[thread_id]->update(
-        *decomposed_x_[thread_id], *physical_x_[thread_id],
-        *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
-        last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
-        iter2_, VmecCheckpoint::NONE, INT_MAX, verbose_);
+    const absl::StatusOr<bool> evaluated = CatchDeviceErrors([&] {
+      return m_[thread_id]->update(
+          *decomposed_x_[thread_id], *physical_x_[thread_id],
+          *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
+          last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+          iter2_, VmecCheckpoint::NONE, INT_MAX, verbose_);
+    });
 
 #ifdef _OPENMP
 #pragma omp critical
