@@ -327,9 +327,9 @@ function(vmecpp_add_core target)
     absl::string_view absl::check absl::status absl::statusor)
 
   if(VMECPP_USE_CUDA)
-    # The CUDA iteration body (cuFFT, cuBLAS) is compiled into every core
-    # variant; VMECPP_USE_CUDA is exported so consumers see the CUDA API.
-    target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cufft CUDA::cublas)
+    # The CUDA iteration body (cuFFT) is compiled into every core variant;
+    # VMECPP_USE_CUDA is exported so consumers see the CUDA API.
+    target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cufft)
     target_compile_definitions(${target} PUBLIC VMECPP_USE_CUDA)
   endif()
 

@@ -2164,30 +2164,8 @@ int ApplyRZPreconditionerCuda(
   while (pcr_threads < jMaxRZ) pcr_threads <<= 1;
   if (pcr_threads > 1024) pcr_threads = 1024;
   size_t pcr_smem = 5 * ns_total * sizeof(double);
-  size_t pcr_smem_fp32 = 5 * ns_total * sizeof(float);
   dim3 pcr_grid(mnsize, S.n_config_max, 1);
 
-  // Carson-Higham staged FP32 iterative refinement. When
-  // VMECPP_RZ_IR_FP32=1 the path below replaces the single FP64 PCR
-  // solve with: copy the FP64 RHS into c_orig, FP32 PCR pass on a fresh
-  // copy of the RHS to obtain x0 in c_inout, save x0 into x_saved,
-  // restore c_inout to the original RHS, FP64 residual computation
-  // to write r = b - A*x0 into c_inout, FP32 PCR pass on r to obtain
-  // dx in c_inout, and final correction kernel x = x_saved + dx
-  // writing the refined FP64 solution back into c_inout. The FP32 PCR
-  // uses half the shared memory of the FP64 path, improving occupancy
-  // on Ada, and the IR step recovers the FP64 precision lost by the
-  // FP32 solves.
-  static int rz_ir_fp32_env = -1;
-  if (rz_ir_fp32_env < 0) {
-    const char* e = std::getenv("VMECPP_RZ_IR_FP32");
-    rz_ir_fp32_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (rz_ir_fp32_env) {
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] VMECPP_RZ_IR_FP32=1: staged FP32 IR active "
-          "for k_apply_rz_pcr\n");
-    }
-  }
   // VMECPP_CPU_ORDER_RZSOLVE=1: serial Thomas elimination in the host
   // order instead of parallel cyclic reduction (diagnostic; the two
   // algorithms round differently, so the preconditioned forces differ
@@ -2248,88 +2226,6 @@ int ApplyRZPreconditionerCuda(
         S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
         S.d_rz_aZ, S.d_rz_dZ, S.d_rz_bZ, d_cZ, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_thomas_block Z");
-  } else if (rz_ir_fp32_env && S.d_rz_c_orig_R && S.d_rz_x_saved_R) {
-    // Bytes per (R or Z) c buffer: matches the EnsureRZBuffers c_bytes.
-    const size_t c_bytes = sizeof(double) * (size_t)S.n_config_max *
-                            (size_t)mnsize * (size_t)num_basis *
-                            (size_t)ns_total;
-    // 1) Save the original RHS for both R and Z into the c_orig
-    //    buffers. The downstream residual kernel needs the unmodified
-    //    b = c_inout-before-solve.
-    cuda_check(cudaMemcpyAsync(S.d_rz_c_orig_R, d_cR, c_bytes,
-                                cudaMemcpyDeviceToDevice, st),
-               "ir: copy d_cR -> c_orig_R");
-    cuda_check(cudaMemcpyAsync(S.d_rz_c_orig_Z, d_cZ, c_bytes,
-                                cudaMemcpyDeviceToDevice, st),
-               "ir: copy d_cZ -> c_orig_Z");
-
-    // 2) FP32 PCR on d_cR, d_cZ. After this call d_cR/d_cZ holds the
-    //    FP32-approximate solution x0 (stored in FP64 by the writeback).
-    k_apply_rz_pcr_fp32<<<pcr_grid, pcr_threads, pcr_smem_fp32, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aR, S.d_rz_dR, S.d_rz_bR, d_cR,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_pcr_fp32 R (stage 1)");
-    k_apply_rz_pcr_fp32<<<pcr_grid, pcr_threads, pcr_smem_fp32, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aZ, S.d_rz_dZ, S.d_rz_bZ, d_cZ,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_pcr_fp32 Z (stage 1)");
-
-    // 3) Save x0 into x_saved_R/Z, then restore d_cR/d_cZ to the
-    //    original RHS so the residual kernel can compute r = b - A*x0
-    //    with x0 read from x_saved.
-    cuda_check(cudaMemcpyAsync(S.d_rz_x_saved_R, d_cR, c_bytes,
-                                cudaMemcpyDeviceToDevice, st),
-               "ir: copy d_cR (x0) -> x_saved_R");
-    cuda_check(cudaMemcpyAsync(S.d_rz_x_saved_Z, d_cZ, c_bytes,
-                                cudaMemcpyDeviceToDevice, st),
-               "ir: copy d_cZ (x0) -> x_saved_Z");
-
-    // 4) Compute the FP64 residual r = c_orig - A*x_saved, writing it
-    //    to d_cR/d_cZ. The residual kernel reads x from x_saved (a
-    //    separate buffer; it is the FP64-stored FP32 solution x0) and
-    //    the original RHS from c_orig_R/Z. After this call d_cR/d_cZ
-    //    holds r (FP64) and x_saved still holds x0.
-    const int rt = std::min(pcr_threads, 1024);
-    k_rz_compute_residual_fp64<<<pcr_grid, rt, 0, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aR, S.d_rz_dR, S.d_rz_bR,
-        S.d_rz_c_orig_R, S.d_rz_x_saved_R, d_cR,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_rz_compute_residual R");
-    k_rz_compute_residual_fp64<<<pcr_grid, rt, 0, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aZ, S.d_rz_dZ, S.d_rz_bZ,
-        S.d_rz_c_orig_Z, S.d_rz_x_saved_Z, d_cZ,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_rz_compute_residual Z");
-
-    // 5) FP32 PCR on r to obtain the correction dx. After this call
-    //    d_cR/d_cZ holds dx (stored in FP64 by the writeback).
-    k_apply_rz_pcr_fp32<<<pcr_grid, pcr_threads, pcr_smem_fp32, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aR, S.d_rz_dR, S.d_rz_bR, d_cR,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_pcr_fp32 R (stage 2 correction)");
-    k_apply_rz_pcr_fp32<<<pcr_grid, pcr_threads, pcr_smem_fp32, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aZ, S.d_rz_dZ, S.d_rz_bZ, d_cZ,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_pcr_fp32 Z (stage 2 correction)");
-
-    // 6) Final FP64 correction x = x_saved + dx, writing the refined
-    //    solution back to d_cR/d_cZ.
-    k_rz_add_correction<<<pcr_grid, rt, 0, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_x_saved_R, d_cR, d_cR,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_rz_add_correction R");
-    k_rz_add_correction<<<pcr_grid, rt, 0, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_x_saved_Z, d_cZ, d_cZ,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_rz_add_correction Z");
   } else if (rz_serial_env) {
     // VMECPP_CPU_ORDER_RZSOLVE=1: serial Thomas elimination in the host
     // order, one thread per mode row (diagnostic for trajectory
@@ -2531,51 +2427,15 @@ void DeAliasConstraintForceCuda(
            ns_force_local * S.n_config_max);
     dim3 t(TPB, 1, 1);
     S.TKBegin(CudaToroidalState::TK_DEALIAS);
-    // VMECPP_DEALIAS_SPLIT routes to k_dealias_inv_tpl_split: same template
-    // but with 4 partial accumulators per (m) inner n-loop. Hypothesis was
-    // that breaking the 11-deep FP dep chain would 2-4x FMA throughput.
-    // Measured: -2.1pct throughput at N=64 warm over five evaluations
-    // (118.5 s -> 121.1 s).
-    // Compiler already extracts ILP from the simple += chain. Default OFF;
-    // set =1 to opt in for further experimentation.
-    static const int dealias_split_env = []() {
-      const char* e = std::getenv("VMECPP_DEALIAS_SPLIT");
-      return (e && std::atoi(e) > 0) ? 1 : 0;
-    }();
-    // VMECPP_DEALIAS_MIXED routes to k_dealias_inv_tpl_mixed: FP32 inner
-    // mults, FP64 accumulator. Default OFF; carries the same convergence
-    // risk as the FP32-cuFFT path. Set =1 to opt in and measure.
-    static const int dealias_mixed_env = []() {
-      const char* e = std::getenv("VMECPP_DEALIAS_MIXED");
-      return (e && std::atoi(e) > 0) ? 1 : 0;
-    }();
     if (mpol == 10 && ntor == 10) {
-      if (dealias_mixed_env) {
-        k_dealias_inv_tpl_mixed<10, 10><<<b, t, 0, st>>>(
-            S.n_config_max, ns_force_local, ns_con_local,
-            nZeta, nThetaReduced, nThetaEff, nnyq2_plus_1,
-            S.d_dealias_gsc, S.d_dealias_gcs, S.d_sinmu, S.d_cosmu,
-            S.d_dealias_cosnv, S.d_dealias_sinnv, S.d_dealias_faccon,
-            S.d_gCon);
-        cuda_check(cudaGetLastError(), "k_dealias_inv_tpl_mixed<10,10> launch");
-      } else if (dealias_split_env) {
-        k_dealias_inv_tpl_split<10, 10><<<b, t, 0, st>>>(
-            S.n_config_max, ns_force_local, ns_con_local,
-            nZeta, nThetaReduced, nThetaEff, nnyq2_plus_1,
-            S.d_dealias_gsc, S.d_dealias_gcs, S.d_sinmu, S.d_cosmu,
-            S.d_dealias_cosnv, S.d_dealias_sinnv, S.d_dealias_faccon,
-            S.d_gCon);
-        cuda_check(cudaGetLastError(), "k_dealias_inv_tpl_split<10,10> launch");
-      } else {
-        k_dealias_inv_tpl<10, 10><<<b, t, 0, st>>>(
-            S.n_config_max, ns_force_local, ns_con_local,
-            nZeta, nThetaReduced, nThetaEff, nnyq2_plus_1,
-            S.d_dealias_gsc, S.d_dealias_gcs, S.d_sinmu, S.d_cosmu,
-            S.d_dealias_cosnv, S.d_dealias_sinnv, S.d_dealias_faccon,
-            S.d_gCon,
-            S.d_active_per_cfg);
-        cuda_check(cudaGetLastError(), "k_dealias_inv_tpl<10,10> launch");
-      }
+      k_dealias_inv_tpl<10, 10><<<b, t, 0, st>>>(
+          S.n_config_max, ns_force_local, ns_con_local,
+          nZeta, nThetaReduced, nThetaEff, nnyq2_plus_1,
+          S.d_dealias_gsc, S.d_dealias_gcs, S.d_sinmu, S.d_cosmu,
+          S.d_dealias_cosnv, S.d_dealias_sinnv, S.d_dealias_faccon,
+          S.d_gCon,
+          S.d_active_per_cfg);
+      cuda_check(cudaGetLastError(), "k_dealias_inv_tpl<10,10> launch");
     } else {
       static const int dealias_pack_env = []() {
         const char* e = std::getenv("VMECPP_DEALIAS_PACK");

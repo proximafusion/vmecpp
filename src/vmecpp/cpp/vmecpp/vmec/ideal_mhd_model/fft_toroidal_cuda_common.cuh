@@ -48,8 +48,6 @@
 #include <cuda_runtime.h>
 #include <cooperative_groups.h>
 #include <cufft.h>
-#include <cublas_v2.h>
-#include <mma.h>
 
 #include <climits>
 #include <cmath>
@@ -225,73 +223,6 @@ __device__ __forceinline__ double dd_to_double(DD a) {
   return (double)a.hi + (double)a.lo;
 }
 
-// dd_add_d: add an FP64 value to a DD-pair accumulator. The FP64 input is
-// effectively split into FP32 hi/lo via cast + residual, then the standard
-// DD add is applied. Used by Path 1 (FP64 mults, DD-pair sums) where the
-// inputs are FP64-precise but the accumulator wants DD compensation against
-// \sqrt{n} error growth across the inner loop.
-__device__ __forceinline__ DD dd_add_d(DD a, double b) {
-  float b_hi = (float)b;
-  float b_lo = (float)(b - (double)b_hi);
-  // (b_hi, b_lo) is a DD-pair representing b to ~48-bit precision.
-  DD bd; bd.hi = b_hi; bd.lo = b_lo;
-  return dd_add(a, bd);
-}
-
-// TwoProduct via Dekker: splits a, b into FP32 hi/lo halves, then computes
-// the exact product as a DD pair (hi, lo). Six FP32 multiplies + a few
-// adds; ~96-bit precision when both operands are FP32. Used by Path 2
-// (DD \times DD multiply) where inputs are FP32 and we want to recover full
-// precision in the product before accumulating.
-__device__ __forceinline__ void fp32_twoprod_split(float a, float& ahi, float& alo) {
-  // Dekker split with K = 2^12 + 1 = 4097 (single-precision boundary).
-  constexpr float K = 4097.0f;
-  float c = __fmul_rn(K, a);
-  float a_big = __fadd_rn(c, __fadd_rn(a, -c));
-  ahi = a_big;
-  alo = __fadd_rn(a, -a_big);
-}
-
-__device__ __forceinline__ DD fp32_twoprod(float a, float b) {
-  float ahi, alo, bhi, blo;
-  fp32_twoprod_split(a, ahi, alo);
-  fp32_twoprod_split(b, bhi, blo);
-  float p = __fmul_rn(a, b);
-  float e = __fadd_rn(
-      __fadd_rn(
-        __fadd_rn(__fmul_rn(ahi, bhi), -p),
-        __fmul_rn(ahi, blo)),
-      __fadd_rn(__fmul_rn(alo, bhi), __fmul_rn(alo, blo)));
-  DD r; r.hi = p; r.lo = e; return r;
-}
-
-// Ozaki-style FP64 multiply by 2-slice FP32 splitting. Splits each FP64
-// operand into FP32 hi + FP32 lo residual, computes the four cross-
-// products in FP32 hardware, then sums into a DD pair. ~50-bit precision
-// per product when both operands are FP64; ~26-bit if both are FP32.
-// Four FP32 mults + four adds, vs one FP64 mult.
-__device__ __forceinline__ DD ozaki_mul_d(double a, double b) {
-  float ahi = (float)a;
-  float alo = (float)(a - (double)ahi);
-  float bhi = (float)b;
-  float blo = (float)(b - (double)bhi);
-  float p_hh = __fmul_rn(ahi, bhi);
-  float p_hl = __fmul_rn(ahi, blo);
-  float p_lh = __fmul_rn(alo, bhi);
-  float p_ll = __fmul_rn(alo, blo);
-  // Sum in descending magnitude order with TwoSum to preserve precision.
-  float t0, e0;
-  fp32_twosum(p_hh, p_hl, t0, e0);
-  float t1, e1;
-  fp32_twosum(t0, p_lh, t1, e1);
-  float t2 = __fadd_rn(t1, p_ll);
-  // Pack {t2, e0 + e1} as the DD result.
-  DD r;
-  r.hi = t2;
-  r.lo = __fadd_rn(e0, e1);
-  return r;
-}
-
 // Veltkamp split: a (FP32) -> (hi, lo) where hi has 12 mantissa bits and
 // lo has 12 mantissa bits, and hi + lo == a exactly. Guarantees that any
 // FP32 product hi_a * hi_b, hi_a * lo_b, lo_a * hi_b, lo_a * lo_b is
@@ -336,30 +267,6 @@ __device__ __forceinline__ DD ozaki3_mul_d(double a, double b) {
   acc = dd_add_f(acc, p10.hi); acc = dd_add_f(acc, p10.lo);
   acc = dd_add_f(acc, p11.hi); acc = dd_add_f(acc, p11.lo);
   return acc;
-}
-
-// Carson-Higham IR state. Lives at vmecpp:: file-scope (not anonymous
-// namespace) so the host-side iteration controller in ideal_mhd_model.cc
-// can update it via SetIRResidualSum each iter. The kernel dispatchers
-// read these to switch between FP32/TF32 fast paths and FP64 precise
-// paths based on the current residual sum. Threshold and gating come
-// from env (VMECPP_IR_STAGED, VMECPP_IR_THRESHOLD).
-extern double g_ir_residual_sum;
-extern double g_ir_threshold;
-extern int    g_ir_staged;
-
-static inline void init_ir_env() {
-  if (g_ir_staged < 0) {
-    const char* e_staged = std::getenv("VMECPP_IR_STAGED");
-    g_ir_staged = (e_staged && std::atoi(e_staged) > 0) ? 1 : 0;
-    const char* e_thr = std::getenv("VMECPP_IR_THRESHOLD");
-    if (e_thr) g_ir_threshold = std::strtod(e_thr, nullptr);
-    if (g_ir_staged) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] Carson-Higham IR ENABLED "
-                           "(VMECPP_IR_STAGED=1, threshold=%.3e)\n",
-                           g_ir_threshold);
-    }
-  }
 }
 
 // (anonymous namespace hoisted: the split translation units share these symbols)
@@ -440,31 +347,6 @@ struct CudaToroidalState {
   // Persistent device buffers + stream.
   cudaStream_t stream = nullptr;
   cufftHandle cufft_plan = 0;
-  // cuBLAS handle for the FP32 GEMM-based scatter (Path 4 of the FP32
-  // substitution research). Created lazily when first needed. Stream-bound to
-  // S.stream so GEMM ops serialize naturally with the surrounding kernels.
-  cublasHandle_t cublas = nullptr;
-  // Precomputed basis matrix W[M=mpol*kBatch, N=nThetaReduced*18] for the
-  // scatter GEMM. Allocated and populated once per Reshape. FP32 layout.
-  float* d_scatter_basis_fp32 = nullptr;
-  // Packed FP32 buffers used by the GEMM scatter path. Y_packed has shape
-  // (B=n_cfg*ns_local*nZeta, M); out_packed has shape (B, N).
-  float* d_scatter_Y_fp32 = nullptr;
-  float* d_scatter_out_fp32 = nullptr;
-  // Ozaki-at-GEMM-level buffers: each FP64 operand is split into FP32
-  // hi/lo slices, four GEMMs are dispatched (hh, hl, lh, ll), and the
-  // results summed via DD-pair to recover ~48-bit precision per output.
-  float* d_scatter_basis_hi = nullptr;  // W_hi[M, N] FP32
-  float* d_scatter_basis_lo = nullptr;  // W_lo[M, N] FP32
-  float* d_scatter_Y_hi = nullptr;      // Y_hi[B, M] FP32
-  float* d_scatter_Y_lo = nullptr;      // Y_lo[B, M] FP32
-  float* d_scatter_out_hh = nullptr;    // GEMM(Y_hi, W_hi) FP32
-  float* d_scatter_out_hl = nullptr;    // GEMM(Y_hi, W_lo) FP32
-  float* d_scatter_out_lh = nullptr;    // GEMM(Y_lo, W_hi) FP32
-  float* d_scatter_out_ll = nullptr;    // GEMM(Y_lo, W_lo) FP32
-  size_t scatter_basis_M = 0;  // mpol * kBatch
-  size_t scatter_basis_N = 0;  // nThetaReduced * 18
-
   // Per-kernel cudaEvent timing harness (env-gated, VMECPP_KERNEL_TIMING=1).
   // Each slot: 2 events (start/stop) + accumulated ms + call count. Recorded
   // around the major per-iter kernels; dumped to stderr at program exit
@@ -973,23 +855,12 @@ struct CudaToroidalState {
   double* d_rbsq = nullptr;
   int rbsq_size = 0;
   bool rbsq_staged = false;
-  // Batched int8-Ozaki scatter state. The W limbs and column exponents
-  // are shape-constant (built once after Reshape); the Y limbs and row
-  // exponents refresh every iteration.
-  double* d_i8b_W = nullptr;
-  signed char* d_i8b_Wl = nullptr;
-  int* d_i8b_eW = nullptr;
-  signed char* d_i8b_Yl = nullptr;
-  int* d_i8b_eY = nullptr;
-  int i8b_B_pad = 0;
-  bool i8b_w_built = false;
   double* d_ard = nullptr;  // per-call H2D
   double* d_azd = nullptr;  // per-call H2D
 
   // effectiveConstraintForce + assembleTotalForces helpers.
   double* d_gConEff = nullptr;
   double* d_gCon = nullptr;       // host H2D per call
-  double* d_rCon_in = nullptr;    // d_rCon already exists; alias not needed
   double* d_frcon_e = nullptr;
   double* d_frcon_o = nullptr;
   double* d_fzcon_e = nullptr;
@@ -1159,22 +1030,6 @@ struct CudaToroidalState {
   int rz_ns_total_cached = -1;
   int rz_num_basis_cached = -1;
 
-  // Carson-Higham staged FP32 iterative refinement scratch buffers.
-  // d_rz_c_orig_R/Z hold a copy of the original FP64 right-hand side
-  // captured immediately before the first FP32 PCR launch; the FP64
-  // residual kernel reads them to form r = b - A*x without depending
-  // on the FP32 solve being non-destructive. d_rz_x_saved_R/Z hold the
-  // FP64 approximate solution returned by the first FP32 PCR pass so
-  // the final correction kernel can compute x_refined = x_saved + dx.
-  // All four buffers are sized identically to d_rz_cR/cZ and are
-  // (re)allocated whenever EnsureRZBuffers reallocates the main c
-  // buffers. They are only allocated and used when VMECPP_RZ_IR_FP32
-  // is set; under default execution they remain nullptr.
-  double* d_rz_c_orig_R = nullptr;
-  double* d_rz_c_orig_Z = nullptr;
-  double* d_rz_x_saved_R = nullptr;
-  double* d_rz_x_saved_Z = nullptr;
-
   // computeMHDForces outputs (force grid, ns_force_local x nZnT each).
   double* d_armn_e = nullptr;
   double* d_armn_o = nullptr;
@@ -1304,24 +1159,6 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_X);     cuda_free_if((void*&)d_Y);
     cuda_free_if((void*&)d_X_fp32); cuda_free_if((void*&)d_Y_fp32);
     if (cufft_plan_c2r_fp32) { cufftDestroy(cufft_plan_c2r_fp32); cufft_plan_c2r_fp32 = 0; }
-    // The GEMM-scatter scratch is sized by ns_local and the cuBLAS
-    // handle is bound to the stream this Reshape destroys below; free
-    // and reset both so the next dispatch rebuilds them at the new
-    // shape on the new stream.
-    cuda_free_if((void*&)d_scatter_basis_fp32);
-    cuda_free_if((void*&)d_scatter_Y_fp32);
-    cuda_free_if((void*&)d_scatter_out_fp32);
-    cuda_free_if((void*&)d_scatter_basis_hi);
-    cuda_free_if((void*&)d_scatter_basis_lo);
-    cuda_free_if((void*&)d_scatter_Y_hi);
-    cuda_free_if((void*&)d_scatter_Y_lo);
-    cuda_free_if((void*&)d_scatter_out_hh);
-    cuda_free_if((void*&)d_scatter_out_hl);
-    cuda_free_if((void*&)d_scatter_out_lh);
-    cuda_free_if((void*&)d_scatter_out_ll);
-    scatter_basis_M = 0;
-    scatter_basis_N = 0;
-    if (cublas) { cublasDestroy(cublas); cublas = nullptr; }
     cuda_free_if((void*&)d_outputs_block);
     cuda_free_if((void*&)d_geom_scalars);
     cuda_free_if((void*&)d_nscale);
@@ -1378,13 +1215,6 @@ struct CudaToroidalState {
     rzcon0_nZnT_cached = -1;
     cuda_free_if((void*&)d_rbsq);
     rbsq_staged = false;
-    cuda_free_if((void*&)d_i8b_W);
-    cuda_free_if((void*&)d_i8b_Wl);
-    cuda_free_if((void*&)d_i8b_eW);
-    cuda_free_if((void*&)d_i8b_Yl);
-    cuda_free_if((void*&)d_i8b_eY);
-    i8b_B_pad = 0;
-    i8b_w_built = false;
     cuda_free_if((void*&)d_bsupu);
     cuda_free_if((void*&)d_bsupv);
     cuda_free_if((void*&)d_chipH);
@@ -1609,10 +1439,6 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_rz_dZ);
     cuda_free_if((void*&)d_rz_bZ);
     cuda_free_if((void*&)d_rz_cZ);
-    cuda_free_if((void*&)d_rz_c_orig_R);
-    cuda_free_if((void*&)d_rz_c_orig_Z);
-    cuda_free_if((void*&)d_rz_x_saved_R);
-    cuda_free_if((void*&)d_rz_x_saved_Z);
     if (d_rz_jMin) { cudaFree(d_rz_jMin); d_rz_jMin = nullptr; }
     rz_mnsize_cached = -1;
     rz_ns_total_cached = -1;
@@ -2664,10 +2490,6 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_rz_dZ);
     cuda_free_if((void*&)d_rz_bZ);
     cuda_free_if((void*&)d_rz_cZ);
-    cuda_free_if((void*&)d_rz_c_orig_R);
-    cuda_free_if((void*&)d_rz_c_orig_Z);
-    cuda_free_if((void*&)d_rz_x_saved_R);
-    cuda_free_if((void*&)d_rz_x_saved_Z);
     if (d_rz_jMin) { cudaFree(d_rz_jMin); d_rz_jMin = nullptr; }
     // Batched layout: per-config RZ-preconditioner matrices and RHS.
     size_t row_bytes = sizeof(double) * n_config_max * mnsize * ns_total;
@@ -2681,22 +2503,6 @@ struct CudaToroidalState {
     cuda_check(cudaMalloc(&d_rz_bZ, row_bytes), "alloc rz bZ");
     cuda_check(cudaMalloc(&d_rz_cZ, c_bytes),   "alloc rz cZ");
     cuda_check(cudaMalloc(&d_rz_jMin, sizeof(int) * n_config_max * mnsize), "alloc rz jMin");
-    // Carson-Higham IR scratch buffers, allocated only when the
-    // VMECPP_RZ_IR_FP32 toggle is active. The four-buffer footprint is
-    // 4 * c_bytes, which at the canonical production shape is roughly
-    // 32 MiB total at single-cfg execution and scales linearly with
-    // n_config_max. Allocating them unconditionally would waste VRAM
-    // under the default FP64 PCR path; the env check defers the cost.
-    {
-      const char* e = std::getenv("VMECPP_RZ_IR_FP32");
-      const bool ir_enabled = (e != nullptr && std::atoi(e) > 0);
-      if (ir_enabled) {
-        cuda_check(cudaMalloc(&d_rz_c_orig_R, c_bytes),  "alloc rz c_orig_R");
-        cuda_check(cudaMalloc(&d_rz_c_orig_Z, c_bytes),  "alloc rz c_orig_Z");
-        cuda_check(cudaMalloc(&d_rz_x_saved_R, c_bytes), "alloc rz x_saved_R");
-        cuda_check(cudaMalloc(&d_rz_x_saved_Z, c_bytes), "alloc rz x_saved_Z");
-      }
-    }
     rz_mnsize_cached = mnsize;
     rz_ns_total_cached = ns_total;
     rz_num_basis_cached = num_basis;
@@ -2877,69 +2683,6 @@ CudaToroidalState& State();
 // Backup-mirror arming helper (defined in fft_toroidal_cuda_io.cu).
 void EnsurePTSBackupBuffers(CudaToroidalState& S);
 
-// Device helpers shared with the template kernels below.
-// Element generators shared by the int8-Ozaki scatter passes. A is the
-// combined poloidal basis [l, 4m + bf]; B is the signed, parity-masked
-// spec [4m + bf, channel] in the same channel layout as the wmma tile.
-__device__ __forceinline__ double i8oz_a_elem(
-    int l, int kk, int mpol, int nThetaReduced, const double* s_cmu,
-    const double* s_smu, const double* s_cmum, const double* s_smum) {
-  if (l >= nThetaReduced || kk >= 4 * mpol) return 0.0;
-  int m  = kk >> 2;
-  int bf = kk & 3;
-  int bml = m * nThetaReduced + l;
-  switch (bf) {
-    case 0: return s_cmu[bml];
-    case 1: return s_smu[bml];
-    case 2: return s_cmum[bml];
-    default: return s_smum[bml];
-  }
-}
-__device__ __forceinline__ double i8oz_b_elem(int kk, int n, int mpol,
-                                              const double* s_Y) {
-  if (kk >= 4 * mpol) return 0.0;
-  int m  = kk >> 2;
-  int bf = kk & 3;
-  bool m_even = ((m & 1) == 0);
-  bool parity_match = (n & 1) ? !m_even : m_even;
-  if (!parity_match) return 0.0;
-  int yb = m * kBatch;
-  switch (n >> 1) {
-    case 0:
-      if (bf == 0) return s_Y[yb + kRmkcc];
-      if (bf == 1) return s_Y[yb + kRmkss];
-      return 0.0;
-    case 1:
-      if (bf == 2) return s_Y[yb + kRmkss];
-      if (bf == 3) return s_Y[yb + kRmkcc];
-      return 0.0;
-    case 2:
-      if (bf == 0) return s_Y[yb + kRmkccN];
-      if (bf == 1) return s_Y[yb + kRmkssN];
-      return 0.0;
-    case 3:
-      if (bf == 0) return s_Y[yb + kZmkcs];
-      if (bf == 1) return s_Y[yb + kZmksc];
-      return 0.0;
-    case 4:
-      if (bf == 2) return s_Y[yb + kZmksc];
-      if (bf == 3) return s_Y[yb + kZmkcs];
-      return 0.0;
-    case 5:
-      if (bf == 0) return s_Y[yb + kZmkcsN];
-      if (bf == 1) return s_Y[yb + kZmkscN];
-      return 0.0;
-    case 6:
-      if (bf == 2) return s_Y[yb + kLmksc];
-      if (bf == 3) return s_Y[yb + kLmkcs];
-      return 0.0;
-    default:
-      if (bf == 0) return -s_Y[yb + kLmkcsN];
-      if (bf == 1) return -s_Y[yb + kLmkscN];
-      return 0.0;
-  }
-}
-
 // Kernel declarations (definitions in fft_toroidal_cuda_kernels.cu).
 __global__ void k_fill_spectra(
     int n_config, int ns_local, int mpol, int ntor, int nhalf, int nfp,
@@ -3033,25 +2776,6 @@ __global__ void k_forward_fft_fused(
     double* __restrict__ lu_e, double* __restrict__ lu_o,
     double* __restrict__ lv_e, double* __restrict__ lv_o,
     double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_inverse_dft_24_radix83(
-    int total_batches, int nhalf, int nZeta,
-    const cufftDoubleComplex* __restrict__ X,
-    double* __restrict__ Y);
-__global__ void k_forward_dft_24_radix83(
-    int total_batches, int nZeta, int nhalf,
-    const double* __restrict__ Y,
-    cufftDoubleComplex* __restrict__ X);
-__global__ void k_cast_complex_fp64_to_fp32(
-    size_t n, const cufftDoubleComplex* __restrict__ src,
-    cufftComplex* __restrict__ dst);
-__global__ void k_cast_fp32_to_fp64(
-    size_t n, const float* __restrict__ src, double* __restrict__ dst);
-__global__ void k_inverse_dft_24(
-    int total_batches, int nhalf, int nZeta,
-    const cufftDoubleComplex* __restrict__ X,
-    const double* __restrict__ cos_table,
-    const double* __restrict__ sin_table,
-    double* __restrict__ Y);
 __global__ void k_scatter_main_and_con_v4(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -3178,25 +2902,6 @@ __global__ void k_jacobian_and_metric(
     double* __restrict__ gsqrt, double* __restrict__ guu,
     double* __restrict__ guv, double* __restrict__ gvv,
     const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_jacobian_metric_dvdsh(
-    int n_config, int ns_local,
-    int ns_h, int jF_in_offset, int nZnT, int nThetaEff, bool lthreed,
-    double signOfJacobian,
-    const double* __restrict__ r1_e, const double* __restrict__ r1_o,
-    const double* __restrict__ ru_e, const double* __restrict__ ru_o,
-    const double* __restrict__ z1_e, const double* __restrict__ z1_o,
-    const double* __restrict__ zu_e, const double* __restrict__ zu_o,
-    const double* __restrict__ rv_e, const double* __restrict__ rv_o,
-    const double* __restrict__ zv_e, const double* __restrict__ zv_o,
-    const double* __restrict__ sqrtSF, const double* __restrict__ sqrtSH,
-    const double* __restrict__ wInt,
-    double deltaS, double dSHalfDsInterp,
-    double* __restrict__ r12, double* __restrict__ ru12,
-    double* __restrict__ zu12, double* __restrict__ rs,
-    double* __restrict__ zs, double* __restrict__ tau,
-    double* __restrict__ gsqrt, double* __restrict__ guu,
-    double* __restrict__ guv, double* __restrict__ gvv,
-    double* __restrict__ dVdsH);
 __global__ void k_jacobian_metric_dvdsh_atomic(
     int n_config, int ns_local,
     int ns_h, int jF_in_offset, int nZnT, int nThetaEff, bool lthreed,
@@ -3412,10 +3117,6 @@ __global__ void k_hybrid_lambda_force(
     const double* __restrict__ radialBlending,
     double* __restrict__ blmn_e, double* __restrict__ blmn_o,
     double* __restrict__ clmn_e, double* __restrict__ clmn_o);
-__global__ void k_pres_compute(int n_config, int ns_h, double gamma,
-                                const double* __restrict__ massH,
-                                const double* __restrict__ dVdsH,
-                                double* __restrict__ presH);
 __global__ void k_pres_compute_and_thermal(int n_config, int ns_h, double gamma,
                                             int nsMinH, int nsMaxH_minus_1,
                                             int ns_minus_2,
@@ -3423,26 +3124,6 @@ __global__ void k_pres_compute_and_thermal(int n_config, int ns_h, double gamma,
                                             const double* __restrict__ dVdsH,
                                             double* __restrict__ presH,
                                             double* __restrict__ thermal_partial);
-__global__ void k_pres_totalpres_init(int n_config, int ns_h, int nZnT,
-                                       const double* __restrict__ bsupu,
-                                       const double* __restrict__ bsubu,
-                                       const double* __restrict__ bsupv,
-                                       const double* __restrict__ bsubv,
-                                       double* __restrict__ totalPressure);
-__global__ void k_pres_thermal_partial(int n_config, int ns_h,
-                                        int nsMinH, int nsMaxH_minus_1,
-                                        int ns_minus_2,
-                                        const double* __restrict__ presH,
-                                        const double* __restrict__ dVdsH,
-                                        double* __restrict__ thermal_partial,
-                                        const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_pres_magnetic_partial(int n_config, int ns_h, int nZnT, int nThetaEff,
-                                         int nsMinH, int nsMaxH_minus_1,
-                                         int ns_minus_2,
-                                         const double* __restrict__ gsqrt,
-                                         const double* __restrict__ totalPressure,
-                                         const double* __restrict__ wInt,
-                                         double* __restrict__ magnetic_partial);
 __global__ void k_pres_magnetic_partial_inline(int n_config, int ns_h, int nZnT,
                                                 int nThetaEff, int nsMinH,
                                                 int nsMaxH_minus_1, int ns_minus_2,
@@ -3462,9 +3143,6 @@ __global__ void k_pres_totalpres_init_with_presH(int n_config, int ns_h, int nZn
                                                    const double* __restrict__ presH,
                                                    double* __restrict__ totalPressure,
                                                    const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_pres_add_presH(int n_config, int ns_h, int nZnT,
-                                  const double* __restrict__ presH,
-                                  double* __restrict__ totalPressure);
 __global__ void k_volume_reduce(int n_config, int ns_h, double multiplier,
                                   int nsMaxH_minus_1, int ns_minus_2,
                                   int nsMinH,
@@ -3684,9 +3362,6 @@ __global__ void k_m1_constraint_gated(int n_config, int ns_local,
                                       int zero_all,
                                       double* __restrict__ dec_frss,
                                       double* __restrict__ dec_fzcs);
-__global__ void k_zero_z_force_for_m1(int n_config, int ns_local,
-                                        int ns_force_local, int mpol, int ntor,
-                                        double* __restrict__ dec_fzcs);
 __global__ void k_mask_geometry_above(int n_config, size_t cfg_stride,
                                       int ns_count, int mpol, int ntor,
                                       int mpol_geometry, int ntor_geometry,
@@ -3695,7 +3370,6 @@ __global__ void k_mask_geometry_above(int n_config, size_t cfg_stride,
                                       double* __restrict__ rss,
                                       double* __restrict__ zsc,
                                       double* __restrict__ zcs);
-__global__ void k_zero_buffer(int n, double* __restrict__ p);
 __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
                                      double adiabaticIndex,
                                      const double* __restrict__ thermal_partial,
@@ -3787,150 +3461,6 @@ __global__ void k_update_timestep(
     double* __restrict__ d_prev_fsq,
     double* __restrict__ d_fac_b1,
     const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_residuals_dd_fp32(
-    int n_config, int ns_local,
-    int jLocal_max_rz, int jLocal_max_boundary,
-    int mpol, int ntor, bool lthreed,
-    const double* __restrict__ frcc,
-    const double* __restrict__ frss,
-    const double* __restrict__ fzsc,
-    const double* __restrict__ fzcs,
-    const double* __restrict__ flsc,
-    const double* __restrict__ flcs,
-    double* __restrict__ scalars_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_scatter_main_and_con_dd_fp32(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_main_and_con_dd_fp64mul(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_main_and_con_dd_fp32_ddmul(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_main_and_con_ozaki_fp32(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_basis_init(
-    int mpol, int nThetaReduced, int kBatch_param,
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    float* __restrict__ W);
-__global__ void k_scatter_pack_Y_fp32(
-    int n_config, int ns_local, int mpol, int kBatch_param, int nZeta,
-    const double* __restrict__ Y, float* __restrict__ Y_packed);
-__global__ void k_scatter_unpack_out_fp32(
-    int n_config, int ns_local, int nZeta, int nThetaReduced, int nThetaEff,
-    const float* __restrict__ out_packed,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o);
-__global__ void k_scatter_unpack_out_fp64(
-    int n_config, int ns_local, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ out_packed,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o);
-__global__ void k_scatter_pack_Y_fp32_split(
-    int n_config, int ns_local, int mpol, int kBatch_param, int nZeta,
-    const double* __restrict__ Y,
-    float* __restrict__ Y_hi, float* __restrict__ Y_lo);
-__global__ void k_scatter_basis_init_split(
-    int mpol, int nThetaReduced, int kBatch_param,
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    float* __restrict__ W_hi, float* __restrict__ W_lo);
-__global__ void k_scatter_unpack_out_ozaki(
-    int n_config, int ns_local, int nZeta, int nThetaReduced, int nThetaEff,
-    const float* __restrict__ out_hh, const float* __restrict__ out_hl,
-    const float* __restrict__ out_lh, const float* __restrict__ out_ll,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o);
-__global__ void k_scatter_rcon_zcon_fp64(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_main_and_con_ozaki3_fp32(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
 __global__ __launch_bounds__(64, 4) void k_scatter_main_and_con_custom_gemm(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -3946,33 +3476,6 @@ __global__ __launch_bounds__(64, 4) void k_scatter_main_and_con_custom_gemm(
     double* __restrict__ lu_e, double* __restrict__ lu_o,
     double* __restrict__ lv_e, double* __restrict__ lv_o,
     double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_main_and_con_wmma_tf32(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    int plain_tf32,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o);
-__global__ void k_i8b_build_w(int mpol, int nThetaReduced,
-                              const double* __restrict__ cosmu,
-                              const double* __restrict__ sinmu,
-                              const double* __restrict__ cosmum,
-                              const double* __restrict__ sinmum,
-                              double* __restrict__ W, int K, int N);
-__global__ void k_i8b_slice_w(const double* __restrict__ W, int K, int N,
-                              signed char* __restrict__ Wl,
-                              int* __restrict__ eW);
-__global__ void k_i8b_row_exp(int n_config, int ns_local, int mpol,
-                              int nZeta, const double* __restrict__ Y,
-                              int* __restrict__ eY);
 __global__ void k_tau_minmax(int n_config, int total,
                               const double* __restrict__ tau,
                               double* __restrict__ out2,
@@ -3999,32 +3502,6 @@ __global__ void k_apply_rz_thomas_block(
     const double* __restrict__ a_in, const double* __restrict__ d_in,
     const double* __restrict__ b_in, double* __restrict__ c_inout,
     const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_apply_rz_pcr_fp32(int n_config, int mnsize, int ns_total,
-                                      int num_basis,
-                                      const int* __restrict__ jMin, int jMax,
-                                      const double* __restrict__ a_in,
-                                      const double* __restrict__ d_in,
-                                      const double* __restrict__ b_in,
-                                      double* __restrict__ c_inout,
-                                      const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_rz_compute_residual_fp64(int n_config, int mnsize,
-                                             int ns_total, int num_basis,
-                                             const int* __restrict__ jMin,
-                                             int jMax,
-                                             const double* __restrict__ a_in,
-                                             const double* __restrict__ d_in,
-                                             const double* __restrict__ b_in,
-                                             const double* __restrict__ c_orig,
-                                             const double* __restrict__ x_in,
-                                             double* __restrict__ r_out,
-                                             const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_rz_add_correction(int n_config, int mnsize, int ns_total,
-                                      int num_basis,
-                                      const int* __restrict__ jMin, int jMax,
-                                      const double* __restrict__ x_saved,
-                                      const double* __restrict__ c_corr,
-                                      double* __restrict__ c_inout,
-                                      const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ void k_assemble_rz_preconditioner(
     int n_config, int ns_h,
     int mpol, int ntor, int nfp,
@@ -4206,563 +3683,12 @@ __global__ __launch_bounds__(32, 16) void k_dealias_inv_tpl(
   size_t dst = cfg_grid + (size_t)((jF * nZeta + k) * nThetaEff + l);
   m_gCon[dst] = acc;
 }
-// Custom tile-cooperative GEMM with Veltkamp-Dekker per-multiply. Each
-// thread accumulates one output element in a DD-pair register, four
-// Veltkamp-Dekker exact-FP32 sub-products per k-step (A_hi*W_hi,
-// A_hi*W_lo, A_lo*W_hi, A_lo*W_lo). Cooperative tile load of A_hi/A_lo
-// and W_hi/W_lo into shared memory. Output cast DD->FP64 for the
-// production scatter buffers.
-//
-// Math: A (FP64) ~= A_hi + A_lo (FP32 pair); B (FP64) ~= B_hi + B_lo.
-// A*B = A_hi*B_hi + A_hi*B_lo + A_lo*B_hi + A_lo*B_lo. Each FP32 mul
-// gets a Veltkamp split inside two_product_dekker so it's exact in
-// FP32; the four exact products are summed in DD-pair. Result has
-// ~48-bit precision (matches scalar Path 3b's Veltkamp-Dekker Ozaki).
-//
-// Templated tile sizes. Default TM=32, TN=32, TK=32 with 256 threads
-// (16x16) computing 2x2 outputs per thread.
-template <int TM, int TN, int TK>
-__global__ void k_scatter_custom_gemm_vd(
-    int B, int M, int N,
-    const float* __restrict__ A_hi, const float* __restrict__ A_lo,
-    const float* __restrict__ W_hi, const float* __restrict__ W_lo,
-    double* __restrict__ C) {
-  constexpr int TPB_X = 16;
-  constexpr int TPB_Y = 16;
-  constexpr int OUT_X = TN / TPB_X;  // 2
-  constexpr int OUT_Y = TM / TPB_Y;  // 2
-  int tile_b = blockIdx.y * TM;
-  int tile_n = blockIdx.x * TN;
-  int tx = threadIdx.x;
-  int ty = threadIdx.y;
-  __shared__ float Ash_hi[TM][TK];
-  __shared__ float Ash_lo[TM][TK];
-  __shared__ float Wsh_hi[TK][TN];
-  __shared__ float Wsh_lo[TK][TN];
-  // Per-thread DD accumulators: OUT_Y * OUT_X = 4 outputs.
-  DD acc[OUT_Y][OUT_X];
-  #pragma unroll
-  for (int oy = 0; oy < OUT_Y; ++oy)
-    #pragma unroll
-    for (int ox = 0; ox < OUT_X; ++ox)
-      acc[oy][ox] = dd_from_f(0.0f);
-  for (int k_tile = 0; k_tile < M; k_tile += TK) {
-    // Cooperative tile load. Each thread loads OUT_Y*TK/TPB_X = 4 A
-    // elements (per hi/lo) and OUT_X*TK/TPB_Y = 4 W elements (per hi/lo).
-    #pragma unroll
-    for (int oy = 0; oy < OUT_Y; ++oy) {
-      int rowA = tile_b + ty * OUT_Y + oy;
-      #pragma unroll
-      for (int kk = tx; kk < TK; kk += TPB_X) {
-        int gA_k = k_tile + kk;
-        if (rowA < B && gA_k < M) {
-          size_t idxA = (size_t)rowA * M + (size_t)gA_k;
-          Ash_hi[ty * OUT_Y + oy][kk] = A_hi[idxA];
-          Ash_lo[ty * OUT_Y + oy][kk] = A_lo[idxA];
-        } else {
-          Ash_hi[ty * OUT_Y + oy][kk] = 0.0f;
-          Ash_lo[ty * OUT_Y + oy][kk] = 0.0f;
-        }
-      }
-    }
-    #pragma unroll
-    for (int ox = 0; ox < OUT_X; ++ox) {
-      int colW = tile_n + tx * OUT_X + ox;
-      #pragma unroll
-      for (int kk = ty; kk < TK; kk += TPB_Y) {
-        int gW_k = k_tile + kk;
-        if (colW < N && gW_k < M) {
-          size_t idxW = (size_t)gW_k * N + (size_t)colW;
-          Wsh_hi[kk][tx * OUT_X + ox] = W_hi[idxW];
-          Wsh_lo[kk][tx * OUT_X + ox] = W_lo[idxW];
-        } else {
-          Wsh_hi[kk][tx * OUT_X + ox] = 0.0f;
-          Wsh_lo[kk][tx * OUT_X + ox] = 0.0f;
-        }
-      }
-    }
-    __syncthreads();
-    // Inner-product over K.
-    int k_end = (k_tile + TK <= M) ? TK : (M - k_tile);
-    #pragma unroll 8
-    for (int kk = 0; kk < k_end; ++kk) {
-      #pragma unroll
-      for (int oy = 0; oy < OUT_Y; ++oy) {
-        float a_hi = Ash_hi[ty * OUT_Y + oy][kk];
-        float a_lo = Ash_lo[ty * OUT_Y + oy][kk];
-        #pragma unroll
-        for (int ox = 0; ox < OUT_X; ++ox) {
-          float w_hi = Wsh_hi[kk][tx * OUT_X + ox];
-          float w_lo = Wsh_lo[kk][tx * OUT_X + ox];
-          DD p1 = two_product_dekker(a_hi, w_hi);
-          DD p2 = two_product_dekker(a_hi, w_lo);
-          DD p3 = two_product_dekker(a_lo, w_hi);
-          DD p4 = two_product_dekker(a_lo, w_lo);
-          DD s12 = dd_add(p1, p2);
-          DD s34 = dd_add(p3, p4);
-          DD s_all = dd_add(s12, s34);
-          acc[oy][ox] = dd_add(acc[oy][ox], s_all);
-        }
-      }
-    }
-    __syncthreads();
-  }
-  // Write outputs.
-  #pragma unroll
-  for (int oy = 0; oy < OUT_Y; ++oy) {
-    int rowC = tile_b + ty * OUT_Y + oy;
-    if (rowC >= B) continue;
-    #pragma unroll
-    for (int ox = 0; ox < OUT_X; ++ox) {
-      int colC = tile_n + tx * OUT_X + ox;
-      if (colC >= N) continue;
-      C[(size_t)rowC * N + (size_t)colC] = dd_to_double(acc[oy][ox]);
-    }
-  }
-}
-// k_scatter_main_and_con_i8ozaki: the scatter GEMM on int8 tensor cores
-// with exact integer accumulation (the Ozaki construction). Each FP64
-// operand is scaled per A-row / per B-column to (-0.5, 0.5), split into
-// eight 7-bit signed limbs (56 bits, covering the FP64 mantissa), and
-// the limb cross-products accumulate through wmma s8 x s8 -> s32
-// fragments, which are exact: no scalar recovery pass is needed. Bands
-// b = p + q share one fragment chain (equal scale); per-band sums stay
-// far below the s32 range (<= 8 pairs x 48 x 127^2 ~ 6e6). The FP64
-// output is the band sum scaled by 2^(eA + eB - 7(b + 2)).
-//
-// Gated by VMECPP_SCATTER_I8OZAKI=1. Tile geometry matches the wmma
-// kernel: mpol <= 12 (4 * mpol <= K_PAD) and nThetaReduced <= 16.
-// LIMBS_T selects the operand width: 8 limbs cover the FP64 mantissa
-// (56 bits); 4 limbs carry 28-bit operands (rel ~4e-9) at half the
-// limb-plane traffic and half the mma work. Launch with 32 * LIMBS_T
-// threads (one band per warp).
-template <int LIMBS_T>
-__global__ void k_scatter_main_and_con_i8ozaki(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced,
-    int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o) {
-  constexpr int K_PAD = 48;
-  constexpr int M_TILE = 16;
-  constexpr int N_TILE = 16;
-  constexpr int LIMBS = LIMBS_T;
-  constexpr int BANDS = LIMBS_T;  // p + q in [0, LIMBS); deeper bands truncated
-
-  int z = blockIdx.z;
-  int config = z / ns_local;
-  int jF_local = z - config * ns_local;
-  if (config >= n_config || jF_local >= ns_local) return;
-  int k = blockIdx.y;
-  if (k >= nZeta) return;
-  int tid = threadIdx.x;
-  int warp_id = tid >> 5;
-  int lane = tid & 31;
-
-  extern __shared__ unsigned char smem_raw[];
-  double* s_Y    = reinterpret_cast<double*>(smem_raw);
-  double* s_cmu  = s_Y    + (size_t)kBatch * (size_t)mpol;
-  double* s_smu  = s_cmu  + (size_t)mpol  * (size_t)nThetaReduced;
-  double* s_cmum = s_smu  + (size_t)mpol  * (size_t)nThetaReduced;
-  double* s_smum = s_cmum + (size_t)mpol  * (size_t)nThetaReduced;
-  double* s_xmpq = s_smum + (size_t)mpol  * (size_t)nThetaReduced;
-  // ldmatrix requires 32-byte tile bases; the FP64 staging length is not
-  // a 32-byte multiple at every shape.
-  size_t a8_off = (((size_t)(s_xmpq + mpol) - (size_t)smem_raw) + 31u) &
-                  ~(size_t)31u;
-  signed char* s_A8 = reinterpret_cast<signed char*>(smem_raw + a8_off);
-  signed char* s_B8 = s_A8 + LIMBS * M_TILE * K_PAD;
-  int* s_band = reinterpret_cast<int*>(s_B8 + LIMBS * K_PAD * N_TILE);
-  int* s_eA = s_band + BANDS * M_TILE * N_TILE;
-  int* s_eB = s_eA + M_TILE;
-
-  size_t cfg_Y = (size_t)config * (size_t)ns_local * (size_t)mpol *
-                 (size_t)kBatch * (size_t)nZeta;
-  int total_Y = kBatch * mpol;
-  for (int i = tid; i < total_Y; i += blockDim.x) {
-    int m    = i / kBatch;
-    int slot = i - m * kBatch;
-    size_t y_idx = cfg_Y +
-                   ((size_t)((jF_local * mpol + m) * kBatch + slot)) *
-                   (size_t)nZeta + (size_t)k;
-    s_Y[i] = Y[y_idx];
-  }
-  int total_basis = mpol * nThetaReduced;
-  for (int i = tid; i < total_basis; i += blockDim.x) {
-    s_cmu[i]  = cosmu[i];
-    s_smu[i]  = sinmu[i];
-    s_cmum[i] = cosmum[i];
-    s_smum[i] = sinmum[i];
-  }
-  for (int i = tid; i < mpol; i += blockDim.x) s_xmpq[i] = xmpq[i];
-  if (tid < M_TILE) s_eA[tid] = INT_MIN;
-  if (tid < N_TILE) s_eB[tid] = INT_MIN;
-  __syncthreads();
-
-  // Pass 1: per-row (A) and per-column (B) max exponents.
-  for (int i = tid; i < M_TILE * K_PAD; i += blockDim.x) {
-    int l = i / K_PAD;
-    int kk = i - l * K_PAD;
-    double v = i8oz_a_elem(l, kk, mpol, nThetaReduced,
-                           s_cmu, s_smu, s_cmum, s_smum);
-    if (v != 0.0) atomicMax(&s_eA[l], ilogb(v));
-  }
-  for (int i = tid; i < K_PAD * N_TILE; i += blockDim.x) {
-    int kk = i / N_TILE;
-    int n  = i - kk * N_TILE;
-    double v = i8oz_b_elem(kk, n, mpol, s_Y);
-    if (v != 0.0) atomicMax(&s_eB[n], ilogb(v));
-  }
-  __syncthreads();
-
-  // Pass 2: limb extraction at the row/column scale. The +2 keeps the
-  // scaled magnitude at or below 0.5 so rint(r * 128) stays within the
-  // signed 8-bit range at every limb.
-  for (int i = tid; i < M_TILE * K_PAD; i += blockDim.x) {
-    int l = i / K_PAD;
-    int kk = i - l * K_PAD;
-    double v = i8oz_a_elem(l, kk, mpol, nThetaReduced,
-                           s_cmu, s_smu, s_cmum, s_smum);
-    double r = (s_eA[l] == INT_MIN) ? 0.0 : ldexp(v, -(s_eA[l] + 2));
-    #pragma unroll
-    for (int pl = 0; pl < LIMBS; ++pl) {
-      double scaled = r * 128.0;
-      int limb = (int)rint(scaled);
-      r = scaled - (double)limb;
-      s_A8[pl * M_TILE * K_PAD + i] = (signed char)limb;
-    }
-  }
-  for (int i = tid; i < K_PAD * N_TILE; i += blockDim.x) {
-    int kk = i / N_TILE;
-    int n  = i - kk * N_TILE;
-    double v = i8oz_b_elem(kk, n, mpol, s_Y);
-    double r = (s_eB[n] == INT_MIN) ? 0.0 : ldexp(v, -(s_eB[n] + 2));
-    #pragma unroll
-    for (int pl = 0; pl < LIMBS; ++pl) {
-      double scaled = r * 128.0;
-      int limb = (int)rint(scaled);
-      r = scaled - (double)limb;
-      s_B8[pl * K_PAD * N_TILE + i] = (signed char)limb;
-    }
-  }
-  __syncthreads();
-
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)
-  {
-    using namespace nvcuda;
-    wmma::fragment<wmma::matrix_a, 16, 16, 16, signed char,
-                   wmma::row_major> a_frag;
-    wmma::fragment<wmma::matrix_b, 16, 16, 16, signed char,
-                   wmma::row_major> b_frag;
-    wmma::fragment<wmma::accumulator, 16, 16, 16, int> c_frag;
-    // One band per warp; pairs (p, q) with p + q == band chain into the
-    // same exact s32 accumulator.
-    int band = warp_id;
-    wmma::fill_fragment(c_frag, 0);
-    for (int pq = 0; pq <= band; ++pq) {
-      int pa = pq, qb = band - pq;
-      if (pa >= LIMBS || qb >= LIMBS) continue;
-      for (int kk = 0; kk < K_PAD; kk += 16) {
-        wmma::load_matrix_sync(a_frag,
-            s_A8 + pa * M_TILE * K_PAD + kk, K_PAD);
-        wmma::load_matrix_sync(b_frag,
-            s_B8 + qb * K_PAD * N_TILE + kk * N_TILE, N_TILE);
-        wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
-      }
-    }
-    wmma::store_matrix_sync(&s_band[band * M_TILE * N_TILE], c_frag,
-                            N_TILE, wmma::mem_row_major);
-  }
-#else
-  // Pre-Turing fallback: scalar integer accumulation, same banding.
-  if (warp_id == 0) {
-    for (int band = 0; band < BANDS; ++band) {
-      for (int mn = lane; mn < M_TILE * N_TILE; mn += 32) {
-        int mi = mn / N_TILE;
-        int ni = mn - mi * N_TILE;
-        int acc = 0;
-        for (int pq = 0; pq <= band; ++pq) {
-          int pa = pq, qb = band - pq;
-          if (pa >= LIMBS || qb >= LIMBS) continue;
-          for (int kk = 0; kk < K_PAD; ++kk) {
-            acc += (int)s_A8[pa * M_TILE * K_PAD + mi * K_PAD + kk] *
-                   (int)s_B8[qb * K_PAD * N_TILE + kk * N_TILE + ni];
-          }
-        }
-        s_band[band * M_TILE * N_TILE + mn] = acc;
-      }
-    }
-  }
-#endif
-  __syncthreads();
-
-  for (int i = tid; i < M_TILE * N_TILE; i += blockDim.x) {
-    int l = i / N_TILE;
-    int n = i - l * N_TILE;
-    if (l < nThetaReduced && s_eA[l] != INT_MIN && s_eB[n] != INT_MIN) {
-      // Ascending magnitude: deepest band first.
-      double acc = 0.0;
-      int e_base = s_eA[l] + s_eB[n] + 4;
-      for (int band = BANDS - 1; band >= 0; --band) {
-        acc += ldexp((double)s_band[band * M_TILE * N_TILE + i],
-                     e_base - 7 * (band + 2));
-      }
-      size_t cfg_full = (size_t)config * (size_t)ns_local *
-                        (size_t)nZeta * (size_t)nThetaEff;
-      size_t idx = cfg_full +
-                   (size_t)((jF_local * nZeta + k) * nThetaEff + l);
-      switch (n) {
-        case 0:  r1_e[idx] = acc; break;
-        case 1:  r1_o[idx] = acc; break;
-        case 2:  ru_e[idx] = acc; break;
-        case 3:  ru_o[idx] = acc; break;
-        case 4:  rv_e[idx] = acc; break;
-        case 5:  rv_o[idx] = acc; break;
-        case 6:  z1_e[idx] = acc; break;
-        case 7:  z1_o[idx] = acc; break;
-        case 8:  zu_e[idx] = acc; break;
-        case 9:  zu_o[idx] = acc; break;
-        case 10: zv_e[idx] = acc; break;
-        case 11: zv_o[idx] = acc; break;
-        case 12: lu_e[idx] = acc; break;
-        case 13: lu_o[idx] = acc; break;
-        case 14: lv_e[idx] = acc; break;
-        case 15: lv_o[idx] = acc; break;
-      }
-    } else if (l < nThetaReduced) {
-      size_t cfg_full = (size_t)config * (size_t)ns_local *
-                        (size_t)nZeta * (size_t)nThetaEff;
-      size_t idx = cfg_full +
-                   (size_t)((jF_local * nZeta + k) * nThetaEff + l);
-      double zero = 0.0;
-      switch (n) {
-        case 0:  r1_e[idx] = zero; break;
-        case 1:  r1_o[idx] = zero; break;
-        case 2:  ru_e[idx] = zero; break;
-        case 3:  ru_o[idx] = zero; break;
-        case 4:  rv_e[idx] = zero; break;
-        case 5:  rv_o[idx] = zero; break;
-        case 6:  z1_e[idx] = zero; break;
-        case 7:  z1_o[idx] = zero; break;
-        case 8:  zu_e[idx] = zero; break;
-        case 9:  zu_o[idx] = zero; break;
-        case 10: zv_e[idx] = zero; break;
-        case 11: zv_o[idx] = zero; break;
-        case 12: lu_e[idx] = zero; break;
-        case 13: lu_o[idx] = zero; break;
-        case 14: lv_e[idx] = zero; break;
-        case 15: lv_o[idx] = zero; break;
-      }
-    }
-  }
-}
-// Spec limbs, row-major [B, K] per limb plane. LIMBS_T limits the
-// slice to the leading (most-significant) planes; the buffer is sized
-// for eight so the limb mode can change between iterations.
-template <int LIMBS_T>
-__global__ void k_i8b_slice_y(int n_config, int ns_local, int mpol,
-                              int nZeta, const double* __restrict__ Y,
-                              const int* __restrict__ eY,
-                              signed char* __restrict__ Yl, int B_pad) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int K = 16 * mpol;
-  int B = n_config * ns_local * nZeta;
-  if (idx >= B_pad * K) return;
-  int b = idx / K;
-  int mq = idx - b * K;
-  double r = 0.0;
-  int m = mq >> 4;
-  int q = mq & 15;
-  if (b < B && q < kBatch) {
-    int k = b % nZeta;
-    int cj = b / nZeta;
-    size_t y_idx = (((size_t)cj * (size_t)mpol * (size_t)kBatch) +
-                    ((size_t)m * kBatch + q)) * (size_t)nZeta + (size_t)k;
-    double v = Y[y_idx];
-    int e = eY[b];
-    r = (e == INT_MIN) ? 0.0 : ldexp(v, -(e + 2));
-  }
-  size_t plane = (size_t)B_pad * (size_t)K;
-  #pragma unroll
-  for (int pl = 0; pl < LIMBS_T; ++pl) {
-    double scaled = r * 128.0;
-    int limb = (int)rint(scaled);
-    r = scaled - (double)limb;
-    Yl[(size_t)pl * plane + idx] = (signed char)limb;
-  }
-}
-// Banded s8 GEMM: one block per (64-row stripe, 16-column tile). One
-// warp per band; bands chain their (p, q) limb pairs into one exact
-// s32 accumulator. The combine scales bands into FP64 and writes the
-// 16 channel arrays directly (a 16-column tile is one poloidal cell).
-// LIMBS_T as in the per-tile kernel: 8 covers the FP64 mantissa, 4
-// halves the staged limb traffic at 28-bit operand width. The W limb
-// planes are built most-significant first, so a 4-limb consumer reads
-// the leading planes of the 8-limb build. Launch with 32 * LIMBS_T
-// threads.
-template <int LIMBS_T>
-__global__ void k_i8b_gemm(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced,
-    int nThetaEff, int B_pad,
-    const signed char* __restrict__ Yl, const int* __restrict__ eY,
-    const signed char* __restrict__ Wl, const int* __restrict__ eW,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o) {
-  constexpr int ROWS = 64;
-  constexpr int NT = 16;
-  constexpr int LIMBS = LIMBS_T;
-  constexpr int BANDS = LIMBS_T;
-  int K = 16 * mpol;
-  int N = 16 * nThetaReduced;
-  int row0 = blockIdx.x * ROWS;
-  int col0 = blockIdx.y * NT;  // one l-cell: l = blockIdx.y
-  int l = blockIdx.y;
-  int tid = threadIdx.x;
-  int warp_id = tid >> 5;
-
-  extern __shared__ unsigned char sm[];
-  // Per K-chunk staging: Y limbs [LIMBS][ROWS][16], W limbs [LIMBS][16][NT].
-  signed char* sY = reinterpret_cast<signed char*>(sm);
-  signed char* sW = sY + LIMBS * ROWS * 16;
-  int* sBand = reinterpret_cast<int*>(sW + LIMBS * 16 * NT);
-
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)
-  using namespace nvcuda;
-  wmma::fragment<wmma::matrix_a, 16, 16, 16, signed char,
-                 wmma::row_major> a_frag;
-  wmma::fragment<wmma::matrix_b, 16, 16, 16, signed char,
-                 wmma::row_major> b_frag;
-  wmma::fragment<wmma::accumulator, 16, 16, 16, int> c_frag[ROWS / 16];
-  int band = warp_id;
-  #pragma unroll
-  for (int rf = 0; rf < ROWS / 16; ++rf) wmma::fill_fragment(c_frag[rf], 0);
-
-  for (int kc = 0; kc < K; kc += 16) {
-    // Stage this K-chunk's limbs.
-    for (int i = tid; i < LIMBS * ROWS * 16; i += blockDim.x) {
-      int pl = i / (ROWS * 16);
-      int rr = (i / 16) % ROWS;
-      int kk = i & 15;
-      sY[i] = Yl[(size_t)pl * B_pad * K + (size_t)(row0 + rr) * K +
-                 (kc + kk)];
-    }
-    for (int i = tid; i < LIMBS * 16 * NT; i += blockDim.x) {
-      int pl = i / (16 * NT);
-      int kk = (i / NT) & 15;
-      int nn = i & 15;
-      sW[i] = Wl[(size_t)pl * K * N + (size_t)(kc + kk) * N + (col0 + nn)];
-    }
-    __syncthreads();
-    for (int pq = 0; pq <= band; ++pq) {
-      int pa = pq, qb = band - pq;
-      if (pa >= LIMBS || qb >= LIMBS) continue;
-      wmma::load_matrix_sync(b_frag, sW + qb * 16 * NT, NT);
-      #pragma unroll
-      for (int rf = 0; rf < ROWS / 16; ++rf) {
-        wmma::load_matrix_sync(a_frag, sY + pa * ROWS * 16 + rf * 16 * 16,
-                               16);
-        wmma::mma_sync(c_frag[rf], a_frag, b_frag, c_frag[rf]);
-      }
-    }
-    __syncthreads();
-  }
-  #pragma unroll
-  for (int rf = 0; rf < ROWS / 16; ++rf) {
-    wmma::store_matrix_sync(
-        sBand + (size_t)band * ROWS * NT + rf * 16 * NT, c_frag[rf], NT,
-        wmma::mem_row_major);
-  }
-  __syncthreads();
-#else
-  if (warp_id == 0 && tid == 0) {
-    for (int band = 0; band < BANDS; ++band) {
-      for (int rr = 0; rr < ROWS; ++rr) {
-        for (int nn = 0; nn < NT; ++nn) {
-          int acc = 0;
-          for (int pq = 0; pq <= band; ++pq) {
-            int pa = pq, qb = band - pq;
-            if (pa >= LIMBS || qb >= LIMBS) continue;
-            for (int kk = 0; kk < K; ++kk) {
-              acc += (int)Yl[(size_t)pa * B_pad * K +
-                             (size_t)(row0 + rr) * K + kk] *
-                     (int)Wl[(size_t)qb * K * N + (size_t)kk * N +
-                             (col0 + nn)];
-            }
-          }
-          sBand[(size_t)band * ROWS * NT + rr * NT + nn] = acc;
-        }
-      }
-    }
-  }
-  __syncthreads();
-#endif
-
-  int B = n_config * ns_local * nZeta;
-  for (int i = tid; i < ROWS * NT; i += blockDim.x) {
-    int rr = i / NT;
-    int ch = i & 15;
-    int b = row0 + rr;
-    if (b >= B) continue;
-    int eyv = eY[b];
-    int ewv = eW[col0 + ch];
-    double acc = 0.0;
-    if (eyv != INT_MIN && ewv != INT_MIN) {
-      int e_base = eyv + ewv + 4;
-      for (int band = BANDS - 1; band >= 0; --band) {
-        acc += ldexp((double)sBand[(size_t)band * ROWS * NT + i],
-                     e_base - 7 * (band + 2));
-      }
-    }
-    int k = b % nZeta;
-    int cj = b / nZeta;
-    int config = cj / ns_local;
-    int jF_local = cj - config * ns_local;
-    size_t idx = (size_t)config * (size_t)ns_local * (size_t)nZeta *
-                     (size_t)nThetaEff +
-                 (size_t)((jF_local * nZeta + k) * nThetaEff + l);
-    switch (ch) {
-      case 0:  r1_e[idx] = acc; break;
-      case 1:  r1_o[idx] = acc; break;
-      case 2:  ru_e[idx] = acc; break;
-      case 3:  ru_o[idx] = acc; break;
-      case 4:  rv_e[idx] = acc; break;
-      case 5:  rv_o[idx] = acc; break;
-      case 6:  z1_e[idx] = acc; break;
-      case 7:  z1_o[idx] = acc; break;
-      case 8:  zu_e[idx] = acc; break;
-      case 9:  zu_o[idx] = acc; break;
-      case 10: zv_e[idx] = acc; break;
-      case 11: zv_o[idx] = acc; break;
-      case 12: lu_e[idx] = acc; break;
-      case 13: lu_o[idx] = acc; break;
-      case 14: lv_e[idx] = acc; break;
-      case 15: lv_o[idx] = acc; break;
-    }
-  }
-}
 
 // Run-scoped and process-scoped globals (defined in fft_toroidal_cuda_state.cu).
 extern bool g_iter_graph_capturing;
 extern bool g_pts_init_only;
 extern int g_batch_mem_shape[4];
 extern int g_batch_outputs_shape[4];
-extern int g_i8_limbs_env;
-extern int g_i8_limbs_last;
 extern int g_iter_graph_env;
 extern int g_residuals_k_run;
 extern std::vector<double> g_batch_dec_x_mem;

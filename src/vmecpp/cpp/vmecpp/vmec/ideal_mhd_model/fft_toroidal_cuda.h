@@ -57,15 +57,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
     const RadialPartitioning& r, const Sizes& s, const RadialProfiles& rp,
     const FourierBasisFastPoloidal& fb, RealSpaceGeometry& m_geometry);
 
-// Iterative-refinement precision signal. ideal_mhd_model.cc calls this
-// after every evalFResInvar with the current sum (fsqr + fsqz + fsql).
-// The fft_toroidal_cuda dispatchers compare against the env-controlled
-// threshold (VMECPP_IR_THRESHOLD, default 1e-5) and switch hot kernels
-// between FP32/TF32 (residual above threshold) and FP64 (below) so the
-// descent runs cheap while the final refinement reaches ftol=1e-15.
-void SetIRResidualSum(double sum);
-int GetIRPhase();  // 1 = FP32 phase, 0 = FP64 phase
-
 // CUDA-accelerated forces-to-Fourier toroidal DFT. Consumes the real-space
 // MHD force residuals in RealSpaceForces and produces the spectral
 // representation of the force in FourierForces. Semantically equivalent to

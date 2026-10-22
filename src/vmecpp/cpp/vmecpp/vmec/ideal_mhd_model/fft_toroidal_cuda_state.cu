@@ -16,9 +16,6 @@ std::vector<double> g_fsqr_per_cfg_cache;
 int g_n_config_run = -1;
 int g_batch_upscale_env = -1;
 int g_batch_upscale_kernel_env = -1;
-double g_ir_residual_sum = 1.0;
-double g_ir_threshold    = 1e-5;
-int    g_ir_staged       = -1;
 
 // Prelude functions declared in the common header.
 const std::vector<double>& GetResidualsPerCfgCacheInvar() {
@@ -122,33 +119,6 @@ CudaToroidalState& State() {
 }
 
 
-// Carson-Higham IR setters callable from ideal_mhd_model.cc. These bridge
-// the per-iter residual sum from the host iteration controller into the
-// file-scope globals above.
-void SetIRResidualSum(double sum) {
-  g_ir_residual_sum = sum;
-  init_ir_env();
-  if (g_ir_staged) {
-    static int log_every = -1;
-    if (log_every < 0) {
-      const char* e = std::getenv("VMECPP_IR_LOG_EVERY");
-      log_every = (e && std::atoi(e) > 0) ? std::atoi(e) : 0;
-    }
-    static long call_count = 0;
-    ++call_count;
-    if (log_every > 0 && (call_count == 1 || call_count % log_every == 0)) {
-      int phase = (sum > g_ir_threshold) ? 1 : 0;
-      std::fprintf(stderr, "[IR] iter=%ld fsq=%.3e phase=%s\n",
-                   call_count, sum, phase ? "FP32" : "FP64");
-    }
-  }
-}
-int GetIRPhase() {
-  init_ir_env();
-  if (!g_ir_staged) return 0;
-  return (g_ir_residual_sum > g_ir_threshold) ? 1 : 0;
-}
-
 // Resets the thread-local CudaToroidalState at the start of each
 // Vmec::run so persistent device buffers carry nothing between runs
 // in one process. Safe to invoke before the stream exists (no-op).
@@ -189,16 +159,6 @@ int g_iter_graph_env = -1;
 // through the time-step damping, their trajectories.
 int g_residuals_k_run = -1;
 
-// int8-Ozaki limb count, run-scoped. VMECPP_SCATTER_I8_LIMBS=4 selects
-// 28-bit operands (four 7-bit limbs, rel ~4e-9) at half the limb-plane
-// traffic; the default 8 covers the FP64 mantissa. Under VMECPP_IR_STAGED
-// the residual phase routes the choice per iteration: 4 limbs above the
-// threshold (descent), 8 below. g_i8_limbs_last tracks the last
-// dispatched width so a mid-run phase transition invalidates the
-// whole-iteration graph, which otherwise replays the captured kernel.
-int g_i8_limbs_env = -1;
-int g_i8_limbs_last = 0;
-
 void SetFreeBoundaryRunCuda(int enabled) {
   g_free_boundary_run = (enabled != 0);
 }
@@ -217,9 +177,6 @@ void ResetCudaStateForNewVmecRun() {
   g_batch_upscale_kernel_env = -1;
   g_iter_graph_env = -1;
   g_residuals_k_run = -1;
-  g_i8_limbs_env = -1;
-  g_i8_limbs_last = 0;
-  g_ir_staged = -1;
   g_free_boundary_run = false;
   g_sync_elide_run = false;
   State().ResetForNewVmecRun();

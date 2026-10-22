@@ -52,18 +52,6 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
 
   // Batched execution: launch n_config_max blocks (one per config). Each writes 3
   // scalars at residuals_partial[config*3:].
-  // FP32 substitution opt-in: VMECPP_RESIDUALS_DD_FP32=1 dispatches the
-  // DD-pair (TwoSum) FP32 accumulator variant of k_residuals. Phase 1
-  // of the FP32 conversion research path; default OFF.
-  static int dd_fp32_env = -1;
-  if (dd_fp32_env < 0) {
-    const char* e = std::getenv("VMECPP_RESIDUALS_DD_FP32");
-    dd_fp32_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (dd_fp32_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] residuals DD-FP32 path "
-                           "enabled (VMECPP_RESIDUALS_DD_FP32=1)\n");
-    }
-  }
   static int residuals_par_env = -1;
   if (residuals_par_env < 0) {
     // Default ON. Parallel 256-thread tree reduce gives 3.0x wall reduction
@@ -123,17 +111,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   }
   const int residuals_k_env = g_residuals_k_run;
   S.TKBegin(CudaToroidalState::TK_RESIDUALS);
-  if (dd_fp32_env) {
-    k_residuals_dd_fp32<<<S.n_config_max, 1, 0, st>>>(
-        S.n_config_max, S.ns_local_cached,
-        jLocal_max_rz, jLocal_max_boundary, mpol, ntor, s.lthreed,
-        S.d_decomposed_frcc, S.d_decomposed_frss,
-        S.d_decomposed_fzsc, S.d_decomposed_fzcs,
-        S.d_decomposed_flsc, S.d_decomposed_flcs,
-        S.d_residuals_partial,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_residuals_dd_fp32 launch");
-  } else if (residuals_par_env && residuals_k_env > 1) {
+  if (residuals_par_env && residuals_k_env > 1) {
     // Multi-block partials path. Grid (K, n_config). Each block reduces
     // 1/K of the index space. Then finalize collapses K partials into
     // d_residuals_partial.

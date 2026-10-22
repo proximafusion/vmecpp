@@ -1637,10 +1637,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   evalFResInvar(localFResInvar);
 
-#ifdef VMECPP_USE_CUDA
-  vmecpp::SetIRResidualSum(m_fc.fsqr + m_fc.fsqz + m_fc.fsql);
-#endif
-
   if (checkpoint == VmecCheckpoint::INVARIANT_RESIDUALS &&
       iter2 >= iterations_before_checkpointing) {
     return true;

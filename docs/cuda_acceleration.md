@@ -241,38 +241,6 @@ serial residual reduction, whose different rounding moves it by 1e-13.
 | `VMECPP_ITER_GRAPH` | Whole-iteration CUDA graph under sync elision: each captured elided iteration replays as one `cudaGraphLaunch`, including both cuFFT execs. Captured after two eligible iterations, invalidated on multigrid stage transitions and restarts. No effect without `VMECPP_SYNC_ELIDE`. |
 | `VMECPP_FWD_GRAPH` | CUDA graph over the forward-FFT chain. |
 
-### Precision and transform variants (default OFF)
-
-The DD-pair primitives and Ozaki-slice multiplications are defined in
-`fft_toroidal_cuda_common.cuh`, the Carson-Higham refinement at its kernels
-in `fft_toroidal_cuda_kernels.cu`.
-
-| Variable | Effect |
-|---|---|
-| `VMECPP_FFT_FP32` | FP32 cuFFT. The force residual floors above production ftol. |
-| `VMECPP_FFT_RADIX` | Hand-coded radix-8x3 inverse DFT replacing cuFFT Z2D, for transform length 24; other lengths stay on cuFFT with a one-time notice. Accumulation order sits outside the bit-exact contract. |
-| `VMECPP_FWD_FFT_RADIX` | Forward-direction (D2Z) counterpart, stream-capturable, same length coverage. |
-| `VMECPP_DEALIAS_MIXED` | FP32 inner multiplies with an FP64 accumulator in the dealias inverse. Same floor as FP32 cuFFT. |
-| `VMECPP_DEALIAS_SPLIT` | Four partial accumulators in the dealias inverse. |
-| `VMECPP_SCATTER_DD_FP32` | FP32 multiplies with DD-pair accumulators in the scatter. |
-| `VMECPP_SCATTER_DD_FP64MUL` | FP64 multiplies with DD-pair accumulators. |
-| `VMECPP_SCATTER_DD_FP32_DDMUL` | Dekker TwoProduct DD x DD multiplies on FP32 operands, ~96-bit products. |
-| `VMECPP_SCATTER_OZAKI_FP32` | 2-slice Ozaki FP32 multiplications, ~50-bit precision. |
-| `VMECPP_SCATTER_OZAKI3_FP32` | 3-slice Ozaki, ~72-bit precision; converges within a few ULP of the FP64 equilibrium. |
-| `VMECPP_SCATTER_CUBLAS_FP32` | Scatter as one cuBLAS GemmEx FP32 GEMM. FP32 floor. |
-| `VMECPP_SCATTER_CUBLAS_OZAKI` | Four-GEMM Ozaki: FP32 hi/lo slices per operand, DD-pair reassembly, ~48-bit precision. |
-| `VMECPP_SCATTER_CUSTOM_GEMM` | Tile-cooperative GEMM with per-multiply Veltkamp-Dekker and DD accumulation. |
-| `VMECPP_SCATTER_CUSTOM_GEMM_WMMA` | TF32 tensor-core dispatch: 3-slice Ozaki limbs, 54 `wmma::mma_sync` per tile, with a scalar Veltkamp-Dekker pass over the same shared-memory data for production precision. Covers `mpol <= 12` and `nThetaReduced <= 16`; larger inputs fall back to the production scatter with a one-time notice. |
-| `VMECPP_SCATTER_I8OZAKI` | int8 tensor-core scatter via the Ozaki construction: eight 7-bit limbs per FP64 operand, exact s32 accumulation. Converges within a few ULP of FP64. Same tile coverage as the wmma path. |
-| `VMECPP_SCATTER_I8GEMM` | Batched int8-Ozaki GEMM with (config, surface, zeta) folded into one GEMM row axis; the basis-side limb matrix builds once per shape. No tile shape limits. Converges within a few ULP of FP64. |
-| `VMECPP_SCATTER_TF32_PLAIN` | Plain TF32 accumulator sum, rel ~3e-6. |
-| `VMECPP_SCATTER_I8_LIMBS` | Limb width for the int8 scatter paths: `4` selects 28-bit operands (rel ~4e-9), the default `8` covers the FP64 mantissa. Under `VMECPP_IR_STAGED` the width follows the residual phase, 4 above the threshold with a decade hysteresis band and 8 below; a width change drops the whole-iteration graph. |
-| `VMECPP_RESIDUALS_DD_FP32` | DD-pair FP32 accumulator in the residual reduction. |
-| `VMECPP_RZ_IR_FP32` | Carson-Higham iterative refinement on the RZ tridiagonal solve: FP32 PCR, FP64 residual, FP32 correction, FP64 combine. Halves PCR shared memory. |
-| `VMECPP_IR_STAGED` | Staged-precision descent: hot kernels run FP32/TF32 while the residual is above the threshold, FP64 below it. |
-| `VMECPP_IR_THRESHOLD` | Crossover residual for the staged descent. Default `1e-5`. |
-| `VMECPP_IR_LOG_EVERY` | Logging cadence for staged-precision phase transitions. |
-
 ### Diagnostics (default OFF)
 
 | Variable | Effect |
@@ -280,7 +248,6 @@ in `fft_toroidal_cuda_kernels.cu`.
 | `VMECPP_KERNEL_TIMING` | Per-kernel cudaEvent timing, dumped at exit and every 10k events. Disables the CUDA graphs and adds per-call syncs. |
 | `VMECPP_KERNEL_TIMING_PATH` | Dump destination. Default `/tmp/vmecpp_kernel_timing.log`. |
 | `VMECPP_PHASE_TIMING_PATH` | Destination for the phase-timer report. Default `/tmp/vmecpp_phase_timing.txt`. |
-| `VMECPP_FFT_DUMP` | One-shot dump of the cuFFT input and output plus the radix-8x3 recomputation on the same input; needs `nZeta = 24`. |
 | `VMECPP_CPU_ORDER_BCONTRA` | Serial ascending-kl accumulation of the jvPlasma and avg_guu_gsqrt reductions, matching the host loop bit for bit. |
 | `VMECPP_CPU_ORDER_PRECOND` | Host-order serial accumulation of the radial-preconditioner matrix elements, including the host's division forms. |
 | `VMECPP_CPU_ORDER_RZSOLVE` | Serial Thomas elimination in the host order instead of parallel cyclic reduction. |
