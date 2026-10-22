@@ -1919,7 +1919,9 @@ PYBIND11_MODULE(_vmecpp, m) {
         double lam_norm_lamscale = 0.0;
         Eigen::VectorXd lam_norm_phipF;
         if (have_lambda) {
-          auto lam_probe_or = vmecpp::Vmec::FromIndata(ind_single);
+          auto lam_probe_or = vmecpp::Vmec::FromIndata(
+              ind_single, /*magnetic_response_table=*/nullptr, max_threads,
+              vmecpp::OutputMode::kSilent);
           if (lam_probe_or.ok()) {
             auto lam_probe = std::move(*lam_probe_or);
             auto lam_run =
@@ -2538,6 +2540,7 @@ individual configurations.
         // hot-restart reconstruction.
         auto derive_outputs_from_batched_flush =
             [](const std::vector<vmecpp::VmecINDATA> &indata_local, int n_cfg,
+               std::optional<int> max_threads,
                const vmecpp::OutputQuantities &seed_oq,
                std::vector<vmecpp::OutputQuantities> &outs) -> bool {
           // Capture the batched run's final per-configuration force-residual
@@ -2642,7 +2645,9 @@ individual configurations.
           ind_drv.ftol_array = Eigen::VectorXd::Constant(
               1, (last_ftol >= 0) ? ind0.ftol_array[last_ftol] : 1.0e-12);
           ind_drv.niter_array = Eigen::VectorXi::Constant(1, 1);
-          auto drv_or = vmecpp::Vmec::FromIndata(ind_drv);
+          auto drv_or = vmecpp::Vmec::FromIndata(
+              ind_drv, /*magnetic_response_table=*/nullptr, max_threads,
+              vmecpp::OutputMode::kSilent);
           if (!drv_or.ok()) {
             return false;
           }
@@ -3105,7 +3110,9 @@ individual configurations.
                 }
               }
               if (axis_recompute_env) {
-                auto probe_or = vmecpp::Vmec::FromIndata(indata_local[c]);
+                auto probe_or = vmecpp::Vmec::FromIndata(
+                    indata_local[c], /*magnetic_response_table=*/nullptr,
+                    max_threads, vmecpp::OutputMode::kSilent);
                 if (!probe_or.ok()) {
                   throw std::runtime_error(
                       "run_batched_gpu: axis-probe FromIndata failed for cfg " +
@@ -3135,7 +3142,9 @@ individual configurations.
               }
             }
 
-            auto vmec_or = vmecpp::Vmec::FromIndata(indata_local[c]);
+            auto vmec_or = vmecpp::Vmec::FromIndata(
+                indata_local[c], /*magnetic_response_table=*/nullptr,
+                max_threads, vmecpp::OutputMode::kSilent);
             if (!vmec_or.ok()) {
               throw std::runtime_error(
                   "run_batched_gpu: FromIndata failed for cfg " +
@@ -3352,7 +3361,7 @@ individual configurations.
         if (per_cfg_recompute && ret_seed.ok()) {
           try {
             derived_direct = derive_outputs_from_batched_flush(
-                indata_local, n_cfg, *ret_seed, outs);
+                indata_local, n_cfg, max_threads, *ret_seed, outs);
           } catch (const std::exception &e) {
             std::fprintf(stderr,
                          "[pybind_vmec] direct per-cfg derivation threw "
