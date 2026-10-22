@@ -78,7 +78,6 @@ long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
   return n_cfg * doubles_per_cfg * (long long)sizeof(double);
 }
 
-
 // thread_local State to unblock multi-stream concurrency within a
 // single process. Each thread gets its own CudaToroidalState (own stream,
 // own buffers, own mutex). A subprocess-per-task execution pattern is
@@ -117,7 +116,6 @@ CudaToroidalState& State() {
   }
   return s;
 }
-
 
 // Resets the thread-local CudaToroidalState at the start of each
 // Vmec::run so persistent device buffers carry nothing between runs
@@ -680,6 +678,5 @@ void DiagCfg01DiffCuda(const double* d_buf, int per_cfg_size,
   std::fprintf(stderr, "[diag-cfg01 %s] max|cfg0-cfg1| = %.15e\n",
                label, h_max);
 }
-
 
 }  // namespace vmecpp

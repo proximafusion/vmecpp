@@ -401,34 +401,6 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
 // available and contain a single slot whose contents match the equivalent
 // scalar quantities returned by the single-cfg paths.
 
-// Copy the per-configuration tau extrema from the device buffer populated
-// by ComputeJacobianCuda into the supplied host vectors. The caller derives
-// the bad-Jacobian flag for each configuration host-side as
-// (minTau[c] * maxTau[c] < 0.0) || !std::isfinite(minTau[c] * maxTau[c]).
-// The function must be called after ComputeJacobianCuda has queued the
-// device-side reduction; invoking it earlier yields stale or undefined
-// values.
-void ComputeJacobianCudaPerCfgD2H(std::vector<double>* minTau_per_cfg,
-                                  std::vector<double>* maxTau_per_cfg);
-
-// Copy the per-configuration force-norm scalars from the device buffer
-// populated by ComputeForceNormsCuda into the supplied host vectors. The
-// caller derives the normalized residuals as
-// fNormRZ[c] = 1.0 / (sum_rz[c] * energyDensity^2) and
-// fNormL[c] = 1.0 / (sum_l[c] * lamscale^2). Requires a prior invocation
-// of ComputeForceNormsCuda in the current iteration.
-void ComputeForceNormsCudaPerCfgD2H(std::vector<double>* sumRZ_per_cfg,
-                                    std::vector<double>* sumL_per_cfg);
-
-// Copy the per-configuration residual triples populated by ResidualsCuda
-// into the supplied host vectors. The vectors are resized to n_cfg and
-// populated with the values [fResR_c, fResZ_c, fResL_c] for each
-// configuration c. Requires a prior invocation of ResidualsCuda in the
-// current iteration.
-void ResidualsCudaPerCfgD2H(std::vector<double>* fResR_per_cfg,
-                            std::vector<double>* fResZ_per_cfg,
-                            std::vector<double>* fResL_per_cfg);
-
 // Returns the effective n_config_max for the current process. The value is
 // read once from the VMECPP_N_CONFIG_MAX environment variable and cached
 // for the lifetime of the process; a return value of one indicates
@@ -592,21 +564,6 @@ const std::vector<double>& GetPlasmaVolumePerCfgCache();
 // scalar arithmetic under single-configuration and broadcast execution.
 const std::vector<double>& GetFnorm1PerCfgCache();
 
-// Transfers the device-resident decomposed force buffers back to the
-// host-side m_decomposed_f arrays and synchronizes the device stream.
-// Consolidates the per-wrapper transfers that the apply-preconditioner
-// chain (ApplyM1PreconditionerCuda, ApplyLambdaPreconditionerCuda,
-// ApplyRZPreconditionerCuda) and DecomposeAndConstrainCuda would
-// otherwise pay individually. The expected invocation point is once at
-// the end of IdealMhdModel::update so that the host buffers reflect the
-// completed iteration state before any downstream host-resident reader
-// observes them.
-void FlushDecomposedToHostCuda(const RadialPartitioning& r, const Sizes& s,
-                               const FlowControl& fc, double* dec_frcc_host,
-                               double* dec_frss_host, double* dec_fzsc_host,
-                               double* dec_fzcs_host, double* dec_flsc_host,
-                               double* dec_flcs_host);
-
 // Device-side replacement for Vmec::performTimeStep. The velocity and
 // decomposed-position state vectors remain resident on the device across
 // iterations, removing the per-iteration device-to-host transfer that the
@@ -642,16 +599,6 @@ void PrepareStagePtsXCuda(const RadialPartitioning& r, const Sizes& s,
                           double* m_dec_x_rcc, double* m_dec_x_rss,
                           double* m_dec_x_zsc, double* m_dec_x_zcs,
                           double* m_dec_x_lsc, double* m_dec_x_lcs);
-
-// Device-resident time-step damping computation. Computes per-cfg fac / b1
-// from the on-device precd residuals (d_residuals_partial) without round-
-// tripping through host. Standalone entry point retained for validation;
-// the production dispatch of k_update_timestep lives inside
-// PerformTimeStepCuda, gated by VMECPP_BATCH_PER_CFG_TIMESTEP and by sync
-// elision. The host invTau_ ring buffer stays the source of truth when
-// neither is active.
-void UpdateTimestepDeviceCuda(const FlowControl& fc, int iter1, int iter2,
-                              double time_step, double fnorm1);
 
 // Device-side composition of the host triplet that previously executed at
 // the start of IdealMhdModel::update: decomposeInto applied to
@@ -855,22 +802,6 @@ void FlushAllConfigsForOutputCudaNs(
 // consumed by the printout-cadence spectral-width volume average. No-op
 // when the device buffer is absent.
 void FlushDVdsHToHostCuda(int ns_h, double* dVdsH_host);
-
-// Device-side mirror of FourierCoeffs::rzNorm invoked with
-// include_offset == false. The implementation reads the configuration-zero
-// slice of the device-resident d_pts_x buffers, computes the sum of
-// squared coefficients on the device, and returns the resulting scalar
-// to the host. The reduction is carried out in two stages: a per-radial
-// partial kernel emits one double per radial surface, and the host
-// accumulates the partials in radial order. The ordering matches the
-// outer loop of the CPU implementation, so the routine is bit-exact with
-// FourierCoeffs::rzNorm under nominally identical inputs. Reading from
-// d_pts_x rather than the host m_decomposed_x shadow eliminates the
-// per-iteration device-to-host synchronization that PerformTimeStepCuda
-// would otherwise need to maintain a fresh host shadow.
-double ComputeForceNorm1FromPtsXCuda(int ns_local, int mpol, int ntor,
-                                     bool lthreed, int nsMinHere_local,
-                                     int nsMaxHere_local);
 
 // Reports whether the device-resident d_pts_x buffers have been
 // initialized by the first invocation of PerformTimeStepCuda. The

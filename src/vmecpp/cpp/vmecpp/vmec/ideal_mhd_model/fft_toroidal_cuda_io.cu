@@ -22,33 +22,6 @@ void FlushDVdsHToHostCuda(int ns_h, double* dVdsH_host) {
   }
 }
 
-void FlushDecomposedToHostCuda(
-    const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
-    double* dec_frcc_host, double* dec_frss_host,
-    double* dec_fzsc_host, double* dec_fzcs_host,
-    double* dec_flsc_host, double* dec_flcs_host) {
-  auto& S = State();
-  int ns_dec_local =
-      (r.nsMaxF1 == fc.ns) ? (fc.ns - r.nsMinF) : (r.nsMaxF - r.nsMinF);
-  int mpol = s.mpol;
-  int ntor = s.ntor;
-  if (ns_dec_local <= 0) return;
-  std::lock_guard<std::mutex> lk(S.mu);
-  cudaStream_t st = S.stream;
-  // Decompose-flush D2H + sync elided. The flush was originally required
-  // for Vmec::performTimeStep, which predated the CUDA port of that step.
-  // With PerformTimeStepCuda reading device d_decomposed_f directly,
-  // no per-iter host consumer of m_decomposed_f remains: ResidualsCuda /
-  // ApplyM1PreconditionerCuda / ApplyRZPreconditionerCuda /
-  // ApplyLambdaPreconditionerCuda all operate on device buffers and explicitly
-  // (void)cast their host args. The 6 D2Hs + sync per iter saved here is
-  // measurable wall (~50-100us per iter * 10K iters = 0.5-1.0s = 0.4-0.8pct).
-  (void)dec_frcc_host; (void)dec_frss_host;
-  (void)dec_fzsc_host; (void)dec_fzcs_host;
-  (void)dec_flsc_host; (void)dec_flcs_host;
-  (void)st;
-}
-
 // ============================================================================
 // FlushForOutputQuantitiesCuda
 //

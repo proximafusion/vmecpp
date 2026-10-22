@@ -21,8 +21,7 @@
 //      directly by the kernel rather than requiring a separate memset.
 //   3. A cufftExecZ2D batched over (jF, m, q) executes all toroidal
 //      transforms in a single call, producing the real-space intermediate
-//      Y. An equivalent hand-coded radix-8x3 decomposition is available
-//      behind VMECPP_FFT_RADIX.
+//      Y.
 //   4. k_scatter_main_and_con accumulates the sixteen even-parity and
 //      odd-parity outputs (r1_e/o, ru_e/o, rv_e/o, z1_e/o, zu_e/o, zv_e/o,
 //      lu_e/o, lv_e/o) and the two constraint outputs (rCon, zCon) in a
@@ -146,131 +145,6 @@ static int RunEnvFlag(int* cache, const char* name) {
   return *cache;
 }
 
-// ============================================================================
-// Double-single (DD) FP32 primitives for the FP32 substitution research path.
-// Two FP32 numbers (hi, lo) represent a single quantity with ~48 bits of
-// mantissa (vs 23 for plain FP32 and 52 for FP64). The high part holds the
-// "rounded" value, the low part captures the rounding error that ordinary
-// FP32 arithmetic would discard.
-//
-// Used to recover FP64-equivalent precision on the accumulators that break
-// convergence under naive VMECPP_FFT_FP32=1: force-residual norm, the near-
-// axis Jacobian sum, and the spectral inverse-transform reductions in
-// k_inverse_scatter / k_scatter_main_and_con. Reference: Knuth's TwoSum and
-// the QDP / double-single literature.
-//
-// These primitives are __host__ __device__ so the same code can be tested
-// from CPU. They assume IEEE 754 round-to-nearest semantics on FP32 and
-// that the compiler does NOT fuse the additions into FMAs (which would
-// invalidate the TwoSum trick). NVCC: pass -fmad=false to the relevant
-// translation unit when this path is active, OR use __fadd_rn explicitly.
-// ============================================================================
-__device__ __forceinline__ void fp32_twosum(float a, float b,
-                                                       float& s, float& e) {
-  // Knuth's TwoSum: s = a + b (rounded), e = exact error so that
-  // a + b == s + e to infinite precision.
-  s = __fadd_rn(a, b);
-  float a_prime = __fadd_rn(s, -b);
-  float b_prime = __fadd_rn(s, -a_prime);
-  float delta_a = __fadd_rn(a, -a_prime);
-  float delta_b = __fadd_rn(b, -b_prime);
-  e = __fadd_rn(delta_a, delta_b);
-}
-
-__device__ __forceinline__ void fp32_quicktwosum(float a, float b,
-                                                            float& s, float& e) {
-  // Fast TwoSum assuming |a| >= |b|. Saves three FLOPs vs the symmetric form.
-  s = __fadd_rn(a, b);
-  e = __fadd_rn(b, __fadd_rn(a, -s));
-}
-
-// DD pair (FP32-hi, FP32-lo) representing one ~48-bit value. The invariant
-// |lo| <= 0.5 * ulp(hi) is preserved by renormalize after each operation.
-struct DD {
-  float hi;
-  float lo;
-};
-
-__device__ __forceinline__ DD dd_add_f(DD a, float b) {
-  // Add a plain FP32 to a DD pair. Knuth's TwoSum on the hi parts, then
-  // accumulate the low correction. Standard double-single add-FP32 routine.
-  float s, e;
-  fp32_twosum(a.hi, b, s, e);
-  float t = __fadd_rn(e, a.lo);
-  DD r;
-  fp32_quicktwosum(s, t, r.hi, r.lo);
-  return r;
-}
-
-__device__ __forceinline__ DD dd_add(DD a, DD b) {
-  // Add two DD pairs. Six TwoSums in the general case, renormalized at
-  // the end. Matches Dekker's add2 from the original double-double paper.
-  float s, e;
-  fp32_twosum(a.hi, b.hi, s, e);
-  float t = __fadd_rn(__fadd_rn(a.lo, b.lo), e);
-  DD r;
-  fp32_quicktwosum(s, t, r.hi, r.lo);
-  return r;
-}
-
-__device__ __forceinline__ DD dd_from_f(float x) {
-  DD r; r.hi = x; r.lo = 0.0f; return r;
-}
-
-__device__ __forceinline__ double dd_to_double(DD a) {
-  // Promote the DD pair to FP64 for output. The (hi + lo) sum is computed
-  // in FP64 so the lo's contribution is preserved.
-  return (double)a.hi + (double)a.lo;
-}
-
-// Veltkamp split: a (FP32) -> (hi, lo) where hi has 12 mantissa bits and
-// lo has 12 mantissa bits, and hi + lo == a exactly. Guarantees that any
-// FP32 product hi_a * hi_b, hi_a * lo_b, lo_a * hi_b, lo_a * lo_b is
-// EXACT in FP32 (24-bit mantissa holds 12+12 bits without rounding).
-__device__ __forceinline__ void veltkamp_split(float a, float& hi, float& lo) {
-  constexpr float K = 4097.0f;  // 2^12 + 1
-  float c = __fmul_rn(K, a);
-  hi = __fadd_rn(c, -__fadd_rn(c, -a));
-  lo = __fadd_rn(a, -hi);
-}
-
-// Dekker TwoProduct: exact product of two FP32 numbers as a DD pair.
-// p + e = a*b to infinite precision; p = round(a*b). Uses Veltkamp to
-// make the four sub-products exact in FP32.
-__device__ __forceinline__ DD two_product_dekker(float a, float b) {
-  float p = __fmul_rn(a, b);
-  float a_hi, a_lo, b_hi, b_lo;
-  veltkamp_split(a, a_hi, a_lo);
-  veltkamp_split(b, b_hi, b_lo);
-  float e1 = __fadd_rn(__fmul_rn(a_hi, b_hi), -p);
-  float e2 = __fadd_rn(e1, __fmul_rn(a_hi, b_lo));
-  float e3 = __fadd_rn(e2, __fmul_rn(a_lo, b_hi));
-  float e  = __fadd_rn(e3, __fmul_rn(a_lo, b_lo));
-  DD r; r.hi = p; r.lo = e; return r;
-}
-
-// 2-slice Ozaki with FP64 inputs and Veltkamp-Dekker exact partial products.
-// Verified standalone vs FP64 reference: max relative error 2.8e-13, mean
-// 1e-15 across 10000 random pairs spanning 1e-15 to 10 in magnitude.
-__device__ __forceinline__ DD ozaki3_mul_d(double a, double b) {
-  float a32 = (float)a;
-  float a_r = (float)(a - (double)a32);
-  float b32 = (float)b;
-  float b_r = (float)(b - (double)b32);
-  DD p00 = two_product_dekker(a32, b32);
-  DD p01 = two_product_dekker(a32, b_r);
-  DD p10 = two_product_dekker(a_r, b32);
-  DD p11 = two_product_dekker(a_r, b_r);
-  // Accumulate four DD pairs via dd_add_f cascade.
-  DD acc = p00;
-  acc = dd_add_f(acc, p01.hi); acc = dd_add_f(acc, p01.lo);
-  acc = dd_add_f(acc, p10.hi); acc = dd_add_f(acc, p10.lo);
-  acc = dd_add_f(acc, p11.hi); acc = dd_add_f(acc, p11.lo);
-  return acc;
-}
-
-// (anonymous namespace hoisted: the split translation units share these symbols)
-
 // Slot indices for the 12 quantities transformed per (jF, m).
 enum Slot {
   kRmkcc = 0,  kRmkss = 1,  kRmkccN = 2, kRmkssN = 3,
@@ -319,7 +193,6 @@ static void cufft_check(cufftResult res, const char* what) {
 long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
                              long long ntor, long long nZeta,
                              long long nThetaEff);
-
 
 // State-region globals and helpers referenced by the struct below
 // (defined in fft_toroidal_cuda_state.cu).
@@ -557,33 +430,6 @@ struct CudaToroidalState {
   double* d_cosmumi = nullptr;
   double* d_sinmumi = nullptr;
 
-  // Toroidal discrete Fourier transform basis tables used by the
-  // fused-single-pass forward-FFT kernels. Each entry stores the
-  // nscale-folded cosine or sine evaluated at the corresponding
-  // (n, k) lattice point,
-  //   d_dft_cos[n * nZeta + k] = nscale[n] * cos(2 pi n k / nZeta)
-  //   d_dft_sin[n * nZeta + k] = nscale[n] * sin(2 pi n k / nZeta).
-  // Each table holds (ntor + 1) * nZeta doubles. When a fused-pass
-  // forward-FFT variant is selected, these tables provide the
-  // toroidal transform basis in place of a separate cuFFT batched
-  // inverse call.
-  double* d_dft_cos = nullptr;
-  double* d_dft_sin = nullptr;
-  int dft_basis_ntor_cached = -1;
-  int dft_basis_nZeta_cached = -1;
-
-  // Raw cosine and sine tables for the direct length-24 inverse
-  // discrete Fourier transform. The entries are
-  //   d_idft_cos[n * nZeta + k] = cos(2 pi n k / nZeta)
-  //   d_idft_sin[n * nZeta + k] = sin(2 pi n k / nZeta),
-  // each table holding nhalf * nZeta doubles. The k_inverse_dft_24
-  // kernel reads from these tables when it replaces cufftExecZ2D in
-  // the forward-FFT chain.
-  double* d_idft_cos = nullptr;
-  double* d_idft_sin = nullptr;
-  int idft_basis_nhalf_cached = -1;
-  int idft_basis_nZeta_cached = -1;
-
   // Inverse FFT: R2C cuFFT plan + Y reused as input (real, length nZeta), X
   // reused as output (complex, length nhalf).
   cufftHandle cufft_plan_r2c = 0;
@@ -600,19 +446,8 @@ struct CudaToroidalState {
   cufftDoubleComplex* d_X = nullptr;
   double* d_Y = nullptr;
 
-  // Mixed-precision FFT scratch buffers. The complex input d_X_fp32
-  // and the real output d_Y_fp32 hold single-precision copies of d_X
-  // and d_Y respectively, and the cuFFT plan cufft_plan_c2r_fp32 maps
-  // between them. The single-precision path exploits the substantially
-  // higher single-precision floating-point throughput of the target
-  // architecture relative to double precision, at the cost of
-  // reduced numerical fidelity. Selection is governed by the
-  // VMECPP_FFT_FP32 environment variable.
-  cufftComplex* d_X_fp32 = nullptr;
-  float* d_Y_fp32 = nullptr;
-  cufftHandle cufft_plan_c2r_fp32 = 0;
-  size_t fft_x_elems = 0;  // element count of the complex buffer d_X / d_X_fp32
-  size_t fft_y_elems = 0;  // element count of the real buffer d_Y / d_Y_fp32
+  size_t fft_x_elems = 0;  // element count of the complex buffer d_X
+  size_t fft_y_elems = 0;  // element count of the real buffer d_Y
 
   // Single contiguous buffer for the 18 output arrays. Each output is a
   // contiguous slice of (ns_local * nZeta * nThetaEff) (16 main) or
@@ -953,11 +788,6 @@ struct CudaToroidalState {
   double* d_pts_x_final_lsc = nullptr;
   double* d_pts_x_final_lcs = nullptr;
   std::vector<std::uint8_t> pts_x_final_taken;
-  // rzNorm partials: per-jF doubles. Sized to ns_local since
-  // (nsMaxFIncludingLcfs - nsMinF) <= ns_local. Pinned host counterpart so
-  // D2H completes without an additional copy.
-  double* d_rznorm_partials = nullptr;
-  double* h_rznorm_partials = nullptr;
   int pts_v_size = -1;        // ns_con_local * mpol * (ntor+1) (per cfg)
   int pts_x_size = -1;        // ns_local * mpol * (ntor+1) (per cfg)
   int pts_x_ns = -1;          // ns_local (for the latest EnsurePTSBuffers call)
@@ -1157,8 +987,6 @@ struct CudaToroidalState {
     };
     cuda_free_if((void*&)d_specs_block);
     cuda_free_if((void*&)d_X);     cuda_free_if((void*&)d_Y);
-    cuda_free_if((void*&)d_X_fp32); cuda_free_if((void*&)d_Y_fp32);
-    if (cufft_plan_c2r_fp32) { cufftDestroy(cufft_plan_c2r_fp32); cufft_plan_c2r_fp32 = 0; }
     cuda_free_if((void*&)d_outputs_block);
     cuda_free_if((void*&)d_geom_scalars);
     cuda_free_if((void*&)d_nscale);
@@ -1417,8 +1245,6 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_pts_x_final_lsc);
     cuda_free_if((void*&)d_pts_x_final_lcs);
     pts_x_final_taken.clear();
-    cuda_free_if((void*&)d_rznorm_partials);
-    pinned_free_if((void*&)h_rznorm_partials);
     pts_v_size = -1;
     pts_x_size = -1;
     pts_v_initialized = false;
@@ -1547,10 +1373,6 @@ struct CudaToroidalState {
     size_t Y_bytes = sizeof(double) * fft_y_elems;
     cuda_check(cudaMalloc(&d_X, X_bytes), "alloc X");
     cuda_check(cudaMalloc(&d_Y, Y_bytes), "alloc Y");
-    cuda_check(cudaMalloc(&d_X_fp32, sizeof(cufftComplex) * fft_x_elems),
-               "alloc d_X_fp32");
-    cuda_check(cudaMalloc(&d_Y_fp32, sizeof(float) * fft_y_elems),
-               "alloc d_Y_fp32");
 
     // ----- Single contiguous outputs block: 16 main + 2 con -----
     // Batched layout: per-config outputs sized by n_config_max.
@@ -1599,18 +1421,6 @@ struct CudaToroidalState {
                 "cufftPlanMany");
     cufft_check(cufftSetStream(cufft_plan, stream), "cufftSetStream");
 
-    // Single-precision complex-to-real plan companion to the
-    // double-precision inverse plan. The batch shape is identical;
-    // the plan is used by the mixed-precision path that the
-    // VMECPP_FFT_FP32 environment variable selects.
-    cufft_check(cufftPlanMany(&cufft_plan_c2r_fp32, 1, n_dim,
-                              nullptr, 1, nhalf,
-                              nullptr, 1, nZeta,
-                              CUFFT_C2R, batch),
-                "cufftPlanMany C2R fp32");
-    cufft_check(cufftSetStream(cufft_plan_c2r_fp32, stream),
-                "cufftSetStream C2R fp32");
-
     // Inverse R2C plan: same batch shape, D2Z direction.
     cufft_check(cufftPlanMany(&cufft_plan_r2c, 1, n_dim,
                               nullptr, 1, nZeta,
@@ -1658,82 +1468,6 @@ struct CudaToroidalState {
     cuda_check(cudaMemcpyAsync(d_sinmum, sinmum,
                           sizeof(double) * mpol * nThetaReduced,
                           cudaMemcpyHostToDevice, stream), "h2d sinmum");
-  }
-
-  // Stage the toroidal discrete Fourier transform basis tables for
-  // the fused single-pass forward-FFT kernels. The host computes the
-  // cosine and sine of 2 pi n k / nZeta over the (n, k) lattice with
-  // the toroidal mode-scaling factor nscale[n] folded into the
-  // amplitude, copies the resulting tables to the device, and caches
-  // the (ntor, nZeta) extents to skip the staging on subsequent
-  // invocations with unchanged shape.
-  void StageDftBasis(int ntor, int nZeta, const double* nscale) {
-    if (d_dft_cos && dft_basis_ntor_cached == ntor &&
-        dft_basis_nZeta_cached == nZeta) return;
-    auto cuda_free_if = [](void*& p) {
-      if (p) { cudaFree(p); p = nullptr; }
-    };
-    cuda_free_if((void*&)d_dft_cos);
-    cuda_free_if((void*&)d_dft_sin);
-    size_t bytes = sizeof(double) * (size_t)(ntor + 1) * (size_t)nZeta;
-    cuda_check(cudaMalloc(&d_dft_cos, bytes), "alloc d_dft_cos");
-    cuda_check(cudaMalloc(&d_dft_sin, bytes), "alloc d_dft_sin");
-    std::vector<double> h_cos((ntor + 1) * nZeta);
-    std::vector<double> h_sin((ntor + 1) * nZeta);
-    const double two_pi = 6.283185307179586476925286766559;
-    for (int n = 0; n <= ntor; ++n) {
-      double ns_n = nscale[n];
-      for (int k = 0; k < nZeta; ++k) {
-        double angle = two_pi * (double)n * (double)k / (double)nZeta;
-        h_cos[n * nZeta + k] = ns_n * std::cos(angle);
-        h_sin[n * nZeta + k] = ns_n * std::sin(angle);
-      }
-    }
-    cuda_check(cudaMemcpyAsync(d_dft_cos, h_cos.data(), bytes,
-                                cudaMemcpyHostToDevice, stream), "h2d d_dft_cos");
-    cuda_check(cudaMemcpyAsync(d_dft_sin, h_sin.data(), bytes,
-                                cudaMemcpyHostToDevice, stream), "h2d d_dft_sin");
-    cuda_check(cudaStreamSynchronize(stream), "dft basis stage sync");
-    dft_basis_ntor_cached = ntor;
-    dft_basis_nZeta_cached = nZeta;
-  }
-
-  // Stage the cosine and sine tables consumed by the direct
-  // length-24 inverse discrete Fourier transform kernel
-  // k_inverse_dft_24. The tables hold the raw values cos(2 pi n k / nZeta)
-  // and sin(2 pi n k / nZeta) over the (n, k) lattice with no
-  // toroidal mode-scaling factor folded in, since the kernel reads
-  // Hermitian-symmetric complex spectra in the format cufftExecZ2D
-  // would consume and is intended to produce a real output
-  // mathematically equivalent to that of cufftExecZ2D.
-  void StageInverseDftBasis(int nhalf, int nZeta) {
-    if (d_idft_cos && idft_basis_nhalf_cached == nhalf &&
-        idft_basis_nZeta_cached == nZeta) return;
-    auto cuda_free_if = [](void*& p) {
-      if (p) { cudaFree(p); p = nullptr; }
-    };
-    cuda_free_if((void*&)d_idft_cos);
-    cuda_free_if((void*&)d_idft_sin);
-    size_t bytes = sizeof(double) * (size_t)nhalf * (size_t)nZeta;
-    cuda_check(cudaMalloc(&d_idft_cos, bytes), "alloc d_idft_cos");
-    cuda_check(cudaMalloc(&d_idft_sin, bytes), "alloc d_idft_sin");
-    std::vector<double> h_cos((size_t)nhalf * (size_t)nZeta);
-    std::vector<double> h_sin((size_t)nhalf * (size_t)nZeta);
-    const double two_pi = 6.283185307179586476925286766559;
-    for (int n = 0; n < nhalf; ++n) {
-      for (int k = 0; k < nZeta; ++k) {
-        double angle = two_pi * (double)n * (double)k / (double)nZeta;
-        h_cos[(size_t)n * (size_t)nZeta + (size_t)k] = std::cos(angle);
-        h_sin[(size_t)n * (size_t)nZeta + (size_t)k] = std::sin(angle);
-      }
-    }
-    cuda_check(cudaMemcpyAsync(d_idft_cos, h_cos.data(), bytes,
-                                cudaMemcpyHostToDevice, stream), "h2d d_idft_cos");
-    cuda_check(cudaMemcpyAsync(d_idft_sin, h_sin.data(), bytes,
-                                cudaMemcpyHostToDevice, stream), "h2d d_idft_sin");
-    cuda_check(cudaStreamSynchronize(stream), "idft basis stage sync");
-    idft_basis_nhalf_cached = nhalf;
-    idft_basis_nZeta_cached = nZeta;
   }
 
   // Stage the integration-weighted basis variants used by the inverse FFT.
@@ -2691,91 +2425,6 @@ __global__ void k_fill_spectra(
     const double* __restrict__ zmnsc, const double* __restrict__ zmncs,
     const double* __restrict__ lmnsc, const double* __restrict__ lmncs,
     const double* __restrict__ nscale, cufftDoubleComplex* __restrict__ X);
-__global__ void k_scatter_main(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o);
-__global__ void k_fwd_fused_warp(
-    int n_config, int ns_local, int mpol, int ntor, int nfp,
-    int nZeta, int nThetaReduced, int nThetaEff, int nsMinF1,
-    const double* __restrict__ rmncc, const double* __restrict__ rmnss,
-    const double* __restrict__ zmnsc, const double* __restrict__ zmncs,
-    const double* __restrict__ lmnsc, const double* __restrict__ lmncs,
-    const double* __restrict__ dft_cos, const double* __restrict__ dft_sin,
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_fwd_fused_R(
-    int n_config, int ns_local, int mpol, int ntor, int nfp,
-    int nZeta, int nThetaReduced, int nThetaEff, int nsMinF1,
-    const double* __restrict__ rmncc, const double* __restrict__ rmnss,
-    const double* __restrict__ dft_cos, const double* __restrict__ dft_sin,
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ rCon);
-__global__ void k_fwd_fused_Z(
-    int n_config, int ns_local, int mpol, int ntor, int nfp,
-    int nZeta, int nThetaReduced, int nThetaEff, int nsMinF1,
-    const double* __restrict__ zmnsc, const double* __restrict__ zmncs,
-    const double* __restrict__ dft_cos, const double* __restrict__ dft_sin,
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ zCon);
-__global__ void k_fwd_fused_L(
-    int n_config, int ns_local, int mpol, int ntor, int nfp,
-    int nZeta, int nThetaReduced, int nThetaEff, int nsMinF1,
-    const double* __restrict__ lmnsc, const double* __restrict__ lmncs,
-    const double* __restrict__ dft_cos, const double* __restrict__ dft_sin,
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o);
-__global__ void k_forward_fft_fused(
-    int n_config, int ns_local, int mpol, int ntor, int nfp,
-    int nZeta, int nThetaReduced, int nThetaEff, int nsMinF1,
-    const double* __restrict__ rmncc, const double* __restrict__ rmnss,
-    const double* __restrict__ zmnsc, const double* __restrict__ zmncs,
-    const double* __restrict__ lmnsc, const double* __restrict__ lmncs,
-    const double* __restrict__ dft_cos,  // [ntor+1, nZeta], ns_n folded in
-    const double* __restrict__ dft_sin,  // [ntor+1, nZeta], ns_n folded in
-    const double* __restrict__ cosmu, const double* __restrict__ sinmu,
-    const double* __restrict__ cosmum, const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
 __global__ void k_scatter_main_and_con_v4(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -2806,14 +2455,6 @@ __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5(
     double* __restrict__ zv_e, double* __restrict__ zv_o,
     double* __restrict__ lu_e, double* __restrict__ lu_o,
     double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
-__global__ void k_scatter_con(
-    int n_config, int ns_local, int ns_con_local,
-    int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    int nsMinF_offset_in_local,  // jF_local index of nsMinF in the larger range
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ xmpq,
-    const double* __restrict__ sqrtSF,
     double* __restrict__ rCon, double* __restrict__ zCon);
 __global__ void k_extrapolate_towards_axis(
     int n_config, int ns_local, int mpol, int ntor, bool lthreed,
@@ -3379,12 +3020,6 @@ __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
 __global__ void k_cfg01_max_abs_diff(int per_cfg_size,
                                       const double* __restrict__ buf,
                                       double* __restrict__ out_scalar);
-__global__ void k_rznorm_pts_x_partials(
-    int ns_local, int mpol, int ntor,
-    int nsMinHere_local, int nsMaxHere_local, bool lthreed,
-    const double* __restrict__ x_rcc, const double* __restrict__ x_zsc,
-    const double* __restrict__ x_rss, const double* __restrict__ x_zcs,
-    double* __restrict__ partials);
 __global__ void k_rz_norm_per_cfg(
     int n_config, int ns_local, int j_begin, int j_count, int mpol, int ntor,
     bool lthreed,
@@ -3461,21 +3096,6 @@ __global__ void k_update_timestep(
     double* __restrict__ d_prev_fsq,
     double* __restrict__ d_fac_b1,
     const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ __launch_bounds__(64, 4) void k_scatter_main_and_con_custom_gemm(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon);
 __global__ void k_tau_minmax(int n_config, int total,
                               const double* __restrict__ tau,
                               double* __restrict__ out2,
@@ -3519,126 +3139,6 @@ __global__ void k_assemble_rz_preconditioner(
     const std::uint8_t* __restrict__ d_active_per_cfg);
 
 // Template kernels (instantiated at their launch sites).
-// k_dealias_inv_tpl_mixed: mixed-precision variant of k_dealias_inv_tpl.
-// Inner (m, n) loop multiplies gsc/gcs \times cosnv/sinnv at FP32 (Ada FP32 cores
-// outnumber FP64 cores ~4:1), with the result cast to FP64 and added to a
-// FP64 accumulator. Outer accumulator + writes remain FP64. The sinmu/cosmu
-// product into acc also stays FP64.
-//
-// Tolerance: each FP32 mult has ~1e-7 relative error; with NTOR+1=11 mults
-// per (m) chain, w0/w1 accumulator error is ~1e-6 relative. The downstream
-// gCon feeds back through AssembleTotalForces -> forces -> residual norm; if
-// residual must converge below the FP32 noise floor, the iterative solver
-// will fail to terminate (the same failure mode observed with the FP32
-// cuFFT path). The relaxed contract here
-// is: aspect_ratio remains bit-exact at 14 sig figs, and the run completes.
-// Env-gate VMECPP_DEALIAS_MIXED, default OFF.
-template <int MPOL, int NTOR>
-__global__ __launch_bounds__(32, 16) void k_dealias_inv_tpl_mixed(
-    int n_config, int ns_force_local, int ns_con_local,
-    int nZeta, int nThetaReduced,
-    int nThetaEff, int nnyq2_plus_1,
-    const double* __restrict__ gsc, const double* __restrict__ gcs,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmu,
-    const double* __restrict__ cosnv, const double* __restrict__ sinnv,
-    const double* __restrict__ faccon,
-    double* __restrict__ m_gCon) {
-  int config = blockIdx.z / ns_force_local;
-  int jF = blockIdx.z - config * ns_force_local;
-  if (config >= n_config) return;
-  int k = blockIdx.y;
-  int l = blockIdx.x * blockDim.x + threadIdx.x;
-  if (jF >= ns_force_local || k >= nZeta || l >= nThetaReduced) return;
-  size_t cfg_spec = (size_t)config * (size_t)ns_force_local *
-                    (size_t)MPOL * (size_t)(NTOR + 1);
-  size_t cfg_grid = (size_t)config * (size_t)ns_con_local *
-                    (size_t)nZeta * (size_t)nThetaEff;
-  double acc = 0.0;
-  #pragma unroll
-  for (int m = 1; m < MPOL - 1; ++m) {
-    double fac = faccon[m];
-    if (fac == 0.0) continue;
-    double w0 = 0.0, w1 = 0.0;
-    size_t idx_base = cfg_spec + (size_t)((jF * MPOL + m) * (NTOR + 1));
-    #pragma unroll
-    for (int n = 0; n <= NTOR; ++n) {
-      int kn = k * nnyq2_plus_1 + n;
-      float g0  = (float)gsc[idx_base + n];
-      float c   = (float)cosnv[kn];
-      float g1  = (float)gcs[idx_base + n];
-      float s   = (float)sinnv[kn];
-      // FP32 multiply, cast to FP64, accumulate at FP64 precision.
-      w0 += (double)(g0 * c);
-      w1 += (double)(g1 * s);
-    }
-    int bml = m * nThetaReduced + l;
-    acc += fac * (w0 * sinmu[bml] + w1 * cosmu[bml]);
-  }
-  size_t dst = cfg_grid + (size_t)((jF * nZeta + k) * nThetaEff + l);
-  m_gCon[dst] = acc;
-}
-// k_dealias_inv_tpl_split: same template specialization as k_dealias_inv_tpl
-// but breaks the per-(m) n-loop dependency chain with 4 partial accumulators
-// (w0a/w0b/w0c/w0d and w1a/w1b/w1c/w1d). Reduces FP dep chain from NTOR+1=11
-// dependent FMAs to ceil((NTOR+1)/4)=3 per chain, freeing the warp scheduler
-// to issue 4 independent FMAs in parallel. Targets the ILP-starved bottleneck
-// observed in k_dealias_inv_tpl profiling.
-//
-// Tolerance: FP accumulator order changes -> ULP-level intermediate differences.
-// Iterative solver re-converges; under the relaxed 12-sig-fig contract the
-// final aspect_ratio is bit-exact (same logic as atomicAdd jacobian_metric).
-//
-// Env-gate VMECPP_DEALIAS_SPLIT (default OFF; measured as a small regression
-// at the dispatch site, retained for further ILP experimentation).
-template <int MPOL, int NTOR>
-__global__ __launch_bounds__(32, 16) void k_dealias_inv_tpl_split(
-    int n_config, int ns_force_local, int ns_con_local,
-    int nZeta, int nThetaReduced,
-    int nThetaEff, int nnyq2_plus_1,
-    const double* __restrict__ gsc, const double* __restrict__ gcs,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmu,
-    const double* __restrict__ cosnv, const double* __restrict__ sinnv,
-    const double* __restrict__ faccon,
-    double* __restrict__ m_gCon) {
-  int config = blockIdx.z / ns_force_local;
-  int jF = blockIdx.z - config * ns_force_local;
-  if (config >= n_config) return;
-  int k = blockIdx.y;
-  int l = blockIdx.x * blockDim.x + threadIdx.x;
-  if (jF >= ns_force_local || k >= nZeta || l >= nThetaReduced) return;
-  size_t cfg_spec = (size_t)config * (size_t)ns_force_local *
-                    (size_t)MPOL * (size_t)(NTOR + 1);
-  size_t cfg_grid = (size_t)config * (size_t)ns_con_local *
-                    (size_t)nZeta * (size_t)nThetaEff;
-  double acc = 0.0;
-  #pragma unroll
-  for (int m = 1; m < MPOL - 1; ++m) {
-    double fac = faccon[m];
-    if (fac == 0.0) continue;
-    // 4 partial accumulators per w to break the dep chain.
-    double w0a = 0.0, w0b = 0.0, w0c = 0.0, w0d = 0.0;
-    double w1a = 0.0, w1b = 0.0, w1c = 0.0, w1d = 0.0;
-    size_t idx_base = cfg_spec + (size_t)((jF * MPOL + m) * (NTOR + 1));
-    #pragma unroll
-    for (int n = 0; n <= NTOR; ++n) {
-      int kn = k * nnyq2_plus_1 + n;
-      double gv = gsc[idx_base + n] * cosnv[kn];
-      double sv = gcs[idx_base + n] * sinnv[kn];
-      switch (n & 3) {
-        case 0: w0a += gv; w1a += sv; break;
-        case 1: w0b += gv; w1b += sv; break;
-        case 2: w0c += gv; w1c += sv; break;
-        case 3: w0d += gv; w1d += sv; break;
-      }
-    }
-    double w0 = (w0a + w0b) + (w0c + w0d);
-    double w1 = (w1a + w1b) + (w1c + w1d);
-    int bml = m * nThetaReduced + l;
-    acc += fac * (w0 * sinmu[bml] + w1 * cosmu[bml]);
-  }
-  size_t dst = cfg_grid + (size_t)((jF * nZeta + k) * nThetaEff + l);
-  m_gCon[dst] = acc;
-}
 // Templated specialization for compile-time-known (MPOL, NTOR). Lets the
 // compiler fully unroll the m and n loops and pipeline the cosnv/sinnv +
 // gsc/gcs loads. Used for the production shape (mpol=10, ntor=10).

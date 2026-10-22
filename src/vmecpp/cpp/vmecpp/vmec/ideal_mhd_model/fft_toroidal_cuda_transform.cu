@@ -227,8 +227,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
     S.StageBasisI(mpol, nThetaReduced, fb.cosmui.data(), fb.sinmui.data(),
                     fb.cosmumi.data(), fb.sinmumi.data());
     S.StageToroidalBasis(nZeta, s.nnyq2 + 1, fb.cosnv.data(), fb.sinnv.data());
-    S.StageDftBasis(ntor, nZeta, fb.nscale.data());
-    S.StageInverseDftBasis(nhalf, nZeta);
     S.EnsureFourierForcesBuffers(ns_local, mpol, ntor);
   }
 
@@ -485,18 +483,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
                                cudaMemcpyHostToDevice, st), "h2d specs_block");
   }
 
-  // The per-iteration cudaMemsetAsync of d_outputs_block is omitted.
-  // The active scatter kernel k_scatter_main_and_con writes the
-  // sixteen even-parity and odd-parity main outputs and the two
-  // constraint outputs with direct assignment at every
-  // (cfg, jF_local, k, l) within the full output range, and is the
-  // sole producer of those arrays between consecutive forward FFT
-  // calls. Direct assignment is therefore sufficient and the
-  // pre-launch zero-initialization is unnecessary. The disabled
-  // fusion scaffolds k_forward_fft_fused, k_fwd_fused_R, k_fwd_fused_Z,
-  // k_fwd_fused_L, and k_fwd_fused_warp accumulate with compound
-  // addition and would require restoration of the memset if any of
-  // them were re-enabled.
+  // The scatter assigns every element of the output arrays, so they are not
+  // cleared before it.
 
   // Launch fill kernel on stream.
   // Batched execution: z-dim is config * ns_local + jF_local. cuFFT batch dim
@@ -505,16 +493,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
   dim3 fill_blocks((kBatch * nhalf + FILL_TPB - 1) / FILL_TPB, mpol,
                    ns_local * S.n_config_max);
   dim3 fill_tpb(FILL_TPB, 1, 1);
-  const int SCAT_TPB = 32;
-  dim3 scat_blocks((nThetaReduced + SCAT_TPB - 1) / SCAT_TPB, nZeta,
-                   ns_local * S.n_config_max);
-  dim3 scat_tpb(SCAT_TPB, 1, 1);
-  int nsMinF_offset_in_local = r.nsMinF - r.nsMinF1;
-
-  // Hoist this declaration so gotos in the disabled-fusion blocks below
-  // don't bypass it (CUDA compiler is strict about goto-bypass-init).
-  bool can_fuse_main_con_cufft = (ns_con_local == ns_local) &&
-                                  (nsMinF_offset_in_local == 0);
 
   // Forward-FFT CUDA graph enablement governed by the
   // VMECPP_FWD_GRAPH environment variable. The default is disabled
@@ -534,96 +512,12 @@ void FourierToReal3DSymmFastPoloidalCuda(
                            "+2.2pct regression at N=64)\n");
     }
   }
-  const bool use_fwd_graph = (fwd_graph_env != 0) && can_fuse_main_con_cufft &&
-                             !g_iter_graph_capturing;
+  const bool use_fwd_graph = (fwd_graph_env != 0) && !g_iter_graph_capturing;
   const int nZnT_local_pre = nZeta * nThetaEff;
   const int outer_idx_pre = (ns_local - 1) * nZnT_local_pre + 0;
   const int inner_idx_pre = (ns_local - 1) * nZnT_local_pre + (nThetaReduced - 1);
   bool replay_only = use_fwd_graph && S.fwd_graph_captured;
   bool capture_then_launch = use_fwd_graph && !S.fwd_graph_captured;
-
-  // Disabled scaffold: warp-cooperative fusion through
-  // k_fwd_fused_warp (one (cfg, jF_local, k) tuple per warp,
-  // __shfl_xor_sync reductions, no d_X/d_Y intermediates). Its inner
-  // transform is a direct-sum length-24 DFT, so the arithmetic exceeds
-  // cufftExecZ2D's radix-8x3 by more than the saved memory traffic,
-  // and aspect_ratio drifts ~2 ULP.
-  if (false) {
-    dim3 warp_blocks(1, nZeta, ns_local * S.n_config_max);
-    dim3 warp_tpb(32, 1, 1);
-    k_fwd_fused_warp<<<warp_blocks, warp_tpb, 0, st>>>(
-        S.n_config_max, ns_local, mpol, ntor, nfp, nZeta, nThetaReduced,
-        nThetaEff, r.nsMinF1,
-        S.d_rmncc, S.d_rmnss, S.d_zmnsc, S.d_zmncs, S.d_lmnsc, S.d_lmncs,
-        S.d_dft_cos, S.d_dft_sin,
-        S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-        S.d_xmpq, S.d_sqrtSF,
-        S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-        S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
-        S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
-        S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
-        S.d_rCon, S.d_zCon);
-    cuda_check(cudaGetLastError(), "k_fwd_fused_warp launch");
-    goto scatter_done;
-  }
-
-  // Disabled scaffold: output-group-partitioned fusion through
-  // k_fwd_fused_R, k_fwd_fused_Z, and k_fwd_fused_L. The three
-  // launches keep per-thread register pressure within the available
-  // file but retain the direct-sum inner DFT of the warp-cooperative
-  // scaffold; the floating-point operation count remains the
-  // governing constraint and the wall is correspondingly slower
-  // than the production chain.
-  if (false) {
-    k_fwd_fused_R<<<scat_blocks, scat_tpb, 0, st>>>(
-        S.n_config_max, ns_local, mpol, ntor, nfp, nZeta, nThetaReduced,
-        nThetaEff, r.nsMinF1,
-        S.d_rmncc, S.d_rmnss, S.d_dft_cos, S.d_dft_sin,
-        S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-        S.d_xmpq, S.d_sqrtSF,
-        S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-        S.d_rv_e, S.d_rv_o, S.d_rCon);
-    cuda_check(cudaGetLastError(), "k_fwd_fused_R launch");
-    k_fwd_fused_Z<<<scat_blocks, scat_tpb, 0, st>>>(
-        S.n_config_max, ns_local, mpol, ntor, nfp, nZeta, nThetaReduced,
-        nThetaEff, r.nsMinF1,
-        S.d_zmnsc, S.d_zmncs, S.d_dft_cos, S.d_dft_sin,
-        S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-        S.d_xmpq, S.d_sqrtSF,
-        S.d_z1_e, S.d_z1_o, S.d_zu_e, S.d_zu_o,
-        S.d_zv_e, S.d_zv_o, S.d_zCon);
-    cuda_check(cudaGetLastError(), "k_fwd_fused_Z launch");
-    k_fwd_fused_L<<<scat_blocks, scat_tpb, 0, st>>>(
-        S.n_config_max, ns_local, mpol, ntor, nfp, nZeta, nThetaReduced,
-        nThetaEff, r.nsMinF1,
-        S.d_lmnsc, S.d_lmncs, S.d_dft_cos, S.d_dft_sin,
-        S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-        S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o);
-    cuda_check(cudaGetLastError(), "k_fwd_fused_L launch");
-    goto scatter_done;
-  }
-
-  // Disabled scaffold: single-kernel full-pipeline fusion through
-  // k_forward_fft_fused. The combined kernel carries the accumulator
-  // doubles for all eighteen outputs in registers per thread and
-  // spills to local memory on the target architecture, regressing
-  // the wall measurably relative to the production chain.
-  if (false) {
-    k_forward_fft_fused<<<scat_blocks, scat_tpb, 0, st>>>(
-        S.n_config_max, ns_local, mpol, ntor, nfp, nZeta, nThetaReduced,
-        nThetaEff, r.nsMinF1,
-        S.d_rmncc, S.d_rmnss, S.d_zmnsc, S.d_zmncs, S.d_lmnsc, S.d_lmncs,
-        S.d_dft_cos, S.d_dft_sin,
-        S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-        S.d_xmpq, S.d_sqrtSF,
-        S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-        S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
-        S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
-        S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
-        S.d_rCon, S.d_zCon);
-    cuda_check(cudaGetLastError(), "k_forward_fft_fused launch");
-    goto scatter_done;
-  }
 
   // Forward-FFT CUDA graph dispatch. The graph state declared above
   // distinguishes three cases of the current invocation. When the
@@ -665,15 +559,9 @@ void FourierToReal3DSymmFastPoloidalCuda(
     S.TKEnd(CudaToroidalState::TK_CUFFT_INV);
   }
 
-  // Dispatch to the fused scatter that combines the main and
-  // constraint outputs in a single pass over Y. The dispatch is
-  // selected when the single-rank LCFS condition holds; under that
-  // condition the k_scatter_main_and_con family of kernels produces
-  // both output groups together. Earlier scaffolds k_scatter_main_and_con_v2
-  // and k_scatter_main_and_con_v3 are retained in source as
-  // disabled alternatives whose effective wall does not exceed
-  // that of the current default.
-  if (can_fuse_main_con_cufft) {
+  // The fused scatter writes the main and the constraint outputs in one pass
+  // over Y.
+  {
     // The v4 variant launches one block per (configuration,
     // jF_local), with the block split into four warps that each
     // process one (configuration, jF_local, k) triple. The
@@ -759,26 +647,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
       cuda_check(cudaGetLastError(), "k_scatter_main_and_con_v4 launch");
     }
     S.TKEnd(CudaToroidalState::TK_SCATTER);
-  } else {
-    k_scatter_main<<<scat_blocks, scat_tpb, 0, st>>>(
-        S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
-        S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-        S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-        S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
-        S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
-        S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o);
-    cuda_check(cudaGetLastError(), "k_scatter_main launch");
-    dim3 con_blocks((nThetaReduced + SCAT_TPB - 1) / SCAT_TPB, nZeta,
-                    ns_con_local * S.n_config_max);
-    k_scatter_con<<<con_blocks, scat_tpb, 0, st>>>(
-        S.n_config_max, ns_local, ns_con_local,
-        mpol, nZeta, nThetaReduced, nThetaEff,
-        nsMinF_offset_in_local, S.d_Y, S.d_cosmu, S.d_sinmu,
-        S.d_xmpq, S.d_sqrtSF, S.d_rCon, S.d_zCon);
-    cuda_check(cudaGetLastError(), "k_scatter_con launch");
   }
-
-scatter_done:;
 
   // Per-iteration D2H reduction: the previous 1.2 MB (at N=1) / 76 MB (at N=64) D2H +
   // 1.2 MB host scatter is replaced with a tiny 6-double extract. The only
@@ -858,16 +727,6 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
   const int nThetaEff = s.nThetaEff;
 
   if (ns_local <= 0) return;
-
-  // Real-kernel inverse FFT path. The pre-real-kernel fallback (which called
-  // out to the CPU FFTX or partial-DFT path) is removed since the device path
-  // is the only consumer; gating switch retained for diagnostic asymmetry.
-  constexpr bool kUseRealKernel = true;
-  if (!kUseRealKernel) {
-    (void)ns_force_local; (void)ns_con_local; (void)mpol; (void)ntor;
-    (void)nhalf; (void)nZeta; (void)nfp; (void)nThetaReduced; (void)nThetaEff;
-    return;
-  }
 
   std::lock_guard<std::mutex> lk(S.mu);
   cudaStream_t st = S.stream;
@@ -1233,8 +1092,6 @@ void PrepareStagePtsXCuda(
                     fb.sinmui.data(), fb.cosmumi.data(), fb.sinmumi.data());
       S.StageToroidalBasis(s.nZeta, s.nnyq2 + 1, fb.cosnv.data(),
                            fb.sinnv.data());
-      S.StageDftBasis(ntor, s.nZeta, fb.nscale.data());
-      S.StageInverseDftBasis(nhalf, s.nZeta);
       S.EnsureFourierForcesBuffers(ns_local, mpol, ntor);
     }
     S.EnsurePTSBuffers(ns_con_local, ns_local, mpol, ntor);
@@ -1308,7 +1165,6 @@ void RecomposeToPhysicalCuda(
   S.EnsurePTSBuffers(ns_con_local, ns_local, mpol, ntor);
   S.EnsureScalxcBuffer(scalxc_len);
   (void)fc;
-
 
   // Stage scalxc (shared with DecomposeAndConstrainCuda's flag).
   if (!S.scalxc_staged) {

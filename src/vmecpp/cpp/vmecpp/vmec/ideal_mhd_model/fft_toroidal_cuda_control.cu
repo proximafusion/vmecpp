@@ -278,47 +278,6 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
 // serves the controller's explicit flush sites and diagnostics.
 // ============================================================================
 
-// ============================================================================
-// PerformTimeStepCuda
-//
-// Replaces the host Vmec::performTimeStep loop (vmec/vmec/vmec.cc:1372ff):
-//   v_new = velocity_scale * (b1 * v_old + dt * f)
-//   x += dt * v_new
-// for each (jF, m, n) tuple under lthreed=true, lasym=false.
-//
-// First call: cudaMemset d_pts_v_* to 0; H2D d_pts_x_* from host m_decomposed_x
-// (initial boundary). Subsequent calls: device-resident state persists. After
-// the kernel, the device position is the authoritative state; host
-// m_decomposed_x is refreshed at the controller's flush sites rather than
-// per iteration, and RecomposeToPhysicalCuda consumes d_pts_x directly
-// from the second iteration onward.
-// ============================================================================
-// UpdateTimestepDeviceCuda: compute fac / b1 / inv_tau ring on the device.
-// Standalone entry point retained for validation; the production dispatch
-// of k_update_timestep lives inside PerformTimeStepCuda, gated by
-// VMECPP_BATCH_PER_CFG_TIMESTEP and by sync elision. Reads
-// d_residuals_partial (precd residuals already on device from
-// ResidualsCuda(is_precd=true)), updates the per-cfg invTau ring buffer
-// and prev_fsq, writes d_fac_b1 consumed by k_perform_time_step_devfac.
-void UpdateTimestepDeviceCuda(const FlowControl& fc, int iter1, int iter2,
-                               double time_step, double fnorm1) {
-  auto& S = State();
-  std::lock_guard<std::mutex> lk(S.mu);
-  cudaStream_t st = S.stream;
-  S.EnsureTimestepBuffers(time_step);
-  S.StageFnorm1(fnorm1);
-  const int iter_phase = (iter2 == iter1) ? 0 : 1;
-  // 1 block per cfg, 32 threads (one warp; only the first 10 do real work
-  // but the full warp is needed for the shfl operations across 16-element
-  // strides in the reduction).
-  k_update_timestep<<<S.n_config_max, 32, 0, st>>>(
-      S.n_config_max, iter_phase, time_step, S.d_fnorm1, fc.deltaS,
-      S.d_residuals_partial,
-      S.d_inv_tau, S.d_prev_fsq, S.d_fac_b1,
-      S.d_active_per_cfg);
-  cuda_check(cudaGetLastError(), "k_update_timestep launch");
-}
-
 // (anonymous namespace hoisted across the split translation units)
 // Declared ahead of its definition below so the d_pts_x initialization
 // sites can arm the backup mirror as soon as the stage's initial state
@@ -836,90 +795,6 @@ void PerformTimeStepCuda(
 // and these explicit entry points remain for diagnostics and external
 // callers.
 
-void ComputeJacobianCudaPerCfgD2H(std::vector<double>* minTau_per_cfg,
-                                    std::vector<double>* maxTau_per_cfg) {
-  auto& S = State();
-  std::lock_guard<std::mutex> lk(S.mu);
-  if (!S.d_jac_minmax || S.n_config_max <= 0 || !S.stream) {
-    if (minTau_per_cfg) minTau_per_cfg->clear();
-    if (maxTau_per_cfg) maxTau_per_cfg->clear();
-    return;
-  }
-  int n = S.n_config_max;
-  std::vector<double> buf((size_t)2 * n);
-  cuda_check(cudaMemcpyAsync(buf.data(), S.d_jac_minmax,
-                              (size_t)2 * n * sizeof(double),
-                              cudaMemcpyDeviceToHost, S.stream),
-             "d2h jac_minmax per-cfg");
-  cuda_check(cudaStreamSynchronize(S.stream), "jac per-cfg sync");
-  if (minTau_per_cfg) {
-    minTau_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*minTau_per_cfg)[i] = buf[(size_t)2 * i];
-  }
-  if (maxTau_per_cfg) {
-    maxTau_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*maxTau_per_cfg)[i] = buf[(size_t)2 * i + 1];
-  }
-}
-
-void ComputeForceNormsCudaPerCfgD2H(std::vector<double>* sumRZ_per_cfg,
-                                       std::vector<double>* sumL_per_cfg) {
-  auto& S = State();
-  std::lock_guard<std::mutex> lk(S.mu);
-  if (!S.d_fnorm_scalars || S.n_config_max <= 0 || !S.stream) {
-    if (sumRZ_per_cfg) sumRZ_per_cfg->clear();
-    if (sumL_per_cfg) sumL_per_cfg->clear();
-    return;
-  }
-  int n = S.n_config_max;
-  std::vector<double> buf((size_t)2 * n);
-  cuda_check(cudaMemcpyAsync(buf.data(), S.d_fnorm_scalars,
-                              (size_t)2 * n * sizeof(double),
-                              cudaMemcpyDeviceToHost, S.stream),
-             "d2h fnorm_scalars per-cfg");
-  cuda_check(cudaStreamSynchronize(S.stream), "fnorm per-cfg sync");
-  if (sumRZ_per_cfg) {
-    sumRZ_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*sumRZ_per_cfg)[i] = buf[(size_t)2 * i];
-  }
-  if (sumL_per_cfg) {
-    sumL_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*sumL_per_cfg)[i] = buf[(size_t)2 * i + 1];
-  }
-}
-
-void ResidualsCudaPerCfgD2H(std::vector<double>* fResR_per_cfg,
-                              std::vector<double>* fResZ_per_cfg,
-                              std::vector<double>* fResL_per_cfg) {
-  auto& S = State();
-  std::lock_guard<std::mutex> lk(S.mu);
-  if (!S.d_residuals_partial || S.n_config_max <= 0 || !S.stream) {
-    if (fResR_per_cfg) fResR_per_cfg->clear();
-    if (fResZ_per_cfg) fResZ_per_cfg->clear();
-    if (fResL_per_cfg) fResL_per_cfg->clear();
-    return;
-  }
-  int n = S.n_config_max;
-  std::vector<double> buf((size_t)3 * n);
-  cuda_check(cudaMemcpyAsync(buf.data(), S.d_residuals_partial,
-                              (size_t)3 * n * sizeof(double),
-                              cudaMemcpyDeviceToHost, S.stream),
-             "d2h residuals per-cfg");
-  cuda_check(cudaStreamSynchronize(S.stream), "residuals per-cfg sync");
-  if (fResR_per_cfg) {
-    fResR_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*fResR_per_cfg)[i] = buf[(size_t)3 * i];
-  }
-  if (fResZ_per_cfg) {
-    fResZ_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*fResZ_per_cfg)[i] = buf[(size_t)3 * i + 1];
-  }
-  if (fResL_per_cfg) {
-    fResL_per_cfg->resize(n);
-    for (int i = 0; i < n; ++i) (*fResL_per_cfg)[i] = buf[(size_t)3 * i + 2];
-  }
-}
-
 // H2D the host active_per_cfg vector to the device byte
 // buffer. Caller invokes once per iter (or whenever the mask changes); kernels
 // read d_active_per_cfg at blockIdx.z and early-return for inactive cfgs.
@@ -1104,45 +979,5 @@ void SetSyncElideIterCuda(int elide) {
 }
 
 bool SyncElidedIterCuda() { return State().sync_elide_iter != 0; }
-
-double ComputeForceNorm1FromPtsXCuda(
-    int ns_local, int mpol, int ntor, bool lthreed,
-    int nsMinHere_local, int nsMaxHere_local) {
-  auto& S = State();
-  std::lock_guard<std::mutex> lk(S.mu);
-  int num_jFs = nsMaxHere_local - nsMinHere_local;
-  if (num_jFs <= 0) return 0.0;
-  if (!S.stream || !S.d_pts_x_rcc) return 0.0;
-  cudaStream_t st = S.stream;
-
-  if (!S.d_rznorm_partials) {
-    cuda_check(cudaMalloc(&S.d_rznorm_partials,
-                          sizeof(double) * (size_t)ns_local),
-               "alloc d_rznorm_partials");
-  }
-  if (!S.h_rznorm_partials) {
-    cuda_check(cudaMallocHost(&S.h_rznorm_partials,
-                               sizeof(double) * (size_t)ns_local),
-               "alloc h_rznorm_partials");
-  }
-
-  // One block per jF, single thread does CPU's nested mn-loop sequentially.
-  k_rznorm_pts_x_partials<<<num_jFs, 1, 0, st>>>(
-      ns_local, mpol, ntor, nsMinHere_local, nsMaxHere_local, lthreed,
-      S.d_pts_x_rcc, S.d_pts_x_zsc, S.d_pts_x_rss, S.d_pts_x_zcs,
-      S.d_rznorm_partials);
-  cuda_check(cudaGetLastError(), "k_rznorm_pts_x_partials launch");
-
-  cuda_check(cudaMemcpyAsync(S.h_rznorm_partials, S.d_rznorm_partials,
-                              sizeof(double) * (size_t)num_jFs,
-                              cudaMemcpyDeviceToHost, st),
-             "d2h rznorm partials");
-  cuda_check(cudaStreamSynchronize(st), "rznorm sync");
-
-  // Host sequential accumulate in jF-order matches CPU rzNorm's outer loop.
-  double total = 0.0;
-  for (int i = 0; i < num_jFs; ++i) total += S.h_rznorm_partials[i];
-  return total;
-}
 
 }  // namespace vmecpp
