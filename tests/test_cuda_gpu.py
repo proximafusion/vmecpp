@@ -142,38 +142,61 @@ def _assert_bit_identical(actual, expected) -> None:
         )
 
 
-def _cma_input():
-    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
-
-
-def _cth_like_input():
-    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
-
-
 def _free_boundary_input(name: str = "cth_like_free_bdy"):
     vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json")
     vi.mgrid_file = str(TEST_DATA_DIR / "mgrid_cth_like.nc")
     return vi
 
 
-def _distinct_pair():
-    vi = _cma_input()
-    vi2 = vi.model_copy(deep=True)
-    vi2.rbc = vi2.rbc * 1.02
-    vi2.zbs = vi2.zbs * 1.02
-    return [vi._to_cpp_vmecindata(), vi2._to_cpp_vmecindata()]
+@pytest.fixture
+def cma_input():
+    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
 
 
-def test_single_cma_canonical():
-    out = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
+@pytest.fixture
+def cth_like_input():
+    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+
+
+@pytest.fixture
+def free_boundary_input():
+    return _free_boundary_input()
+
+
+@pytest.fixture
+def solovev_input():
+    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+
+
+@pytest.fixture
+def circular_tokamak_input():
+    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "circular_tokamak.json")
+
+
+@pytest.fixture
+def w7x_input():
+    return vmecpp.VmecInput.from_file(W7X_JSON)
+
+
+@pytest.fixture
+def distinct_pair(cma_input):
+    """The C++ inputs of cma and of cma with its boundary scaled by 1.02."""
+    scaled = cma_input.model_copy(deep=True)
+    scaled.rbc = scaled.rbc * 1.02
+    scaled.zbs = scaled.zbs * 1.02
+    return [cma_input._to_cpp_vmecindata(), scaled._to_cpp_vmecindata()]
+
+
+def test_single_cma_canonical(cma_input):
+    out = vmecpp.run(cma_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CMA)
 
 
-def test_three_dimensional_trajectory_follows_the_cpu():
+def test_three_dimensional_trajectory_follows_the_cpu(cth_like_input):
     # The CUDA path gates the m = 1 Z force and backs up the evaluated state as
     # the CPU path does, so a three-dimensional run takes the CPU's iterations;
     # the first residuals differ only by the summation order of the transforms.
-    out = vmecpp.run(_cth_like_input(), max_threads=1, verbose=False)
+    out = vmecpp.run(cth_like_input, max_threads=1, verbose=False)
     assert out.wout.itfsq == CTH_LIKE_ITERATIONS
     np.testing.assert_allclose(
         np.asarray(out.wout.fsqt)[1:4], CTH_LIKE_FSQT, rtol=1e-10
@@ -181,15 +204,15 @@ def test_three_dimensional_trajectory_follows_the_cpu():
     _assert_reference(out.wout, CTH_LIKE)
 
 
-def test_toroidal_current_scalars_are_reported():
+def test_toroidal_current_scalars_are_reported(cth_like_input):
     # rbtor, rbtor0 and ctor come from the last force evaluation's bvcoH and
     # bucoH, which the end-of-run flush brings to the host.
-    wout = vmecpp.run(_cth_like_input(), max_threads=1, verbose=False).wout
+    wout = vmecpp.run(cth_like_input, max_threads=1, verbose=False).wout
     for name in ("rbtor", "rbtor0", "ctor"):
         assert getattr(wout, name) == pytest.approx(CTH_LIKE[name], rel=_REL), name
 
 
-def test_iteration_callback_receives_the_current_state():
+def test_iteration_callback_receives_the_current_state(cth_like_input):
     # The state the callback reads is the device state of that iteration, and a
     # callback that changes nothing leaves the run unchanged to the last bit.
     geometries = []
@@ -198,15 +221,15 @@ def test_iteration_callback_receives_the_current_state():
         geometries.append(np.asarray(state.geometry.r_cc).copy())
 
     with_callback = vmecpp.run(
-        _cth_like_input(), max_threads=1, verbose=False, iteration_callback=record
+        cth_like_input, max_threads=1, verbose=False, iteration_callback=record
     )
     for earlier, later in itertools.pairwise(geometries[:6]):
         assert np.any(earlier != later)
-    without = vmecpp.run(_cth_like_input(), max_threads=1, verbose=False)
+    without = vmecpp.run(cth_like_input, max_threads=1, verbose=False)
     _assert_bit_identical(with_callback.wout, without.wout)
 
 
-def test_iteration_callback_current_reaches_the_device():
+def test_iteration_callback_current_reaches_the_device(cth_like_input):
     # A current the callback prescribes is staged to the device for the
     # following force evaluations, as on the CPU path.
 
@@ -214,28 +237,27 @@ def test_iteration_callback_current_reaches_the_device():
         state.curr_h[:] = 0.0
 
     wout = vmecpp.run(
-        _cth_like_input(), max_threads=1, verbose=False, iteration_callback=zero_current
+        cth_like_input, max_threads=1, verbose=False, iteration_callback=zero_current
     ).wout
     assert wout.itfsq == CTH_LIKE_ZERO_CURRENT_ITERATIONS
     assert abs(wout.ctor) < 1e-6 * abs(CTH_LIKE["ctor"])
     _assert_reference(wout, CTH_LIKE_ZERO_CURRENT)
 
 
-def test_hot_restart_takes_its_own_state():
+def test_hot_restart_takes_its_own_state(solovev_input):
     # A hot restart that converges on its first evaluation reports the state it
     # was given, not the device state the previous run left behind.
-    vi = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
-    base = vmecpp.run(vi, max_threads=1, verbose=False)
+    base = vmecpp.run(solovev_input, max_threads=1, verbose=False)
     rescaled = vmecpp.rescale(base, b_scale=1.5, r_scale=2.0, scale_pressure=True)
     np.testing.assert_allclose(
         np.asarray(rescaled.wout.rmnc), 2.0 * np.asarray(base.wout.rmnc), rtol=1e-12
     )
 
 
-def test_geometry_cap_freezes_the_capped_modes():
+def test_geometry_cap_freezes_the_capped_modes(cma_input):
     # mpol_geometry and ntor_geometry hold R and Z above the cap at zero on the
     # device state while lambda is resolved there.
-    vi = _cma_input().model_copy(
+    vi = cma_input.model_copy(
         update={
             "mpol_geometry": 3,
             "ntor_geometry": 4,
@@ -253,20 +275,20 @@ def test_geometry_cap_freezes_the_capped_modes():
     assert np.max(np.abs(np.asarray(wout.lmns)[above])) > 1e-10
 
 
-def test_repeated_run_bit_identical():
+def test_repeated_run_bit_identical(cma_input):
     # The same input run twice in one process returns bitwise-identical
     # results; the persistent device state carries nothing between runs.
-    first = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    second = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
+    first = vmecpp.run(cma_input, max_threads=1, verbose=False)
+    second = vmecpp.run(cma_input, max_threads=1, verbose=False)
     _assert_bit_identical(second.wout, first.wout)
 
 
-def test_broadcast_returns_single_output():
+def test_broadcast_returns_single_output(cma_input):
     # Broadcast mode solves one boundary in every slot and returns the
     # single converged result. This path also exercises the iteration-1
     # magnetic-axis recovery, whose re-staged device state must reach
     # every configuration slot.
-    vi = _cma_input()
+    vi = cma_input
     outs = _vmecpp.run_batched_gpu(
         [vi._to_cpp_vmecindata()] * 4, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
     )
@@ -274,19 +296,19 @@ def test_broadcast_returns_single_output():
     _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), CMA)
 
 
-def test_two_call_distinct_identical():
+def test_two_call_distinct_identical(distinct_pair):
     # Two consecutive distinct-mode calls in one process must return
     # bitwise-identical converged spectra: the second call restages its
     # inputs from clean device state.
     outs1, sp1 = _vmecpp.run_batched_gpu(
-        _distinct_pair(),
+        distinct_pair,
         max_threads=1,
         verbose=_vmecpp.OutputMode.SILENT,
         return_spectra=True,
         distinct=True,
     )
     outs2, sp2 = _vmecpp.run_batched_gpu(
-        _distinct_pair(),
+        distinct_pair,
         max_threads=1,
         verbose=_vmecpp.OutputMode.SILENT,
         return_spectra=True,
@@ -302,10 +324,10 @@ def test_two_call_distinct_identical():
         _assert_bit_identical(actual, expected)
 
 
-def test_run_batch_distinct_api():
+def test_run_batch_distinct_api(cma_input):
     # The high-level run_batch wrapper solves each input as its own
     # equilibrium and returns one VmecOutput per input.
-    vi = _cma_input()
+    vi = cma_input
     vi2 = vi.model_copy(deep=True)
     vi2.rbc = vi2.rbc * 1.02
     vi2.zbs = vi2.zbs * 1.02
@@ -320,10 +342,10 @@ def test_run_batch_distinct_api():
     _assert_reference(single[0].wout, CMA)
 
 
-def test_distinct_batch_raises_for_an_unconverged_configuration():
+def test_distinct_batch_raises_for_an_unconverged_configuration(cma_input):
     # A configuration that misses the last stage's tolerance raises unless
     # return_outputs_even_if_not_converged is set.
-    vi = _cma_input()
+    vi = cma_input
     vi2 = vi.model_copy(deep=True)
     vi2.rbc[1, vi.ntor] *= 1.05
     vi2.zbs[1, vi.ntor] *= 1.05
@@ -348,10 +370,10 @@ def test_distinct_batch_raises_for_an_unconverged_configuration():
     assert max(slow.fsqr, slow.fsqz, slow.fsql) > slow.ftolv
 
 
-def test_distinct_batch_outputs_carry_their_own_traces():
+def test_distinct_batch_outputs_carry_their_own_traces(cma_input):
     # Each output of a distinct batch carries its configuration's residual
     # trace and iteration count.
-    vi = _cma_input()
+    vi = cma_input
     vi2 = vi.model_copy(deep=True)
     vi2.rbc[1, vi.ntor] *= 1.05
     vi2.zbs[1, vi.ntor] *= 1.05
@@ -376,11 +398,11 @@ def _assert_same_equilibrium(actual, expected, rel: float) -> None:
         )
 
 
-def test_distinct_batch_outputs_follow_their_single_runs():
+def test_distinct_batch_outputs_follow_their_single_runs(cma_input):
     # Of cma and cma with a stronger m = 1 mode, only cma restarts in its first
     # iteration; in one distinct batch each takes the iterations and restarts
     # of its single run and reaches its equilibrium.
-    vi = _cma_input()
+    vi = cma_input
     inputs = [vi, vi.model_copy(deep=True)]
     inputs[1].rbc[1, vi.ntor] *= 1.05
     inputs[1].zbs[1, vi.ntor] *= 1.05
@@ -396,11 +418,11 @@ def test_distinct_batch_outputs_follow_their_single_runs():
         _assert_same_equilibrium(out.wout, single, rel=1e-10)
 
 
-def test_distinct_batch_traces_follow_their_single_runs():
+def test_distinct_batch_traces_follow_their_single_runs(cth_like_input):
     # Three scaled cth_like boundaries take different iteration counts; in one
     # distinct batch each takes those of its single run, with its residual
     # trace and its equilibrium.
-    vi = _cth_like_input()
+    vi = cth_like_input
     inputs = [
         vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
         for f in (1.0, 1.0 + 0.02 / 6, 1.0 + 0.04 / 6)
@@ -416,19 +438,19 @@ def test_distinct_batch_traces_follow_their_single_runs():
         _assert_same_equilibrium(out.wout, single.wout, rel=1e-12)
 
 
-def test_mixed_configuration_counts_one_process():
+def test_mixed_configuration_counts_one_process(cma_input, distinct_pair):
     # distinct N=2, broadcast N=4, distinct N=2, single: the
     # per-configuration buffers reallocate across the count changes and
     # every run returns its fresh-process result.
     outs = _vmecpp.run_batched_gpu(
-        _distinct_pair(),
+        distinct_pair,
         max_threads=1,
         verbose=_vmecpp.OutputMode.SILENT,
         distinct=True,
     )
     _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[1].wout), CMA_SCALED)
 
-    vi = _cma_input()
+    vi = cma_input
     outs = _vmecpp.run_batched_gpu(
         [vi._to_cpp_vmecindata()] * 4, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
     )
@@ -436,7 +458,7 @@ def test_mixed_configuration_counts_one_process():
     _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), CMA)
 
     outs = _vmecpp.run_batched_gpu(
-        _distinct_pair(),
+        distinct_pair,
         max_threads=1,
         verbose=_vmecpp.OutputMode.SILENT,
         distinct=True,
@@ -444,12 +466,12 @@ def test_mixed_configuration_counts_one_process():
     _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[0].wout), CMA)
     _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[1].wout), CMA_SCALED)
 
-    out = vmecpp.run(_cma_input(), max_threads=1, verbose=False)
+    out = vmecpp.run(cma_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CMA)
 
 
-def test_scope_guards_and_memory_preflight():
-    vi = _cma_input()
+def test_scope_guards_and_memory_preflight(cma_input, solovev_input):
+    vi = cma_input
 
     vi_theta = vi.model_copy(deep=True)
     vi_theta.ntheta = 600  # nThetaReduced = ntheta/2 + 1 = 301 > 256 device cap
@@ -486,7 +508,7 @@ def test_scope_guards_and_memory_preflight():
 
     # The batched kernels index surface and configuration in one grid dimension
     # of at most 65535 blocks: 59 configurations at ns = 1101.
-    vi_wide = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json").model_copy(
+    vi_wide = solovev_input.model_copy(
         update={
             "ns_array": np.array([1101]),
             "ftol_array": np.array([1e-12]),
@@ -514,16 +536,16 @@ def test_free_boundary_multigrid_stage_transition():
     _assert_reference(out.wout, CTH_LIKE_FREE_MULTIGRID)
 
 
-def test_free_boundary_cth_like():
-    out = vmecpp.run(_free_boundary_input(), max_threads=1, verbose=False)
+def test_free_boundary_cth_like(free_boundary_input):
+    out = vmecpp.run(free_boundary_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CTH_LIKE_FREE)
 
 
-def test_free_boundary_wout_fields_match_reference():
+def test_free_boundary_wout_fields_match_reference(free_boundary_input):
     # Converged free-boundary wout against the committed reference file, at
     # the tolerance the CPU build is held to (tests/test_init.py); like the
     # reference, the run restarts from the advanced state.
-    vi = _free_boundary_input()
+    vi = free_boundary_input
     vi.backup_evaluated_state = False
     out = vmecpp.run(vi, max_threads=1, verbose=False)
     ref = netCDF4.Dataset(TEST_DATA_DIR / "wout_cth_like_free_bdy.nc")
@@ -557,11 +579,11 @@ def test_free_boundary_wout_fields_match_reference():
     assert compared >= 8, f"only {compared} fields compared"
 
 
-def test_free_boundary_broadcast_matches_single():
+def test_free_boundary_broadcast_matches_single(free_boundary_input):
     # Free-boundary broadcast: per-configuration vacuum solves under a
     # batch-wide activation gate and ivacskip cadence. Configuration
     # zero's result agrees with the single run.
-    vi = _free_boundary_input()
+    vi = free_boundary_input
     single = vmecpp.run(vi, max_threads=1, verbose=False)
     outs = _vmecpp.run_batched_gpu(
         [vi._to_cpp_vmecindata()] * 2, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
@@ -571,11 +593,11 @@ def test_free_boundary_broadcast_matches_single():
     assert outs[0].wout.wb == pytest.approx(single.wout.wb, rel=1e-10)
 
 
-def test_free_boundary_distinct_two_boundaries():
+def test_free_boundary_distinct_two_boundaries(free_boundary_input):
     # Distinct free-boundary batch: two boundaries against one coil set
     # converge to their own equilibria in one batched run. The batch
     # shares the vacuum activation iteration and the NESTOR cadence.
-    a = _free_boundary_input()
+    a = free_boundary_input
     b = a.model_copy(deep=True)
     b.rbc = b.rbc * 1.005
     b.zbs = b.zbs * 1.005
@@ -590,20 +612,20 @@ def test_free_boundary_distinct_two_boundaries():
     assert outs[1].wout.volume > outs[0].wout.volume
 
 
-def test_fixed_then_free_boundary_one_process():
+def test_fixed_then_free_boundary_one_process(cma_input, free_boundary_input):
     # A fixed-boundary run followed by a free-boundary run in the same
     # process: the vacuum block's host-side consumers (the edge-pressure
     # extrapolation reads presH) must see flushed device values, not
     # whatever the reallocated host arrays inherited from the prior run.
-    vmecpp.run(_cma_input(), max_threads=1, verbose=False)
-    out = vmecpp.run(_free_boundary_input(), max_threads=1, verbose=False)
+    vmecpp.run(cma_input, max_threads=1, verbose=False)
+    out = vmecpp.run(free_boundary_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CTH_LIKE_FREE)
 
 
-def test_hot_restart_reproduces_converged_state():
+def test_hot_restart_reproduces_converged_state(cma_input):
     # A run restarted from its own converged output terminates at once, at
     # the same equilibrium. Hot restart requires a single-stage ns_array.
-    vi = _cma_input()
+    vi = cma_input
     vi.ns_array = vi.ns_array[-1:]
     vi.ftol_array = vi.ftol_array[-1:]
     vi.niter_array = vi.niter_array[-1:]
@@ -622,11 +644,11 @@ def test_hot_restart_reproduces_converged_state():
 
 
 @pytest.mark.slow
-def test_w7x_distinct_batch_converges():
+def test_w7x_distinct_batch_converges(w7x_input):
     # Three scaled W7-X boundaries, whose single runs restart mid-run at
     # different iterations, converge in one distinct batch in the iterations
     # of their single runs, to their equilibria.
-    vi = vmecpp.VmecInput.from_file(W7X_JSON)
+    vi = w7x_input
     inputs = [
         vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
         for f in (1.0, 1.0 + 0.01 / 3, 1.0 + 0.02 / 3)
@@ -640,10 +662,10 @@ def test_w7x_distinct_batch_converges():
 
 
 @pytest.mark.slow
-def test_w7x_bad_jacobian_recovery_converges():
+def test_w7x_bad_jacobian_recovery_converges(w7x_input):
     # W7-X exercises the mid-run restarts; with the evaluated state backed up
     # the CUDA path rewinds to the CPU's states and takes its iterations.
-    out = vmecpp.run(vmecpp.VmecInput.from_file(W7X_JSON), max_threads=1, verbose=False)
+    out = vmecpp.run(w7x_input, max_threads=1, verbose=False)
     assert out.wout.itfsq == W7X_ITERATIONS
     _assert_reference(out.wout, W7X)
 
@@ -670,35 +692,27 @@ CIRCULAR_TOKAMAK = {
 }
 
 
-def _solovev_input():
-    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
-
-
-def _circular_tokamak_input():
-    return vmecpp.VmecInput.from_file(TEST_DATA_DIR / "circular_tokamak.json")
-
-
-def test_ntor0_solovev_canonical():
-    out = vmecpp.run(_solovev_input(), max_threads=1, verbose=False)
+def test_ntor0_solovev_canonical(solovev_input):
+    out = vmecpp.run(solovev_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, SOLOVEV)
 
 
-def test_ntor0_circular_tokamak_canonical():
+def test_ntor0_circular_tokamak_canonical(circular_tokamak_input):
     # A second axisymmetric boundary (mpol = 8, single-grid ns = 17).
-    out = vmecpp.run(_circular_tokamak_input(), max_threads=1, verbose=False)
+    out = vmecpp.run(circular_tokamak_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CIRCULAR_TOKAMAK)
 
 
-def test_ntor0_repeated_run_bit_identical():
-    first = vmecpp.run(_solovev_input(), max_threads=1, verbose=False)
-    second = vmecpp.run(_solovev_input(), max_threads=1, verbose=False)
+def test_ntor0_repeated_run_bit_identical(solovev_input):
+    first = vmecpp.run(solovev_input, max_threads=1, verbose=False)
+    second = vmecpp.run(solovev_input, max_threads=1, verbose=False)
     _assert_bit_identical(second.wout, first.wout)
 
 
-def test_ntor0_distinct_batch():
+def test_ntor0_distinct_batch(solovev_input):
     # Batched distinct-mode axisymmetric run: each configuration converges to
     # its own single-run result.
-    vi = _solovev_input()
+    vi = solovev_input
     vi2 = vi.model_copy(deep=True)
     vi2.pres_scale = vi2.pres_scale * 1.05
     outs = _vmecpp.run_batched_gpu(
@@ -712,10 +726,10 @@ def test_ntor0_distinct_batch():
     _assert_reference(vmecpp.VmecWOut._from_cpp_wout(outs[1].wout), SOLOVEV_PRESSURE)
 
 
-def test_ntor0_broadcast_returns_single_output():
+def test_ntor0_broadcast_returns_single_output(solovev_input):
     # Broadcast mode with an axisymmetric seed returns the single converged
     # result, the same contract as the 3D broadcast path.
-    vi = _solovev_input()
+    vi = solovev_input
     outs = _vmecpp.run_batched_gpu(
         [vi._to_cpp_vmecindata()] * 3,
         max_threads=1,
