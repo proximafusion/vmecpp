@@ -87,6 +87,40 @@ def test_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
     )
 
 
+def test_profile_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
+    indata = _input()
+    solver = autodiff.make_solver(indata)
+    boundary = _boundary(indata)
+
+    def outputs(profiles):
+        geometry = solver(boundary, profiles)
+        return jnp.stack(
+            [
+                geometry.r_cc[2, 0, 0],
+                geometry.z_sc[3, 1, 1],
+                geometry.lambda_sc[2, 1, 0],
+                geometry.poloidal_flux[-1],
+            ]
+        )
+
+    profiles = {
+        "am": jnp.asarray(indata.am, dtype=jnp.float64),
+        "ai": jnp.asarray(indata.ai, dtype=jnp.float64),
+    }
+    jacobian = jax.jacrev(outputs)(profiles)
+    for name, columns in jacobian.items():
+        rows = np.stack(
+            [
+                np.asarray(jax.grad(lambda p, k=k: outputs(p)[k])(profiles)[name])
+                for k in range(columns.shape[0])
+            ]
+        )
+        assert np.abs(rows).max() > 0.0, name
+        np.testing.assert_allclose(
+            np.asarray(columns), rows, rtol=1.0e-12, atol=1.0e-14 * np.abs(rows).max()
+        )
+
+
 def test_one_solve_and_one_factorization_serve_further_vjps(monkeypatch) -> None:
     """A Jacobian, then a gradient of another objective at the same parameters."""
     indata = _input()

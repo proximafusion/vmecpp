@@ -539,7 +539,7 @@ def _implicit_vjps(
     geometry_bars: np.ndarray,
     with_profiles: bool = False,
     factorization: _Factorization | None = None,
-) -> tuple[np.ndarray, np.ndarray, _Factorization]:
+) -> tuple[np.ndarray, np.ndarray, _Factorization | None]:
     """Boundary and half-grid profile cotangents of each row of ``geometry_bars``,
     and the factorization of the transposed interior system that serves them all."""
     if not getattr(model, "has_exact_force_jacobian", False):
@@ -559,22 +559,23 @@ def _implicit_vjps(
         -1, np.shape(geometry_bars)[-1]
     )
     ns = model.ns
-    state_bars = [
-        np.asarray(
-            model.geometry_state_vjp(bar[2 * ns :], bar[ns : 2 * ns]), dtype=np.float64
-        )
-        for bar in geometry_bars
-    ]
-    state = np.asarray(model.get_state(), dtype=np.float64)
-    model.set_state(np.ascontiguousarray(state))
-    model.evaluate(2, 2, True)
-    if factorization is None:
-        factorization = _factorize(model)
-    interior = factorization.interior
-    prescribed = factorization.prescribed
+    state = np.ascontiguousarray(np.asarray(model.get_state(), dtype=np.float64))
     boundary_bars = []
     profile_bars = []
-    for geometry_bar, state_bar in zip(geometry_bars, state_bars, strict=True):
+    for geometry_bar in geometry_bars:
+        # The VJP products use the model's state buffers as scratch, so each
+        # cotangent starts from the solved state.
+        model.set_state(state)
+        state_bar = np.asarray(
+            model.geometry_state_vjp(geometry_bar[2 * ns :], geometry_bar[ns : 2 * ns]),
+            dtype=np.float64,
+        )
+        model.set_state(state)
+        model.evaluate(2, 2, True)
+        if factorization is None:
+            factorization = _factorize(model)
+        interior = factorization.interior
+        prescribed = factorization.prescribed
         embedded = np.zeros(state.size)
         embedded[interior] = factorization.matrix.solve(state_bar[interior])
         transposed = np.asarray(
