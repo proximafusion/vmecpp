@@ -1543,9 +1543,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
 
       if (retry_from_three_surfaces) {
-#ifdef _OPENMP
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp atomic write
-#endif  // _OPENMP
+#endif  // _OPENMP, not MSVC (no `atomic write` in OpenMP 2.0)
         retry_from_three_surfaces_ = true;
       }
 
@@ -2298,9 +2298,9 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
   if (!keep_going || !callback_status_.ok()) {
     m_liter_flag = false;
     status_ = VmecStatus::MORE_ITERATIONS_NEEDED;
-#ifdef _OPENMP
+#if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp atomic write
-#endif  // _OPENMP
+#endif  // _OPENMP, not MSVC (no `atomic write` in OpenMP 2.0)
     stopped_by_callback_ = true;
   }
 }
