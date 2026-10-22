@@ -402,6 +402,18 @@ def test_scope_guards_and_memory_preflight():
     finally:
         os.environ["VMECPP_N_CONFIG_MAX"] = "1"
 
+    # The batched kernels index surface and configuration in one grid dimension
+    # of at most 65535 blocks: 59 configurations at ns = 1101.
+    vi_wide = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json").model_copy(
+        update={
+            "ns_array": np.array([1101]),
+            "ftol_array": np.array([1e-12]),
+            "niter_array": np.array([10]),
+        }
+    )
+    with pytest.raises(RuntimeError, match="holds at most 59 configurations"):
+        vmecpp.run_batch([vi_wide] * 60, max_threads=1)
+
     # The same process recovers and runs normally after the rejections.
     out = vmecpp.run(vi, max_threads=1, verbose=False)
     _assert_reference(out.wout, CMA)

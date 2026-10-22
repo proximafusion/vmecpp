@@ -2871,6 +2871,17 @@ individual configurations.
                 "lasym, and ns_array[0]");
           }
         }
+        // The batched kernels index radial surface and configuration together
+        // in one grid dimension, which CUDA caps at 65535 blocks.
+        constexpr int kMaxGridBlocks = 65535;
+        const int ns_max = seed.ns_array.maxCoeff();
+        if (n_cfg > kMaxGridBlocks / ns_max) {
+          throw std::runtime_error(
+              "run_batched_gpu: a batch at ns = " + std::to_string(ns_max) +
+              " holds at most " + std::to_string(kMaxGridBlocks / ns_max) +
+              " configurations, but " + std::to_string(n_cfg) +
+              " were given; split the batch");
+        }
         // Free-boundary batches share one coil field: a single mgrid is
         // loaded for the run, so every input must carry the same mgrid
         // file and external currents. In distinct mode the boundaries and

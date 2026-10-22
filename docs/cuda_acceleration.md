@@ -123,7 +123,8 @@ runners have no GPU.
 `run_batched_gpu(indata_list, ...)` solves N equilibria in one CUDA-resident
 iteration loop. All inputs share `mpol`, `ntor`, `nfp`, `lasym`, and the
 multigrid schedule; in distinct mode, `always_fix_m1_gauge` inputs take a
-single-entry `ns_array`. `VMECPP_BATCH_DISTINCT` selects the mode. Broadcast, the
+single-entry `ns_array`. N is at most 65535 / ns at the largest ns of the
+schedule. `VMECPP_BATCH_DISTINCT` selects the mode. Broadcast, the
 default: the first input's spectra fill all N slots and the call returns the
 single converged result. Distinct (`=1`): each configuration keeps its own
 boundary, with per-configuration pre-initialization, axis recomputation,
