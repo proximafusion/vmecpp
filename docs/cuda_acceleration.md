@@ -86,12 +86,13 @@ surfaces, the largest poloidal grid the device kernels accept, and free
 boundary at two vacuum cadences and through a multigrid transition.
 
 The toroidal transforms run in cuFFT, whose summation order differs from the
-CPU's: the first force residuals agree to 1e-13 relative in three dimensions
-and 1e-15 in two. The difference grows slowly enough that every `wout` field,
-the spectral width included, agrees with the CPU build within ten times the
-spread between CPU runs on one and on eight threads, which partition the
-radial reductions differently, or to 1e-11 relative where that spread is
-smaller; the interior quantities that
+CPU's: the first force residuals agree to 4e-13 relative or better in three
+dimensions, 1e-11 on cma, and to 2e-15 in two. The difference grows slowly
+enough that every `wout` field, the spectral width included, agrees with the
+CPU build within ten times the spread between CPU runs on one and on eight
+threads, which partition the radial reductions differently, or to 1e-11
+relative where that spread is smaller, except the force-balance diagnostic
+`equif`, which agrees to 3e-9 relative; the interior quantities that
 `tests/test_cuda_gpu.py` checks agree to 5e-10 relative or better. The
 residual triples that feed the time-step controller and the convergence gate
 come from device reductions of fixed order, so a run repeats to the last bit.
