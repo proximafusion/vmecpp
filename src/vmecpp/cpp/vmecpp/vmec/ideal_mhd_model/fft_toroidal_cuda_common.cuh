@@ -229,7 +229,7 @@ __device__ __forceinline__ double dd_to_double(DD a) {
 // effectively split into FP32 hi/lo via cast + residual, then the standard
 // DD add is applied. Used by Path 1 (FP64 mults, DD-pair sums) where the
 // inputs are FP64-precise but the accumulator wants DD compensation against
-// sqrt(n) error growth across the inner loop.
+// \sqrt{n} error growth across the inner loop.
 __device__ __forceinline__ DD dd_add_d(DD a, double b) {
   float b_hi = (float)b;
   float b_lo = (float)(b - (double)b_hi);
@@ -241,7 +241,7 @@ __device__ __forceinline__ DD dd_add_d(DD a, double b) {
 // TwoProduct via Dekker: splits a, b into FP32 hi/lo halves, then computes
 // the exact product as a DD pair (hi, lo). Six FP32 multiplies + a few
 // adds; ~96-bit precision when both operands are FP32. Used by Path 2
-// (DD x DD multiply) where inputs are FP32 and we want to recover full
+// (DD \times DD multiply) where inputs are FP32 and we want to recover full
 // precision in the product before accumulating.
 __device__ __forceinline__ void fp32_twoprod_split(float a, float& ahi, float& alo) {
   // Dekker split with K = 2^12 + 1 = 4097 (single-precision boundary).
@@ -4043,7 +4043,7 @@ __global__ void k_assemble_rz_preconditioner(
 
 // Template kernels (instantiated at their launch sites).
 // k_dealias_inv_tpl_mixed: mixed-precision variant of k_dealias_inv_tpl.
-// Inner (m, n) loop multiplies gsc/gcs x cosnv/sinnv at FP32 (Ada FP32 cores
+// Inner (m, n) loop multiplies gsc/gcs \times cosnv/sinnv at FP32 (Ada FP32 cores
 // outnumber FP64 cores ~4:1), with the result cast to FP64 and added to a
 // FP64 accumulator. Outer accumulator + writes remain FP64. The sinmu/cosmu
 // product into acc also stays FP64.

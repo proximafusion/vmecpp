@@ -1113,7 +1113,7 @@ __global__ void k_forward_dft_24_radix83(
   }
   __syncwarp();
 
-  // Stage 1: length-8 forward DFT, F_{n2}[k1] = sum_{n1} x[3n1+n2] * w8F^{n1 k1}
+  // Stage 1: length-8 forward DFT, F_{n2}[k1] = \sum_{n1} x[3n1+n2] * w8F^{n1 k1}
   // x is real, so F_re/F_im accumulate from x * (cos, -sin).
   double F_re = 0.0;
   double F_im = 0.0;
@@ -1144,7 +1144,7 @@ __global__ void k_forward_dft_24_radix83(
   __syncwarp();
 
   // Stage 3: length-3 forward DFT for this thread's (k1, k2).
-  // w3F = exp(-2pii/3) = -1/2 - i sqrt(3)/2
+  // w3F = \exp(-2\pi i/3) = -1/2 - i \sqrt{3}/2
   double T0_re = s_T_re[k1 * kRadix2 + 0];
   double T0_im = s_T_im[k1 * kRadix2 + 0];
   double T1_re = s_T_re[k1 * kRadix2 + 1];
@@ -6109,7 +6109,7 @@ __global__ void k_residuals_dd_fp32(
 // are loaded as FP64 but cast to FP32 inside the inner loop; the 18 per-
 // output running sums (r1_e/o, ru_e/o, rv_e/o, z1_e/o, zu_e/o, zv_e/o,
 // lu_e/o, lv_e/o, rCon, zCon) are kept as DD-pairs so the FP32 product
-// stream accumulates without sqrt(n) amplification of the FP32 rounding.
+// stream accumulates without \sqrt{n} amplification of the FP32 rounding.
 //
 // One thread per (cfg, jF_local, k, l) output. Serial m-loop within each
 // thread; no cross-thread reduction. cuFFT remains in FP64 (this kernel
@@ -6221,7 +6221,7 @@ __global__ void k_scatter_main_and_con_dd_fp32(
 
 // Path 1: FP64 multiplications + DD-pair accumulators. Same structure as
 // k_scatter_main_and_con_dd_fp32 but the inner mults run in native FP64
-// (no FP32 quantization). The DD accumulator catches sqrt(n) drift in the
+// (no FP32 quantization). The DD accumulator catches \sqrt{n} drift in the
 // running sum. Bit-exact-with-FP64 expected at the output. Gated by
 // VMECPP_SCATTER_DD_FP64MUL=1.
 __global__ void k_scatter_main_and_con_dd_fp64mul(
@@ -6328,7 +6328,7 @@ __global__ void k_scatter_main_and_con_dd_fp64mul(
   zCon[idx] = dd_to_double(zcon);
 }
 
-// Path 2: DD x DD multiplications + DD-pair accumulators. Inputs cast to
+// Path 2: DD \times DD multiplications + DD-pair accumulators. Inputs cast to
 // FP32, products computed via TwoProduct (Dekker), accumulated in DD. ~96
 // bits of precision per product; six FP32 ops per mul; preserves FP64-
 // equivalent precision when inputs are FP32. Used where storage moves to
@@ -7232,7 +7232,7 @@ __device__ __forceinline__ float tf32_round_kernel(float a) {
 }
 
 // 3-slice Ozaki split of an FP64 operand into TF32 limbs. Returns
-// s0 + s1 + s2 ~ v with each slice rounded to TF32 (10-bit mantissa).
+// s0 + s1 + s2 \approx v with each slice rounded to TF32 (10-bit mantissa).
 // Successive slices capture residuals at progressively smaller magnitude
 // bands (~10 mantissa bits per slice).
 __device__ __forceinline__ void slice_fp64_to_tf32_3(double v,
@@ -8272,7 +8272,7 @@ __global__ void k_assemble_rz_preconditioner(
   // Edge pedestal + ZC_00 stabilization at the LCFS row (jF == ns_total - 1).
   // CPU applies this regardless of lfreeb, but in fixed-boundary the main loop
   // doesn't reach jF = ns - 1 (jMax = ns - 1, loop is exclusive), so the
-  // multiplied values are zero x pedestal = zero. Our in_range check excludes
+  // multiplied values are zero \times pedestal = zero. Our in_range check excludes
   // jF = ns-1 in fixed-boundary (jF_upper = ns - 1), so we never reach here for
   // that case, with the same result.
   if (lcfs_owning && jF == ns_total - 1) {
