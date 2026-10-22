@@ -1053,6 +1053,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
       vmecpp::ScaleRZCon0Cuda(0.9);
       const int n_vac_cfg =
           fb_per_cfg_.empty() ? 1 : static_cast<int>(fb_per_cfg_.size());
+      // As on the CPU path, the status holds the latest vacuum solve; in a
+      // batch, the first configuration whose solve fails.
+      m_h_.vacuum_status = absl::OkStatus();
 
       // Asynchronous NESTOR (VMECPP_FB_ASYNC_NESTOR): once the vacuum
       // contribution is fully active in a single-configuration run, the host
