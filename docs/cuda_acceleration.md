@@ -78,7 +78,7 @@ iteration, or `iter2 < 2`), a restart rewinds to the same backup (the state of
 the latest force evaluation under `backup_evaluated_state`), and the
 convergence test and the multigrid transitions are the CPU's. It therefore
 takes the CPU build's iterations, restart for restart, on every input of
-`tests/cuda_cross_validation.py`: axisymmetric and three-dimensional
+`examples/cuda_cross_validation.py`: axisymmetric and three-dimensional
 boundaries, prescribed current and prescribed iota, power-series and spline
 pressure, vacuum, `lbsubs`, nfp from 1 to 5, an odd nzeta, a missing axis
 guess, a bad initial Jacobian, W7-X with its mid-run restarts, 1101 radial
@@ -103,7 +103,7 @@ of the live result.
 
 ## Validation
 
-`tests/cuda_cross_validation.py` compares the two builds of one commit, one
+`examples/cuda_cross_validation.py` compares the two builds of one commit, one
 configured with `-DVMECPP_USE_CUDA=ON` and one without. Each solves the same
 inputs in its own process; every `wout` field of the CUDA run is compared with
 the CPU run on one thread against the spread of the CPU runs on one and on

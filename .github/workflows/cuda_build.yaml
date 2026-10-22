@@ -2,7 +2,7 @@ name: Build the CUDA path
 
 # The runners have no GPU, so this compiles the CUDA iteration body and links the
 # Python module without running it; tests/test_cuda_gpu.py and
-# tests/cuda_cross_validation.py run it on a machine with one.
+# examples/cuda_cross_validation.py run it on a machine with one.
 
 on:
   pull_request:

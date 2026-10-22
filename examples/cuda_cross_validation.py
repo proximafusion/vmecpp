@@ -13,14 +13,14 @@ restart stops within the iterations a restart from its own state takes. The forc
 residuals of the first iterations, before the two trajectories drift apart, compare the
 whole chain of kernels at once.
 
-    python tests/cuda_cross_validation.py run DIR cpu1 --threads 1     # CPU build
-    python tests/cuda_cross_validation.py run DIR cpu8 --threads 8     # CPU build
-    python tests/cuda_cross_validation.py run DIR gpu                  # CUDA build
-    python tests/cuda_cross_validation.py restart DIR cpu1 cpu_from_cpu  # CPU build
-    python tests/cuda_cross_validation.py restart DIR gpu cpu_from_gpu   # CPU build
-    python tests/cuda_cross_validation.py restart DIR cpu1 gpu_from_cpu  # CUDA build
-    python tests/cuda_cross_validation.py restart DIR gpu gpu_from_gpu   # CUDA build
-    python tests/cuda_cross_validation.py compare DIR
+    python examples/cuda_cross_validation.py run DIR cpu1 --threads 1     # CPU build
+    python examples/cuda_cross_validation.py run DIR cpu8 --threads 8     # CPU build
+    python examples/cuda_cross_validation.py run DIR gpu                  # CUDA build
+    python examples/cuda_cross_validation.py restart DIR cpu1 cpu_from_cpu  # CPU build
+    python examples/cuda_cross_validation.py restart DIR gpu cpu_from_gpu   # CPU build
+    python examples/cuda_cross_validation.py restart DIR cpu1 gpu_from_cpu  # CUDA build
+    python examples/cuda_cross_validation.py restart DIR gpu gpu_from_gpu   # CUDA build
+    python examples/cuda_cross_validation.py compare DIR
 
 ``--cases`` restricts any command to a comma-separated subset of :data:`CASES`.
 """
