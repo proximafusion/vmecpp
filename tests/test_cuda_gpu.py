@@ -347,6 +347,22 @@ def test_distinct_batch_raises_for_an_unconverged_configuration():
     assert max(slow.fsqr, slow.fsqz, slow.fsql) > slow.ftolv
 
 
+def test_distinct_batch_outputs_carry_their_own_traces():
+    # Each output of a distinct batch carries its configuration's residual
+    # trace and iteration count.
+    vi = _cma_input()
+    vi2 = vi.model_copy(deep=True)
+    vi2.rbc[1, vi.ntor] *= 1.05
+    vi2.zbs[1, vi.ntor] *= 1.05
+    singles = [vmecpp.run(v, max_threads=1, verbose=False) for v in (vi, vi2)]
+    outs = vmecpp.run_batch([vi, vi2], max_threads=1)
+    for out, single in zip(outs, singles, strict=True):
+        assert out.wout.itfsq == len(out.wout.restart_reason_timetrace) > 1
+        assert out.wout.fsqt[0] == pytest.approx(single.wout.fsqt[0], rel=1e-10)
+    assert outs[0].wout.fsqt[0] != pytest.approx(outs[1].wout.fsqt[0], rel=1e-3)
+    assert outs[0].wout.niter != outs[1].wout.niter
+
+
 def test_mixed_configuration_counts_one_process():
     # distinct N=2, broadcast N=4, distinct N=2, single: the
     # per-configuration buffers reallocate across the count changes and

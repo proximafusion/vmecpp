@@ -96,6 +96,12 @@ void FlowControl::ResizeForBatch(int n_cfg) {
   ijacob_per_cfg.assign(n_cfg, 0);
   iter2_per_cfg.assign(n_cfg, 0);
   converged_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
+  force_residual_r_per_cfg.assign(n_cfg, {});
+  force_residual_z_per_cfg.assign(n_cfg, {});
+  force_residual_lambda_per_cfg.assign(n_cfg, {});
+  mhd_energy_per_cfg.assign(n_cfg, {});
+  delbsq_per_cfg.assign(n_cfg, {});
+  restart_reasons_per_cfg.assign(n_cfg, {});
 }
 
 // Restores active_per_cfg to ones, zeros iter2_per_cfg, and clears

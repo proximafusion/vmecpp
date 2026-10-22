@@ -1986,7 +1986,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             [](const std::vector<vmecpp::VmecINDATA> &indata_local, int n_cfg,
                std::optional<int> max_threads,
                const vmecpp::OutputQuantities &seed_oq,
-               const std::vector<std::uint8_t> &converged_per_cfg,
+               const vmecpp::FlowControl &batch_fc,
                std::vector<vmecpp::OutputQuantities> &outs) -> bool {
           // Capture the batched run's final per-configuration force-residual
           // state before any further CUDA call (the deriver's setup run below
@@ -1995,12 +1995,13 @@ PYBIND11_MODULE(_vmecpp, m) {
           // configuration's last active iteration, from the snapshot cache
           // the iteration controller fills; the live residual caches are
           // zeroed for masked (converged) configurations. Layout: 3*n_cfg as
-          // [fsqr_c, fsqz_c, fsql_c, ...]. niter is the batch's, from the
-          // seed's wout.
-          if (static_cast<int>(converged_per_cfg.size()) != n_cfg) {
+          // [fsqr_c, fsqz_c, fsql_c, ...].
+          if (static_cast<int>(batch_fc.converged_per_cfg.size()) != n_cfg ||
+              static_cast<int>(batch_fc.iter2_per_cfg.size()) != n_cfg ||
+              static_cast<int>(batch_fc.force_residual_r_per_cfg.size()) !=
+                  n_cfg) {
             return false;
           }
-          const int batch_niter = seed_oq.wout.niter;
           const std::vector<double> fsqr_snapshot_pc =
               vmecpp::GetFsqrPerCfgCache();
           std::vector<double> spectra;
@@ -2249,27 +2250,32 @@ PYBIND11_MODULE(_vmecpp, m) {
                  .r_inner = r1e[inner_index] + r1o[inner_index]});
             h_c.SetGeometricOffset({.r_00 = r1e[0], .z_00 = z1e[0]});
 
+            // This configuration's residuals, traces, and iteration count in
+            // place of the deriver's single-iteration setup values.
+            vmecpp::FlowControl fc_c = deriver->fc_;
+            const size_t s3 = static_cast<size_t>(3) * c;
+            if (fsqr_snapshot_pc.size() >= s3 + 3) {
+              fc_c.fsqr = fsqr_snapshot_pc[s3 + 0];
+              fc_c.fsqz = fsqr_snapshot_pc[s3 + 1];
+              fc_c.fsql = fsqr_snapshot_pc[s3 + 2];
+            }
+            fc_c.force_residual_r = batch_fc.force_residual_r_per_cfg[c];
+            fc_c.force_residual_z = batch_fc.force_residual_z_per_cfg[c];
+            fc_c.force_residual_lambda =
+                batch_fc.force_residual_lambda_per_cfg[c];
+            fc_c.mhd_energy = batch_fc.mhd_energy_per_cfg[c];
+            fc_c.delbsq = batch_fc.delbsq_per_cfg[c];
+            fc_c.restart_reasons = batch_fc.restart_reasons_per_cfg[c];
+
             outs.push_back(vmecpp::DeriveOutputQuantities(
-                std::move(oq), indata_local[c], deriver->s_, deriver->fc_,
+                std::move(oq), indata_local[c], deriver->s_, fc_c,
                 deriver->constants_, deriver->t_, h_c, seed_oq.wout.mgrid_mode,
                 seed_oq.wout.curlabel, vmecpp::VmecCheckpoint::NONE,
                 vmecpp::VacuumPressureState::kOff,
-                converged_per_cfg[c] != 0
+                batch_fc.converged_per_cfg[c] != 0
                     ? vmecpp::VmecStatus::SUCCESSFUL_TERMINATION
                     : vmecpp::VmecStatus::NORMAL_TERMINATION,
-                batch_niter));
-            // DeriveOutputQuantities copies the {fsqr,fsqz,fsql} residuals
-            // from the deriver's single-iteration setup fc; replace them with
-            // this configuration's residuals from the snapshot.
-            {
-              vmecpp::WOutFileContents &w_c = outs.back().wout;
-              const size_t s3 = static_cast<size_t>(3) * c;
-              if (fsqr_snapshot_pc.size() >= s3 + 3) {
-                w_c.fsqr = fsqr_snapshot_pc[s3 + 0];
-                w_c.fsqz = fsqr_snapshot_pc[s3 + 1];
-                w_c.fsql = fsqr_snapshot_pc[s3 + 2];
-              }
-            }
+                batch_fc.iter2_per_cfg[c] + 1));
           }
           return true;
         };
@@ -2625,9 +2631,9 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
           return false;
         };
-        // Last-stage convergence flags of the configuration slots, from the
-        // seed run's FlowControl.
-        std::vector<std::uint8_t> converged_per_cfg;
+        // The seed run's FlowControl, whose per-configuration fields describe
+        // the configuration slots.
+        std::optional<vmecpp::FlowControl> batch_fc;
         absl::StatusOr<vmecpp::OutputQuantities> ret_seed;
         {
           py::gil_scoped_release release;
@@ -2649,7 +2655,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             }
 #endif
             absl::StatusOr<bool> seed_ok = seed_vmec.run();
-            converged_per_cfg = seed_vmec.fc_.converged_per_cfg;
+            batch_fc.emplace(seed_vmec.fc_);
             if (seed_ok.ok()) {
               ret_seed = std::move(seed_vmec.output_quantities_);
             } else {
@@ -2675,6 +2681,8 @@ PYBIND11_MODULE(_vmecpp, m) {
         // best-effort outputs.
         if (distinct && n_cfg > 1 &&
             !run_seed->return_outputs_even_if_not_converged) {
+          const std::vector<std::uint8_t> &converged_per_cfg =
+              batch_fc->converged_per_cfg;
           std::string unconverged;
           for (int c = 0; c < n_cfg; ++c) {
             if (c >= static_cast<int>(converged_per_cfg.size()) ||
@@ -2701,7 +2709,7 @@ PYBIND11_MODULE(_vmecpp, m) {
           outs.reserve(n_cfg);
           if (!derive_outputs_from_batched_flush(indata_local, n_cfg,
                                                  max_threads, *ret_seed,
-                                                 converged_per_cfg, outs)) {
+                                                 *batch_fc, outs)) {
             throw std::runtime_error(
                 "run_batched_gpu: the per-configuration outputs could not be "
                 "derived from the batched run");
@@ -2761,7 +2769,8 @@ the mode:
   invocation of CudaForward and drives each configuration through its own
   residual evolution under the per-configuration active-mask kernels. The
   returned list holds one OutputQuantities per input, derived from the
-  batched run's device state; a derivation that fails raises, and so
+  batched run's device state with its configuration's residual traces and
+  iteration count; a derivation that fails raises, and so
   does a configuration that misses the tolerance of the last multigrid
   stage unless return_outputs_even_if_not_converged is set.
 

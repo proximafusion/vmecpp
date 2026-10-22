@@ -366,6 +366,10 @@ class IdealMhdModel {
   // Computes the mismatch in |B|^2 at the LCFS.
   double get_delbsq() const;
 
+  // get_delbsq of one configuration of a batched free-boundary run, from that
+  // configuration's latest vacuum solve.
+  double get_delbsq_per_cfg(int cfg) const;
+
   // `ivacskip` is the current counter that controls whether a full update or a
   // partial update of the Nestor free boundary force contribution is computed.
   int get_ivacskip() const;
@@ -507,6 +511,9 @@ class IdealMhdModel {
 
   // mismatch in |B|^2 between plasma and vacuum regions at LCFS
   Eigen::VectorXd delBSq;
+
+  // get_delbsq of each configuration of a batched free-boundary run
+  std::vector<double> delbsq_per_cfg_;
 
   /**********************************************/
 

@@ -127,7 +127,8 @@ each configuration keeps its own boundary, magnetic axis, and profiles, with
 per-configuration pre-initialization, axis recomputation, residual
 evolution, time-step control, convergence gating, and outputs, and the call
 returns one `OutputQuantities` per configuration derived from the batched
-run's flushed device state; a derivation that fails raises. As in a single run, a configuration that
+run's flushed device state, with that configuration's residual traces and
+iteration count; a derivation that fails raises. As in a single run, a configuration that
 misses the tolerance of the last multigrid stage raises unless
 `return_outputs_even_if_not_converged` is set. The converged
 per-configuration spectra are also returned with `return_spectra=True`.
@@ -164,8 +165,10 @@ buffers, as the CPU path keeps `last_evaluated_x`; the free-boundary soft
 start at vacuum activation rewinds to it as well. The progress printout's
 `<M>` column and the spectral width in the output file are taken from this
 backup, as on the CPU. A restore replays the backup into the position
-buffers and zeroes the integrator velocity; in batched mode the restore is
-gated per configuration by the restart mask. A bad Jacobian during the first
+buffers and zeroes the integrator velocity. In a batch, a bad Jacobian
+rewinds the configurations whose Jacobian changed sign, and the other
+restarts, decided from the shared residual trajectory, rewind every active
+configuration. A bad Jacobian during the first
 iterations triggers the magnetic-axis recomputation and a retry from scratch,
 which invalidates the device position, velocity, and backup state so the
 retry re-stages from the recomputed host axis.

@@ -1032,6 +1032,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
       vmecpp::ScaleRZCon0Cuda(0.9);
       const int n_vac_cfg =
           fb_per_cfg_.empty() ? 1 : static_cast<int>(fb_per_cfg_.size());
+      if (static_cast<int>(delbsq_per_cfg_.size()) != n_vac_cfg) {
+        delbsq_per_cfg_.assign(n_vac_cfg, 0.0);
+      }
       // As on the CPU path, the status holds the latest vacuum solve; in a
       // batch, the first configuration whose solve fails.
       m_h_.vacuum_status = absl::OkStatus();
@@ -1152,6 +1155,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
             // pressure
             delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
           }
+          delbsq_per_cfg_[vac_cfg] = get_delbsq();
           vmecpp::StageRbsqCuda(vac_cfg, rBSq);
         }
       }  // vac_cfg
@@ -5012,6 +5016,15 @@ double IdealMhdModel::get_delbsq() const {
     delBSqAvg /= delBSqNorm;
   }
   return delBSqAvg;
+}
+
+double IdealMhdModel::get_delbsq_per_cfg(int cfg) const {
+  if (!m_fc_.lfreeb ||
+      m_vacuum_pressure_state_ < VacuumPressureState::kActive || cfg < 0 ||
+      cfg >= static_cast<int>(delbsq_per_cfg_.size())) {
+    return 0.0;
+  }
+  return delbsq_per_cfg_[cfg];
 }
 
 int IdealMhdModel::get_ivacskip() const { return ivacskip; }

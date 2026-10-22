@@ -171,6 +171,17 @@ class FlowControl {
   // each multigrid stage transition.
   std::vector<std::uint8_t> converged_per_cfg;
 
+  // Per-configuration counterparts of the time-traces above for a batch of
+  // more than one configuration, logged where the traces above are, for each
+  // configuration still active there; a configuration's traces end at the
+  // iteration it converges, as a single run's do.
+  std::vector<std::vector<double>> force_residual_r_per_cfg;
+  std::vector<std::vector<double>> force_residual_z_per_cfg;
+  std::vector<std::vector<double>> force_residual_lambda_per_cfg;
+  std::vector<std::vector<double>> mhd_energy_per_cfg;
+  std::vector<std::vector<double>> delbsq_per_cfg;
+  std::vector<std::vector<RestartReason>> restart_reasons_per_cfg;
+
   // Allocates each of the per-configuration vectors above to a length of
   // n_cfg, default-initializing the contents. The operation is idempotent:
   // calling with a value matching the present size has no effect. Intended
