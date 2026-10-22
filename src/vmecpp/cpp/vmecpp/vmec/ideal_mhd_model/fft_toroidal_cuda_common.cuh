@@ -1139,6 +1139,7 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_copy_mask);
     cuda_free_if((void*&)d_time_step_per_cfg);
     cuda_free_if((void*&)d_phase_per_cfg);
+    cuda_free_if((void*&)d_edge_per_cfg);
     ns_h_cached = -1;
     nZnT_cached = -1;
     nThetaEff_for_wInt = -1;
@@ -1633,11 +1634,13 @@ struct CudaToroidalState {
   }
 
   // Per-configuration restart control: the mask of a masked snapshot or
-  // store, and each configuration's time step and damping-ring flag (0
-  // resets the ring) for the time-step kernels.
+  // store, each configuration's time step and damping-ring flag (0 resets
+  // the ring) for the time-step kernels, and the configurations whose
+  // invariant residuals count the edge forces.
   std::uint8_t* d_copy_mask = nullptr;
   double* d_time_step_per_cfg = nullptr;
   std::uint8_t* d_phase_per_cfg = nullptr;
+  std::uint8_t* d_edge_per_cfg = nullptr;
   void EnsurePerCfgControlBuffers() {
     if (!d_copy_mask) {
       cuda_check(cudaMalloc(&d_copy_mask, sizeof(std::uint8_t) * n_config_max),
@@ -1652,6 +1655,11 @@ struct CudaToroidalState {
       cuda_check(
           cudaMalloc(&d_phase_per_cfg, sizeof(std::uint8_t) * n_config_max),
           "alloc d_phase_per_cfg");
+    }
+    if (!d_edge_per_cfg) {
+      cuda_check(
+          cudaMalloc(&d_edge_per_cfg, sizeof(std::uint8_t) * n_config_max),
+          "alloc d_edge_per_cfg");
     }
   }
 
@@ -2466,7 +2474,8 @@ __global__ void k_ulp_assemble(int n_config, int ns_con_local, int lambda_stride
                                 const double* __restrict__ cLambda,
                                 const double* __restrict__ sqrtSF,
                                 int sqrtSF_off,  // nsMinF - nsMinF1
-                                double* __restrict__ lambdaPreconditioner);
+                                double* __restrict__ lambdaPreconditioner,
+                                const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ __launch_bounds__(64, 12) void k_compute_mhd_forces(
     int n_config, int ns_local, int ns_force_local, int nZnT, bool lthreed,
     int nsMinF, int nsMinF1, int nsMinH, int nsMaxH, int jMaxRZ,
@@ -2570,7 +2579,8 @@ __global__ void k_volume_reduce(int n_config, int ns_h, double multiplier,
                                   int nsMaxH_minus_1, int ns_minus_2,
                                   int nsMinH,
                                   const double* __restrict__ dVdsH,
-                                  double* __restrict__ out_scalar);
+                                  double* __restrict__ out_scalar,
+                                  const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ void k_bcontra_mutate_lambda(
     int n_config, int ns_local,
     int jF_first, int jF_last_excl, int nZnT, int phipF_jOff,
@@ -2661,10 +2671,12 @@ __global__ void k_constraint_force_multiplier(int n_config,
                                                 const double* __restrict__ ard,
                                                 const double* __restrict__ azd,
                                                 const double* __restrict__ wInt,
-                                                double* __restrict__ tcon);
+                                                double* __restrict__ tcon,
+                                                const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ void k_halve_tcon_lcfs(int n_config, int tcon_stride,
                                     int last_idx,
-                                    double* __restrict__ tcon);
+                                    double* __restrict__ tcon,
+                                    const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ void k_effective_constraint_force(int n_config, int ns_con_local,
                                               int nZnT, int jMin,
                                               const double* __restrict__ rCon,
@@ -2832,7 +2844,9 @@ __global__ void k_residuals_par(
     const double* __restrict__ flsc,
     const double* __restrict__ flcs,
     double* __restrict__ scalars_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    int jLocal_max_rz_edge,
+    const std::uint8_t* __restrict__ edge_per_cfg);
 __global__ void k_residuals_par_K(
     int n_config, int ns_local,
     int jLocal_max_rz, int jLocal_max_boundary,
@@ -2845,7 +2859,9 @@ __global__ void k_residuals_par_K(
     const double* __restrict__ flsc,
     const double* __restrict__ flcs,
     double* __restrict__ partials_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    int jLocal_max_rz_edge,
+    const std::uint8_t* __restrict__ edge_per_cfg);
 __global__ void k_residuals_finalize_K(
     int n_config, int n_partitions,
     const double* __restrict__ partials_in,

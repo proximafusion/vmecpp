@@ -376,19 +376,23 @@ def _assert_same_equilibrium(actual, expected, rel: float) -> None:
 
 
 def test_distinct_batch_outputs_follow_their_single_runs():
-    # Each output of a distinct batch of uniformly scaled boundaries, whose
-    # single runs restart at the same iterations, is the equilibrium of its
-    # single run, iteration for iteration.
+    # Of cma and cma with a stronger m = 1 mode, only cma restarts in its first
+    # iteration; in one distinct batch each takes the iterations and restarts
+    # of its single run and reaches its equilibrium.
     vi = _cma_input()
-    inputs = [
-        vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
-        for f in (1.0, 1.01, 1.02)
-    ]
+    inputs = [vi, vi.model_copy(deep=True)]
+    inputs[1].rbc[1, vi.ntor] *= 1.05
+    inputs[1].zbs[1, vi.ntor] *= 1.05
     outs = vmecpp.run_batch(inputs, max_threads=1)
-    for inp, out in zip(inputs, outs, strict=True):
-        single = vmecpp.run(inp, max_threads=1, verbose=False)
-        assert out.wout.niter == single.wout.niter
-        _assert_same_equilibrium(out.wout, single.wout, rel=1e-10)
+    restarts = [np.asarray(out.wout.restart_reason_timetrace) for out in outs]
+    assert restarts[0][0] != restarts[1][0]
+    for inp, out, reasons in zip(inputs, outs, restarts, strict=True):
+        single = vmecpp.run(inp, max_threads=1, verbose=False).wout
+        assert out.wout.niter == single.niter
+        np.testing.assert_array_equal(
+            reasons, np.asarray(single.restart_reason_timetrace)
+        )
+        _assert_same_equilibrium(out.wout, single, rel=1e-10)
 
 
 def test_distinct_batch_traces_follow_their_single_runs():
@@ -619,14 +623,19 @@ def test_hot_restart_reproduces_converged_state():
 @pytest.mark.slow
 def test_w7x_distinct_batch_converges():
     # Three scaled W7-X boundaries, whose single runs restart mid-run at
-    # different iterations, converge in one distinct batch.
+    # different iterations, converge in one distinct batch in the iterations
+    # of their single runs, to their equilibria.
     vi = vmecpp.VmecInput.from_file(W7X_JSON)
     inputs = [
         vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
         for f in (1.0, 1.0 + 0.01 / 3, 1.0 + 0.02 / 3)
     ]
-    for out in vmecpp.run_batch(inputs, max_threads=1):
+    outs = vmecpp.run_batch(inputs, max_threads=1)
+    for inp, out in zip(inputs, outs, strict=True):
         assert max(out.wout.fsqr, out.wout.fsqz, out.wout.fsql) <= out.wout.ftolv
+        single = vmecpp.run(inp, max_threads=1, verbose=False).wout
+        assert out.wout.niter == single.niter
+        _assert_same_equilibrium(out.wout, single, rel=1e-8)
 
 
 @pytest.mark.slow

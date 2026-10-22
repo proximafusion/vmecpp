@@ -1715,10 +1715,12 @@ __global__ void k_ulp_assemble(int n_config, int ns_con_local, int lambda_stride
                                 const double* __restrict__ cLambda,
                                 const double* __restrict__ sqrtSF,
                                 int sqrtSF_off,  // nsMinF - nsMinF1
-                                double* __restrict__ lambdaPreconditioner) {
+                                double* __restrict__ lambdaPreconditioner,
+                                const std::uint8_t* __restrict__ d_active_per_cfg) {
   int config = blockIdx.z / ns_con_local;
   int jF_local = blockIdx.z - config * ns_con_local;
   if (config >= n_config) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
   int n = blockIdx.y;
   int m = blockIdx.x * blockDim.x + threadIdx.x;
   if (jF_local >= ns_con_local || n > ntor || m >= mpol) return;
@@ -2513,10 +2515,12 @@ __global__ void k_volume_reduce(int n_config, int ns_h, double multiplier,
                                   int nsMaxH_minus_1, int ns_minus_2,
                                   int nsMinH,
                                   const double* __restrict__ dVdsH,
-                                  double* __restrict__ out_scalar) {
+                                  double* __restrict__ out_scalar,
+                                  const std::uint8_t* __restrict__ d_active_per_cfg) {
   // Serial single-thread jH accumulation to match CPU's reduction order.
   int config = blockIdx.x;
   if (config >= n_config) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
   if (threadIdx.x != 0) return;
   size_t cfg_prof = (size_t)config * (size_t)ns_h;
   double acc = 0.0;
@@ -3107,9 +3111,11 @@ __global__ void k_constraint_force_multiplier(int n_config,
                                                 const double* __restrict__ ard,
                                                 const double* __restrict__ azd,
                                                 const double* __restrict__ wInt,
-                                                double* __restrict__ tcon) {
+                                                double* __restrict__ tcon,
+                                                const std::uint8_t* __restrict__ d_active_per_cfg) {
   int config = blockIdx.z;
   if (config >= n_config) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
   int jF = blockIdx.x;
   if (jF >= ns_force_local) return;
   size_t cfg_con  = (size_t)config * (size_t)ns_con_local   * (size_t)nZnT;
@@ -3157,9 +3163,11 @@ __global__ void k_constraint_force_multiplier(int n_config,
 // Batched execution: launch n_config_max blocks, each writes its own slot.
 __global__ void k_halve_tcon_lcfs(int n_config, int tcon_stride,
                                     int last_idx,
-                                    double* __restrict__ tcon) {
+                                    double* __restrict__ tcon,
+                                    const std::uint8_t* __restrict__ d_active_per_cfg) {
   int config = blockIdx.x;
   if (config >= n_config) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
   if (threadIdx.x != 0) return;
   size_t cfg = (size_t)config * (size_t)tcon_stride;
   tcon[cfg + last_idx] = 0.5 * tcon[cfg + last_idx - 1];
@@ -3860,10 +3868,15 @@ __global__ void k_residuals_par(
     const double* __restrict__ flsc,
     const double* __restrict__ flcs,
     double* __restrict__ scalars_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    int jLocal_max_rz_edge,
+    const std::uint8_t* __restrict__ edge_per_cfg) {
   int config = blockIdx.x;
   if (config >= n_config) return;
   if (d_active_per_cfg && !d_active_per_cfg[config]) return;
+  if (edge_per_cfg != nullptr && edge_per_cfg[config]) {
+    jLocal_max_rz = jLocal_max_rz_edge;
+  }
   int tid = threadIdx.x;
   size_t cfg_spec = (size_t)config * (size_t)ns_local *
                     (size_t)mpol * (size_t)(ntor + 1);
@@ -3942,10 +3955,15 @@ __global__ void k_residuals_par_K(
     const double* __restrict__ flsc,
     const double* __restrict__ flcs,
     double* __restrict__ partials_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    int jLocal_max_rz_edge,
+    const std::uint8_t* __restrict__ edge_per_cfg) {
   int config = blockIdx.y;
   int partition = blockIdx.x;
   if (config >= n_config) return;
+  if (edge_per_cfg != nullptr && edge_per_cfg[config]) {
+    jLocal_max_rz = jLocal_max_rz_edge;
+  }
   if (d_active_per_cfg && !d_active_per_cfg[config]) {
     if (threadIdx.x == 0) {
       size_t base = ((size_t)config * (size_t)n_partitions +

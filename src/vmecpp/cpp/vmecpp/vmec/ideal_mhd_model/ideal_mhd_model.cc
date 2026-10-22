@@ -934,7 +934,32 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // NOTE: No need to return here in case of iequi != 0,
   // since we don't overwrite stuff in-place in VMEC++.
 
-  if (shouldUpdateRadialPreconditioner(iter1, iter2)) {
+  bool update_preconditioner = shouldUpdateRadialPreconditioner(iter1, iter2);
+#ifdef VMECPP_USE_CUDA
+  // Under per-configuration restart control each configuration updates its
+  // radial preconditioner, force norms, plasma volume and constraint-force
+  // multiplier on the cadence of its single run, counted from its own latest
+  // restart: the update runs with the active mask narrowed to the
+  // configurations that are due, and the others keep theirs.
+  if (m_fc_.per_cfg_control) {
+    const int n_cfg = static_cast<int>(m_fc_.active_per_cfg.size());
+    precond_due_.assign(n_cfg, 0);
+    update_preconditioner = false;
+    for (int c = 0; c < n_cfg; ++c) {
+      if (m_fc_.active_per_cfg[c] != 0 &&
+          (m_fc_.iter2_per_cfg[c] - m_fc_.iter1_per_cfg[c]) %
+                  m_fc_.kPreconditionerUpdateInterval ==
+              0) {
+        precond_due_[c] = 1;
+        update_preconditioner = true;
+      }
+    }
+    if (update_preconditioner) {
+      vmecpp::StagePhaseDActiveCuda(precond_due_);
+    }
+  }
+#endif  // VMECPP_USE_CUDA
+  if (update_preconditioner) {
 #ifdef _OPENMP
 #pragma omp single nowait
 #endif  // _OPENMP
@@ -979,6 +1004,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
       return true;
     }
   }  // update radial preconditioner?
+#ifdef VMECPP_USE_CUDA
+  if (m_fc_.per_cfg_control && update_preconditioner) {
+    vmecpp::StagePhaseDActiveCuda(m_fc_.active_per_cfg);
+  }
+#endif  // VMECPP_USE_CUDA
 
   // virtual checkpoint, if maximum_iterations not integer multiple of
   // kPreconditionerUpdateInterval
@@ -1550,8 +1580,22 @@ absl::StatusOr<bool> IdealMhdModel::update(
   Eigen::Vector3d localFResInvar;
   localFResInvar.setZero();
 #ifdef VMECPP_USE_CUDA
+  // Under per-configuration restart control each configuration's own
+  // residuals and latest restart decide.
+  if (m_fc_.per_cfg_control) {
+    const int n_cfg = static_cast<int>(m_fc_.active_per_cfg.size());
+    edge_per_cfg_.assign(n_cfg, 0);
+    for (int c = 0; c < n_cfg; ++c) {
+      const bool almost_converged_c =
+          (m_fc_.fsqr_per_cfg[c] + m_fc_.fsqz_per_cfg[c]) < 1.0e-6;
+      edge_per_cfg_[c] = static_cast<std::uint8_t>(
+          (m_fc_.iter2_per_cfg[c] - m_fc_.iter1_per_cfg[c]) < 50 &&
+          (almost_converged_c || hot_restart));
+    }
+  }
   ResidualsCuda(r_, s_, m_fc_, includeEdgeRZForces, localFResInvar[0],
-                localFResInvar[1], localFResInvar[2]);
+                localFResInvar[1], localFResInvar[2], /*is_precd=*/false,
+                m_fc_.per_cfg_control ? &edge_per_cfg_ : nullptr);
 #else
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 #endif
@@ -2782,7 +2826,13 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
         static_cast<int>(vol_cache.size()) == n_cfg) {
       fnorm_rz_per_cfg_.resize(n_cfg, 0.0);
       for (int c = 0; c < n_cfg; ++c) {
-        if (m_fc_.active_per_cfg[c] == 0) {
+        // Under per-configuration restart control only the configurations
+        // due for this update take it.
+        const bool updates = m_fc_.per_cfg_control
+                                 ? c < static_cast<int>(precond_due_.size()) &&
+                                       precond_due_[c] != 0
+                                 : m_fc_.active_per_cfg[c] != 0;
+        if (!updates) {
           continue;
         }
         const double energy_density =

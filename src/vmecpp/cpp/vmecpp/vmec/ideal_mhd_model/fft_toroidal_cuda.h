@@ -366,11 +366,14 @@ void DeAliasConstraintForceCuda(const RadialPartitioning& r,
 // identical set of radial surfaces.
 //
 // Both calls synchronize the stream and return this iteration's values; the
-// invariant call also launches the device convergence check.
+// invariant call also launches the device convergence check. edge_per_cfg,
+// when given, selects per configuration whether the edge R and Z forces count,
+// in place of includeEdgeRZForces.
 void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                    const FlowControl& fc, bool includeEdgeRZForces,
                    double& fResR_out, double& fResZ_out, double& fResL_out,
-                   bool is_precd = false);
+                   bool is_precd = false,
+                   const std::vector<std::uint8_t>* edge_per_cfg = nullptr);
 
 // =============================================================================
 // Per-configuration accessor entry points for the batched execution mode.

@@ -181,10 +181,12 @@ over when the first force evaluation shows a bad Jacobian or huge forces, as
 in its single run. A configuration whose residuals stop being finite, whose
 Jacobian changes sign in the first iteration of a stage, or whose Jacobian
 changed sign 75 times ends as not converged and sits out the later stages; a
-distinct batch never retries from three surfaces. The batch counts the
-cadences of the radial preconditioner and of the vacuum solve from the
-latest restart of any configuration, takes its largest residual to switch
-on the vacuum pressure and the edge forces of a nearly converged residual,
-and skips the force evaluation of every configuration in an iteration in
-which configuration zero's Jacobian changes sign. A broadcast batch shares
+distinct batch never retries from three surfaces. Each configuration
+updates its radial preconditioner, force norms and constraint-force
+multiplier on the cadence of its single run and counts the edge forces of a
+nearly converged residual from its own latest restart. The batch counts the
+cadence of the vacuum solve from the latest restart of any configuration,
+takes its largest residual to switch on the vacuum pressure, and skips the
+force evaluation of every configuration in an iteration in which
+configuration zero's Jacobian changes sign. A broadcast batch shares
 one restart control.

@@ -17,7 +17,8 @@ namespace vmecpp {
 void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                     const FlowControl& fc, bool includeEdgeRZForces,
                     double& fResR_out, double& fResZ_out, double& fResL_out,
-                    bool is_precd) {
+                    bool is_precd,
+                    const std::vector<std::uint8_t>* edge_per_cfg) {
   auto& S = State();
   int ns_dec_local =
       (r.nsMaxF1 == fc.ns) ? (fc.ns - r.nsMinF) : (r.nsMaxF - r.nsMinF);
@@ -36,19 +37,37 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   int nsMax_ = r.nsMaxF;
   int ns = fc.ns;
   int jMaxRZ = std::min(nsMax_, ns - 1);
-  if (includeEdgeRZForces && r.nsMaxF1 == ns) {
-    jMaxRZ = ns;
+  // The range with the edge R and Z forces, which edge_per_cfg selects per
+  // configuration in place of includeEdgeRZForces.
+  const int jMaxRZ_edge = (r.nsMaxF1 == ns) ? ns : jMaxRZ;
+  const bool per_cfg_edge =
+      edge_per_cfg != nullptr &&
+      static_cast<int>(edge_per_cfg->size()) == S.n_config_max;
+  if (includeEdgeRZForces && !per_cfg_edge) {
+    jMaxRZ = jMaxRZ_edge;
   }
   int jMaxIncludeBoundary = nsMax_;
   if (r.nsMaxF1 == ns) {
     jMaxIncludeBoundary = ns;
   }
   int jLocal_max_rz = jMaxRZ - nsMin_;
+  int jLocal_max_rz_edge = jMaxRZ_edge - nsMin_;
   int jLocal_max_boundary = jMaxIncludeBoundary - nsMin_;
   if (jLocal_max_rz < 0) jLocal_max_rz = 0;
+  if (jLocal_max_rz_edge < 0) jLocal_max_rz_edge = 0;
   if (jLocal_max_boundary < 0) jLocal_max_boundary = 0;
   if (jLocal_max_boundary > ns_dec_local) jLocal_max_boundary = ns_dec_local;
   if (jLocal_max_rz > ns_dec_local) jLocal_max_rz = ns_dec_local;
+  if (jLocal_max_rz_edge > ns_dec_local) jLocal_max_rz_edge = ns_dec_local;
+  const std::uint8_t* d_edge = nullptr;
+  if (per_cfg_edge) {
+    S.EnsurePerCfgControlBuffers();
+    cuda_check(cudaMemcpyAsync(S.d_edge_per_cfg, edge_per_cfg->data(),
+                                sizeof(std::uint8_t) * S.n_config_max,
+                                cudaMemcpyHostToDevice, st),
+               "h2d per-cfg edge forces");
+    d_edge = S.d_edge_per_cfg;
+  }
 
   // Batched execution: launch n_config_max blocks (one per config). Each writes 3
   // scalars at residuals_partial[config*3:].
@@ -72,7 +91,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
         S.d_decomposed_fzsc, S.d_decomposed_fzcs,
         S.d_decomposed_flsc, S.d_decomposed_flcs,
         S.d_residuals_partials_K,
-        S.d_active_per_cfg);
+        S.d_active_per_cfg, jLocal_max_rz_edge, d_edge);
     cuda_check(cudaGetLastError(), "k_residuals_par_K launch");
     // Finalize: grid (n_config), TPB=32 (covers up to 32 partitions; we cap
     // K at 16 so half the lanes load zeros and the butterfly still gives
@@ -91,7 +110,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
         S.d_decomposed_fzsc, S.d_decomposed_fzcs,
         S.d_decomposed_flsc, S.d_decomposed_flcs,
         S.d_residuals_partial,
-        S.d_active_per_cfg);
+        S.d_active_per_cfg, jLocal_max_rz_edge, d_edge);
     cuda_check(cudaGetLastError(), "k_residuals_par launch");
   }
   // Device-side convergence flag on normalized residuals (read through

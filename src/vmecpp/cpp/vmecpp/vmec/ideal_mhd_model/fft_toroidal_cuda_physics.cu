@@ -651,6 +651,20 @@ void ComputeBContraCuda(
 // R-side (xs=zs, etc.) and once for Z-side (xs=rs, etc.). Inputs are passed as
 // CPU Eigen::VectorXd& and H2D'd; outputs are produced on device and D2H'd.
 // ============================================================================
+// Copies the per-configuration slices of length per_cfg from src into dst for
+// the active configurations; the others keep theirs.
+__global__ void k_copy_active_cfg(int n_config, size_t per_cfg,
+                                  const double* __restrict__ src,
+                                  double* __restrict__ dst,
+                                  const std::uint8_t* __restrict__ d_active_per_cfg) {
+  const int config = blockIdx.y;
+  const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (config >= n_config || i >= per_cfg) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
+  const size_t off = (size_t)config * per_cfg + i;
+  dst[off] = src[off];
+}
+
 void ComputePreconditioningMatrixCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     double deltaS, int kEvenParity, int kOddParity,
@@ -747,34 +761,33 @@ void ComputePreconditioningMatrixCuda(
   // overwrites the shared scratch arrays d_pm_axm, d_pm_axd, d_pm_bxm,
   // d_pm_bxd, and d_pm_cxd, does not destroy the values that
   // AssembleRZPreconditionerCuda must read for the side processed
-  // first. The snapshot covers every configuration slot in the
-  // batched-buffer layout: any per-configuration omission here would
-  // leave the corresponding slots of the d_pmat_* buffers
-  // uninitialised, and AssembleRZPreconditionerCuda would propagate
-  // those uninitialised values into d_rz_aR, d_rz_dR, d_rz_bR,
-  // d_rz_aZ, d_rz_dZ, and d_rz_bZ, which in turn would contaminate
-  // the PCR solver output, the decomposed-forces buffer
-  // d_decomposed_f, and the persistent d_pts_x state for every
-  // affected configuration.
+  // first. In a batch the snapshot takes the active configurations: every
+  // configuration is active at the first update of a stage, and a
+  // configuration that is not due for an update under per-configuration
+  // restart control keeps the matrices of its latest update.
   double* dst_axm = (side == 0) ? S.d_pmat_arm : S.d_pmat_azm;
   double* dst_axd = (side == 0) ? S.d_pmat_ard : S.d_pmat_azd;
   double* dst_bxm = (side == 0) ? S.d_pmat_brm : S.d_pmat_bzm;
   double* dst_bxd = (side == 0) ? S.d_pmat_brd : S.d_pmat_bzd;
-  cuda_check(cudaMemcpyAsync(dst_axm, S.d_pm_axm,
-                              sizeof(double) * (size_t)S.n_config_max * ns_h * 2,
-                              cudaMemcpyDeviceToDevice, S.stream), "d2d pmat axm");
-  cuda_check(cudaMemcpyAsync(dst_axd, S.d_pm_axd,
-                              sizeof(double) * (size_t)S.n_config_max * ns_force_local * 2,
-                              cudaMemcpyDeviceToDevice, S.stream), "d2d pmat axd");
-  cuda_check(cudaMemcpyAsync(dst_bxm, S.d_pm_bxm,
-                              sizeof(double) * (size_t)S.n_config_max * ns_h * 2,
-                              cudaMemcpyDeviceToDevice, S.stream), "d2d pmat bxm");
-  cuda_check(cudaMemcpyAsync(dst_bxd, S.d_pm_bxd,
-                              sizeof(double) * (size_t)S.n_config_max * ns_force_local * 2,
-                              cudaMemcpyDeviceToDevice, S.stream), "d2d pmat bxd");
-  cuda_check(cudaMemcpyAsync(S.d_pmat_cxd, S.d_pm_cxd,
-                              sizeof(double) * (size_t)S.n_config_max * ns_force_local,
-                              cudaMemcpyDeviceToDevice, S.stream), "d2d pmat cxd");
+  const auto snapshot = [&](double* dst, const double* src, size_t per_cfg,
+                            const char* what) {
+    if (S.n_config_max > 1 && S.d_active_per_cfg) {
+      const int TPB = 256;
+      dim3 grid((unsigned)((per_cfg + TPB - 1) / TPB), S.n_config_max, 1);
+      k_copy_active_cfg<<<grid, TPB, 0, S.stream>>>(
+          S.n_config_max, per_cfg, src, dst, S.d_active_per_cfg);
+      cuda_check(cudaGetLastError(), what);
+    } else {
+      cuda_check(cudaMemcpyAsync(dst, src,
+                                  sizeof(double) * (size_t)S.n_config_max * per_cfg,
+                                  cudaMemcpyDeviceToDevice, S.stream), what);
+    }
+  };
+  snapshot(dst_axm, S.d_pm_axm, (size_t)ns_h * 2, "d2d pmat axm");
+  snapshot(dst_axd, S.d_pm_axd, (size_t)ns_force_local * 2, "d2d pmat axd");
+  snapshot(dst_bxm, S.d_pm_bxm, (size_t)ns_h * 2, "d2d pmat bxm");
+  snapshot(dst_bxd, S.d_pm_bxd, (size_t)ns_force_local * 2, "d2d pmat bxd");
+  snapshot(S.d_pmat_cxd, S.d_pm_cxd, (size_t)ns_force_local, "d2d pmat cxd");
 
   // Keep host D2H too: ApplyM1PreconditionerCuda and ConstraintForceMultiplierCuda
   // still H2D ard/brd/azd/bzd from host. We could remove their H2Ds and read
@@ -805,16 +818,19 @@ void ComputePreconditioningMatrixCuda(
   // values.
 }
 
-// Copies the half-grid bLambda (slots 1 .. ns_h) of every configuration into
-// the profile of the tridiagonal m = 0 lambda preconditioner, with the axis
-// slot and the slots past the last half-grid point zero.
+// Copies the half-grid bLambda (slots 1 .. ns_h) of every active
+// configuration into the profile of the tridiagonal m = 0 lambda
+// preconditioner, with the axis slot and the slots past the last half-grid
+// point zero.
 __global__ void k_lambda_b_half_snapshot(int n_config, int ns_h,
                                          int lambda_stride,
                                          const double* __restrict__ bLambda,
-                                         double* __restrict__ b_half) {
+                                         double* __restrict__ b_half,
+                                         const std::uint8_t* __restrict__ d_active_per_cfg) {
   const int config = blockIdx.y;
   const int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (config >= n_config || k >= lambda_stride) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
   const size_t i = (size_t)config * (size_t)lambda_stride + (size_t)k;
   b_half[i] = (k >= 1 && k <= ns_h) ? bLambda[i] : 0.0;
 }
@@ -859,7 +875,8 @@ void UpdateLambdaPreconditionerCuda(
     const int TPB = 64;
     dim3 b((lambda_stride + TPB - 1) / TPB, S.n_config_max, 1);
     k_lambda_b_half_snapshot<<<b, TPB, 0, S.stream>>>(
-        S.n_config_max, ns_h, lambda_stride, S.d_bLambda, S.d_lambda_b_half);
+        S.n_config_max, ns_h, lambda_stride, S.d_bLambda, S.d_lambda_b_half,
+        S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_lambda_b_half_snapshot launch");
   }
   // Stage 2: axis extrapolation - one block per config.
@@ -911,7 +928,7 @@ void UpdateLambdaPreconditionerCuda(
         S.n_config_max, ns_con_local, lambda_stride, jMin, mpol, ntor,
         s.nfp, pFactor,
         S.d_bLambda, S.d_dLambda, S.d_cLambda, S.d_sqrtSF, sqrtSF_off,
-        S.d_lambdaPreconditioner);
+        S.d_lambdaPreconditioner, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_ulp_assemble launch");
   }
 
@@ -1304,7 +1321,7 @@ void ComputeInitialVolumeCuda(
   // Single-config D2H still reads slot [0] so N=1 path is unchanged.
   k_volume_reduce<<<S.n_config_max, TPB, 0, S.stream>>>(
       S.n_config_max, ns_h, mult, r.nsMaxH - 1, fc.ns - 2, r.nsMinH,
-      S.d_dVdsH, S.d_scalar);
+      S.d_dVdsH, S.d_scalar, nullptr);
   cuda_check(cudaGetLastError(), "k_volume_reduce launch (voli)");
   cuda_check(cudaMemcpyAsync(&voli_out, S.d_scalar, sizeof(double),
                               cudaMemcpyDeviceToHost, S.stream), "d2h voli");
@@ -1329,7 +1346,7 @@ void UpdateVolumeCuda(
   // Batched execution: launch n_config_max_max blocks (one per config).
   k_volume_reduce<<<S.n_config_max, TPB, 0, S.stream>>>(
       S.n_config_max, ns_h, deltaS, r.nsMaxH - 1, fc.ns - 2, r.nsMinH,
-      S.d_dVdsH, S.d_scalar);
+      S.d_dVdsH, S.d_scalar, S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_volume_reduce launch (plasmaVolume)");
   // Per-cfg D2H of all n_config_max slots into the host cache for per-cfg
   // consumers (evalFResInvar uses per-cfg plasmaVolume for energyDensity).
@@ -1386,7 +1403,8 @@ void ConstraintForceMultiplierCuda(
   k_constraint_force_multiplier<<<b, t, 0, S.stream>>>(
       S.n_config_max, ns_con_local, ns_force_local, nZnT, nThetaEff, jMin,
       /*kEvenParity=*/0, tcon_factor,
-      S.d_ruFull, S.d_zuFull, S.d_pmat_ard, S.d_pmat_azd, S.d_wInt, S.d_tcon);
+      S.d_ruFull, S.d_zuFull, S.d_pmat_ard, S.d_pmat_azd, S.d_wInt, S.d_tcon,
+      S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_constraint_force_multiplier launch");
 
   // LCFS halving on device, so that DeAliasConstraintForceCuda reads the
@@ -1400,7 +1418,7 @@ void ConstraintForceMultiplierCuda(
   if (r.nsMaxF1 == fc.ns && ns_con_local >= 2) {
     int last = (r.nsMaxF1 - 1) - r.nsMinF;
     k_halve_tcon_lcfs<<<S.n_config_max, 1, 0, S.stream>>>(
-        S.n_config_max, ns_con_local, last, S.d_tcon);
+        S.n_config_max, ns_con_local, last, S.d_tcon, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_halve_tcon_lcfs launch");
   }
 

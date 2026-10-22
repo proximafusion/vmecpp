@@ -2019,8 +2019,8 @@ void Vmec::ApplyPerConfigurationRestarts(int iter2) {
       vmecpp::SnapshotInactiveCfgCuda(c);
     }
   }
-  // A single run counts its preconditioner, constraint-force and vacuum
-  // cadences from its latest restart; the batch counts them for every
+  // A single run counts its vacuum cadence and refreshes its constraint
+  // origins from its latest restart; the batch counts them for every
   // configuration from the latest restart of any.
   if (any_held) {
     iter1_ = iter2 + 1;
