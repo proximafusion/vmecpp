@@ -907,6 +907,15 @@ struct CudaToroidalState {
   double* d_dLambda = nullptr;
   double* d_cLambda = nullptr;
   double* d_lambdaPreconditioner = nullptr;
+  // Tridiagonal m = 0 lambda preconditioner: the half-grid <g_uu / sqrt g>
+  // profile (stride lambda_stride per cfg, slots 0 and ns zero), and per
+  // (cfg, n) the right-hand side and the eliminated upper diagonal (stride ns).
+  double* d_lambda_b_half = nullptr;
+  double* d_lambda_m0_c = nullptr;
+  double* d_lambda_m0_a = nullptr;
+  int lambda_m0_stride_cached = -1;
+  int lambda_m0_ns_cached = -1;
+  int lambda_m0_ntor_cached = -1;
 
   // computePreconditioningMatrix scratch.
   // ax: ns_h x 4, bx: ns_h x 3, cx: ns_h.
@@ -1413,6 +1422,12 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_dLambda);
     cuda_free_if((void*&)d_cLambda);
     cuda_free_if((void*&)d_lambdaPreconditioner);
+    cuda_free_if((void*&)d_lambda_b_half);
+    cuda_free_if((void*&)d_lambda_m0_c);
+    cuda_free_if((void*&)d_lambda_m0_a);
+    lambda_m0_stride_cached = -1;
+    lambda_m0_ns_cached = -1;
+    lambda_m0_ntor_cached = -1;
     cuda_free_if((void*&)d_ax_scratch);
     cuda_free_if((void*&)d_bx_scratch);
     cuda_free_if((void*&)d_cx_scratch);
@@ -2267,6 +2282,31 @@ struct CudaToroidalState {
     alloc_if_null(d_lambdaPreconditioner,
                   sizeof(double) * n_config_max * ns_con_local * mpol * (ntor + 1));
     (void)ns_h;
+  }
+
+  // Buffers of the tridiagonal m = 0 lambda preconditioner, zero-filled on
+  // allocation so the unwritten end slots of the half-grid profile read zero.
+  void EnsureLambdaM0Buffers(int lambda_stride, int ns, int ntor) {
+    if (d_lambda_b_half && lambda_m0_stride_cached == lambda_stride &&
+        lambda_m0_ns_cached == ns && lambda_m0_ntor_cached == ntor) {
+      return;
+    }
+    auto realloc_zero = [this](double*& p, size_t bytes) {
+      if (p) {
+        cudaFree(p);
+        p = nullptr;
+      }
+      cuda_check(cudaMalloc(&p, bytes), "alloc lambda m0 buf");
+      cuda_check(cudaMemsetAsync(p, 0, bytes, stream), "zero lambda m0 buf");
+    };
+    const size_t rows = (size_t)n_config_max * (size_t)(ntor + 1);
+    realloc_zero(d_lambda_b_half,
+                 sizeof(double) * (size_t)n_config_max * lambda_stride);
+    realloc_zero(d_lambda_m0_c, sizeof(double) * rows * ns);
+    realloc_zero(d_lambda_m0_a, sizeof(double) * rows * ns);
+    lambda_m0_stride_cached = lambda_stride;
+    lambda_m0_ns_cached = ns;
+    lambda_m0_ntor_cached = ntor;
   }
 
   void EnsurePrecondMatrixBuffers(int ns_h, int ns_force_local, int ns_local,

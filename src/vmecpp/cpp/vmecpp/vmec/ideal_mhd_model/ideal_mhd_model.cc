@@ -3014,10 +3014,10 @@ void IdealMhdModel::updateRadialPreconditioner() {
 void IdealMhdModel::updateLambdaPreconditioner() {
 #ifdef VMECPP_USE_CUDA
   {
-    UpdateLambdaPreconditionerCuda(r_, s_, lambda_preconditioner_scale_,
-                                   constants_.lamscale, bLambda.data(),
-                                   dLambda.data(), cLambda.data(),
-                                   lambdaPreconditioner.data());
+    UpdateLambdaPreconditionerCuda(
+        r_, s_, lambda_preconditioner_scale_, constants_.lamscale,
+        lambda_precondition_checkerboard_terms_, bLambda.data(), dLambda.data(),
+        cLambda.data(), lambdaPreconditioner.data());
     return;
   }
 #endif  // VMECPP_USE_CUDA
@@ -5065,9 +5065,11 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   VMECPP_PHASE_TIMER("applyLambdaPreconditioner");
 #ifdef VMECPP_USE_CUDA
   if (!s_.lasym) {
-    ApplyLambdaPreconditionerCuda(r_, s_, lambdaPreconditioner,
-                                  m_decomposed_f.flsc.data(),
-                                  m_decomposed_f.flcs.data());
+    ApplyLambdaPreconditionerCuda(
+        r_, s_, lambdaPreconditioner, lambda_precondition_checkerboard_terms_,
+        lambda_preconditioner_scale_ /
+            (constants_.lamscale * constants_.lamscale),
+        m_decomposed_f.flsc.data(), m_decomposed_f.flcs.data());
     return;
   }
 #endif

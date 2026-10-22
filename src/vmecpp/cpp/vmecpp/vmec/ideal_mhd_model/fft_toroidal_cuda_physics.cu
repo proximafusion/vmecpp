@@ -905,6 +905,20 @@ void ComputePreconditioningMatrixCuda(
   // values.
 }
 
+// Copies the half-grid bLambda (slots 1 .. ns_h) of every configuration into
+// the profile of the tridiagonal m = 0 lambda preconditioner, with the axis
+// slot and the slots past the last half-grid point zero.
+__global__ void k_lambda_b_half_snapshot(int n_config, int ns_h,
+                                         int lambda_stride,
+                                         const double* __restrict__ bLambda,
+                                         double* __restrict__ b_half) {
+  const int config = blockIdx.y;
+  const int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (config >= n_config || k >= lambda_stride) return;
+  const size_t i = (size_t)config * (size_t)lambda_stride + (size_t)k;
+  b_half[i] = (k >= 1 && k <= ns_h) ? bLambda[i] : 0.0;
+}
+
 // ============================================================================
 // UpdateLambdaPreconditionerCuda: CUDA port of IdealMhdModel::
 // updateLambdaPreconditioner. Two stages: half-grid reductions, axis extrap,
@@ -913,8 +927,8 @@ void ComputePreconditioningMatrixCuda(
 void UpdateLambdaPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s,
     double lambdaPreconditionerScale, double lamscale,
-    double* bLambda_out, double* dLambda_out, double* cLambda_out,
-    double* lambdaPreconditioner_host) {
+    double checkerboard_terms, double* bLambda_out, double* dLambda_out,
+    double* cLambda_out, double* lambdaPreconditioner_host) {
   auto& S = State();
   const int ns_h = r.nsMaxH - r.nsMinH;
   const int ns_con_local = r.nsMaxFIncludingLcfs - r.nsMinF;
@@ -937,6 +951,16 @@ void UpdateLambdaPreconditionerCuda(
         S.d_guu, S.d_guv, S.d_gvv, S.d_gsqrt, S.d_wInt,
         S.d_bLambda, S.d_dLambda, S.d_cLambda);
     cuda_check(cudaGetLastError(), "k_ulp_half_reductions launch");
+  }
+  // The half-grid <g_uu / sqrt g> of the tridiagonal m = 0 block, taken before
+  // the axis extrapolation and the full-grid average overwrite bLambda.
+  if (checkerboard_terms >= 0.0) {
+    S.EnsureLambdaM0Buffers(lambda_stride, r.nsMaxFIncludingLcfs, ntor);
+    const int TPB = 64;
+    dim3 b((lambda_stride + TPB - 1) / TPB, S.n_config_max, 1);
+    k_lambda_b_half_snapshot<<<b, TPB, 0, S.stream>>>(
+        S.n_config_max, ns_h, lambda_stride, S.d_bLambda, S.d_lambda_b_half);
+    cuda_check(cudaGetLastError(), "k_lambda_b_half_snapshot launch");
   }
   // Stage 2: axis extrapolation - one block per config.
   int axis_present = (r.nsMinF == 0) ? 1 : 0;
@@ -1833,13 +1857,99 @@ void AssembleTotalForcesCuda(
   (void)frcon_e_out; (void)frcon_o_out; (void)fzcon_e_out; (void)fzcon_o_out;
 }
 
+// Copies the m = 0, n >= 1 lambda forces of every configuration, before the
+// diagonal preconditioner scales them, into the right-hand sides of the
+// tridiagonal m = 0 block: row (cfg, n), global radial index jF.
+__global__ void k_lambda_m0_gather(
+    int n_config, int ns_local, int ns_con_local, int mpol, int ntor,
+    int nsMinF, int ns_total, const double* __restrict__ flcs,
+    double* __restrict__ m0_c,
+    const std::uint8_t* __restrict__ d_active_per_cfg) {
+  const int config = blockIdx.z;
+  if (config >= n_config) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
+  const int n = blockIdx.y + 1;
+  const int jF_local = blockIdx.x * blockDim.x + threadIdx.x;
+  if (jF_local >= ns_con_local || n > ntor) return;
+  const size_t cfg_spec =
+      (size_t)config * (size_t)ns_local * (size_t)mpol * (size_t)(ntor + 1);
+  const size_t row = (size_t)config * (size_t)(ntor + 1) + (size_t)n;
+  m0_c[row * (size_t)ns_total + (size_t)(jF_local + nsMinF)] =
+      flcs[cfg_spec + (size_t)jF_local * (size_t)mpol * (size_t)(ntor + 1) +
+           (size_t)n];
+}
+
+// The tridiagonal radial block of the m = 0 lambda force for one (cfg, n),
+// n >= 1: the matrix of IdealMhdModel::applyLambdaPreconditioner, eliminated
+// as TridiagonalSolveSerial does with jMin = 1, jMax = ns, in the same
+// operation order and with round-to-nearest intrinsics, so no multiply-add is
+// contracted. step_scale times the solution replaces the m = 0 forces of the
+// surfaces jF >= max(1, nsMinF).
+__global__ void k_lambda_m0_solve(
+    int n_config, int ns_local, int mpol, int ntor, int nfp, int nsMinF,
+    int ns_total, int lambda_stride, double checkerboard_terms,
+    double step_scale, const double* __restrict__ b_half,
+    double* __restrict__ m0_c, double* __restrict__ m0_a,
+    double* __restrict__ flcs,
+    const std::uint8_t* __restrict__ d_active_per_cfg) {
+  const int config = blockIdx.y;
+  if (config >= n_config) return;
+  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
+  const int n = blockIdx.x * blockDim.x + threadIdx.x + 1;
+  if (n > ntor) return;
+  const int ns = ns_total;
+  const double tnn = (double)(n * nfp * n * nfp);
+  const double* lb = b_half + (size_t)config * (size_t)lambda_stride;
+  const size_t row = (size_t)config * (size_t)(ntor + 1) + (size_t)n;
+  double* c = m0_c + row * (size_t)ns;
+  double* a = m0_a + row * (size_t)ns;
+  const double diagonal_factor =
+      __dadd_rn(0.25, __dmul_rn(0.5, checkerboard_terms));
+  // Row j: a couples to j + 1, b to j - 1, d is the diagonal.
+  auto coefficients = [&](int j, double& aj, double& dj, double& bj) {
+    const double a_in = __dmul_rn(tnn, lb[j]);
+    const double a_out = __dmul_rn(tnn, lb[j + 1]);
+    bj = __dmul_rn(0.25, a_in);
+    aj = __dmul_rn(0.25, a_out);
+    dj = __dmul_rn(diagonal_factor, __dadd_rn(a_in, a_out));
+    if (j == 1) {
+      dj = __dadd_rn(dj, __dmul_rn(__dmul_rn(0.25, tnn), lb[1]));
+    }
+  };
+  double aj = 0.0;
+  double dj = 0.0;
+  double bj = 0.0;
+  coefficients(1, aj, dj, bj);
+  const double d1 = dj;
+  a[1] = __ddiv_rn(aj, d1);
+  for (int j = 2; j < ns - 1; ++j) {
+    coefficients(j, aj, dj, bj);
+    a[j] = __ddiv_rn(aj, __dsub_rn(dj, __dmul_rn(a[j - 1], bj)));
+  }
+  c[1] = __ddiv_rn(c[1], d1);
+  for (int j = 2; j < ns; ++j) {
+    coefficients(j, aj, dj, bj);
+    const double denominator = __dsub_rn(dj, __dmul_rn(a[j - 1], bj));
+    c[j] = __ddiv_rn(__dsub_rn(c[j], __dmul_rn(c[j - 1], bj)), denominator);
+  }
+  for (int j = ns - 2; j > 0; --j) {
+    c[j] = __dsub_rn(c[j], __dmul_rn(a[j], c[j + 1]));
+  }
+  const size_t cfg_spec =
+      (size_t)config * (size_t)ns_local * (size_t)mpol * (size_t)(ntor + 1);
+  for (int j = (nsMinF > 1 ? nsMinF : 1); j < ns; ++j) {
+    flcs[cfg_spec + (size_t)(j - nsMinF) * (size_t)mpol * (size_t)(ntor + 1) +
+         (size_t)n] = __dmul_rn(c[j], step_scale);
+  }
+}
+
 // ============================================================================
 // ApplyLambdaPreconditionerCuda
 // ============================================================================
 void ApplyLambdaPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s,
-    const Eigen::VectorXd& lambdaPreconditioner,
-    double* flsc_host, double* flcs_host) {
+    const Eigen::VectorXd& lambdaPreconditioner, double checkerboard_terms,
+    double step_scale, double* flsc_host, double* flcs_host) {
   auto& S = State();
   const int ns_con_local = r.nsMaxFIncludingLcfs - r.nsMinF;
   const int mpol = s.mpol;
@@ -1849,6 +1959,20 @@ void ApplyLambdaPreconditionerCuda(
   cudaStream_t st = S.stream;
   S.EnsureLambdaInputBuffer(ns_con_local, mpol, ntor);
   size_t spec_bytes = sizeof(double) * ns_con_local * mpol * (ntor + 1);
+  // m = 0 lambda lives in lmncs, so the tridiagonal block applies in 3D only.
+  // UpdateLambdaPreconditionerCuda has sized its buffers for this stage.
+  const int ns_total = r.nsMaxFIncludingLcfs;
+  const bool m0_tridiagonal =
+      checkerboard_terms >= 0.0 && s.lthreed && ntor >= 1;
+  if (m0_tridiagonal) {
+    S.EnsureLambdaM0Buffers(ns_con_local + 1, ns_total, ntor);
+    const int TPB = 32;
+    dim3 b((ns_con_local + TPB - 1) / TPB, ntor, S.n_config_max);
+    k_lambda_m0_gather<<<b, TPB, 0, st>>>(
+        S.n_config_max, S.ns_local_cached, ns_con_local, mpol, ntor, r.nsMinF,
+        ns_total, S.d_decomposed_flcs, S.d_lambda_m0_c, S.d_active_per_cfg);
+    cuda_check(cudaGetLastError(), "k_lambda_m0_gather launch");
+  }
   // Device-resident path: d_lambdaPreconditioner was just written on
   // device by k_ulp_assemble inside updateLambdaPreconditioner; it's identical
   // to the host m_p_.lambdaPreconditioner that the caller passes. Skip the
@@ -1868,6 +1992,16 @@ void ApplyLambdaPreconditionerCuda(
       S.d_decomposed_flsc, S.d_decomposed_flcs,
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_apply_lambda launch");
+  if (m0_tridiagonal) {
+    const int TPB = 32;
+    dim3 b((ntor + TPB - 1) / TPB, S.n_config_max, 1);
+    k_lambda_m0_solve<<<b, TPB, 0, st>>>(
+        S.n_config_max, S.ns_local_cached, mpol, ntor, s.nfp, r.nsMinF,
+        ns_total, ns_con_local + 1, checkerboard_terms, step_scale,
+        S.d_lambda_b_half, S.d_lambda_m0_c, S.d_lambda_m0_a,
+        S.d_decomposed_flcs, S.d_active_per_cfg);
+    cuda_check(cudaGetLastError(), "k_lambda_m0_solve launch");
+  }
   S.TKEnd(CudaToroidalState::TK_APPLY_LAMBDA);
   DiagCfg01DiffCuda(S.d_decomposed_flsc,
                     S.ns_local_cached * mpol * (ntor + 1), "lam:dec_flsc");

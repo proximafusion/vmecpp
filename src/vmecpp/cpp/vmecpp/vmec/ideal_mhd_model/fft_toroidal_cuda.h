@@ -180,10 +180,13 @@ void ComputeMHDForcesCuda(const RadialPartitioning& r, const Sizes& s,
                           Eigen::VectorXd& crmn_e, Eigen::VectorXd& crmn_o,
                           Eigen::VectorXd& czmn_e, Eigen::VectorXd& czmn_o);
 
+// With checkerboard_terms >= 0 the half-grid <g_uu / sqrt g> profile is also
+// kept for the tridiagonal m = 0 block of ApplyLambdaPreconditionerCuda.
 void UpdateLambdaPreconditionerCuda(const RadialPartitioning& r, const Sizes& s,
                                     double lambdaPreconditionerScale,
-                                    double lamscale, double* bLambda_out,
-                                    double* dLambda_out, double* cLambda_out,
+                                    double lamscale, double checkerboard_terms,
+                                    double* bLambda_out, double* dLambda_out,
+                                    double* cLambda_out,
                                     double* lambdaPreconditioner_host);
 
 // CUDA port of IdealMhdModel::computePreconditioningMatrix. Computes the
@@ -327,9 +330,13 @@ void ApplyM1PreconditionerCuda(const RadialPartitioning& r, const Sizes& s,
 // lambda-force coefficient buffers element-wise by the radial-and-modal
 // lambdaPreconditioner array that
 // IdealMhdModel::updateLambdaPreconditioner populates each
-// preconditioner-update interval.
+// preconditioner-update interval. With checkerboard_terms >= 0 in three
+// dimensions, the m = 0, n >= 1 forces instead take step_scale times the
+// solution of the tridiagonal radial block of the m = 0 lambda force, as on
+// the CPU path; step_scale is lambda_preconditioner_scale / lamscale^2.
 void ApplyLambdaPreconditionerCuda(const RadialPartitioning& r, const Sizes& s,
                                    const Eigen::VectorXd& lambdaPreconditioner,
+                                   double checkerboard_terms, double step_scale,
                                    double* flsc_host, double* flcs_host);
 
 // CUDA port of IdealMhdModel::applyRZPreconditioner. Solves the
