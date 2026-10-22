@@ -540,8 +540,8 @@ def _implicit_vjps(
     with_profiles: bool = False,
     factorization: _Factorization | None = None,
 ) -> tuple[np.ndarray, np.ndarray, _Factorization | None]:
-    """Boundary and half-grid profile cotangents of each row of ``geometry_bars``,
-    and the factorization of the transposed interior system that serves them all."""
+    """Boundary and half-grid profile cotangents of each row of ``geometry_bars``, and
+    the factorization of the transposed interior system that serves them all."""
     if not getattr(model, "has_exact_force_jacobian", False):
         error_message = (
             "This VMEC++ build has no exact residual transpose. Rebuild with "

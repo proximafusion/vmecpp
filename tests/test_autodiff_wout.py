@@ -500,8 +500,8 @@ def test_vjp_linearizes_at_the_forward_solve() -> None:
 
 
 def test_forward_solves_keep_no_cpp_objects() -> None:
-    """The forward cache is bounded, holds NumPy data only, and keeps its entry
-    through a VJP."""
+    """The forward cache is bounded, holds NumPy data only, and keeps its entry through
+    a VJP."""
     indata = _cth_like_input()
     solver = autodiff._RunSolver(indata, max_threads=1)
     boundary = np.asarray(_boundary(indata))
