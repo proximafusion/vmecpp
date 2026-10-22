@@ -299,6 +299,9 @@ def main() -> None:
     parser.add_argument("--taylor", action="store_true")
     parser.add_argument("--coverage", type=int, default=0)
     args = parser.parse_args()
+    if not vmecpp.has_exact_force_jacobian():
+        print("This example needs a build with -DVMECPP_ENABLE_ENZYME=ON.")
+        return
     base = base_input()
     where = positions(base)
     truth_prediction = {
