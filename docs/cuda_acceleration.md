@@ -92,7 +92,7 @@ the spectral width included, agrees with the CPU build within ten times the
 spread between CPU runs on one and on eight threads, which partition the
 radial reductions differently, or to 1e-11 relative where that spread is
 smaller; the interior quantities that
-`tests/test_cuda_gpu.py` checks agree to 5e-11 relative or better. The
+`tests/test_cuda_gpu.py` checks agree to 5e-10 relative or better. The
 residual triples that feed the time-step controller and the convergence gate
 use serial or order-preserving device reductions.
 

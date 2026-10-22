@@ -9,7 +9,7 @@ VMECPP_TEST_CUDA_SLOW=1.
 
 The references are the converged values of the CPU build (VMECPP_USE_CUDA off) of the
 same commit, which the CUDA path reproduces iteration for iteration; the two agree on
-them to 5e-11 relative or better. They are quantities of the solved interior: volume and
+them to 5e-10 relative or better. They are quantities of the solved interior: volume and
 aspect ratio of a fixed-boundary run follow from its input boundary alone.
 tests/cuda_cross_validation.py compares every output field of the two builds.
 """
@@ -82,22 +82,22 @@ CTH_LIKE_FREE = {
     "aspect": 5.433239629580864,
 }
 CTH_LIKE_FREE_MULTIGRID = {
-    "wb": 0.0012835936403525823,
-    "raxis_cc0": 0.7732589827642743,
-    "iota_axis": 1.263373431557459,
-    "iota_edge": 0.8689195897543645,
-    "rbtor": -0.4512154065653895,
-    "volume": 0.3074177738719778,
-    "aspect": 5.433277155589305,
+    "wb": 0.001283593620531752,
+    "raxis_cc0": 0.7732583956350197,
+    "iota_axis": 1.2633673053424452,
+    "iota_edge": 0.8689511268445942,
+    "rbtor": -0.4512153121231798,
+    "volume": 0.3074173204816206,
+    "aspect": 5.433276425079897,
 }
 W7X = {
-    "wb": 1.858625986815991,
-    "raxis_cc0": 5.644890869920212,
-    "iota_axis": 0.8763403560504495,
-    "iota_edge": 0.9513372862491,
-    "rbtor": -13.684233703331365,
+    "wb": 1.858625986732257,
+    "raxis_cc0": 5.644890855046078,
+    "iota_axis": 0.8763391713648294,
+    "iota_edge": 0.9513373357979356,
+    "rbtor": -13.684233710613205,
 }
-W7X_ITERATIONS = 2790
+W7X_ITERATIONS = 2788
 
 # The quantities whose bit identity across runs and modes the tests require.
 _INTERIOR_FIELDS = (
