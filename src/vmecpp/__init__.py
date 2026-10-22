@@ -3312,9 +3312,8 @@ def run_batch(
         inputs: the VmecInput instances to solve.
         distinct: when True (the default) every input is solved as its own
             equilibrium and one VmecOutput is returned per input. When False the
-            first input is broadcast across the batch and a single-element list
-            is returned (a measurement mode; passing more than one input with
-            distinct=False is rejected by the solver).
+            first input is solved in every configuration slot and a
+            single-element list is returned.
         max_threads: maximum number of threads VMEC++ may spawn, as in run().
         verbose: output mode, defaulting to silent for batched runs.
 

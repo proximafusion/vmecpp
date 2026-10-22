@@ -22,7 +22,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DVMECPP_USE_CUDA=ON
 cmake --build build
 ```
 
-Requirements: the CUDA toolkit (nvcc, cuFFT, cuBLAS) and a GPU of compute
+Requirements: the CUDA toolkit (nvcc and cuFFT) and a GPU of compute
 capability 7.0 or newer. `CMAKE_CUDA_ARCHITECTURES` defaults to `70;80;89`.
 The CUDA units compile as C++20; nvcc 12.0 rejects the `std::ranges`
 specialization in abseil's `span.h`, and nvcc 12.6 compiles it.
@@ -94,12 +94,7 @@ radial reductions differently, or to 1e-11 relative where that spread is
 smaller; the interior quantities that
 `tests/test_cuda_gpu.py` checks agree to 5e-10 relative or better. The
 residual triples that feed the time-step controller and the convergence gate
-use serial or order-preserving device reductions.
-
-Sync elision (`VMECPP_SYNC_ELIDE`) tests convergence on the K-window
-boundaries and gates the m = 1 gauge on a residual up to K iterations old, so
-it follows a trajectory of its own and converges within the force tolerance
-of the live result.
+come from device reductions of fixed order, so a run repeats to the last bit.
 
 ## Validation
 
@@ -112,31 +107,31 @@ traces of the first iterations. Its docstring lists the commands.
 the build accepts solves on the GPU and is held to the CPU's references, and
 a test that needs a `lasym` or `lforbal` input or the `VmecModel` iteration
 API is reported as skipped with the build's refusal (`tests/conftest.py`).
-`tests/test_cuda_gpu.py` adds the CUDA-specific cases, opt-in via
-`VMECPP_TEST_CUDA=1`; the W7-X cases additionally need
-`VMECPP_TEST_CUDA_SLOW=1`. The `Build the CUDA path` workflow compiles the
+`tests/test_cuda_gpu.py` adds the CUDA-specific cases, which run in every
+CUDA build; the W7-X case carries the `slow` marker and runs under
+`pytest -m slow`. The `Build the CUDA path` workflow compiles the
 CUDA iteration body and links the Python module on every pull request; its
 runners have no GPU.
 
 ## Batched execution
 
 `run_batched_gpu(indata_list, ...)` solves N equilibria in one CUDA-resident
-iteration loop. All inputs share `mpol`, `ntor`, `nfp`, `lasym`, and the
-multigrid schedule; in distinct mode, `always_fix_m1_gauge` inputs take a
-single-entry `ns_array`. N is at most 65535 / ns at the largest ns of the
-schedule. `VMECPP_BATCH_DISTINCT` selects the mode. Broadcast, the
-default: the first input's spectra fill all N slots and the call returns the
-single converged result. Distinct (`=1`): each configuration keeps its own
-boundary, with per-configuration pre-initialization, axis recomputation,
-residual evolution, time-step control, convergence gating, and outputs, and
-the call returns one `OutputQuantities` per configuration derived from the
-batched run's flushed device state (`VMECPP_PER_CFG_RECOMPUTE=0` opts out).
-Per-configuration converged spectra are also available via
-`return_spectra=True` or `VMECPP_BATCH_OUTPUTS_FILE` plus
-`recompute_outputs_from_spectra`. A configuration that exceeds
-`VMECPP_PER_CFG_NITER_CAP` is marked timed out without failing the rest of
-the batch. Every environment variable the binding sets is restored when the
-call returns.
+iteration loop, and `vmecpp.run_batch` wraps it. All inputs share `mpol`,
+`ntor`, `nfp`, `lasym`, and the multigrid schedule; in distinct mode,
+`always_fix_m1_gauge` inputs take a single-entry `ns_array`. N is at most
+65535 / ns at the largest ns of the schedule. The `distinct` argument selects
+the mode. Broadcast (`distinct=False`, the default of `run_batched_gpu`): the
+first input's spectra fill all N slots and the call returns the single
+converged result. Distinct (`distinct=True`, the default of `run_batch`):
+each configuration keeps its own boundary, magnetic axis, and profiles, with
+per-configuration pre-initialization, axis recomputation, residual
+evolution, time-step control, convergence gating, and outputs, and the call
+returns one `OutputQuantities` per configuration derived from the batched
+run's flushed device state; a derivation that fails raises. The converged
+per-configuration spectra are also returned with `return_spectra=True`.
+
+A run occupies the first visible CUDA device. `CUDA_VISIBLE_DEVICES` selects
+it, and batches on several GPUs run one process per device.
 
 ## Free-boundary execution
 
@@ -147,15 +142,10 @@ outermost totalPressure rows, and the bucoH/bvcoH profiles flush ahead of
 their host reads; and the host-computed `rBSq` profile stages back to the
 device, where a kernel applies the vacuum edge force to the LCFS row ahead of
 the constraint assembly. The rCon0/zCon0 turn-off decay runs as a device
-kernel. Single-configuration NESTOR runs can overlap the vacuum solve with
-the device iteration on a worker thread (`VMECPP_FB_ASYNC_NESTOR=1`); the
-solve and the rBSq assembly are then one iteration stale. The segment
-and whole-iteration CUDA graphs are disabled on free-boundary runs. Under
-sync elision (`VMECPP_SYNC_ELIDE=K`) iterations run live until the vacuum
-state machine reaches its active state; from then on the per-iteration
-scalar sync sites elide, with the device time-step controller authoritative
-and the convergence gate on the K-boundaries, while the vacuum block keeps
-its per-iteration cadence.
+kernel. The segment CUDA graphs run on free-boundary runs as well: the
+segment-3 graph, which holds the vacuum edge-force kernel, and the segment-4
+graph, whose `jMax` follows the vacuum pressure state, are re-captured when
+that state changes.
 
 ## Restart and state backup
 
@@ -176,93 +166,4 @@ buffers and zeroes the integrator velocity; in batched mode the restore is
 gated per configuration by the restart mask. A bad Jacobian during the first
 iterations triggers the magnetic-axis recomputation and a retry from scratch,
 which invalidates the device position, velocity, and backup state so the
-retry re-stages from the recomputed host axis. Under sync elision the backup
-refresh and the restart bookkeeping evaluate on the K-window boundaries, so a
-restart rewinds at most K-1 iterations.
-
-## Runtime controls
-
-Every environment variable the CUDA path reads, grouped by role. Boolean
-knobs parse as `atoi(value) > 0`; "default ON" means active when unset, with
-`=0` disabling.
-
-### Device and batched execution
-
-| Variable | Default | Effect |
-|---|---|---|
-| `VMECPP_CUDA_DEVICE` | `0` | Device ordinal for this process. Multi-GPU batches run one process per device. |
-| `VMECPP_N_CONFIG_MAX` | `1` | Number of configuration slots the persistent device buffers are dimensioned for. At 1 the layout is identical to the single-configuration path. Read once per process. |
-| `VMECPP_BATCH_DISTINCT` | OFF | Distinct mode, one boundary per slot. |
-| `VMECPP_BATCH_MULTIGRID_UPSCALE` | OFF | Per-configuration multigrid stage transition: each configuration's device state is snapshotted at the stage boundary instead of broadcasting configuration 0's host upscale. Distinct mode needs it across the `ns_array` ramp. |
-| `VMECPP_BATCH_UPSCALE_KERNEL` | OFF | Host-exact per-configuration radial interpolation at each stage transition: scale to physical, odd-m axis extrapolation, linear interpolation in s, division by the new stage's scalxc. |
-| `VMECPP_BATCH_PER_CFG_TIMESTEP` | ON | Per-configuration time-step controller: each configuration's `(fac, b1)` derive from its own residual. Active when the batch holds more than one slot. |
-| `VMECPP_BATCH_AXIS_RECOMPUTE` | ON | Per-configuration magnetic-axis recomputation during distinct-mode pre-initialization. `=0` leaves axis recovery to the iteration body's bad-Jacobian path. |
-| `VMECPP_BATCH_INPUTS_FILE` | unset | Binary file of per-configuration spectral inputs (`[component][cfg][spectra]`, int32 shape header), written by the distinct-mode pre-initialization and read once by the first forward transform. |
-| `VMECPP_BATCH_DEC_X_FILE` | unset | Companion file carrying each configuration's pre-triplet decomposed position state for the device time integrator's first iteration. |
-| `VMECPP_BATCH_OUTPUTS_FILE` | unset | Destination for the end-of-run dump of every configuration's converged decomposed spectra, same layout as the inputs file. |
-| `VMECPP_KEEP_BATCH_FILES` | OFF | Keeps the three batch files after `run_batched_gpu` returns. |
-| `VMECPP_PER_CFG_NITER_CAP` | unset | Per-configuration iteration ceiling. A configuration that reaches it is marked timed out; the batch succeeds if at least one configuration converged. |
-| `VMECPP_ACTIVE_PER_CFG_OVERRIDE_BITS` | unset | Bit mask overriding the active-configuration mask at run start. |
-| `VMECPP_PER_CFG_RECOMPUTE` | OFF | In-process per-configuration `OutputQuantities` after a distinct-mode batched run: each configuration's converged device state flushes once and the standard output-derivation chain runs per configuration. Each derived `wout` carries that configuration's own iteration count and final `fsqr`/`fsqz`/`fsql`, snapshotted from its last active iteration. |
-| `VMECPP_RECOMPUTE_FTOL` | last `ftol_array` entry | Tolerance for the single-stage hot-restart recompute run. |
-| `VMECPP_RECOMPUTE_NITER` | unset | Iteration cap for the recompute run. |
-| `VMECPP_RECOMPUTE_LAMBDA` | ON | Seeds the recompute hot restart with the converged lambda spectra. `=0` re-converges lambda from zero. |
-| `VMECPP_RECOMPUTE_LAMBDA_SCALE` | `1.0` | Uniform factor on the lambda seed. |
-
-### Production-path switches (default ON)
-
-`=0` selects the alternative in the second column. Each alternative takes the
-default's iterations to its converged state, to the last bit except the
-serial residual reduction, whose different rounding moves it by 1e-13.
-
-| Variable | `=0` selects |
-|---|---|
-| `VMECPP_SCATTER_V5` | The L1-broadcast scatter (v4) instead of the shared-memory-cached fused scatter (v5). |
-| `VMECPP_JAC_METRIC_FUSE` | Two launches for the Jacobian and the metric elements instead of the fused kernel. |
-| `VMECPP_JAC_METRIC_DVDSH_FUSE` | Fused Jacobian and metric plus a tree-reduced dVdsH instead of the three-way atomicAdd fusion. |
-| `VMECPP_JAC_PAIR` | Per-surface Jacobian blocks instead of the jH-pair-coarsened variant. Requires an even half-grid extent; falls back automatically otherwise. |
-| `VMECPP_MHD_PAIR` | Per-surface MHD-force blocks instead of the jF-pair-coarsened variant. Requires an even force-grid extent; falls back automatically otherwise. |
-| `VMECPP_RESIDUALS_PAR` | The serial residual reduction, bit-identical to the CPU per call, instead of the 256-thread parallel one. |
-| `VMECPP_RESIDUALS_K` | Multi-block residual partitioning; auto picks `K = max(1, 16 / n_config)` capped at 16, an explicit value overrides, `=1` forces a single block. |
-| `VMECPP_DEALIAS_PACK` | One zeta plane per warp in the dealias inverse instead of `32 / nThetaReduced` planes. Packing is selected only when 32 is a multiple of `nThetaReduced`. |
-| `VMECPP_SCATTER_PACK` | One zeta plane per warp in the main-and-constraint scatter. Same selection rule. |
-| `VMECPP_UPDATE_GRAPH` | Per-kernel dispatch instead of the segment-3 CUDA graph (effectiveConstraintForce through assembleTotalForces). |
-| `VMECPP_SEG2_GRAPH` | Per-kernel dispatch instead of the segment-2 CUDA graph (computeMetricElements through radialForceBalance plus hybridLambdaForce). |
-| `VMECPP_SEG4_GRAPH` | Per-kernel dispatch instead of the segment-4 CUDA graph (the four preconditioner-apply wrappers, re-captured when `jMax` changes). |
-| `VMECPP_CONV_FLAG_AUTH` | The host residual comparison as the termination gate instead of the device-side `k_check_convergence` flag; the host comparison is also used when the flag buffers are absent. |
-
-### Opt-in throughput modes (default OFF)
-
-| Variable | Effect |
-|---|---|
-| `VMECPP_FB_ASYNC_NESTOR` | `=1`: on single-configuration NESTOR free-boundary runs, the vacuum solve runs on a worker thread while the device iterates; the device applies the previous iteration's edge force, and the worker runs a full vacuum update every iteration. |
-| `VMECPP_SYNC_ELIDE` | `=K`: K-window sync elision. The per-iteration scalar D2H transfers and stream syncs (tau extrema, residual triples, plasma volume) are skipped on non-boundary iterations; the device time-step controller is authoritative, and the convergence gate, restart bookkeeping, and device-state backups evaluate every K-th iteration. `K=25` matches the preconditioner cadence. |
-| `VMECPP_RESIDUALS_DEFER` | Deferred-sync residuals: the iteration consumes one-iteration-stale residual values; within 10x ftolv the value is force-synced so the gate never fires on a stale read. |
-| `VMECPP_ITER_GRAPH` | Whole-iteration CUDA graph under sync elision: each captured elided iteration replays as one `cudaGraphLaunch`, including both cuFFT execs. Captured after two eligible iterations, invalidated on multigrid stage transitions and restarts. No effect without `VMECPP_SYNC_ELIDE`. |
-| `VMECPP_FWD_GRAPH` | CUDA graph over the forward-FFT chain. |
-
-### Diagnostics (default OFF)
-
-| Variable | Effect |
-|---|---|
-| `VMECPP_KERNEL_TIMING` | Per-kernel cudaEvent timing, dumped at exit and every 10k events. Disables the CUDA graphs and adds per-call syncs. |
-| `VMECPP_KERNEL_TIMING_PATH` | Dump destination. Default `/tmp/vmecpp_kernel_timing.log`. |
-| `VMECPP_PHASE_TIMING_PATH` | Destination for the phase-timer report. Default `/tmp/vmecpp_phase_timing.txt`. |
-| `VMECPP_CPU_ORDER_BCONTRA` | Serial ascending-kl accumulation of the jvPlasma and avg_guu_gsqrt reductions, matching the host loop bit for bit. |
-| `VMECPP_CPU_ORDER_PRECOND` | Host-order serial accumulation of the radial-preconditioner matrix elements, including the host's division forms. |
-| `VMECPP_CPU_ORDER_RZSOLVE` | Serial Thomas elimination in the host order instead of parallel cyclic reduction. |
-| `VMECPP_RZ_FORCE_BLOCK` | The block-Thomas radial solver (the `ns > 1024` path) at any `ns`. |
-| `VMECPP_FB_ASYNC_INLINE` | Runs the asynchronous NESTOR worker's solve inline from the submit call. |
-| `VMECPP_DUMP_TCON` | One-shot full-precision print of the first constraint-multiplier profile. |
-| `VMECPP_DUMP_GCON` | One-shot print of the effective-constraint-force checksum and the per-surface sums of the dealiased constraint force. |
-| `VMECPP_DUMP_SPECS` | One-shot dump of the staged spectral input (configuration 0). |
-| `VMECPP_STATE_DUMP_ITERS` | Comma-separated `iter2` values at which the full batched decomposed-x state is written to disk. |
-| `VMECPP_STATE_DUMP_F` / `VMECPP_STATE_DUMP_PROF` | Add the decomposed forces / the per-configuration radial profiles to the state dumps. |
-| `VMECPP_STATE_DUMP_PATH` | Filename prefix for the state dumps. |
-| `VMECPP_PERCFG_RESIDUAL_DUMP` | `=K`: logs each configuration's residual triple every K iterations. |
-| `VMECPP_TRACE_RESTART` | Logs every backup store and restore event with the controller inputs that drove it. |
-| `VMECPP_TRACE_CFG_DIFF` | Per-call max-abs-difference probe between the configuration 0 and 1 slices of named device buffers. |
-| `VMECPP_CONV_FLAG_DEBUG` | Logs any disagreement between the device convergence flag and the host gate. |
-| `VMECPP_VALIDATE_DEVICE_TIMESTEP` | One-shot comparison of the device time-step controller's `(fac, b1)` against the host-computed values. |
-| `VMECPP_DEFENSIVE_BROADCAST` | Re-broadcasts configuration 0's position state into all slots on every recompose. |
-| `VMECPP_BATCH_PERTURB` | Scales each configuration's input spectra by `1 + scale * cfg / n_cfg`. |
+retry re-stages from the recomputed host axis.
