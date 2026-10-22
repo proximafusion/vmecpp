@@ -2904,6 +2904,16 @@ individual configurations.
         const char *distinct_env = std::getenv("VMECPP_BATCH_DISTINCT");
         const bool distinct_mode = distinct || (distinct_env != nullptr &&
                                                 std::atoi(distinct_env) > 0);
+        // Distinct mode interpolates every configuration on the device at the
+        // multigrid transitions, which does not reset the m = 1 gauge from the
+        // boundary as always_fix_m1_gauge does on the host.
+        if (distinct_mode && seed.always_fix_m1_gauge &&
+            seed.ns_array.size() > 1) {
+          throw std::runtime_error(
+              "run_batched_gpu distinct mode supports always_fix_m1_gauge with "
+              "a single-entry ns_array only; solve multigrid inputs with "
+              "always_fix_m1_gauge through vmecpp.run");
+        }
 
         // run_batched_gpu stages only per-config boundary geometry and the
         // magnetic axis to the device. In broadcast mode (distinct mode off)
