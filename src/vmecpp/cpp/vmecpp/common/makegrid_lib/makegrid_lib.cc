@@ -437,7 +437,8 @@ void CartesianToCylindricalField(
 
 absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     const MakegridParameters& makegrid_parameters,
-    const MagneticConfiguration& magnetic_configuration) {
+    const MagneticConfiguration& magnetic_configuration,
+    const ProgressCallback& progress) {
   absl::StatusOr<RowMatrix3Xd> maybe_cylindrical_grid =
       MakeCylindricalGrid(makegrid_parameters);
   if (!maybe_cylindrical_grid.ok()) {
@@ -510,6 +511,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
                               total_number_of_grid_points);
 
   std::vector<absl::Status> status(number_of_serial_circuits);
+  if (progress) progress(0, number_of_serial_circuits);
 
   // Now compute the magnetic field for each SerialCircuit individually in the
   // MagneticConfiguration. This is conveniently done by setting the currents to
@@ -561,8 +563,7 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
                                 response_table_b.b_p.row(circuit_index),
                                 response_table_b.b_z.row(circuit_index));
 
-    LOG(INFO) << absl::StrFormat("B %2d/%2d: done", circuit_index + 1,
-                                 number_of_serial_circuits);
+    if (progress) progress(circuit_index + 1, number_of_serial_circuits);
   }  // circuit_index
 
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;
@@ -577,7 +578,8 @@ absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
 
 absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     const MakegridParameters& makegrid_parameters,
-    const MagneticConfiguration& magnetic_configuration) {
+    const MagneticConfiguration& magnetic_configuration,
+    const ProgressCallback& progress) {
   absl::StatusOr<RowMatrix3Xd> maybe_cylindrical_grid =
       MakeCylindricalGrid(makegrid_parameters);
   if (!maybe_cylindrical_grid.ok()) {
@@ -652,6 +654,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
                               total_number_of_grid_points);
 
   std::vector<absl::Status> status(number_of_serial_circuits);
+  if (progress) progress(0, number_of_serial_circuits);
 
   // Now compute the vector potential for each SerialCircuit individually in the
   // MagneticConfiguration. This is conveniently done by setting the currents to
@@ -748,8 +751,7 @@ absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
       }
     }
 
-    LOG(INFO) << absl::StrFormat("A %2d/%2d: done", circuit_index + 1,
-                                 number_of_serial_circuits);
+    if (progress) progress(circuit_index + 1, number_of_serial_circuits);
   }  // circuit_index
 
   for (int circuit_index = 0; circuit_index < number_of_serial_circuits;

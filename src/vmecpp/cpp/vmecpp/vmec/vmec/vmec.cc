@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -114,7 +115,7 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
-    InterruptCallback interrupt_callback, bool always_fix_m1_gauge,
+    InterruptCallback interrupt_callback,
     IterationCallback iteration_callback) {
   auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
                                      std::move(interrupt_callback),
@@ -123,7 +124,6 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
     return maybe_vmec.status();
   }
   Vmec& v = **maybe_vmec;
-  v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
   // the values of the first three arguments should just be VMEC's defaults
   absl::StatusOr<bool> s =
@@ -162,14 +162,37 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
   return std::move(v.output_quantities_);
 }
 
-namespace vmecpp {
-
-absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
-    const VmecINDATA& indata,
-    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<HotRestartState> initial_state,
     std::optional<int> max_threads, OutputMode verbose,
     InterruptCallback interrupt_callback,
     IterationCallback iteration_callback) {
+  auto maybe_vmec = Vmec::FromIndata(
+      indata, std::move(magnetic_field), max_threads, verbose,
+      std::move(interrupt_callback), std::move(iteration_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
+
+  // the values of the first three arguments should just be VMEC's defaults
+  absl::StatusOr<bool> s =
+      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+
+  if (!s.ok()) {
+    return s.status();
+  }
+
+  return std::move(v.output_quantities_);
+}
+
+namespace vmecpp {
+
+namespace {
+// Checks what the Vmec constructor relies on.
+absl::Status CheckConstructorArguments(const VmecINDATA& indata,
+                                       std::optional<int> max_threads) {
   // check the input before the constructor builds Sizes from it; the
   // informational messages are left to the check in run()
   absl::Status is_indata_consistent =
@@ -184,6 +207,21 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
         "The number of threads must be >= 1, but is %d. To use all available "
         "threads, leave max_threads unset.",
         *max_threads));
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  absl::Status arguments_status =
+      CheckConstructorArguments(indata, max_threads);
+  if (!arguments_status.ok()) {
+    return arguments_status;
   }
 
   auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
@@ -202,8 +240,31 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
     if (!s.ok()) {
       return s;
     }
+    v->magnetic_field_ =
+        std::bind_front(&MGridProvider::interpolate, &v->mgrid_);
   }
 
+  return v;
+}
+
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  if (!magnetic_field) {
+    return absl::InvalidArgumentError("magnetic_field must not be empty.");
+  }
+  absl::Status arguments_status =
+      CheckConstructorArguments(indata, max_threads);
+  if (!arguments_status.ok()) {
+    return arguments_status;
+  }
+
+  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+                                  std::move(interrupt_callback),
+                                  std::move(iteration_callback));
+  v->magnetic_field_ = std::move(magnetic_field);
   return v;
 }
 
@@ -270,6 +331,8 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       invTau_(kNDamp),
       last_preconditioner_update_(0),
       last_full_update_nestor_(0) {
+  always_fix_m1_gauge_ = indata_.always_fix_m1_gauge;
+
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
 
@@ -375,7 +438,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     }
   }
 #endif  // VMECPP_USE_CUDA
-  if (indata_.lfreeb) {
+  if (indata_.lfreeb && !magnetic_field_) {
     if (!mgrid_.IsLoaded()) {
       // Fallback: load mgrid from file if constructed directly via the public
       // constructor instead of the FromIndata factory method.
@@ -384,6 +447,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return status;
       }
     }
+    magnetic_field_ = std::bind_front(&MGridProvider::interpolate, &mgrid_);
+  }
+  if (indata_.lfreeb && mgrid_.IsLoaded()) {
     // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
     // toroidal resolution of the run.
     if (mgrid_.numPhi != s_.nZeta) {
@@ -726,34 +792,12 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 }  // run
 
 void Vmec::SetupVacuumSolvers() {
-#ifdef _OPENMP
-  // The vacuum solve runs in a parallel region nested inside the persistent
-  // radial parallel region (see IdealMhdModel::update). Allow at least two
-  // active parallel levels so the nested team is actually granted its threads
-  // rather than being serialized to one.
-  // omp_set_nested is deprecated but still needed by older libgomp runtimes.
-  omp_set_nested(1);
-#if _OPENMP >= 200805
-  // OpenMP 3.0; the MSVC runtime implements OpenMP 2.0, where nesting is
-  // enabled by omp_set_nested alone.
-  omp_set_max_active_levels(2);
-#endif
-#endif  // _OPENMP
-
-  // The tangential partitioning covers the grid only if every vacuum thread
-  // runs, so the vacuum team is sized to what the runtime grants next to the
-  // radial team of num_threads_ threads. OMP_THREAD_LIMIT counts both teams,
-  // and an enclosing parallel region can use up the active levels.
-#ifdef VMECPP_USE_CUDA
-  // The CUDA iteration body drives the vacuum solve serially on the host,
-  // one full-tangential-grid solver call per configuration (see the vacuum
-  // block in IdealMhdModel::update), so the tangential grid is not
-  // partitioned and fb_vac_[0] is the full-grid solver.
-  const int vac_num_threads = 1;
-#else
-  const int vac_num_threads = GrantedNestedThreads(
-      num_threads_, vmec_adjust_vacuum_num_threads(fc_.max_threads(), s_.nZnT));
-#endif  // VMECPP_USE_CUDA
+  // The vacuum solve runs cooperatively in the persistent radial parallel
+  // region (see IdealMhdModel::update), so its tangential partitioning is over
+  // the radial team of num_threads_ threads, which the runtime has granted.
+  // The CUDA build runs one radial thread, so fb_vac_[0] covers the whole
+  // tangential grid.
+  const int vac_num_threads = num_threads_;
   if (vac_num_threads == vac_num_threads_) {
     return;
   }
@@ -774,7 +818,7 @@ void Vmec::SetupVacuumSolvers() {
 
     if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
       fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
-          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
           std::span<double>(matrixShare.data(), matrixShare.size()),
           std::span<double>(bvecShare.data(), bvecShare.size()),
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
@@ -787,7 +831,7 @@ void Vmec::SetupVacuumSolvers() {
                             vacuum_reduce_slots_.size()));
     } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
       fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
-          &vacuum_s_, tp_vac_[vac_thread_id].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
           std::span<double>(h_.vacuum_magnetic_pressure.data(),
                             h_.vacuum_magnetic_pressure.size()),
           std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
@@ -805,8 +849,8 @@ void Vmec::SetupVacuumSolvers() {
 #ifdef VMECPP_USE_CUDA
   // Batched free-boundary: one further NESTOR instance per configuration
   // slot, each with its own persistent response matrix, right-hand side,
-  // LU decomposition and reduction slots. They share the mgrid provider and
-  // the HandoverStorage output spans; the vacuum loop in
+  // LU decomposition and reduction slots. They share the external magnetic
+  // field and the HandoverStorage output spans; the vacuum loop in
   // IdealMhdModel::update consumes each configuration's outputs before the
   // next solver call overwrites them. Like fb_vac_, the instances persist
   // across multigrid stages. All spans captured here are sized in the Vmec
@@ -814,8 +858,8 @@ void Vmec::SetupVacuumSolvers() {
   const int n_cfg_fb = vmecpp::GetNConfigMaxCuda();
   if (n_cfg_fb > 1 &&
       indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-    const int nf = s_.ntor;
-    const int mf = s_.mpol + 1;
+    const int nf = vacuum_s_.ntor;
+    const int mf = vacuum_s_.mpol + 1;
     const int mnpd = (2 * nf + 1) * (mf + 1);
     fb_matrix_per_cfg_.resize(n_cfg_fb - 1);
     fb_lu_per_cfg_.resize(n_cfg_fb - 1);
@@ -829,7 +873,7 @@ void Vmec::SetupVacuumSolvers() {
       // matrix-sized contribution (vacuum_reduce_slots_ with one thread).
       fb_reduce_slots_per_cfg_[c].setZero(mnpd * mnpd);
       fb_extra_cfg_[c] = std::make_unique<Nestor>(
-          &s_, tp_vac_[0].get(), &mgrid_,
+          &vacuum_s_, tp_vac_[0].get(), &magnetic_field_,
           std::span<double>(fb_matrix_per_cfg_[c].data(),
                             fb_matrix_per_cfg_[c].size()),
           std::span<double>(fb_bvec_per_cfg_[c].data(),
@@ -857,8 +901,8 @@ void Vmec::SetupVacuumSolvers() {
   const bool async_enabled = (async_env != nullptr && std::atoi(async_env) > 0);
   if (n_cfg_fb == 1 && async_enabled &&
       indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-    const int nf = s_.ntor;
-    const int mf = s_.mpol + 1;
+    const int nf = vacuum_s_.ntor;
+    const int mf = vacuum_s_.mpol + 1;
     const int mnpd = (2 * nf + 1) * (mf + 1);
     fb_async_matrix_.setZero(mnpd * mnpd);
     fb_async_bvec_.setZero(mnpd);
@@ -868,7 +912,7 @@ void Vmec::SetupVacuumSolvers() {
     fb_async_bphi_.setZero(h_.vacuum_b_phi.size());
     fb_async_bz_.setZero(h_.vacuum_b_z.size());
     fb_async_ = std::make_unique<Nestor>(
-        &s_, tp_vac_[0].get(), &mgrid_,
+        &vacuum_s_, tp_vac_[0].get(), &magnetic_field_,
         std::span<double>(fb_async_matrix_.data(), fb_async_matrix_.size()),
         std::span<double>(fb_async_bvec_.data(), fb_async_bvec_.size()),
         std::span<double>(fb_async_bsqvac_.data(), fb_async_bsqvac_.size()),
@@ -988,12 +1032,9 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
         fc_.max_threads(), fc_.num_surfaces_to_distribute));
 #endif  // VMECPP_USE_CUDA
 
-    // Set up the free-boundary vacuum solvers. Their thread count
-    // (vac_num_threads_) is decoupled from the radial num_threads_: the vacuum
-    // solve is parallelized over the tangential grid (nZnT), so it can use the
-    // full thread budget even at coarse multigrid steps where num_threads_ is
-    // capped at ns/2. The solvers persist across multigrid steps, rebuilt only
-    // when the team granted next to this step's radial team changes size; the
+    // Set up the free-boundary vacuum solvers, partitioned over the tangential
+    // grid (nZnT) among the num_threads_ radial threads. The solvers persist
+    // across multigrid steps, rebuilt only when num_threads_ changes; the
     // accumulated vacuum response matrix/RHS live in Vmec, in ns-independent
     // Fourier space, and persist either way, reproducing Fortran VMEC's
     // persistent vacuum state.
@@ -1055,16 +1096,16 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
 #endif
 
       // setup MHD model. The free-boundary vacuum solvers (fb_vac_) are shared
-      // across all radial threads and driven from a nested parallel region, so
-      // the whole vector - not a per-thread solver - is handed to the model.
+      // across all radial threads, each of which drives one of them, so the
+      // whole vector - not a per-thread solver - is handed to the model.
       m_[thread_id] = std::make_unique<IdealMhdModel>(
           &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
           ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
-          vac_num_threads_, indata_.signgs, indata_.nvacskip,
-          &vacuum_pressure_state_);
-      m_[thread_id]->setFromINDATA(indata_.ncurr, indata_.gamma, indata_.tcon0,
-                                   indata_.lforbal,
-                                   indata_.lambda_preconditioner_scale);
+          indata_.signgs, indata_.nvacskip, &vacuum_pressure_state_);
+      m_[thread_id]->setFromINDATA(
+          indata_.ncurr, indata_.gamma, indata_.tcon0, indata_.lforbal,
+          indata_.lambda_preconditioner_scale,
+          indata_.lambda_precondition_checkerboard_terms);
 #ifdef VMECPP_USE_CUDA
       if (!fb_extra_cfg_.empty()) {
         std::vector<FreeBoundaryBase*> fb_ptrs;

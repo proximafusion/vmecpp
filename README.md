@@ -32,12 +32,12 @@ Compared to its Fortran predecessors, VMEC++:
 - has a zero-crash policy and reports issues via standard Python exceptions
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
-- typically runs faster
+- runs faster in the majority of cases
 - comes with [substantial documentation of its internal numerics](https://github.com/proximafusion/vmecpp/blob/main/docs/the_numerics_of_vmecpp.pdf)
 
 VMEC++ can run on a laptop, but it is a suitable component for large-scale stellarator optimization pipelines.
 
-On the other hand, some features of the original Fortran VMEC are not available in VMEC++.
+On the other hand, some features of the original Fortran VMEC are intentionally omitted from VMEC++ to reduce complexity.
 See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 
 <!-- NOTE: if you change the intro above, remember to also adapt docs/index.md! -->
@@ -162,7 +162,19 @@ In a terminal in which Python has access to the VMEC++ package:
 # vmecpp is a python module and can be either run with `python -m` or directly as a script
 vmecpp examples/data/input.w7x
 
-# check all options
+vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
+vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
+vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fortran VMEC
+
+# convert a classic Fortran indata file to VMEC++'s JSON format -> examples/data/w7x.json
+vmecpp convert examples/data/input.w7x
+
+# compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
+# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
+vmecpp mgrid makegrid_parameters.json coils.<name>
+
+# print the version, or check all options
+vmecpp --version
 vmecpp --help
 ```
 
@@ -191,7 +203,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake gfortran libnetcdf-dev libomp-dev libhdf5-dev python3-dev
+sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -211,7 +223,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install required system packages:
 
 ```shell
-pacman -Sy --noconfirm python-pip gcc gcc-fortran openmp hdf5 netcdf
+pacman -Sy --noconfirm python-pip gcc openmp zlib cmake
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -227,7 +239,7 @@ python -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install required system packages:
 
 ```shell
-dnf install -y python3.10-devel cmake g++ gfortran libomp-devel hdf5-devel netcdf-devel
+dnf install -y python3.10-devel cmake g++ zlib-devel libomp-devel
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -318,14 +330,15 @@ VMEC++ on a configuration that is very similar to the converged equilibrium.
 ```python
 import vmecpp
 
-vmec_input = vmecpp.VmecInput.from_file("w7x.json")
+vmec_input = vmecpp.VmecInput.from_file("examples/data/w7x.json")
 
 # Base run
 vmec_output = vmecpp.run(vmec_input)
 
 # Now let's perturb the plasma boundary a little bit...
-vmec_input.rbc[0, 0] *= 0.8
-vmec_input.rbc[1, 0] *= 1.2
+ntor = vmec_input.ntor
+vmec_input.rbc[0, ntor+0] *= 1.0 + 1.0e-6 # m=0, n=0
+vmec_input.rbc[1, ntor+0] *= 1.0 - 1.0e-6 # m=1, n=0
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
 vmec_input.ns_array = vmec_input.ns_array[-1:]
 vmec_input.ftol_array = vmec_input.ftol_array[-1:]
