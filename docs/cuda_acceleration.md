@@ -166,10 +166,15 @@ buffers, as the CPU path keeps `last_evaluated_x`; the free-boundary soft
 start at vacuum activation rewinds to it as well. The progress printout's
 `<M>` column and the spectral width in the output file are taken from this
 backup, as on the CPU. A restore replays the backup into the position
-buffers and zeroes the integrator velocity. In a batch, a bad Jacobian
-rewinds the configurations whose Jacobian changed sign, and the other
-restarts, decided from the shared residual trajectory, rewind every active
-configuration. A bad Jacobian during the first
+buffers and zeroes the integrator velocity. A batch shares its time step
+and its restart decisions, which follow configuration zero's residuals while
+every configuration iterates and the largest active residuals once some have
+converged: a bad Jacobian rewinds the configurations whose Jacobian changed
+sign, and the other restarts rewind every active configuration. A
+configuration's trajectory in a batch can therefore differ from its single
+run's, and a configuration whose residuals stop being finite leaves the batch
+as not converged. A distinct batch starts over with a recomputed magnetic
+axis only from its first iteration and never retries from three surfaces. A bad Jacobian during the first
 iterations triggers the magnetic-axis recomputation and a retry from scratch,
 which invalidates the device position, velocity, and backup state so the
 retry re-stages from the recomputed host axis.

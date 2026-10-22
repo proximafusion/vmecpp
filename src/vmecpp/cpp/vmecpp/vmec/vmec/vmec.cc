@@ -1473,8 +1473,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       return SolveEqLoopStatus::CHECKPOINT_REACHED;
     }
 
-    // check for bad jacobian and bad initial guess for axis
-    if (fc_.ijacob == 0 &&
+    // check for bad jacobian and bad initial guess for axis; a distinct batch
+    // starts over only from its first iteration, where every configuration
+    // restages its own initial state
+    if ((batch_indata_.empty() || iter2 == 1) && fc_.ijacob == 0 &&
         (status_ == VmecStatus::BAD_JACOBIAN ||
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
         fc_.ns >= 3) {
@@ -1531,7 +1533,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // continue at all; a bad Jacobian on the first pass returns to run(),
       // which retries from a three-surface mesh
       const bool retry_from_three_surfaces =
-          status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0;
+          status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0 &&
+          batch_indata_.empty();
       if (!indata_.return_outputs_even_if_not_converged &&
           !retry_from_three_surfaces) {
         const auto msg = absl::StrFormat(
@@ -2081,6 +2084,18 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         for (int c = 0; c < n_cfg; ++c) {
           if (fc_.active_per_cfg[c]) {
             ++fc_.iter2_per_cfg[c];
+            if (!std::isfinite(fc_.fsqr_per_cfg[c]) ||
+                !std::isfinite(fc_.fsqz_per_cfg[c]) ||
+                !std::isfinite(fc_.fsql_per_cfg[c])) {
+              // A configuration whose residuals are no longer finite stops
+              // iterating and counts as not converged.
+              fc_.active_per_cfg[c] = 0;
+              fc_.converged_per_cfg[c] = 0;
+#ifdef VMECPP_USE_CUDA
+              vmecpp::SnapshotInactiveCfgCuda(c);
+#endif
+              continue;
+            }
             const bool host_done = (fc_.fsqr_per_cfg[c] <= fc_.ftolv &&
                                     fc_.fsqz_per_cfg[c] <= fc_.ftolv &&
                                     fc_.fsql_per_cfg[c] <= fc_.ftolv);
