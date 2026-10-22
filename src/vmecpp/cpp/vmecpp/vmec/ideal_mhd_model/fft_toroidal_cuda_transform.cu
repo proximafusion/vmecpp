@@ -22,7 +22,7 @@ __global__ void k_d2z_identity_nzeta1(int n, const double* __restrict__ Y,
 }
 }  // namespace
 
-// Warp-packed variant of k_scatter_main_and_con_v5 (kernels.cu). The v5 kernel
+// Warp-packed variant of k_scatter_main_and_con (kernels.cu). That kernel
 // assigns one warp to one (config, jF_local, k) tuple and uses lane = l for the
 // poloidal axis, so 32 - nThetaReduced lanes are idle every cycle (16 of 32 on
 // W7-X, half the FP64 throughput wasted). This variant packs ks_per_warp =
@@ -32,8 +32,8 @@ __global__ void k_d2z_identity_nzeta1(int n, const double* __restrict__ Y,
 // replicated ks_per_warp times per warp (one tile per packed zeta plane).
 // Registers stay the occupancy limiter, so the extra shared memory is free.
 // Selected when 32 is an exact multiple of nThetaReduced. Per-(jF, k, l)
-// arithmetic is identical to v5.
-__global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5_packed(
+// arithmetic is identical to k_scatter_main_and_con.
+__global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_packed(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced,
     int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -367,8 +367,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
     constexpr int WARPS_PER_BLOCK = 4;
     int z_total = ns_local * S.n_config_max;
     int z_blocks = (z_total + WARPS_PER_BLOCK - 1) / WARPS_PER_BLOCK;
-    dim3 v4_blocks((nThetaReduced + 31) / 32, nZeta, z_blocks);
-    dim3 v4_tpb(32, WARPS_PER_BLOCK, 1);
+    dim3 scatter_blocks((nThetaReduced + 31) / 32, nZeta, z_blocks);
+    dim3 scatter_tpb(32, WARPS_PER_BLOCK, 1);
     // Each warp caches its Y tile in shared memory; when 32 is a multiple of
     // nThetaReduced, a warp packs several zeta planes.
     const int ks_per_warp = (nThetaReduced > 0) ? (32 / nThetaReduced) : 0;
@@ -379,7 +379,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
       dim3 pk_tpb(32, WARPS_PER_BLOCK, 1);
       size_t pk_smem = sizeof(double) * (size_t)WARPS_PER_BLOCK *
                        (size_t)ks_per_warp * (size_t)mpol * (size_t)kBatch;
-      k_scatter_main_and_con_v5_packed<<<pk_blocks, pk_tpb, pk_smem, st>>>(
+      k_scatter_main_and_con_packed<<<pk_blocks, pk_tpb, pk_smem, st>>>(
           S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
           S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
           S.d_xmpq, S.d_sqrtSF,
@@ -389,11 +389,11 @@ void FourierToReal3DSymmFastPoloidalCuda(
           S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
           S.d_rCon, S.d_zCon);
       cuda_check(cudaGetLastError(),
-                 "k_scatter_main_and_con_v5_packed launch");
+                 "k_scatter_main_and_con_packed launch");
     } else {
       // Shared memory per block: blockDim.y warps * mpol * kBatch doubles.
-      size_t smem_bytes = sizeof(double) * v4_tpb.y * mpol * kBatch;
-      k_scatter_main_and_con_v5<<<v4_blocks, v4_tpb, smem_bytes, st>>>(
+      size_t smem_bytes = sizeof(double) * scatter_tpb.y * mpol * kBatch;
+      k_scatter_main_and_con<<<scatter_blocks, scatter_tpb, smem_bytes, st>>>(
           S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
           S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
           S.d_xmpq, S.d_sqrtSF,
@@ -402,7 +402,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
           S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
           S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
           S.d_rCon, S.d_zCon);
-      cuda_check(cudaGetLastError(), "k_scatter_main_and_con_v5 launch");
+      cuda_check(cudaGetLastError(), "k_scatter_main_and_con launch");
     }
   }
 

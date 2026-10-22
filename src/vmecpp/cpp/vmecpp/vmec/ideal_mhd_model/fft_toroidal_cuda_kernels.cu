@@ -153,7 +153,7 @@ __global__ void k_fill_spectra(
 // inner toroidal-mode loop are staged into a per-warp shared-memory tile of
 // mpol * kBatch doubles, which four lanes of each warp load cooperatively
 // before the toroidal-mode loop begins. Four warps per block.
-__global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5(
+__global__ __launch_bounds__(128, 5) void k_scatter_main_and_con(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
     const double* __restrict__ sinmu, const double* __restrict__ cosmum,

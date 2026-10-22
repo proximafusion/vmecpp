@@ -2208,7 +2208,7 @@ __global__ void k_fill_spectra(
     const double* __restrict__ zmnsc, const double* __restrict__ zmncs,
     const double* __restrict__ lmnsc, const double* __restrict__ lmncs,
     const double* __restrict__ nscale, cufftDoubleComplex* __restrict__ X);
-__global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5(
+__global__ __launch_bounds__(128, 5) void k_scatter_main_and_con(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
     const double* __restrict__ sinmu, const double* __restrict__ cosmum,

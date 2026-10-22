@@ -1192,9 +1192,8 @@ void PressureAndEnergiesCuda(
     S.massH_staged = true;
   }
 
-  // Stage 1+3 fused: per-surface presH AND thermal_partial in one kernel.
-  // Reuses pres in-register; eliminates one launch and one global-mem read.
-  // Batched execution: y-dim covers n_config_max configs.
+  // Per-surface presH and thermal_partial in one kernel, with pres kept in
+  // registers. Batched execution: y-dim covers n_config_max configs.
   {
     const int TPB = 32;
     dim3 b((ns_h + TPB - 1) / TPB, S.n_config_max, 1);
@@ -1206,13 +1205,8 @@ void PressureAndEnergiesCuda(
     cuda_check(cudaGetLastError(), "k_pres_compute_and_thermal launch");
   }
 
-  // Stage 2 (totalpres_init) and Stage 5 (add_presH) collapse into a single
-  // fused write that produces the final totalPressure = magnetic + presH.
-  // We do magnetic_partial FIRST using an inline magnetic formula so it
-  // doesn't depend on totalPressure being magnetic-only.
-
-  // Stage 4 (now stage 2): magnetic_partial with inline magnetic-pressure
-  // computation. Drops the dependency on a magnetic-only totalPressure write.
+  // magnetic_partial from the magnetic pressure computed inline, ahead of the
+  // totalPressure write.
   {
     const int TPB = 32;
     dim3 b(ns_h, 1, S.n_config_max);
@@ -1225,9 +1219,7 @@ void PressureAndEnergiesCuda(
     cuda_check(cudaGetLastError(), "k_pres_magnetic_partial_inline launch");
   }
 
-  // Stages 2+5 fused: write totalPressure = mag + presH in one kernel.
-  // Skips the intermediate magnetic-only write and the subsequent +presH read-
-  // modify-write.
+  // totalPressure = magnetic pressure + presH in one kernel.
   {
     const int TPB = 64;
     dim3 b((nZnT + TPB - 1) / TPB, ns_h, S.n_config_max);
