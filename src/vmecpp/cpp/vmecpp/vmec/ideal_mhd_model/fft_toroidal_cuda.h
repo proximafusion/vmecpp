@@ -660,6 +660,13 @@ void EndUpdateSegment2GraphOrLaunch();
 // step advanced d_pts_x, as the host path does under backup_evaluated_state.
 void SnapshotEvaluatedPtsXCuda();
 void BackupPtsXCuda(bool from_evaluated);
+
+// Per-configuration variants of the two calls above for a batch under
+// per-configuration restart control: only the configurations whose mask byte
+// is non-zero take the snapshot or the store.
+void SnapshotEvaluatedPtsXPerCfgCuda(const std::vector<std::uint8_t>& mask);
+void BackupPtsXPerCfgCuda(const std::vector<std::uint8_t>& mask,
+                          bool from_evaluated);
 void RestorePtsXFromBackupCuda();
 // Per-cfg variant: restore d_pts_x and zero d_pts_v only for cfgs whose
 // mask byte is non-zero. mask.size() must equal n_config_max. Whole-batch

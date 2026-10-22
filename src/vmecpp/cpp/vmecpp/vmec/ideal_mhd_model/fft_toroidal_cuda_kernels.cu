@@ -521,7 +521,8 @@ __global__ void k_perform_time_step(
     double* __restrict__ x_zsc, double* __restrict__ x_zcs,
     double* __restrict__ x_lsc, double* __restrict__ x_lcs,
     const double* __restrict__ d_fac_b1,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    const double* __restrict__ d_time_step_per_cfg) {
   int config = blockIdx.z / ns_con_local;
   int jF_v_local = blockIdx.z - config * ns_con_local;
   if (config >= n_config) return;
@@ -545,6 +546,10 @@ __global__ void k_perform_time_step(
     fac_use = d_fac_b1[(size_t)config * 2 + 0];
     b1_use  = d_fac_b1[(size_t)config * 2 + 1];
   }
+  // Per-configuration restart control gives each configuration its own
+  // time step.
+  const double dt =
+      d_time_step_per_cfg != nullptr ? d_time_step_per_cfg[config] : time_step;
 
   // v and f (decomposed_f) share the same per-config layout: ns_con_local
   // (== ns_dec_local for the LCFS-owning thread in our single-rank setup).
@@ -557,45 +562,45 @@ __global__ void k_perform_time_step(
   // v_rcc / x_rcc (rmncc parity)
   {
     double v_new = fac_use *
-                   (b1_use * v_rcc[idx_v] + time_step * f_rcc[idx_v]);
+                   (b1_use * v_rcc[idx_v] + dt * f_rcc[idx_v]);
     v_rcc[idx_v] = v_new;
-    x_rcc[idx_x] += time_step * v_new;
+    x_rcc[idx_x] += dt * v_new;
   }
   // v_zsc / x_zsc (zmnsc parity)
   {
     double v_new = fac_use *
-                   (b1_use * v_zsc[idx_v] + time_step * f_zsc[idx_v]);
+                   (b1_use * v_zsc[idx_v] + dt * f_zsc[idx_v]);
     v_zsc[idx_v] = v_new;
-    x_zsc[idx_x] += time_step * v_new;
+    x_zsc[idx_x] += dt * v_new;
   }
   // v_lsc / x_lsc (lmnsc parity)
   {
     double v_new = fac_use *
-                   (b1_use * v_lsc[idx_v] + time_step * f_lsc[idx_v]);
+                   (b1_use * v_lsc[idx_v] + dt * f_lsc[idx_v]);
     v_lsc[idx_v] = v_new;
-    x_lsc[idx_x] += time_step * v_new;
+    x_lsc[idx_x] += dt * v_new;
   }
   if (lthreed) {
     // v_rss / x_rss
     {
       double v_new = fac_use *
-                     (b1_use * v_rss[idx_v] + time_step * f_rss[idx_v]);
+                     (b1_use * v_rss[idx_v] + dt * f_rss[idx_v]);
       v_rss[idx_v] = v_new;
-      x_rss[idx_x] += time_step * v_new;
+      x_rss[idx_x] += dt * v_new;
     }
     // v_zcs / x_zcs
     {
       double v_new = fac_use *
-                     (b1_use * v_zcs[idx_v] + time_step * f_zcs[idx_v]);
+                     (b1_use * v_zcs[idx_v] + dt * f_zcs[idx_v]);
       v_zcs[idx_v] = v_new;
-      x_zcs[idx_x] += time_step * v_new;
+      x_zcs[idx_x] += dt * v_new;
     }
     // v_lcs / x_lcs
     {
       double v_new = fac_use *
-                     (b1_use * v_lcs[idx_v] + time_step * f_lcs[idx_v]);
+                     (b1_use * v_lcs[idx_v] + dt * f_lcs[idx_v]);
       v_lcs[idx_v] = v_new;
-      x_lcs[idx_x] += time_step * v_new;
+      x_lcs[idx_x] += dt * v_new;
     }
   }
 }
@@ -4078,7 +4083,9 @@ __global__ void k_update_timestep(
     double* __restrict__ d_inv_tau,
     double* __restrict__ d_prev_fsq,
     double* __restrict__ d_fac_b1,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    const double* __restrict__ d_time_step_per_cfg,
+    const std::uint8_t* __restrict__ d_phase_per_cfg) {
   const int cfg = blockIdx.x;
   const int tid = threadIdx.x;
   if (cfg >= n_config) return;
@@ -4087,6 +4094,12 @@ __global__ void k_update_timestep(
     // active mask gates downstream kernel application.
     return;
   }
+  // Per-configuration restart control gives each configuration its own
+  // time step and ring reset.
+  const double dt =
+      d_time_step_per_cfg != nullptr ? d_time_step_per_cfg[cfg] : time_step;
+  const int phase =
+      d_phase_per_cfg != nullptr ? d_phase_per_cfg[cfg] : iter_phase;
   constexpr int kND = 10;  // matches host kNDamp
   // fsq1 = fsqr1 + fsqz1 + fsql1 with the host normalization from
   // evalFResPrecd (fNorm1 on the R and Z raw sums, deltaS on the L raw
@@ -4104,8 +4117,8 @@ __global__ void k_update_timestep(
   double entry = 0.0;
   if (tid < kND) entry = inv_tau_cfg[tid];
   // Phase 0: reset invTau to 0.15 / time_step (matches setConstant call)
-  if (iter_phase == 0) {
-    if (tid < kND) entry = 0.15 / time_step;
+  if (phase == 0) {
+    if (tid < kND) entry = 0.15 / dt;
   } else {
     // Shift left: entry[i] <- entry[i+1] for i < kND-1; entry[kND-1] gets
     // the new sample. Use shfl_down for the shift.
@@ -4123,7 +4136,7 @@ __global__ void k_update_timestep(
           invtau_num = (logr < 0.15) ? logr : 0.15;
         }
       }
-      new_entry = invtau_num / time_step;
+      new_entry = invtau_num / dt;
     }
     new_entry = __shfl_sync(0xffffffff, new_entry, 0);
     if (tid == kND - 1) entry = new_entry;
@@ -4143,7 +4156,7 @@ __global__ void k_update_timestep(
       sum += inv_tau_cfg[i];
     }
     double otav = sum / kND;
-    double dtau = time_step * otav / 2.0;
+    double dtau = dt * otav / 2.0;
     double b1 = 1.0 - dtau;
     double fac = 1.0 / (1.0 + dtau);
     d_fac_b1[(size_t)cfg * 2 + 0] = fac;

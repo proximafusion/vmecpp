@@ -683,8 +683,8 @@ void DecomposeAndConstrainCuda(
   // Stage 2+3: m=1 constraint, then the Z force at m=1 zeroed where the CPU
   // path zeroes it: under always_fix_m1_gauge, while the previous iteration's
   // fsqz is below 1e-6, and for iter2 < 2 (v8.50, so that reset=<WOUT_FILE>
-  // works). A batch iterates in lockstep on iter2 and takes each
-  // configuration's own fsqz.
+  // works). A batch takes each configuration's own fsqz and, under
+  // per-configuration restart control, its own iteration count.
   // Batched execution: z-dim covers n_config_max configs.
   if (s.lthreed && ns_force_local > 0) {
     const bool batched = S.n_config_max > 1;
@@ -692,7 +692,12 @@ void DecomposeAndConstrainCuda(
       const double fsqz = batched && cfg < static_cast<int>(fc.fsqz_per_cfg.size())
                               ? fc.fsqz_per_cfg[cfg]
                               : fc.fsqz;
-      return always_fix_m1_gauge || fsqz < 1.0e-6 || iter2 < 2;
+      const int cfg_iter2 =
+          batched && fc.per_cfg_control &&
+                  cfg < static_cast<int>(fc.iter2_per_cfg.size())
+              ? fc.iter2_per_cfg[cfg]
+              : iter2;
+      return always_fix_m1_gauge || fsqz < 1.0e-6 || cfg_iter2 < 2;
     };
     const unsigned char* zero_flags = nullptr;
     int zero_all = 0;

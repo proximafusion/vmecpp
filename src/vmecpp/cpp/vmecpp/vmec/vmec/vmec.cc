@@ -516,6 +516,9 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // and the stage-transition upscale initializes this run from that
   // state instead of from the staged inputs.
   fc_.ResizeForBatch(vmecpp::GetNConfigMaxCuda());
+  fc_.per_cfg_control = batch_indata_.size() > 1;
+  std::fill(fc_.failed_per_cfg.begin(), fc_.failed_per_cfg.end(),
+            static_cast<std::uint8_t>(0));
 #endif  // VMECPP_USE_CUDA
 
   // Set when the solver gives up on a fundamentally broken equilibrium (e.g.
@@ -606,11 +609,17 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // Restore per-cfg activity for the current stage. Configurations
       // that converged against the coarser stage's looser ftolv must
       // re-iterate against the finer stage's tighter ftolv, so the
-      // active mask is rebuilt and the per-cfg iteration counters are
-      // zeroed before the stage's iter loop begins. Under single-cfg
-      // execution the per-cfg vectors are empty and the reset is a
-      // no-op.
-      fc_.ResetActivePerCfgForNextStage();
+      // active mask is rebuilt for every configuration that has not failed
+      // and the per-cfg iteration counts and restart control start over
+      // before the stage's iter loop begins. Under single-cfg execution the
+      // per-cfg vectors are empty and the reset is a no-op.
+      fc_.ResetActivePerCfgForNextStage(indata_.delt);
+      if (fc_.per_cfg_control &&
+          std::none_of(fc_.active_per_cfg.begin(), fc_.active_per_cfg.end(),
+                       [](std::uint8_t active) { return active != 0; })) {
+        // every configuration of the batch failed in an earlier stage
+        break;
+      }
 
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
@@ -627,6 +636,17 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       if (*initialized) {
         return true;
       }
+#ifdef VMECPP_USE_CUDA
+      // A distinct batch ran each configuration's first iteration alone
+      // (run_batched_gpu); its first stage continues from the ijacob each
+      // configuration's first iteration ended with.
+      if (igrid == 0 && jacob_off_ == 0 && !batch_ijacob_.empty()) {
+        fc_.ijacob = batch_ijacob_[0];
+        if (batch_ijacob_.size() == fc_.ijacob_per_cfg.size()) {
+          fc_.ijacob_per_cfg = batch_ijacob_;
+        }
+      }
+#endif  // VMECPP_USE_CUDA
 
       // *HERE* is the *ACTUAL* call to the equilibrium solver !
       const absl::StatusOr<bool> reached_checkpoint =
@@ -1474,9 +1494,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     // check for bad jacobian and bad initial guess for axis; a distinct batch
-    // starts over only from its first iteration, where every configuration
-    // restages its own initial state
-    if ((batch_indata_.empty() || iter2 == 1) && fc_.ijacob == 0 &&
+    // ran each configuration's first iteration alone with this recovery
+    // (run_batched_gpu)
+    if (batch_indata_.empty() && fc_.ijacob == 0 &&
         (status_ == VmecStatus::BAD_JACOBIAN ||
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
         fc_.ns >= 3) {
@@ -1656,7 +1676,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
-    if (indata_.iteration_style == IterationStyle::PARVMEC) {
+    if (fc_.per_cfg_control) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      ApplyPerConfigurationRestarts(iter2);
+    } else if (indata_.iteration_style == IterationStyle::PARVMEC) {
       // PARVMEC control: store when both residual minima improve; revert via
       // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
       // minimum after 10 steps.
@@ -1846,6 +1871,9 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           if (static_cast<int>(fc_.converged_per_cfg.size()) > c) {
             fc_.converged_per_cfg[c] = 0;
           }
+          if (static_cast<int>(fc_.niter_per_cfg.size()) > c) {
+            fc_.niter_per_cfg[c] = fc_.iter2_per_cfg[c];
+          }
           ++timed_out_count;
         }
       }
@@ -1883,6 +1911,126 @@ std::vector<std::uint8_t> BadJacobianPerCfg(int n_cfg) {
 }
 }  // namespace
 #endif  // VMECPP_USE_CUDA
+
+void Vmec::ApplyPerConfigurationRestarts(int iter2) {
+#ifdef VMECPP_USE_CUDA
+  const int n_cfg = static_cast<int>(fc_.active_per_cfg.size());
+  // Device actions in the order a single run takes them: the restores and
+  // stores of its first RestartIteration call, then those of its second.
+  std::vector<std::uint8_t> restore_first(n_cfg, 0);
+  std::vector<std::uint8_t> store_first(n_cfg, 0);
+  std::vector<std::uint8_t> restore_second(n_cfg, 0);
+  std::vector<std::uint8_t> store_second(n_cfg, 0);
+  std::vector<std::uint8_t> give_up(n_cfg, 0);
+  // Whether a configuration restarted and holds its iteration count, and
+  // whether one took a bad-Jacobian restore that advances it.
+  bool any_held = false;
+  bool any_advanced = false;
+  const int interval = fc_.kPreconditionerUpdateInterval;
+  for (int c = 0; c < n_cfg; ++c) {
+    if (fc_.active_per_cfg[c] == 0) {
+      continue;
+    }
+    RestartReason reason = fc_.restart_reason_per_cfg[c];
+    int& ijacob = fc_.ijacob_per_cfg[c];
+    int& iter1 = fc_.iter1_per_cfg[c];
+    double& delt = fc_.delt0r_per_cfg[c];
+    const int iter = fc_.iter2_per_cfg[c];
+    // RestartIteration for this configuration.
+    const auto restart = [&](RestartReason r,
+                             std::vector<std::uint8_t>& restore,
+                             std::vector<std::uint8_t>& store) {
+      if (r == RestartReason::BAD_JACOBIAN) {
+        restore[c] = 1;
+        delt *= 0.9;
+        ijacob += 1;
+        iter1 = iter;
+      } else if (r == RestartReason::BAD_PROGRESS) {
+        restore[c] = 1;
+        delt /= 1.03;
+      } else {
+        store[c] = 1;
+      }
+    };
+    if (ijacob == 25 || ijacob == 50) {
+      restart(RestartReason::BAD_JACOBIAN, restore_first, store_first);
+      delt = (ijacob < 50 ? 0.98 : 0.96) * indata_.delt;
+      any_held = true;
+      continue;
+    }
+    give_up[c] = static_cast<std::uint8_t>(ijacob >= 75);
+    const double fsq =
+        fc_.fsqr1_per_cfg[c] + fc_.fsqz1_per_cfg[c] + fc_.fsql1_per_cfg[c];
+    double& res0 = fc_.res0_per_cfg[c];
+    if (iter == iter1 || res0 == -1) {
+      res0 = fsq;
+    }
+    res0 = std::min(res0, fsq);
+    // The first RestartIteration call; a bad-Jacobian restore there leaves
+    // the iteration count advancing.
+    const auto store_or_restore = [&]() {
+      restart(reason, restore_first, store_first);
+      if (reason == RestartReason::BAD_JACOBIAN) {
+        reason = RestartReason::NO_RESTART;
+        any_advanced = true;
+      }
+    };
+    if (indata_.iteration_style == IterationStyle::PARVMEC) {
+      const double fsq_invariant =
+          fc_.fsqr_per_cfg[c] + fc_.fsqz_per_cfg[c] + fc_.fsql_per_cfg[c];
+      double& res1 = fc_.res1_per_cfg[c];
+      if (iter == iter1 || res1 == -1) {
+        res1 = fsq_invariant;
+      }
+      res1 = std::min(res1, fsq_invariant);
+      if (fsq <= res0 && fsq_invariant <= res1) {
+        store_or_restore();
+      } else if ((iter - iter1) > 10 &&
+                 (fsq > 1.0e4 * res0 || fsq_invariant > 1.0e4 * res1)) {
+        reason = RestartReason::BAD_PROGRESS;
+      }
+    } else if (fsq <= res0 && (iter - iter1) > 10) {
+      store_or_restore();
+    } else if (fsq > 100.0 * res0 && iter > iter1) {
+      reason = RestartReason::BAD_JACOBIAN;
+    } else if ((iter - iter1) > interval / 2 && iter > 2 * interval &&
+               fc_.fsqr_per_cfg[c] + fc_.fsqz_per_cfg[c] > 1.0e-2) {
+      reason = RestartReason::BAD_PROGRESS;
+    }
+    if (reason != RestartReason::NO_RESTART) {
+      restart(reason, restore_second, store_second);
+      iter1 = iter;
+      any_held = true;
+    } else {
+      fc_.iter2_per_cfg[c] = iter + 1;
+    }
+  }
+  vmecpp::RestorePtsXFromBackupPerCfgCuda(restore_first);
+  vmecpp::BackupPtsXPerCfgCuda(store_first, indata_.backup_evaluated_state);
+  vmecpp::RestorePtsXFromBackupPerCfgCuda(restore_second);
+  vmecpp::BackupPtsXPerCfgCuda(store_second, /*from_evaluated=*/false);
+  for (int c = 0; c < n_cfg; ++c) {
+    if (give_up[c] != 0) {
+      // 75 bad Jacobians end the configuration, as they end its single run.
+      fc_.active_per_cfg[c] = 0;
+      fc_.converged_per_cfg[c] = 0;
+      fc_.failed_per_cfg[c] = 1;
+      fc_.niter_per_cfg[c] = fc_.iter2_per_cfg[c];
+      vmecpp::SnapshotInactiveCfgCuda(c);
+    }
+  }
+  // A single run counts its preconditioner, constraint-force and vacuum
+  // cadences from its latest restart; the batch counts them for every
+  // configuration from the latest restart of any.
+  if (any_held) {
+    iter1_ = iter2 + 1;
+  } else if (any_advanced) {
+    iter1_ = iter2;
+  }
+#else
+  (void)iter2;
+#endif  // VMECPP_USE_CUDA
+}
 
 // aligned visually with restart_iter.f90
 void Vmec::RestartIteration(double& m_delt0r, int thread_id,
@@ -2032,6 +2180,44 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
     return reached_checkpoint;
   }
+#ifdef VMECPP_USE_CUDA
+  if (fc_.per_cfg_control) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      // Each configuration's restart reason from its own forward model: a
+      // Jacobian that changed sign, or huge forces in its first iteration. A
+      // bad Jacobian in the first iteration of a stage ends the
+      // configuration, as it ends its single run.
+      const int n_cfg = static_cast<int>(fc_.active_per_cfg.size());
+      const std::vector<std::uint8_t> bad_jacobian = BadJacobianPerCfg(n_cfg);
+      for (int c = 0; c < n_cfg; ++c) {
+        if (fc_.active_per_cfg[c] == 0) {
+          continue;
+        }
+        const bool bad = !bad_jacobian.empty() && bad_jacobian[c] != 0;
+        if (bad && fc_.iter2_per_cfg[c] == 1) {
+          fc_.active_per_cfg[c] = 0;
+          fc_.converged_per_cfg[c] = 0;
+          fc_.failed_per_cfg[c] = 1;
+          fc_.niter_per_cfg[c] = 1;
+          vmecpp::SnapshotInactiveCfgCuda(c);
+          continue;
+        }
+        RestartReason reason =
+            bad ? RestartReason::BAD_JACOBIAN : RestartReason::NO_RESTART;
+        if (fc_.iter2_per_cfg[c] == 1 &&
+            fc_.fsqr_per_cfg[c] + fc_.fsqz_per_cfg[c] + fc_.fsql_per_cfg[c] >
+                1.0e2) {
+          reason = RestartReason::HUGE_INITIAL_FORCES;
+        }
+        fc_.restart_reason_per_cfg[c] = reason;
+      }
+      fc_.restart_reason = RestartReason::NO_RESTART;
+    }
+  }
+#endif  // VMECPP_USE_CUDA
 
 #ifdef _OPENMP
 #pragma omp single
@@ -2039,9 +2225,12 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   {
     // COMPUTE ABSOLUTE STOPPING CRITERION
     // A residual is either NaN or inf, guard for highly degenerate inputs
-    bool all_residuals_finite = std::isfinite(fc_.fsqr) &&
-                                std::isfinite(fc_.fsqz) &&
-                                std::isfinite(fc_.fsql);
+    // Under per-configuration restart control the convergence gate below
+    // retires each configuration whose residuals are not finite.
+    bool all_residuals_finite =
+        fc_.per_cfg_control ||
+        (std::isfinite(fc_.fsqr) && std::isfinite(fc_.fsqz) &&
+         std::isfinite(fc_.fsql));
     if ((iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) ||
         !all_residuals_finite) {
       // first iteration and Jacobian was not computed correctly
@@ -2072,7 +2261,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         // Per-cfg gate. The device k_check_convergence flag decides each
         // cfg's termination when its buffers exist (the normalized-residual
         // arithmetic of evalFResInvar); the host comparison applies otherwise.
-        // Lazily size iter2_per_cfg and converged_per_cfg if ResizeForBatch
+        // Lazily size the per-cfg counters and outcomes if ResizeForBatch
         // happened in a path that pre-dates these fields.
         if (static_cast<int>(fc_.iter2_per_cfg.size()) != n_cfg) {
           fc_.iter2_per_cfg.assign(n_cfg, 0);
@@ -2080,10 +2269,15 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         if (static_cast<int>(fc_.converged_per_cfg.size()) != n_cfg) {
           fc_.converged_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
         }
+        if (static_cast<int>(fc_.niter_per_cfg.size()) != n_cfg) {
+          fc_.niter_per_cfg.assign(n_cfg, 0);
+        }
+        if (static_cast<int>(fc_.failed_per_cfg.size()) != n_cfg) {
+          fc_.failed_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
+        }
         bool all_done = true;
         for (int c = 0; c < n_cfg; ++c) {
           if (fc_.active_per_cfg[c]) {
-            ++fc_.iter2_per_cfg[c];
             if (!std::isfinite(fc_.fsqr_per_cfg[c]) ||
                 !std::isfinite(fc_.fsqz_per_cfg[c]) ||
                 !std::isfinite(fc_.fsql_per_cfg[c])) {
@@ -2091,6 +2285,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
               // iterating and counts as not converged.
               fc_.active_per_cfg[c] = 0;
               fc_.converged_per_cfg[c] = 0;
+              fc_.failed_per_cfg[c] = 1;
+              fc_.niter_per_cfg[c] = fc_.iter2_per_cfg[c];
 #ifdef VMECPP_USE_CUDA
               vmecpp::SnapshotInactiveCfgCuda(c);
 #endif
@@ -2108,6 +2304,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
             if (cfg_done) {
               fc_.active_per_cfg[c] = 0;
               fc_.converged_per_cfg[c] = 1;
+              fc_.niter_per_cfg[c] = fc_.iter2_per_cfg[c] + 1;
 #ifdef VMECPP_USE_CUDA
               // Freeze this cfg's state at the iteration it stopped; the
               // live device slice keeps being modified while the rest of
@@ -2119,6 +2316,11 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
             }
           }
         }
+#ifdef VMECPP_USE_CUDA
+        // A configuration that stopped takes no time step in this iteration,
+        // as a single run takes none after its last evaluation.
+        vmecpp::StagePhaseDActiveCuda(fc_.active_per_cfg);
+#endif
         if (all_done) {
           m_liter_flag = false;
           status_ = VmecStatus::SUCCESSFUL_TERMINATION;
@@ -2239,8 +2441,10 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         // RestartIteration rewinds the configurations whose Jacobian changed
         // sign when there are any, and every configuration otherwise.
         fc_.restart_reasons_per_cfg[c].push_back(
-            per_cfg_jacobian && bad_jacobian[c] == 0 ? RestartReason::NO_RESTART
-                                                     : fc_.restart_reason);
+            fc_.per_cfg_control ? fc_.restart_reason_per_cfg[c]
+            : per_cfg_jacobian && bad_jacobian[c] == 0
+                ? RestartReason::NO_RESTART
+                : fc_.restart_reason);
       }
     }
 #endif  // VMECPP_USE_CUDA
@@ -2493,6 +2697,20 @@ absl::StatusOr<bool> Vmec::UpdateForwardModel(
   if (need_restart) {
     double delt0 = indata_.delt;
     RestartIteration(delt0, thread_id);
+#ifdef VMECPP_USE_CUDA
+    if (fc_.per_cfg_control) {
+      // The soft start restarts every configuration, as in its single run.
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      for (size_t c = 0; c < fc_.active_per_cfg.size(); ++c) {
+        if (fc_.active_per_cfg[c] != 0) {
+          fc_.ijacob_per_cfg[c] += 1;
+          fc_.iter1_per_cfg[c] = fc_.iter2_per_cfg[c];
+        }
+      }
+    }
+#endif  // VMECPP_USE_CUDA
 
 #ifdef _OPENMP
 #pragma omp single nowait
@@ -2572,9 +2790,20 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
   if (fc_.restart_reason == RestartReason::NO_RESTART ||
       fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) {
 #ifdef VMECPP_USE_CUDA
-    // The state lives in d_pts_x on this path.
+    // The state lives in d_pts_x on this path; under per-configuration
+    // control only the configurations without a bad Jacobian keep theirs.
     if (indata_.backup_evaluated_state) {
-      vmecpp::SnapshotEvaluatedPtsXCuda();
+      if (fc_.per_cfg_control) {
+        std::vector<std::uint8_t> evaluated(fc_.active_per_cfg.size(), 0);
+        for (size_t c = 0; c < evaluated.size(); ++c) {
+          evaluated[c] = static_cast<std::uint8_t>(
+              fc_.active_per_cfg[c] != 0 &&
+              fc_.restart_reason_per_cfg[c] != RestartReason::BAD_JACOBIAN);
+        }
+        vmecpp::SnapshotEvaluatedPtsXPerCfgCuda(evaluated);
+      } else {
+        vmecpp::SnapshotEvaluatedPtsXCuda();
+      }
     }
 #else
     *last_evaluated_x_[thread_id] = *decomposed_x_[thread_id];

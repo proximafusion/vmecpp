@@ -1136,6 +1136,9 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_conv_flag);
     pinned_free_if((void*&)h_conv_flag_pinned);
     cuda_free_if((void*&)d_restart_mask);
+    cuda_free_if((void*&)d_copy_mask);
+    cuda_free_if((void*&)d_time_step_per_cfg);
+    cuda_free_if((void*&)d_phase_per_cfg);
     ns_h_cached = -1;
     nZnT_cached = -1;
     nThetaEff_for_wInt = -1;
@@ -1626,6 +1629,29 @@ struct CudaToroidalState {
       cuda_check(cudaMalloc(&d_restart_mask,
                              sizeof(std::uint8_t) * n_config_max),
                  "alloc d_restart_mask");
+    }
+  }
+
+  // Per-configuration restart control: the mask of a masked snapshot or
+  // store, and each configuration's time step and damping-ring flag (0
+  // resets the ring) for the time-step kernels.
+  std::uint8_t* d_copy_mask = nullptr;
+  double* d_time_step_per_cfg = nullptr;
+  std::uint8_t* d_phase_per_cfg = nullptr;
+  void EnsurePerCfgControlBuffers() {
+    if (!d_copy_mask) {
+      cuda_check(cudaMalloc(&d_copy_mask, sizeof(std::uint8_t) * n_config_max),
+                 "alloc d_copy_mask");
+    }
+    if (!d_time_step_per_cfg) {
+      cuda_check(
+          cudaMalloc(&d_time_step_per_cfg, sizeof(double) * n_config_max),
+          "alloc d_time_step_per_cfg");
+    }
+    if (!d_phase_per_cfg) {
+      cuda_check(
+          cudaMalloc(&d_phase_per_cfg, sizeof(std::uint8_t) * n_config_max),
+          "alloc d_phase_per_cfg");
     }
   }
 
@@ -2264,7 +2290,8 @@ __global__ void k_perform_time_step(
     double* __restrict__ x_zsc, double* __restrict__ x_zcs,
     double* __restrict__ x_lsc, double* __restrict__ x_lcs,
     const double* __restrict__ d_fac_b1,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    const double* __restrict__ d_time_step_per_cfg);
 __global__ void k_extract_geom_scalars(
     const double* __restrict__ d_r1_e,
     const double* __restrict__ d_r1_o,
@@ -2834,7 +2861,9 @@ __global__ void k_update_timestep(
     double* __restrict__ d_inv_tau,
     double* __restrict__ d_prev_fsq,
     double* __restrict__ d_fac_b1,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
+    const std::uint8_t* __restrict__ d_active_per_cfg,
+    const double* __restrict__ d_time_step_per_cfg,
+    const std::uint8_t* __restrict__ d_phase_per_cfg);
 __global__ void k_tau_minmax(int n_config, int total,
                               const double* __restrict__ tau,
                               double* __restrict__ out2,

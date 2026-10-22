@@ -160,9 +160,9 @@ class FlowControl {
   // diagnostics and for the per-cfg recovery escalation logic.
   std::vector<int> ijacob_per_cfg;
 
-  // Per-configuration iteration counter, incremented at the convergence
-  // gate each iteration the configuration is still active and reset to zero
-  // at each multigrid stage transition via ResetActivePerCfgForNextStage.
+  // Per-configuration iteration count of the current multigrid stage under
+  // per_cfg_control: 1 at its start and advanced after every iteration in
+  // which the configuration does not restart, as a single run's iter2.
   std::vector<int> iter2_per_cfg;
 
   // Per-configuration convergence outcome: 1 once the configuration met
@@ -182,6 +182,25 @@ class FlowControl {
   std::vector<std::vector<double>> delbsq_per_cfg;
   std::vector<std::vector<RestartReason>> restart_reasons_per_cfg;
 
+  // Restart control per configuration (per_cfg_control), set for a distinct
+  // batch, whose configurations take the time step and the restarts of their
+  // own single runs: the time step, the iteration of the latest restart
+  // (iter1), the best preconditioned residual sum since it (res0) and, under
+  // the PARVMEC iteration style, the best invariant one (res1), and the
+  // iteration count reported for each configuration. restart_reason_per_cfg
+  // holds the restart reason of each configuration's current iteration.
+  bool per_cfg_control = false;
+  std::vector<double> delt0r_per_cfg;
+  std::vector<int> iter1_per_cfg;
+  std::vector<double> res0_per_cfg;
+  std::vector<double> res1_per_cfg;
+  std::vector<int> niter_per_cfg;
+
+  // 1 for a configuration whose iteration failed where a single run's fails:
+  // a bad Jacobian in the first iteration of a stage, residuals that are not
+  // finite, or 75 bad Jacobians. It sits out the later multigrid stages.
+  std::vector<std::uint8_t> failed_per_cfg;
+
   // Allocates each of the per-configuration vectors above to a length of
   // n_cfg, default-initializing the contents. The operation is idempotent:
   // calling with a value matching the present size has no effect. Intended
@@ -189,14 +208,14 @@ class FlowControl {
   // active, but safe to invoke at any multigrid stage transition.
   void ResizeForBatch(int n_cfg);
 
-  // Re-activates every configuration for the next multigrid stage and
-  // resets the per-cfg iteration counter. Configurations that converged
-  // against the coarser-stage tolerance must continue iterating at the
-  // finer stage's tighter tolerance, so active_per_cfg is restored to
-  // all-ones, and iter2_per_cfg and converged_per_cfg are zeroed. Has no
-  // effect when the per-cfg vectors are empty (i.e. single-cfg or
-  // pre-ResizeForBatch).
-  void ResetActivePerCfgForNextStage();
+  // Re-activates every configuration that has not failed for the next
+  // multigrid stage. Configurations that converged against the coarser-stage
+  // tolerance must continue iterating at the finer stage's tighter
+  // tolerance, so active_per_cfg is restored, converged_per_cfg is zeroed,
+  // and the iteration count and the restart control of every configuration
+  // start over with the time step delt. Has no effect when the per-cfg
+  // vectors are empty (i.e. single-cfg or pre-ResizeForBatch).
+  void ResetActivePerCfgForNextStage(double delt);
 
  private:
   const int max_threads_;

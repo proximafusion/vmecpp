@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <vector>
@@ -504,11 +505,12 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
         }
       }
       // The scalar residuals above carry cfg 0's values. Once any cfg has
-      // gone inactive, cfg 0's slot may no longer update; drive the shared
-      // time-step controller and restart logic from the worst ACTIVE cfg
-      // instead. Guarded to the tail regime (some cfg inactive) so
-      // single-cfg and fully-active execution keep the legacy scalar path
-      // bit-exact.
+      // gone inactive, and throughout a batch under per-configuration
+      // control, they carry the largest finite residuals of the active
+      // configurations instead, which the vacuum activation of a batch reads;
+      // the convergence gate retires a configuration whose residuals are not
+      // finite. Single-cfg and fully-active broadcast execution keep cfg 0's
+      // values.
       bool any_inactive = false;
       bool any_active = false;
       for (int c = 0; c < n_cfg; ++c) {
@@ -518,19 +520,33 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
           any_inactive = true;
         }
       }
-      if (n_cfg > 1 && any_inactive && any_active) {
+      if (n_cfg > 1 && (m_fc_.per_cfg_control || any_inactive) && any_active) {
+        bool any_finite = false;
         double max_r = 0.0;
         double max_z = 0.0;
         double max_l = 0.0;
         for (int c = 0; c < n_cfg; ++c) {
           if (!m_fc_.active_per_cfg[c]) continue;
-          max_r = std::max(max_r, m_fc_.fsqr_per_cfg[c]);
-          max_z = std::max(max_z, m_fc_.fsqz_per_cfg[c]);
-          max_l = std::max(max_l, m_fc_.fsql_per_cfg[c]);
+          const double r = m_fc_.fsqr_per_cfg[c];
+          const double z = m_fc_.fsqz_per_cfg[c];
+          const double l = m_fc_.fsql_per_cfg[c];
+          if (!std::isfinite(r) || !std::isfinite(z) || !std::isfinite(l)) {
+            continue;
+          }
+          any_finite = true;
+          max_r = std::max(max_r, r);
+          max_z = std::max(max_z, z);
+          max_l = std::max(max_l, l);
         }
-        m_fc_.fsqr = max_r;
-        m_fc_.fsqz = max_z;
-        m_fc_.fsql = max_l;
+        if (any_finite) {
+          m_fc_.fsqr = max_r;
+          m_fc_.fsqz = max_z;
+          m_fc_.fsql = max_l;
+        } else {
+          m_fc_.fsqr = std::numeric_limits<double>::quiet_NaN();
+          m_fc_.fsqz = m_fc_.fsqr;
+          m_fc_.fsql = m_fc_.fsqr;
+        }
       }
     }
 #endif  // VMECPP_USE_CUDA

@@ -261,6 +261,11 @@ class Vmec {
   // decomposed_x_ (already advanced by PerformTimeStep).
   void RestartIteration(double& m_delt0r, int thread_id,
                         bool backup_evaluated_state = false);
+  // The ijacob and time-step control of SolveEquilibriumLoop for a distinct
+  // batch: a single run's control after an iteration, applied to every active
+  // configuration with its own residuals, time step and restart markers.
+  // iter2 is the batch's iteration count.
+  void ApplyPerConfigurationRestarts(int iter2);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
@@ -353,6 +358,11 @@ class Vmec {
   // Configuration slots of a batched GPU run, which the run_batched_gpu
   // binding sets on the seed Vmec in either mode; one for ordinary runs.
   int batch_size_ = 1;
+  // ijacob of each configuration of a distinct batch after its first
+  // iteration, which run_batched_gpu runs alone before the batch: 1 when that
+  // iteration recovered the magnetic axis. The batch's first multigrid stage
+  // continues from it.
+  std::vector<int> batch_ijacob_;
   // Per-configuration RadialProfiles for a distinct-mode batched run, built
   // from batch_indata_ and mirroring p_ across multigrid levels so the device
   // stages each configuration's profiles instead of broadcasting the seed's.

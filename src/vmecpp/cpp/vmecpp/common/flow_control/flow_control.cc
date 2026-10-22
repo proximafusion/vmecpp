@@ -102,21 +102,37 @@ void FlowControl::ResizeForBatch(int n_cfg) {
   mhd_energy_per_cfg.assign(n_cfg, {});
   delbsq_per_cfg.assign(n_cfg, {});
   restart_reasons_per_cfg.assign(n_cfg, {});
+  delt0r_per_cfg.assign(n_cfg, 0.0);
+  iter1_per_cfg.assign(n_cfg, 1);
+  res0_per_cfg.assign(n_cfg, -1.0);
+  res1_per_cfg.assign(n_cfg, -1.0);
+  niter_per_cfg.assign(n_cfg, 0);
+  failed_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
 }
 
-// Restores active_per_cfg to ones, zeros iter2_per_cfg, and clears
-// converged_per_cfg. Called at the start of every multigrid stage.
+// Re-activates every configuration that has not failed, clears
+// converged_per_cfg, and starts the iteration count and the restart control
+// of every configuration over. Called at the start of every multigrid stage.
 // Configurations that converged against the coarser-stage tolerance must
 // re-iterate at the finer stage's tighter tolerance, so the active mask is
 // rebuilt rather than carried forward.
-void FlowControl::ResetActivePerCfgForNextStage() {
+void FlowControl::ResetActivePerCfgForNextStage(double delt) {
   const int n_cfg = static_cast<int>(active_per_cfg.size());
   if (n_cfg <= 0) return;
-  std::fill(active_per_cfg.begin(), active_per_cfg.end(),
-            static_cast<std::uint8_t>(1));
-  std::fill(iter2_per_cfg.begin(), iter2_per_cfg.end(), 0);
+  for (int c = 0; c < n_cfg; ++c) {
+    active_per_cfg[c] = static_cast<std::uint8_t>(failed_per_cfg[c] == 0);
+  }
+  std::fill(iter2_per_cfg.begin(), iter2_per_cfg.end(), 1);
   std::fill(converged_per_cfg.begin(), converged_per_cfg.end(),
             static_cast<std::uint8_t>(0));
+  std::fill(restart_reason_per_cfg.begin(), restart_reason_per_cfg.end(),
+            RestartReason::NO_RESTART);
+  std::fill(ijacob_per_cfg.begin(), ijacob_per_cfg.end(), 0);
+  std::fill(delt0r_per_cfg.begin(), delt0r_per_cfg.end(), delt);
+  std::fill(iter1_per_cfg.begin(), iter1_per_cfg.end(), 1);
+  std::fill(res0_per_cfg.begin(), res0_per_cfg.end(), -1.0);
+  std::fill(res1_per_cfg.begin(), res1_per_cfg.end(), -1.0);
+  std::fill(niter_per_cfg.begin(), niter_per_cfg.end(), 0);
 }
 
 }  // namespace vmecpp

@@ -1958,14 +1958,11 @@ PYBIND11_MODULE(_vmecpp, m) {
   // contains the first input's converged OutputQuantities.
   //
   // Distinct mode (distinct = true): a per-configuration
-  // pre-initialization stage extracts each input's initial spectra into
-  // staging blocks handed to the CUDA layer. The pre-initialization
-  // applies the proactive magnetic-axis recomputation per configuration
-  // so that the iteration body does not subsequently invoke the
-  // axis-recovery code path; this permits the per-configuration spectra
-  // in d_specs_block to persist through the first iteration without being
-  // overwritten by the host triplet's broadcast of a corrected
-  // configuration-zero geometry. The returned vector contains one
+  // pre-initialization stage runs each input's first iteration alone, with
+  // the magnetic-axis recovery of a single run, and extracts its initial
+  // spectra into staging blocks handed to the CUDA layer; every
+  // configuration then takes the time step and restart control of its own
+  // single run. The returned vector contains one
   // converged OutputQuantities per input, each derived from the
   // corresponding configuration's converged state after the
   // device-resident output flush at end-of-run.
@@ -1974,6 +1971,13 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const std::vector<VmecINDATA> &indata_list,
          std::optional<int> max_threads, vmecpp::OutputMode verbose,
          bool return_spectra, bool distinct) -> py::object {
+        // Residual traces of the attempts at a configuration's first
+        // iteration that the distinct-mode pre-initialization runs alone and
+        // the batch does not repeat.
+        struct TracePrefix {
+          std::vector<double> r, z, lambda, energy, delbsq;
+          std::vector<vmecpp::RestartReason> reasons;
+        };
 #ifdef VMECPP_USE_CUDA
         // Derives one OutputQuantities per configuration directly from the
         // batched run's device state: the per-cfg fields flush in one
@@ -1987,6 +1991,7 @@ PYBIND11_MODULE(_vmecpp, m) {
                std::optional<int> max_threads,
                const vmecpp::OutputQuantities &seed_oq,
                const vmecpp::FlowControl &batch_fc,
+               const std::vector<TracePrefix> &trace_prefix,
                std::vector<vmecpp::OutputQuantities> &outs) -> bool {
           // Capture the batched run's final per-configuration force-residual
           // state before any further CUDA call (the deriver's setup run below
@@ -1997,7 +2002,8 @@ PYBIND11_MODULE(_vmecpp, m) {
           // zeroed for masked (converged) configurations. Layout: 3*n_cfg as
           // [fsqr_c, fsqz_c, fsql_c, ...].
           if (static_cast<int>(batch_fc.converged_per_cfg.size()) != n_cfg ||
-              static_cast<int>(batch_fc.iter2_per_cfg.size()) != n_cfg ||
+              static_cast<int>(batch_fc.niter_per_cfg.size()) != n_cfg ||
+              static_cast<int>(trace_prefix.size()) != n_cfg ||
               static_cast<int>(batch_fc.force_residual_r_per_cfg.size()) !=
                   n_cfg) {
             return false;
@@ -2250,8 +2256,10 @@ PYBIND11_MODULE(_vmecpp, m) {
                  .r_inner = r1e[inner_index] + r1o[inner_index]});
             h_c.SetGeometricOffset({.r_00 = r1e[0], .z_00 = z1e[0]});
 
-            // This configuration's residuals, traces, and iteration count in
-            // place of the deriver's single-iteration setup values.
+            // This configuration's residuals, traces (after those of the
+            // attempts at its first iteration that the batch does not
+            // repeat), and iteration count in place of the deriver's
+            // single-iteration setup values.
             vmecpp::FlowControl fc_c = deriver->fc_;
             const size_t s3 = static_cast<size_t>(3) * c;
             if (fsqr_snapshot_pc.size() >= s3 + 3) {
@@ -2259,13 +2267,22 @@ PYBIND11_MODULE(_vmecpp, m) {
               fc_c.fsqz = fsqr_snapshot_pc[s3 + 1];
               fc_c.fsql = fsqr_snapshot_pc[s3 + 2];
             }
-            fc_c.force_residual_r = batch_fc.force_residual_r_per_cfg[c];
-            fc_c.force_residual_z = batch_fc.force_residual_z_per_cfg[c];
-            fc_c.force_residual_lambda =
-                batch_fc.force_residual_lambda_per_cfg[c];
-            fc_c.mhd_energy = batch_fc.mhd_energy_per_cfg[c];
-            fc_c.delbsq = batch_fc.delbsq_per_cfg[c];
-            fc_c.restart_reasons = batch_fc.restart_reasons_per_cfg[c];
+            const auto prefixed = [](auto prefix, const auto &trace) {
+              prefix.insert(prefix.end(), trace.begin(), trace.end());
+              return prefix;
+            };
+            const TracePrefix &prefix = trace_prefix[c];
+            fc_c.force_residual_r =
+                prefixed(prefix.r, batch_fc.force_residual_r_per_cfg[c]);
+            fc_c.force_residual_z =
+                prefixed(prefix.z, batch_fc.force_residual_z_per_cfg[c]);
+            fc_c.force_residual_lambda = prefixed(
+                prefix.lambda, batch_fc.force_residual_lambda_per_cfg[c]);
+            fc_c.mhd_energy =
+                prefixed(prefix.energy, batch_fc.mhd_energy_per_cfg[c]);
+            fc_c.delbsq = prefixed(prefix.delbsq, batch_fc.delbsq_per_cfg[c]);
+            fc_c.restart_reasons =
+                prefixed(prefix.reasons, batch_fc.restart_reasons_per_cfg[c]);
 
             outs.push_back(vmecpp::DeriveOutputQuantities(
                 std::move(oq), indata_local[c], deriver->s_, fc_c,
@@ -2275,7 +2292,7 @@ PYBIND11_MODULE(_vmecpp, m) {
                 batch_fc.converged_per_cfg[c] != 0
                     ? vmecpp::VmecStatus::SUCCESSFUL_TERMINATION
                     : vmecpp::VmecStatus::NORMAL_TERMINATION,
-                batch_fc.iter2_per_cfg[c] + 1));
+                batch_fc.niter_per_cfg[c]));
           }
           return true;
         };
@@ -2438,7 +2455,14 @@ PYBIND11_MODULE(_vmecpp, m) {
         } batch_profile_restore;
 #endif
 
+        // Each configuration's first iteration, which the distinct-mode
+        // pre-initialization runs alone: the ijacob it ends with, and the
+        // traces of its attempts the batch does not repeat.
+        std::vector<int> seed_ijacob;
+        std::vector<TracePrefix> trace_prefix;
         if (distinct) {
+          seed_ijacob.assign(n_cfg, 0);
+          trace_prefix.assign(n_cfg, TracePrefix{});
           const size_t spec_len =
               static_cast<size_t>(ns_first) * mpol * (ntor + 1);
           const int n_specs = 6;
@@ -2462,29 +2486,18 @@ PYBIND11_MODULE(_vmecpp, m) {
                                             spec_len,
                                         0.0);
 
-          // Per-cfg proactive axis recompute. VMEC's iter-1 path calls
-          // RecomputeMagneticAxisToFixJacobianSign on bad_jacobian in
-          // SolveEquilibriumLoop. At N>1 distinct, the seed's iter-1
-          // recompute fires for cfg 0's boundary alone; cfg 1..N-1 keep the
-          // original axis baked into their dumped spectra. Hoisting the
-          // recompute into pre-init per cfg, and writing the corrected axis
-          // back into the indata used by both pre-init and the seed, gives
-          // each cfg its own corrected axis and leaves the iteration body's
-          // axis-recovery path unexercised.
-          // The pre-init Vmec drives the axis search using its own
-          // setupFromIndata + flipTheta state; the corrected raxis_c /
-          // zaxis_s / raxis_s / zaxis_c are then patched into the outer
-          // indata_local copy, which is what the rest of the distinct-mode
-          // path (and the seed run) consumes.
+          // Each configuration's first iteration runs alone below, with the
+          // axis recovery of its single run. indata_local holds the inputs
+          // with the recovered axes, which the pre-initialization and the
+          // seed run consume.
           indata_local.assign(indata_list.begin(), indata_list.end());
           run_seed = &indata_local[0];
 
           for (int c = 0; c < n_cfg; ++c) {
-            // Probe Vmec: construct from the current (uncorrected) indata,
-            // run the axis-recompute on its boundary, copy the corrected
-            // axis arrays back into indata_local[c]. The probe Vmec is
-            // discarded; pre-init below builds a fresh Vmec from the
-            // patched indata.
+            // As in a single run, the first iteration recomputes the magnetic
+            // axis and starts over when the first force evaluation shows a
+            // bad Jacobian or huge forces; the batch starts this configuration
+            // from the axis that iteration ends with.
             {
               auto probe_or = vmecpp::Vmec::FromIndata(
                   indata_local[c], /*magnetic_response_table=*/nullptr,
@@ -2496,22 +2509,45 @@ PYBIND11_MODULE(_vmecpp, m) {
                     std::string(probe_or.status().message()));
               }
               auto probe = std::move(*probe_or);
-              const int ns_first_c = indata_local[c].ns_array(0);
-              probe->b_.RecomputeMagneticAxisToFixJacobianSign(
-                  ns_first_c, vmecpp::Vmec::kSignOfJacobian);
-              // Copy corrected axis back into the indata copy.
-              const int ntor_c = indata_local[c].ntor;
-              for (int n = 0; n <= ntor_c; ++n) {
-                indata_local[c].raxis_c[n] = probe->b_.raxis_c[n];
-                indata_local[c].zaxis_s[n] = probe->b_.zaxis_s[n];
+              auto first_or = probe->run(vmecpp::VmecCheckpoint::EVOLVE,
+                                         /*iterations_before_checkpointing=*/1,
+                                         /*maximum_multi_grid_step=*/1);
+              if (!first_or.ok()) {
+                throw std::runtime_error(
+                    "run_batched_gpu: the first iteration failed for cfg " +
+                    std::to_string(c) + ": " +
+                    std::string(first_or.status().message()));
               }
-              if (indata_local[c].lasym) {
+              seed_ijacob[c] = probe->fc_.ijacob;
+              const vmecpp::FlowControl &probe_fc = probe->fc_;
+              if (probe->get_jacob_off() == 0 &&
+                  probe_fc.force_residual_r.size() > 1) {
+                const auto all_but_last = [](auto trace) {
+                  trace.pop_back();
+                  return trace;
+                };
+                TracePrefix &prefix = trace_prefix[c];
+                prefix.r = all_but_last(probe_fc.force_residual_r);
+                prefix.z = all_but_last(probe_fc.force_residual_z);
+                prefix.lambda = all_but_last(probe_fc.force_residual_lambda);
+                prefix.energy = all_but_last(probe_fc.mhd_energy);
+                prefix.delbsq = all_but_last(probe_fc.delbsq);
+                prefix.reasons = all_but_last(probe_fc.restart_reasons);
+              }
+              if (probe_fc.ijacob > 0) {
+                const int ntor_c = indata_local[c].ntor;
                 for (int n = 0; n <= ntor_c; ++n) {
-                  if (indata_local[c].raxis_s.has_value()) {
-                    (*indata_local[c].raxis_s)[n] = probe->b_.raxis_s[n];
-                  }
-                  if (indata_local[c].zaxis_c.has_value()) {
-                    (*indata_local[c].zaxis_c)[n] = probe->b_.zaxis_c[n];
+                  indata_local[c].raxis_c[n] = probe->b_.raxis_c[n];
+                  indata_local[c].zaxis_s[n] = probe->b_.zaxis_s[n];
+                }
+                if (indata_local[c].lasym) {
+                  for (int n = 0; n <= ntor_c; ++n) {
+                    if (indata_local[c].raxis_s.has_value()) {
+                      (*indata_local[c].raxis_s)[n] = probe->b_.raxis_s[n];
+                    }
+                    if (indata_local[c].zaxis_c.has_value()) {
+                      (*indata_local[c].zaxis_c)[n] = probe->b_.zaxis_c[n];
+                    }
                   }
                 }
               }
@@ -2650,6 +2686,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             vmecpp::Vmec &seed_vmec = **seed_or;
 #ifdef VMECPP_USE_CUDA
             seed_vmec.batch_size_ = n_cfg;
+            seed_vmec.batch_ijacob_ = seed_ijacob;
             if (distinct) {
               seed_vmec.batch_indata_ = indata_local;
             }
@@ -2694,9 +2731,9 @@ PYBIND11_MODULE(_vmecpp, m) {
           if (!unconverged.empty()) {
             throw std::runtime_error(
                 "run_batched_gpu: configuration(s) " + unconverged +
-                " did not converge within the niter of the last multigrid "
-                "stage; set return_outputs_even_if_not_converged for their "
-                "best-effort outputs");
+                " did not converge; set "
+                "return_outputs_even_if_not_converged for their best-effort "
+                "outputs");
           }
         }
 
@@ -2707,9 +2744,9 @@ PYBIND11_MODULE(_vmecpp, m) {
         if (distinct && n_cfg > 1) {
 #ifdef VMECPP_USE_CUDA
           outs.reserve(n_cfg);
-          if (!derive_outputs_from_batched_flush(indata_local, n_cfg,
-                                                 max_threads, *ret_seed,
-                                                 *batch_fc, outs)) {
+          if (!derive_outputs_from_batched_flush(
+                  indata_local, n_cfg, max_threads, *ret_seed, *batch_fc,
+                  trace_prefix, outs)) {
             throw std::runtime_error(
                 "run_batched_gpu: the per-configuration outputs could not be "
                 "derived from the batched run");
@@ -2762,12 +2799,12 @@ the mode:
   OutputQuantities.
 
   Distinct mode (distinct=True): a per-configuration pre-initialization
-  stage extracts each input's initial spectra, patches the
-  per-configuration magnetic axis with the proactive recomputation, and
-  hands the concatenated spectra to the iteration body in memory. The
-  iteration body loads the per-configuration spectra at its first
-  invocation of CudaForward and drives each configuration through its own
-  residual evolution under the per-configuration active-mask kernels. The
+  stage runs each input's first iteration alone, with the magnetic-axis
+  recovery of a single run, extracts its initial spectra, and hands the
+  concatenated spectra to the iteration body in memory. The iteration body
+  loads the per-configuration spectra at its first invocation of
+  CudaForward and drives each configuration with the time step and the
+  restart control of its own single run. The
   returned list holds one OutputQuantities per input, derived from the
   batched run's device state with its configuration's residual traces and
   iteration count; a derivation that fails raises, and so

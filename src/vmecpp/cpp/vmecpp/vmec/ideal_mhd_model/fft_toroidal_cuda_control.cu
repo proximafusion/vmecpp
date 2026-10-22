@@ -362,9 +362,34 @@ void PerformTimeStepCuda(
   // Batches take the per-configuration time-step controller: k_update_timestep
   // computes each configuration's (fac, b1) from its own residuals.
   const double* d_fac_b1_for_step = nullptr;
+  const double* d_time_step_for_step = nullptr;
+  const std::uint8_t* d_phase_for_step = nullptr;
   if (S.n_config_max > 1) {
     S.EnsureTimestepBuffers(time_step);
     S.StageFnorm1(fnorm1);
+    if (fc.per_cfg_control &&
+        static_cast<int>(fc.delt0r_per_cfg.size()) == S.n_config_max) {
+      // Per-configuration restart control: each configuration's time step,
+      // and a ring reset where its iteration count meets its latest restart.
+      S.EnsurePerCfgControlBuffers();
+      std::vector<std::uint8_t> phases(S.n_config_max, 1);
+      for (int c = 0; c < S.n_config_max; ++c) {
+        if (S.timestep_first_call_after_reset ||
+            fc.iter2_per_cfg[c] == fc.iter1_per_cfg[c]) {
+          phases[c] = 0;
+        }
+      }
+      cuda_check(cudaMemcpyAsync(S.d_time_step_per_cfg, fc.delt0r_per_cfg.data(),
+                                  sizeof(double) * S.n_config_max,
+                                  cudaMemcpyHostToDevice, st),
+                 "h2d per-cfg time step");
+      cuda_check(cudaMemcpyAsync(S.d_phase_per_cfg, phases.data(),
+                                  sizeof(std::uint8_t) * S.n_config_max,
+                                  cudaMemcpyHostToDevice, st),
+                 "h2d per-cfg ring reset");
+      d_time_step_for_step = S.d_time_step_per_cfg;
+      d_phase_for_step = S.d_phase_per_cfg;
+    }
     // Reset the ring on the same iterations the host controller does
     // (iter2 == iter1: stage starts and restarts), plus defensively after
     // a Reshape reallocated the ring buffers.
@@ -374,7 +399,7 @@ void PerformTimeStepCuda(
         S.n_config_max, phase, time_step, S.d_fnorm1, fc.deltaS,
         S.d_residuals_partial,
         S.d_inv_tau, S.d_prev_fsq, S.d_fac_b1,
-        S.d_active_per_cfg);
+        S.d_active_per_cfg, d_time_step_for_step, d_phase_for_step);
     cuda_check(cudaGetLastError(),
                "k_update_timestep launch (per-cfg ts)");
     S.timestep_first_call_after_reset = false;
@@ -396,7 +421,7 @@ void PerformTimeStepCuda(
       S.d_pts_v_zcs, S.d_pts_v_lsc, S.d_pts_v_lcs,
       S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
       S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs,
-      d_fac_b1_for_step, S.d_active_per_cfg);
+      d_fac_b1_for_step, S.d_active_per_cfg, d_time_step_for_step);
   cuda_check(cudaGetLastError(), "k_perform_time_step launch");
   if (!s.lthreed) {
     // Axisymmetric (ntor=0): the lthreed-only spectral slots carry no physical

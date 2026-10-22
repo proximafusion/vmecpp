@@ -363,6 +363,34 @@ def test_distinct_batch_outputs_carry_their_own_traces():
     assert outs[0].wout.niter != outs[1].wout.niter
 
 
+def _assert_same_equilibrium(actual, expected, rel: float) -> None:
+    for name in ("rmnc", "zmns"):
+        reference = np.asarray(getattr(expected, name))
+        np.testing.assert_allclose(
+            np.asarray(getattr(actual, name)),
+            reference,
+            rtol=0.0,
+            atol=rel * np.max(np.abs(reference)),
+            err_msg=name,
+        )
+
+
+def test_distinct_batch_outputs_follow_their_single_runs():
+    # Each output of a distinct batch of uniformly scaled boundaries, whose
+    # single runs restart at the same iterations, is the equilibrium of its
+    # single run, iteration for iteration.
+    vi = _cma_input()
+    inputs = [
+        vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
+        for f in (1.0, 1.01, 1.02)
+    ]
+    outs = vmecpp.run_batch(inputs, max_threads=1)
+    for inp, out in zip(inputs, outs, strict=True):
+        single = vmecpp.run(inp, max_threads=1, verbose=False)
+        assert out.wout.niter == single.wout.niter
+        _assert_same_equilibrium(out.wout, single.wout, rel=1e-10)
+
+
 def test_mixed_configuration_counts_one_process():
     # distinct N=2, broadcast N=4, distinct N=2, single: the
     # per-configuration buffers reallocate across the count changes and
@@ -566,6 +594,19 @@ def test_hot_restart_reproduces_converged_state():
             atol=1e-12 * np.max(np.abs(expected)),
             err_msg=name,
         )
+
+
+@pytest.mark.slow
+def test_w7x_distinct_batch_converges():
+    # Three scaled W7-X boundaries, whose single runs restart mid-run at
+    # different iterations, converge in one distinct batch.
+    vi = vmecpp.VmecInput.from_file(W7X_JSON)
+    inputs = [
+        vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
+        for f in (1.0, 1.0 + 0.01 / 3, 1.0 + 0.02 / 3)
+    ]
+    for out in vmecpp.run_batch(inputs, max_threads=1):
+        assert max(out.wout.fsqr, out.wout.fsqz, out.wout.fsql) <= out.wout.ftolv
 
 
 @pytest.mark.slow

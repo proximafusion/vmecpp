@@ -529,6 +529,74 @@ void SnapshotEvaluatedPtsXCuda() {
   S.pts_x_evaluated_valid = true;
 }
 
+void SnapshotEvaluatedPtsXPerCfgCuda(const std::vector<std::uint8_t>& mask) {
+  auto& S = State();
+  if (!S.stream || !S.d_pts_x_rcc) return;
+  std::lock_guard<std::mutex> lk(S.mu);
+  if (!S.pts_x_initialized) return;
+  if (static_cast<int>(mask.size()) != S.n_config_max) return;
+  if (std::find(mask.begin(), mask.end(), 1) == mask.end()) return;
+  size_t x_bytes_all = sizeof(double) * (size_t)S.n_config_max *
+                       (size_t)S.pts_x_size;
+  auto alloc = [&](double*& p, const char* name) {
+    if (!p) cuda_check(cudaMalloc(&p, x_bytes_all), name);
+  };
+  alloc(S.d_pts_x_evaluated_rcc, "alloc d_pts_x_evaluated_rcc");
+  alloc(S.d_pts_x_evaluated_rss, "alloc d_pts_x_evaluated_rss");
+  alloc(S.d_pts_x_evaluated_zsc, "alloc d_pts_x_evaluated_zsc");
+  alloc(S.d_pts_x_evaluated_zcs, "alloc d_pts_x_evaluated_zcs");
+  alloc(S.d_pts_x_evaluated_lsc, "alloc d_pts_x_evaluated_lsc");
+  alloc(S.d_pts_x_evaluated_lcs, "alloc d_pts_x_evaluated_lcs");
+  S.EnsurePerCfgControlBuffers();
+  cuda_check(cudaMemcpyAsync(S.d_copy_mask, mask.data(),
+                              sizeof(std::uint8_t) * S.n_config_max,
+                              cudaMemcpyHostToDevice, S.stream),
+             "h2d snapshot mask");
+  const int TPB = 256;
+  dim3 grid((S.pts_x_size + TPB - 1) / TPB, S.n_config_max, 1);
+  // k_restore_pts_x_per_cfg copies its second set of arrays into its first
+  // for the masked configurations.
+  k_restore_pts_x_per_cfg<<<grid, TPB, 0, S.stream>>>(
+      S.n_config_max, S.pts_x_size, S.d_copy_mask,
+      S.d_pts_x_evaluated_rcc, S.d_pts_x_evaluated_rss,
+      S.d_pts_x_evaluated_zsc, S.d_pts_x_evaluated_zcs,
+      S.d_pts_x_evaluated_lsc, S.d_pts_x_evaluated_lcs,
+      S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
+      S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs);
+  cuda_check(cudaGetLastError(), "k_restore_pts_x_per_cfg (snapshot) launch");
+  S.pts_x_evaluated_valid = true;
+}
+
+void BackupPtsXPerCfgCuda(const std::vector<std::uint8_t>& mask,
+                          bool from_evaluated) {
+  auto& S = State();
+  if (!S.stream || !S.d_pts_x_rcc) return;
+  std::lock_guard<std::mutex> lk(S.mu);
+  if (!S.pts_x_initialized) return;
+  if (static_cast<int>(mask.size()) != S.n_config_max) return;
+  if (std::find(mask.begin(), mask.end(), 1) == mask.end()) return;
+  EnsurePTSBackupBuffers(S);
+  const bool evaluated = from_evaluated && S.pts_x_evaluated_valid;
+  S.EnsurePerCfgControlBuffers();
+  cuda_check(cudaMemcpyAsync(S.d_copy_mask, mask.data(),
+                              sizeof(std::uint8_t) * S.n_config_max,
+                              cudaMemcpyHostToDevice, S.stream),
+             "h2d backup mask");
+  const int TPB = 256;
+  dim3 grid((S.pts_x_size + TPB - 1) / TPB, S.n_config_max, 1);
+  k_restore_pts_x_per_cfg<<<grid, TPB, 0, S.stream>>>(
+      S.n_config_max, S.pts_x_size, S.d_copy_mask,
+      S.d_pts_x_backup_rcc, S.d_pts_x_backup_rss, S.d_pts_x_backup_zsc,
+      S.d_pts_x_backup_zcs, S.d_pts_x_backup_lsc, S.d_pts_x_backup_lcs,
+      evaluated ? S.d_pts_x_evaluated_rcc : S.d_pts_x_rcc,
+      evaluated ? S.d_pts_x_evaluated_rss : S.d_pts_x_rss,
+      evaluated ? S.d_pts_x_evaluated_zsc : S.d_pts_x_zsc,
+      evaluated ? S.d_pts_x_evaluated_zcs : S.d_pts_x_zcs,
+      evaluated ? S.d_pts_x_evaluated_lsc : S.d_pts_x_lsc,
+      evaluated ? S.d_pts_x_evaluated_lcs : S.d_pts_x_lcs);
+  cuda_check(cudaGetLastError(), "k_restore_pts_x_per_cfg (backup) launch");
+}
+
 void BackupPtsXCuda(bool from_evaluated) {
   auto& S = State();
   if (!S.stream || !S.d_pts_x_rcc) return;
