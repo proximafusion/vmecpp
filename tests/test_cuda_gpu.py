@@ -10,7 +10,8 @@ The references are the converged values of the CPU build (VMECPP_USE_CUDA off) o
 same commit, which the CUDA path reproduces iteration for iteration; the two agree on
 them to 5e-10 relative or better. They are quantities of the solved interior: volume and
 aspect ratio of a fixed-boundary run follow from its input boundary alone.
-examples/cuda_cross_validation.py compares every output field of the two builds.
+examples/cuda_cross_validation.py compares every output field of the two builds. The
+distinct-batch tests hold each configuration to its single run on the GPU.
 """
 
 import itertools

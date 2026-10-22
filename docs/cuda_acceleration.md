@@ -109,8 +109,9 @@ the build accepts solves on the GPU and is held to the CPU's references, and
 a test that needs a `lasym` or `lforbal` input or the `VmecModel` iteration
 API is reported as skipped with the build's refusal (`tests/conftest.py`).
 `tests/test_cuda_gpu.py` adds the CUDA-specific cases, which run in every
-CUDA build; the W7-X case carries the `slow` marker and runs under
-`pytest -m slow`. The `Build the CUDA path` workflow compiles the
+CUDA build and hold distinct batches to the iteration counts, restarts,
+residual traces and Fourier coefficients of their single runs; the W7-X cases
+carry the `slow` marker and run under `pytest -m slow`. The `Build the CUDA path` workflow compiles the
 CUDA iteration body and links the Python module on every pull request; its
 runners have no GPU.
 
