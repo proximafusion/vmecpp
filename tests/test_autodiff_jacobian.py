@@ -154,6 +154,28 @@ def test_one_solve_and_one_factorization_serve_further_vjps(
     assert calls == {"solve": 1, "assembly": 1}
 
 
+def test_one_factorization_is_held_at_a_time(monkeypatch, outputs, boundary) -> None:
+    """VJPs at two parameter points build their factorizations one after the other, and
+    a solve at other parameters releases the one held."""
+    factorize = autodiff._factorize
+
+    def held() -> int:
+        return sum(
+            "factorization" in solve for solve in autodiff._FORWARD_SOLVES.values()
+        )
+
+    def checked_factorize(model):
+        assert held() == 0
+        return factorize(model)
+
+    monkeypatch.setattr(autodiff, "_factorize", checked_factorize)
+    points = jnp.stack([boundary, boundary.at[0, 1, 2].add(1.0e-3)])
+    jax.vmap(jax.grad(lambda b: outputs(b)[0]))(points)
+    assert held() == 1
+    outputs(boundary.at[0, 1, 2].add(2.0e-3))
+    assert held() == 0
+
+
 def test_gradients_at_two_parameter_points_under_vmap(outputs, boundary) -> None:
     points = jnp.stack([boundary, boundary.at[0, 1, 2].add(1.0e-3)])
 

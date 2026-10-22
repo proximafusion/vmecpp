@@ -92,8 +92,9 @@ def _key(solver_id: int, boundary: np.ndarray, profiles: dict) -> tuple[int, byt
 _VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
 
 # Recent forward solves, keyed by solver and parameters: the solved state, the
-# forward output and, for the latest VJP, the LU factors of the transposed
-# interior system. NumPy data only, since JAX retains callback closures.
+# forward output and, from the latest VJP until a solve or VJP at other
+# parameters, the LU factors of the transposed interior system. NumPy data only,
+# since JAX retains callback closures.
 _FORWARD_SOLVES: collections.OrderedDict[tuple[int, bytes], dict[str, Any]] = (
     collections.OrderedDict()
 )
@@ -680,6 +681,9 @@ class DifferentiableVmec:
         return (self.geometry_size + self.extra_size,)
 
     def _remember(self, boundary: np.ndarray, profiles: dict, solve: dict) -> None:
+        # A solve at other parameters releases the held factorization.
+        for other in _FORWARD_SOLVES.values():
+            other.pop("factorization", None)
         _FORWARD_SOLVES[_key(self._solver_id, boundary, profiles)] = solve
         while len(_FORWARD_SOLVES) > _FORWARD_SOLVES_SIZE:
             _FORWARD_SOLVES.popitem(last=False)
@@ -739,16 +743,17 @@ class DifferentiableVmec:
         profiles = profiles or {}
         model = self._solved_model(boundary, profiles)
         solve = self._solve_for_vjp(boundary, profiles)
-        boundary_bars, profile_bars, factorization = _implicit_vjps(
+        # One factorization is held at a time: another point's is released before
+        # this one is built.
+        for other in _FORWARD_SOLVES.values():
+            if other is not solve:
+                other.pop("factorization", None)
+        boundary_bars, profile_bars, solve["factorization"] = _implicit_vjps(
             model,
             geometry_bars,
             with_profiles=bool(profiles),
             factorization=solve.get("factorization"),
         )
-        # Only the latest factorization is kept.
-        for other in _FORWARD_SOLVES.values():
-            other.pop("factorization", None)
-        solve["factorization"] = factorization
         return boundary_bars, profile_bars
 
     def __call__(self, boundary, profiles=None) -> geometry.Geometry:
