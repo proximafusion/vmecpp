@@ -1848,11 +1848,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
       if (converged_count > 0) {
         status_ = VmecStatus::SUCCESSFUL_TERMINATION;
-        if (timed_out_count > 0) {
-          std::fprintf(stderr,
-                       "[vmec.cc] batch terminated at shared niterv=%d: "
-                       "%d cfg(s) converged, %d cfg(s) timed out\n",
-                       fc_.niterv, converged_count, timed_out_count);
+        if (timed_out_count > 0 && verbose_) {
+          std::cout << absl::StrFormat(
+              "%d of %d configurations converged within niter = %d\n",
+              converged_count, n_cfg_post, fc_.niterv);
         }
       }
     }

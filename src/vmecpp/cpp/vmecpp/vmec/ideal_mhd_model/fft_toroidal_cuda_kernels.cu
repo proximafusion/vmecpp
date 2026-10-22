@@ -146,24 +146,13 @@ __global__ void k_fill_spectra(
   X[dst_idx].y = im;
 }
 
-// Shared-memory cached variant of the fused main-and-constraint scatter.
+// Fused main-and-constraint scatter with the Y values in shared memory.
 //
-// The kernel adopts the same per-warp work assignment as the v4 variant
-// above, in which one warp handles one (config, jF_local, k) tuple and
-// the lanes within the warp partition the poloidal output points. The
-// distinguishing element is that the Y values consumed during the
-// inner toroidal-mode loop are first staged into a per-warp shared
-// memory tile of mpol * kBatch doubles. Although the Y loads are
-// warp-uniform and would in principle broadcast efficiently through
-// the L1 cache, the latency observed during the inner loop is reduced
-// by serving them from shared memory.
-//
-// Each warp uses four of its lanes to cooperatively load the
-// mpol * kBatch tile into shared memory before the toroidal-mode loop
-// begins, after which all active lanes read the cached values without
-// returning to global memory. The block geometry is unchanged relative
-// to the v4 variant: four warps per block, one warp per
-// (config, jF_local, k) tuple.
+// One warp handles one (config, jF_local, k) tuple, and the lanes within the
+// warp partition the poloidal output points. The Y values consumed during the
+// inner toroidal-mode loop are staged into a per-warp shared-memory tile of
+// mpol * kBatch doubles, which four lanes of each warp load cooperatively
+// before the toroidal-mode loop begins. Four warps per block.
 __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -211,7 +200,7 @@ __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5(
   }
   __syncwarp();
 
-  // One x-block per 32 poloidal points (matches the v4 grid), covering
+  // One x-block per 32 poloidal points, covering
   // nThetaReduced > 32 across multiple warps.
   int l = blockIdx.x * blockDim.x + lane;
   if (l >= nThetaReduced) return;
@@ -1188,8 +1177,7 @@ __global__ __launch_bounds__(128, 5) void k_jacobian_metric_dvdsh_atomic_pair(
                  sH * (r1e_i * r1o_i + r1e_o * r1o_o);
   double guv_v = 0.0;
   if (lthreed) {
-    // rv/zv not cached (extending the cache to 12 fields measured as a
-    // regression); both jF positions hit global.
+    // rv/zv are not cached; both jF positions read global memory.
     double rve_i = rv_e[cfg_full + jF_in  * nZnT + kl];
     double rvo_i = rv_o[cfg_full + jF_in  * nZnT + kl];
     double zve_i = zv_e[cfg_full + jF_in  * nZnT + kl];
@@ -3304,10 +3292,8 @@ __global__ void k_apply_m1_preconditioner(
   if (jF_local >= ns_force_local || n > ntor) return;
   size_t cfg_spec = (size_t)config * (size_t)ns_local *
                     (size_t)mpol * (size_t)(ntor + 1);
-  // Per-configuration indexing extension: d_pmat_ard/brd/azd/bzd are per-cfg snapshots from
-  // ComputePreconditioningMatrixCuda; read with cfg offset. Previously read
-  // cfg=0's slot for all cfgs; correct for broadcast (cfg>=1 SHOULD have
-  // cfg=0's value), wrong for distinct-input execution.
+  // d_pmat_ard/brd/azd/bzd are per-cfg snapshots from
+  // ComputePreconditioningMatrixCuda, read at this configuration's offset.
   size_t cfg_pmat = (size_t)config * (size_t)ns_force_local * 2;
   const int mPar = 1;
   int ard_idx = cfg_pmat + (size_t)(jF_local * 2 + mPar);
@@ -3341,10 +3327,8 @@ __global__ void k_apply_lambda_preconditioner(
   if (jF_local >= ns_con_local || m >= mpol || n > ntor) return;
   size_t cfg_spec = (size_t)config * (size_t)ns_local *
                     (size_t)mpol * (size_t)(ntor + 1);
-  // Per-configuration indexing extension: lambdaPreconditioner is per-cfg (matched by
-  // k_ulp_assemble's gain of n_config dim). Previously this read cfg=0's
-  // slot only; correct in broadcast since cfg>=1 SHOULD have cfg=0's
-  // value, but wrong for distinct-input execution with per-cfg lambdaPrec.
+  // lambdaPreconditioner is per-cfg (k_ulp_assemble writes one slot per
+  // configuration), read at this configuration's offset.
   size_t cfg_lp = (size_t)config * (size_t)ns_con_local *
                   (size_t)mpol * (size_t)(ntor + 1);
   int local_mn = ((jF_local * mpol + m) * (ntor + 1)) + n;
@@ -4364,8 +4348,7 @@ __global__ void k_apply_rz_thomas_block(
 // assembleRZPreconditioner. Reads per-side persistent precond-matrix outputs
 // (arm/brm/ard/brd half/full-grid for R, similarly for Z, plus shared cxd) and
 // writes the tri-diagonal coefficients ar/dr/br (R) and az/dz/bz (Z) directly
-// in the (mn, jF_global) transposed layout that k_apply_rz_pcr consumes,
-// skipping the host transpose + 6 H2Ds previously done in ApplyRZPreconditionerCuda.
+// in the (mn, jF_global) transposed layout that k_apply_rz_pcr consumes.
 //
 // Thread mapping: blockIdx.x = mn, blockIdx.y * blockDim.x + threadIdx.x = jF.
 // jMin[mn] is written once per mn by the jF==0 thread.

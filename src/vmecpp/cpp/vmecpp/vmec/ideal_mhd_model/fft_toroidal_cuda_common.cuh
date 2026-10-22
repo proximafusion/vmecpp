@@ -151,7 +151,6 @@ static void cuda_check(cudaError_t err, const char* what) {
     char msg[256];
     std::snprintf(msg, sizeof(msg), "[fft_toroidal_cuda] CUDA error at %s: %s",
                   what, cudaGetErrorString(err));
-    std::fprintf(stderr, "%s\n", msg);
     throw std::runtime_error(msg);
   }
 }
@@ -160,7 +159,6 @@ static void cufft_check(cufftResult res, const char* what) {
     char msg[256];
     std::snprintf(msg, sizeof(msg), "[fft_toroidal_cuda] cuFFT error at %s: %d",
                   what, (int)res);
-    std::fprintf(stderr, "%s\n", msg);
     throw std::runtime_error(msg);
   }
 }
@@ -995,7 +993,7 @@ struct CudaToroidalState {
     // physical space (decomposed * scalxc_OLD) matching the host upscale.
     // Distinct batches only.
     {
-      // scalxc_staged is reset earlier in Reshape (line ~9580), so don't
+      // scalxc_staged is reset earlier in Reshape, so don't
       // check it here. d_scalxc != null is the right guard for the data:
       // the buffer still holds the OLD ns staged values until the
       // cuda_free_if below. pts_x_initialized distinguishes a genuine
@@ -1015,10 +1013,6 @@ struct CudaToroidalState {
                    "d2d scalxc -> scalxc_prev (Reshape snapshot)");
         scalxc_prev_len = scalxc_len_old;
         scalxc_prev_valid = true;
-        std::fprintf(stderr,
-            "[fft_toroidal_cuda] Reshape scalxc snapshot: scalxc_len %d "
-            "(n_cfg=%d), %zu bytes\n",
-            scalxc_len_old, n_config_max, bytes_prev);
       }
     }
     cuda_free_if((void*&)d_scalxc);
@@ -1063,10 +1057,6 @@ struct CudaToroidalState {
       pts_x_prev_size = pts_x_size;
       pts_x_prev_ns = pts_x_ns;
       pts_x_prev_valid = true;
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] Reshape multigrid snapshot: ns %d -> %d "
-          "(n_cfg=%d), %zu bytes/spec captured\n",
-          pts_x_ns, ns_local, n_config_max, bytes_prev);
     }
     cuda_free_if((void*&)d_pts_x_rcc);
     cuda_free_if((void*&)d_pts_x_rss);
@@ -1330,8 +1320,7 @@ struct CudaToroidalState {
 
   // Toroidal basis arrays (cosnv/sinnv) for deAlias and elsewhere. Staged once
   // per shape at Reshape-time (called from FourierToReal3DSymmFastPoloidalCuda
-  // after StageBasis/StageBasisI). Removes the per-call sentinel check that
-  // previously lived in EnsureDealiasBuffers.
+  // after StageBasis/StageBasisI).
   void StageToroidalBasis(int nZeta, int nnyq2_plus_1,
                           const double* cosnv, const double* sinnv) {
     size_t cv_bytes = sizeof(double) * nZeta * nnyq2_plus_1;
@@ -1958,10 +1947,6 @@ struct CudaToroidalState {
       pts_x_prev_mpol = mpol;
       pts_x_prev_ntor = ntor;
       pts_x_prev_valid = true;
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] multigrid snapshot: ns %d -> %d (mpol=%d ntor=%d "
-          "n_cfg=%d), %zu bytes/spec\n",
-          pts_x_ns, ns_local, mpol, ntor, n_config_max, bytes_prev);
     }
     auto free_if = [](double*& p) { if (p) { cudaFree(p); p = nullptr; } };
     free_if(d_pts_v_rcc); free_if(d_pts_v_rss);
@@ -2204,13 +2189,6 @@ struct CudaToroidalState {
     // it, one process per device.
     const int device_index = 0;
     cuda_check(cudaSetDevice(device_index), "cudaSetDevice");
-    cudaDeviceProp prop;
-    cuda_check(cudaGetDeviceProperties(&prop, device_index),
-               "cudaGetDeviceProperties");
-    std::fprintf(stderr,
-                 "[fft_toroidal_cuda] using device %d: %s (sm_%d%d), "
-                 "real-kernel forward path active\n",
-                 device_index, prop.name, prop.major, prop.minor);
     n_cached = n;
     nfp_cached = nfp;
     mpol_cached = mpol;

@@ -511,8 +511,8 @@ const std::vector<double>& GetPlasmaVolumePerCfgCache();
 // the reciprocal rzNorm of that configuration's device-resident position
 // state, refreshed at the force-norm cadence by ComputeForceNormsCuda.
 // Configuration zero matches the shared host fNorm1 bit for bit, so the
-// per-configuration normalization in evalFResPrecd reduces to the legacy
-// scalar arithmetic under single-configuration and broadcast execution.
+// per-configuration normalization in evalFResPrecd reduces to the scalar
+// arithmetic under single-configuration and broadcast execution.
 const std::vector<double>& GetFnorm1PerCfgCache();
 
 // Device-side replacement for Vmec::performTimeStep. The velocity and
@@ -551,8 +551,8 @@ void PrepareStagePtsXCuda(const RadialPartitioning& r, const Sizes& s,
                           double* m_dec_x_zsc, double* m_dec_x_zcs,
                           double* m_dec_x_lsc, double* m_dec_x_lcs);
 
-// Device-side composition of the host triplet that previously executed at
-// the start of IdealMhdModel::update: decomposeInto applied to
+// Device-side composition of the host triplet at the start of
+// IdealMhdModel::update: decomposeInto applied to
 // m_decomposed_x with the scalxc weighting, m1Constraint on the result with
 // unit scaling factor and the sign of the Jacobian, and
 // extrapolateTowardsAxis. Reads the
@@ -760,10 +760,7 @@ void FlushDVdsHToHostCuda(int ns_h, double* dVdsH_host);
 // initialized by the first invocation of PerformTimeStepCuda. The
 // buffers are zero-initialized at cudaMalloc time but do not contain a
 // valid decomposed-position state until PerformTimeStepCuda has copied
-// the initial host state. Callers that invoke
-// ComputeForceNorm1FromPtsXCuda before this condition holds must instead
-// fall back to the host-resident rzNorm computation, since the device
-// buffer state is unrepresentative of the iteration's starting condition.
+// the initial host state; until then callers read the host-resident state.
 bool PtsXInitializedCuda();
 
 // True when d_pts_x is initialized AND sized for the given stage geometry
@@ -811,8 +808,6 @@ void FlushForOutputQuantitiesCuda(
     double* jcurvF_host, double* jcuruF_host, double* presgradF_host,
     double* dVdsF_host, double* equiF_host,
     // half-grid + full-grid magnetic profile scalars (ns_h / ns_local).
-    // Previously D2H'd per-iter in ComputeBContraCuda; consolidated here so
-    // the per-iter D2H+launch overhead is eliminated.
     double* chipH_host, double* iotaH_host, double* chipF_host,
     double* iotaF_host);
 

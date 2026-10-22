@@ -637,15 +637,10 @@ void ComputeBContraCuda(
   }
 
   // bsupu/bsupv stay on device (consumed by ComputeBCo, PressureAndEnergies,
-  // ComputeMHDForces). The four small radial profiles (chipH, iotaH, chipF,
-  // iotaF) used to be D2H'd per-iter to host m_p_ here, but every per-iter
-  // host reader of those arrays is in CPU-only branches (after
-  // #endif VMECPP_USE_CUDA) or in RadialForceBalanceCuda which reads them
-  // from S.d_chipF/S.d_phipF directly. The only live host consumer is
-  // ComputeOutputQuantities at end of run (output_quantities.cc writes
-  // chipF/chipH/iotaF/iotaH to the HDF5 wout). FlushForOutputQuantitiesCuda
-  // covers that one-shot D2H instead. Saves 4 small async D2Hs / iter ~
-  // 50-100 us / iter * 21597 iters ~ 1-2s at N=64.
+  // ComputeMHDForces). The radial profiles chipH, iotaH, chipF, and iotaF have
+  // no per-iteration host reader under CUDA (RadialForceBalanceCuda reads
+  // S.d_chipF and S.d_phipF); FlushForOutputQuantitiesCuda brings them to the
+  // host for the output computation.
   (void)bsupu; (void)bsupv;
   (void)chipH_out; (void)iotaH_out; (void)chipF_out; (void)iotaF_out;
 }
@@ -920,17 +915,9 @@ void UpdateLambdaPreconditionerCuda(
     cuda_check(cudaGetLastError(), "k_ulp_assemble launch");
   }
 
-  // Per-preconditioner-update D2Hs of lambdaPreconditioner + bLambda /
-  // dLambda / cLambda were originally retained so the CPU paths in
-  // ideal_mhd_model.cc could read them. Under CUDA every consumer is
-  // either in a CPU-only branch (the bLambda/dLambda/cLambda host reads at
-  // ideal_mhd_model.cc are inside the #else of VMECPP_USE_CUDA) or
-  // is the device-resident path itself (ApplyLambdaPreconditionerCuda at
-  // line 8184 explicitly marks the host lambdaPreconditioner argument as
-  // (void) and reads d_lambdaPreconditioner directly). Dropping the
-  // D2Hs eliminates the per-preconditioner-update kernel launch + async
-  // copy overhead. 960 updates x 4 D2Hs ~80 ms total on the convergence
-  // trajectory.
+  // lambdaPreconditioner, bLambda, dLambda, and cLambda stay on the device:
+  // their host readers in ideal_mhd_model.cc are CPU-only, and
+  // ApplyLambdaPreconditionerCuda reads d_lambdaPreconditioner.
   (void)lambdaPreconditioner_host;
   (void)bLambda_out;
   (void)dLambda_out;
@@ -1410,9 +1397,8 @@ void ConstraintForceMultiplierCuda(
       S.d_ruFull, S.d_zuFull, S.d_pmat_ard, S.d_pmat_azd, S.d_wInt, S.d_tcon);
   cuda_check(cudaGetLastError(), "k_constraint_force_multiplier launch");
 
-  // LCFS halving on device: previously this was a host operation that never
-  // propagated back to d_tcon, leaving DeAliasConstraintForceCuda to read
-  // un-halved values. One-thread kernel keeps the halved value on device.
+  // LCFS halving on device, so that DeAliasConstraintForceCuda reads the
+  // halved value from d_tcon.
   // The halved entry is the LCFS row of the con-sized profile
   // (nsMaxF1 - 1 - nsMinF), matching the host indexing; on fixed-boundary
   // runs that row sits one past the force rows the dealiasing reads, so

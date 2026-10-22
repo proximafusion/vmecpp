@@ -117,10 +117,8 @@ void FlushForOutputQuantitiesCuda(
   d2h(bvcoH_host,          S.d_bvcoH,          presH_bytes, "flush bvcoH");
   d2h(bucoH_host,          S.d_bucoH,          presH_bytes, "flush bucoH");
 
-  // chipH, iotaH (ns_h doubles each), chipF, iotaF (ns_local doubles each).
-  // ComputeBContraCuda previously did these as per-iter async D2Hs even though
-  // every host reader except output_quantities lives in a CPU-only branch.
-  // Consolidated to this one-shot flush; per-iter 4 D2Hs eliminated.
+  // chipH, iotaH (ns_h doubles each), chipF, iotaF (ns_local doubles each);
+  // under CUDA their only host reader is the output computation.
   d2h(chipH_host,          S.d_chipH,          presH_bytes, "flush chipH");
   d2h(iotaH_host,          S.d_iotaH,          presH_bytes, "flush iotaH");
   const size_t chipFull_bytes = sizeof(double) * ns_local;
@@ -167,14 +165,12 @@ void FlushForOutputQuantitiesCuda(
     double* d_finals[6] = {S.d_pts_x_final_rcc, S.d_pts_x_final_rss,
                            S.d_pts_x_final_zsc, S.d_pts_x_final_zcs,
                            S.d_pts_x_final_lsc, S.d_pts_x_final_lcs};
-    int n_snap = 0;
     for (int sp = 0; sp < 6; ++sp) {
       for (int cfg = 0; cfg < N_out; ++cfg) {
         const bool use_snap =
             S.d_pts_x_final_rcc &&
             cfg < static_cast<int>(S.pts_x_final_taken.size()) &&
             S.pts_x_final_taken[cfg];
-        if (sp == 0 && use_snap) ++n_snap;
         const double* src =
             (use_snap ? d_finals[sp] : d_specs[sp]) +
             (size_t)cfg * per_spec_doubles;
@@ -183,11 +179,6 @@ void FlushForOutputQuantitiesCuda(
             sizeof(double) * per_spec_doubles,
             cudaMemcpyDeviceToHost, st), "batch out D2H");
       }
-    }
-    if (n_snap > 0) {
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] batch outputs: %d/%d cfgs from "
-          "converged-state snapshots\n", n_snap, N_out);
     }
     cuda_check(cudaStreamSynchronize(st), "batch out sync");
     g_batch_outputs_mem.assign(h_buf, h_buf + total_doubles);
