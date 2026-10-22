@@ -294,12 +294,15 @@ void StageRbsqCuda(int cfg, const Eigen::VectorXd& rBSq);
 // poloidal-mode-one coefficients via the supplied m1ScalingFactor and the
 // sign of the Jacobian (rss <- f (rss + sigma zcs) with sigma =
 // -sign_of_jacobian, as in FourierCoeffs::m1Constraint), and
-// zeroes the Z-force component at poloidal mode one to maintain the
-// quasi-polar boundary parameterization. The decomposed force values stay
-// in the device shadow buffers; host m_decomposed_f copies are refreshed
-// through the consolidated FlushDecomposedToHostCuda entry point.
+// zeroes the Z-force component at poloidal mode one where the CPU path does:
+// under always_fix_m1_gauge, while the previous iteration's fsqz is below
+// 1e-6, and for iter2 < 2, with each configuration's fsqz in a batch. The
+// decomposed force values stay in the device shadow buffers; host
+// m_decomposed_f copies are refreshed through the consolidated
+// FlushDecomposedToHostCuda entry point.
 void DecomposeAndConstrainCuda(const RadialPartitioning& r, const Sizes& s,
-                               const FlowControl& fc, double m1ScalingFactor,
+                               const FlowControl& fc, int iter2,
+                               bool always_fix_m1_gauge, double m1ScalingFactor,
                                int sign_of_jacobian,
                                const Eigen::VectorXd& scalxc,
                                double* dec_frcc_host, double* dec_frss_host,
@@ -749,8 +752,11 @@ void EndUpdateSegment2GraphOrLaunch();
 // semantics to propagate correctly. The presence of a device-resident
 // backup also permits eliminating the per-iteration device-to-host
 // transfer that PerformTimeStepCuda would otherwise require to maintain
-// a fresh host shadow.
-void BackupPtsXCuda();
+// a fresh host shadow. With from_evaluated the backup takes the state of the
+// latest force evaluation, saved by SnapshotEvaluatedPtsXCuda before the time
+// step advanced d_pts_x, as the host path does under backup_evaluated_state.
+void SnapshotEvaluatedPtsXCuda();
+void BackupPtsXCuda(bool from_evaluated);
 void RestorePtsXFromBackupCuda();
 // Per-cfg variant: restore d_pts_x and zero d_pts_v only for cfgs whose
 // mask byte is non-zero. mask.size() must equal n_config_max. Whole-batch
@@ -779,6 +785,23 @@ void FlushDecomposedXToHostCuda(int cfg, int ns_local, int mpol, int ntor,
                                 double* m_dec_x_rss, double* m_dec_x_zsc,
                                 double* m_dec_x_zcs, double* m_dec_x_lsc,
                                 double* m_dec_x_lcs);
+
+// Copies the first configuration's device backup of the decomposed position
+// state, the last accepted state, into host containers; a no-op before the
+// backup is armed or across a change of shape.
+void FlushBackupXToHostCuda(int ns_local, int mpol, int ntor, bool lthreed,
+                            double* rcc, double* rss, double* zsc, double* zcs,
+                            double* lsc, double* lcs);
+
+// Marks the device copy of currH stale, so that the next force evaluation
+// stages the host values again: an iteration callback may change them.
+void InvalidateStagedCurrHCuda();
+
+// FourierCoeffs::maskGeometryAbove(mpolGeometry, ntorGeometry) on the device
+// copy of the decomposed forces (forces = true) or of the decomposed position
+// state; a no-op unless mpol_geometry or ntor_geometry caps the geometry.
+void MaskGeometryAboveCuda(const RadialPartitioning& r, const Sizes& s,
+                           const FlowControl& fc, bool forces);
 
 // Per-configuration variant of FlushForOutputQuantitiesCuda. Transfers
 // every metric-input array from device to host for all n_cfg
@@ -937,6 +960,7 @@ void FlushForOutputQuantitiesCuda(
     double* blmn_e_host,
     // radial half-grid scalars (ns_h)
     double* presH_host, double* dVdsH_host, double* bvcoH_host,
+    double* bucoH_host,
     // radial force-local scalars (ns_force_local)
     double* jcurvF_host, double* jcuruF_host, double* presgradF_host,
     double* dVdsF_host, double* equiF_host,

@@ -653,9 +653,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
   ++force_evaluation_count_;
 
 #ifdef VMECPP_USE_CUDA
-  // The device path applies zeroZForceForM1 unconditionally (see
-  // DecomposeAndConstrainCuda below), which subsumes always_fix_m1_gauge.
-  (void)always_fix_m1_gauge;
   // Stage the per-configuration active mask to the device. The implementation
   // is a no-op at single-configuration execution; under multi-configuration
   // execution it transfers the host-side mask vector to the device-resident
@@ -670,6 +667,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // directly, bypassing the force mask; clear them on the state each iteration.
   if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
     m_decomposed_x.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+#ifdef VMECPP_USE_CUDA
+    MaskGeometryAboveCuda(r_, s_, m_fc_, /*forces=*/false);
+#endif
   }
   // preprocess Fourier coefficients of geometry
 #ifdef VMECPP_USE_CUDA
@@ -1572,16 +1572,13 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
 #ifdef VMECPP_USE_CUDA
     // Device-side composition of decomposeInto, m1Constraint, and
-    // zeroZForceForM1. The wrapper applies zeroZForceForM1 on every
-    // lthreed iteration, where the CPU path gates it on
-    // always_fix_m1_gauge, fsqz < 1e-6, or iter2 < 2; the unconditional
-    // form holds the m = 1 constraint exactly throughout and leaves the
-    // convergence direction unchanged.
+    // zeroZForceForM1 under the same gate as below.
     DecomposeAndConstrainCuda(
-        r_, s_, m_fc_, 1.0 / std::numbers::sqrt2, signOfJacobian, m_p_.scalxc,
-        m_decomposed_f.frcc.data(), m_decomposed_f.frss.data(),
-        m_decomposed_f.fzsc.data(), m_decomposed_f.fzcs.data(),
-        m_decomposed_f.flsc.data(), m_decomposed_f.flcs.data());
+        r_, s_, m_fc_, iter2, always_fix_m1_gauge, 1.0 / std::numbers::sqrt2,
+        signOfJacobian, m_p_.scalxc, m_decomposed_f.frcc.data(),
+        m_decomposed_f.frss.data(), m_decomposed_f.fzsc.data(),
+        m_decomposed_f.fzcs.data(), m_decomposed_f.flsc.data(),
+        m_decomposed_f.flcs.data());
 #else
     m_physical_f.decomposeInto(m_decomposed_f, m_p_.scalxc);
 
@@ -1613,6 +1610,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // preconditioning (so they get no update).
   if (s_.mpolGeometry < s_.mpol || s_.ntorGeometry < s_.ntor) {
     m_decomposed_f.maskGeometryAbove(s_.mpolGeometry, s_.ntorGeometry);
+#ifdef VMECPP_USE_CUDA
+    // The residuals and the preconditioner read the device copy.
+    MaskGeometryAboveCuda(r_, s_, m_fc_, /*forces=*/true);
+#endif
   }
 
   if (checkpoint == VmecCheckpoint::PHYSICAL_FORCES &&
@@ -5132,9 +5133,24 @@ void IdealMhdModel::FlushForOutputCuda() {
       ru_e.data(), ru_o.data(), zu_e.data(), zu_o.data(), rv_e.data(),
       rv_o.data(), zv_e.data(), zv_o.data(), ruFull.data(), zuFull.data(),
       blmn_e.data(), m_p_.presH.data(), m_p_.dVdsH.data(), m_p_.bvcoH.data(),
-      m_p_.jcurvF.data(), m_p_.jcuruF.data(), m_p_.presgradF.data(),
-      m_p_.dVdsF.data(), m_p_.equiF.data(), m_p_.chipH.data(),
-      m_p_.iotaH.data(), m_p_.chipF.data(), m_p_.iotaF.data());
+      m_p_.bucoH.data(), m_p_.jcurvF.data(), m_p_.jcuruF.data(),
+      m_p_.presgradF.data(), m_p_.dVdsF.data(), m_p_.equiF.data(),
+      m_p_.chipH.data(), m_p_.iotaH.data(), m_p_.chipF.data(),
+      m_p_.iotaF.data());
+
+  // The scalars that the update body's CPU branch evaluates on every
+  // iteration, from the bvcoH and bucoH of the last force evaluation.
+  if (r_.nsMinH == 0) {
+    m_h_.rBtor0 = 1.5 * m_p_.bvcoH[r_.nsMinH - r_.nsMinH] -
+                  0.5 * m_p_.bvcoH[r_.nsMinH + 1 - r_.nsMinH];
+  }
+  if (r_.nsMaxH == m_fc_.ns - 1) {
+    m_h_.rBtor = 1.5 * m_p_.bvcoH[r_.nsMaxH - 1 - r_.nsMinH] -
+                 0.5 * m_p_.bvcoH[r_.nsMaxH - 2 - r_.nsMinH];
+    m_h_.cTor = (1.5 * m_p_.bucoH[r_.nsMaxH - 1 - r_.nsMinH] -
+                 0.5 * m_p_.bucoH[r_.nsMaxH - 2 - r_.nsMinH]) *
+                signOfJacobian * 2.0 * M_PI;
+  }
 #endif
 }
 

@@ -1862,18 +1862,63 @@ void ComputeRuZuFullCuda(const RadialPartitioning& r, const Sizes& s,
 }
 
 // ============================================================================
+// MaskGeometryAboveCuda
+// FourierCoeffs::maskGeometryAbove(mpolGeometry, ntorGeometry) on the device
+// copy of either the decomposed forces (the surfaces decomposeInto covers) or
+// the decomposed position state, which is authoritative once the first time
+// step has staged it. A no-op without a geometry cap.
+// ============================================================================
+void MaskGeometryAboveCuda(const RadialPartitioning& r, const Sizes& s,
+                           const FlowControl& fc, bool forces) {
+  if (s.mpolGeometry >= s.mpol && s.ntorGeometry >= s.ntor) return;
+  auto& S = State();
+  std::lock_guard<std::mutex> lk(S.mu);
+  const int modes = s.mpol * (s.ntor + 1);
+  int ns_count = 0;
+  size_t cfg_stride = 0;
+  double *rcc = nullptr, *rss = nullptr, *zsc = nullptr, *zcs = nullptr;
+  if (forces) {
+    ns_count = (r.nsMaxF1 == fc.ns) ? (fc.ns - r.nsMinF) : (r.nsMaxF - r.nsMinF);
+    cfg_stride = (size_t)S.ns_local_cached * (size_t)modes;
+    rcc = S.d_decomposed_frcc;
+    rss = S.d_decomposed_frss;
+    zsc = S.d_decomposed_fzsc;
+    zcs = S.d_decomposed_fzcs;
+  } else {
+    if (!S.pts_x_initialized || S.pts_x_size <= 0) return;
+    ns_count = S.pts_x_size / modes;
+    cfg_stride = (size_t)S.pts_x_size;
+    rcc = S.d_pts_x_rcc;
+    rss = S.d_pts_x_rss;
+    zsc = S.d_pts_x_zsc;
+    zcs = S.d_pts_x_zcs;
+  }
+  if (ns_count <= 0 || rcc == nullptr || zsc == nullptr) return;
+  const int TPB = 64;
+  dim3 b((modes + TPB - 1) / TPB, ns_count, S.n_config_max);
+  dim3 t(TPB, 1, 1);
+  k_mask_geometry_above<<<b, t, 0, S.stream>>>(
+      S.n_config_max, cfg_stride, ns_count, s.mpol, s.ntor, s.mpolGeometry,
+      s.ntorGeometry, s.lthreed ? 1 : 0, rcc, rss, zsc, zcs);
+  cuda_check(cudaGetLastError(), "k_mask_geometry_above launch");
+}
+
+// ============================================================================
 // DecomposeAndConstrainCuda
 // Bridges S.d_frcc/etc. (m_physical_f device shadow from the inverse FFT) into
 // the decomposed shadow S.d_decomposed_frcc/etc. (m_decomposed_f mirror) by
 // running the three CPU-only steps from update():
 //   m_physical_f.decomposeInto(m_decomposed_f, scalxc)
 //   m_decomposed_f.m1Constraint(scalingFactor=1/sqrt(2), signOfJacobian)
-//   m_decomposed_f.zeroZForceForM1()
-// D2Hs the result to host m_decomposed_f for the subsequent CPU residuals call.
+//   if (always_fix_m1_gauge || fc.fsqz < 1e-6 || iter2 < 2)
+//     m_decomposed_f.zeroZForceForM1()
+// with the gate evaluated per configuration in a batch. The result stays in
+// the device shadow for the subsequent residuals call.
 // stellarator-symmetric (lasym=false) only.
 // ============================================================================
 void DecomposeAndConstrainCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
+    int iter2, bool always_fix_m1_gauge,
     double m1ScalingFactor, int sign_of_jacobian,
     const Eigen::VectorXd& scalxc,
     double* dec_frcc_host, double* dec_frss_host,
@@ -1923,21 +1968,52 @@ void DecomposeAndConstrainCuda(
     S.TKEnd(CudaToroidalState::TK_DECOMPOSE);
   }
 
-  // Stage 2+3 fused: m=1 constraint (frss update) + zero Z force at m=1.
-  // The original m1 kernel's fzcs output was dead code (overwritten by
-  // zero_z_force in stage 3). The fused kernel skips that wasted store and
-  // saves one launch per iter.
+  // Stage 2+3: m=1 constraint, then the Z force at m=1 zeroed where the CPU
+  // path zeroes it: under always_fix_m1_gauge, while the previous iteration's
+  // fsqz is below 1e-6, and for iter2 < 2 (v8.50, so that reset=<WOUT_FILE>
+  // works). A batch iterates in lockstep on iter2 and takes each
+  // configuration's own fsqz.
   // Batched execution: z-dim covers n_config_max configs.
   if (s.lthreed && ns_force_local > 0) {
+    const bool batched = S.n_config_max > 1;
+    auto zeroes_m1_z_force = [&](int cfg) {
+      const double fsqz = batched && cfg < static_cast<int>(fc.fsqz_per_cfg.size())
+                              ? fc.fsqz_per_cfg[cfg]
+                              : fc.fsqz;
+      return always_fix_m1_gauge || fsqz < 1.0e-6 || iter2 < 2;
+    };
+    const unsigned char* zero_flags = nullptr;
+    int zero_all = 0;
+    if (batched) {
+      S.h_m1_zero_flags.assign(S.n_config_max, 0);
+      for (int cfg = 0; cfg < S.n_config_max; ++cfg) {
+        S.h_m1_zero_flags[cfg] = zeroes_m1_z_force(cfg) ? 1 : 0;
+      }
+      if (S.m1_zero_flags_capacity < S.n_config_max) {
+        if (S.d_m1_zero_flags != nullptr) {
+          cuda_check(cudaFree(S.d_m1_zero_flags), "free m1 zero flags");
+          S.d_m1_zero_flags = nullptr;
+        }
+        cuda_check(cudaMalloc(&S.d_m1_zero_flags, S.n_config_max),
+                   "alloc m1 zero flags");
+        S.m1_zero_flags_capacity = S.n_config_max;
+      }
+      cuda_check(cudaMemcpyAsync(S.d_m1_zero_flags, S.h_m1_zero_flags.data(),
+                                  S.n_config_max, cudaMemcpyHostToDevice, st),
+                 "h2d m1 zero flags");
+      zero_flags = S.d_m1_zero_flags;
+    } else {
+      zero_all = zeroes_m1_z_force(0) ? 1 : 0;
+    }
     const int TPB = 32;
     dim3 b((ntor + 1 + TPB - 1) / TPB, ns_force_local, S.n_config_max);
     dim3 t(TPB, 1, 1);
     const double sigma = -static_cast<double>(sign_of_jacobian);
-    k_m1_constraint_and_zero<<<b, t, 0, st>>>(
+    k_m1_constraint_gated<<<b, t, 0, st>>>(
         S.n_config_max, S.ns_local_cached, ns_force_local, mpol, ntor,
-        m1ScalingFactor, sigma,
+        m1ScalingFactor, sigma, zero_flags, zero_all,
         S.d_decomposed_frss, S.d_decomposed_fzcs);
-    cuda_check(cudaGetLastError(), "k_m1_constraint_and_zero launch");
+    cuda_check(cudaGetLastError(), "k_m1_constraint_gated launch");
   }
   DiagCfg01DiffCuda(S.d_decomposed_frcc, S.ns_local_cached * mpol * (ntor + 1),
                     "dec:dec_frcc");

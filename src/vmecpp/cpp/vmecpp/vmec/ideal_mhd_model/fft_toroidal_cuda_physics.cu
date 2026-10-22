@@ -508,6 +508,12 @@ void RzConIntoVolumeCuda(
   (void)rCon0; (void)zCon0;
 }
 
+void InvalidateStagedCurrHCuda() {
+  auto& S = State();
+  std::lock_guard<std::mutex> lk(S.mu);
+  S.currH_staged = false;
+}
+
 // ============================================================================
 // ComputeBContraCuda: CUDA port of IdealMhdModel::computeBContra.
 // Inputs already on device: lu_e/o, lv_e/o (from forward FFT), gsqrt, guu, guv

@@ -225,6 +225,25 @@ int VacuumMpol(const vmecpp::VmecINDATA& indata) {
 int VacuumNtor(const vmecpp::VmecINDATA& indata) {
   return std::max(indata.vacuum_ntor, indata.ntor);
 }
+
+#ifdef VMECPP_USE_CUDA
+// Copies the device-resident decomposed position state, which the CUDA path
+// keeps authoritative between iterations, into the host containers that the
+// output and iteration-callback paths read.
+void FlushDecomposedXFromDevice(
+    const vmecpp::Sizes& s,
+    const std::vector<std::unique_ptr<vmecpp::RadialPartitioning>>& r,
+    std::vector<std::unique_ptr<vmecpp::FourierGeometry>>& decomposed_x) {
+  for (int t = 0; t < static_cast<int>(decomposed_x.size()); ++t) {
+    const int ns_local = r[t]->nsMaxF1 - r[t]->nsMinF1;
+    vmecpp::FlushDecomposedXToHostCuda(
+        0, ns_local, s.mpol, s.ntor, s.lthreed, decomposed_x[t]->rmncc.data(),
+        decomposed_x[t]->rmnss.data(), decomposed_x[t]->zmnsc.data(),
+        decomposed_x[t]->zmncs.data(), decomposed_x[t]->lmnsc.data(),
+        decomposed_x[t]->lmncs.data());
+  }
+}
+#endif  // VMECPP_USE_CUDA
 }  // namespace
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
@@ -657,14 +676,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // back into the host m_decomposed_x containers so that
   // ComputeOutputQuantities and the downstream output-construction
   // routines observe the converged state.
-  for (int t = 0; t < static_cast<int>(decomposed_x_.size()); ++t) {
-    const int ns_local = r_[t]->nsMaxF1 - r_[t]->nsMinF1;
-    vmecpp::FlushDecomposedXToHostCuda(
-        0, ns_local, s_.mpol, s_.ntor, s_.lthreed,
-        decomposed_x_[t]->rmncc.data(), decomposed_x_[t]->rmnss.data(),
-        decomposed_x_[t]->zmnsc.data(), decomposed_x_[t]->zmncs.data(),
-        decomposed_x_[t]->lmnsc.data(), decomposed_x_[t]->lmncs.data());
-  }
+  FlushDecomposedXFromDevice(s_, r_, decomposed_x_);
 #endif
 
   // A converged free-boundary result must not rest on a vacuum field that was
@@ -1886,7 +1898,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
     // Device-side restore: at n_cfg=1, whole-batch RestorePtsXFromBackupCuda
     // matches the legacy behavior. At n_cfg>1, derive a per-cfg restart mask
     // from the per-cfg jacobian cache (minTau[c] * maxTau[c] < 0 or non-finite
-    // → cfg c needs rollback) and route through the per-cfg variant, leaving
+    // -> cfg c needs rollback) and route through the per-cfg variant, leaving
     // cfgs that didn't trigger BAD_JACOBIAN at their current d_pts_x state.
     {
       const auto& jac_cache = vmecpp::GetJacMinmaxPerCfgCache();
@@ -1997,7 +2009,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
     // iteration stream. Under sync elision this call participates at
     // the same K-boundary cadence as the rest of the store and restart
     // bookkeeping.
-    vmecpp::BackupPtsXCuda();
+    vmecpp::BackupPtsXCuda(backup_evaluated_state);
 #else
     // update backup
     if (backup_evaluated_state) {
@@ -2495,6 +2507,14 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                    bool& m_liter_flag) {
+#ifdef VMECPP_USE_CUDA
+  // The CUDA path keeps the state and the fields of the force evaluation on
+  // the device between iterations; the callback reads the host copies.
+  for (auto& mhd : m_) {
+    mhd->FlushForOutputCuda();
+  }
+  FlushDecomposedXFromDevice(s_, r_, decomposed_x_);
+#endif
   SolverState state{
       .iteration = iter2,
       .multigrid_step = multigrid_step_,
@@ -2528,6 +2548,9 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
       for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
         p_[thread_id]->currH[jH - r.nsMinH] = state.curr_h[jH];
       }
+#ifdef VMECPP_USE_CUDA
+      vmecpp::InvalidateStagedCurrHCuda();
+#endif
     }
   }
 
@@ -2624,7 +2647,17 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
                                        decomposed_x_[thread_id]->zmncs.data(),
                                        decomposed_x_[thread_id]->lmnsc.data(),
                                        decomposed_x_[thread_id]->lmncs.data());
-    decomposed_x_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
+    // The spectral width of the last accepted state, the device backup, as
+    // the CPU path takes it from physical_x_backup_; decomposed_x_ has
+    // already been advanced by the current time step.
+    vmecpp::FlushBackupXToHostCuda(ns_local, s_.mpol, s_.ntor, s_.lthreed,
+                                   physical_x_backup_[thread_id]->rmncc.data(),
+                                   physical_x_backup_[thread_id]->rmnss.data(),
+                                   physical_x_backup_[thread_id]->zmnsc.data(),
+                                   physical_x_backup_[thread_id]->zmncs.data(),
+                                   physical_x_backup_[thread_id]->lmnsc.data(),
+                                   physical_x_backup_[thread_id]->lmncs.data());
+    physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
     const int ns_h = r_[thread_id]->nsMaxH - r_[thread_id]->nsMinH;
     std::vector<double> dvdsh_staged(std::max(ns_h, 0), 0.0);
     vmecpp::FlushDVdsHToHostCuda(ns_h, dvdsh_staged.data());
@@ -2780,7 +2813,14 @@ void Vmec::PerformTimeStep(double fac, double b1, double time_step,
   // Keep the last state with a valid force evaluation.
   if (fc_.restart_reason == RestartReason::NO_RESTART ||
       fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) {
+#ifdef VMECPP_USE_CUDA
+    // The state lives in d_pts_x on this path.
+    if (indata_.backup_evaluated_state) {
+      vmecpp::SnapshotEvaluatedPtsXCuda();
+    }
+#else
     *last_evaluated_x_[thread_id] = *decomposed_x_[thread_id];
+#endif
   }
 
   performTimeStep(s_, fc_, *r_[thread_id], fac, b1, time_step,

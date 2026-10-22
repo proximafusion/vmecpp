@@ -1050,6 +1050,16 @@ struct CudaToroidalState {
   double* d_pts_x_backup_lsc = nullptr;
   double* d_pts_x_backup_lcs = nullptr;
   bool pts_x_backup_initialized = false;
+  // Device twin of host last_evaluated_x: the state of the latest force
+  // evaluation, taken before the time step moves d_pts_x on. The backup copies
+  // it under backup_evaluated_state, as the host path does.
+  double* d_pts_x_evaluated_rcc = nullptr;
+  double* d_pts_x_evaluated_rss = nullptr;
+  double* d_pts_x_evaluated_zsc = nullptr;
+  double* d_pts_x_evaluated_zcs = nullptr;
+  double* d_pts_x_evaluated_lsc = nullptr;
+  double* d_pts_x_evaluated_lcs = nullptr;
+  bool pts_x_evaluated_valid = false;
   // Per-cfg converged-state snapshots. When the iteration controller marks
   // a cfg inactive (converged or timed out), its d_pts_x slice is copied
   // here and the batch outputs dump prefers the snapshot. The live
@@ -1114,6 +1124,12 @@ struct CudaToroidalState {
   // host-to-device transfer of the spectral block that would
   // otherwise occur at the start of each forward FFT call.
   bool specs_populated_from_device = false;
+
+  // Per-configuration flags of the m = 1 Z-force zeroing in a batch, staged
+  // from h_m1_zero_flags each iteration by DecomposeAndConstrainCuda.
+  unsigned char* d_m1_zero_flags = nullptr;
+  int m1_zero_flags_capacity = 0;
+  std::vector<unsigned char> h_m1_zero_flags;
 
   // Persistent preconditioner-input buffers.
   double* d_m1_ard = nullptr;
@@ -1542,6 +1558,13 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_pts_x_backup_lsc);
     cuda_free_if((void*&)d_pts_x_backup_lcs);
     pts_x_backup_initialized = false;
+    cuda_free_if((void*&)d_pts_x_evaluated_rcc);
+    cuda_free_if((void*&)d_pts_x_evaluated_rss);
+    cuda_free_if((void*&)d_pts_x_evaluated_zsc);
+    cuda_free_if((void*&)d_pts_x_evaluated_zcs);
+    cuda_free_if((void*&)d_pts_x_evaluated_lsc);
+    cuda_free_if((void*&)d_pts_x_evaluated_lcs);
+    pts_x_evaluated_valid = false;
     cuda_free_if((void*&)d_pts_x_final_rcc);
     cuda_free_if((void*&)d_pts_x_final_rss);
     cuda_free_if((void*&)d_pts_x_final_zsc);
@@ -1555,6 +1578,8 @@ struct CudaToroidalState {
     pts_x_size = -1;
     pts_v_initialized = false;
     pts_x_initialized = false;
+    cuda_free_if((void*&)d_m1_zero_flags);
+    m1_zero_flags_capacity = 0;
     // Persistent preconditioner-input buffers.
     cuda_free_if((void*&)d_m1_ard);
     cuda_free_if((void*&)d_m1_brd);
@@ -2304,6 +2329,7 @@ struct CudaToroidalState {
     pts_x_initialized = false;
     pts_v_initialized = false;
     pts_x_backup_initialized = false;
+    pts_x_evaluated_valid = false;
     // Invariant-staging caches: the profiles they guard derive from the
     // input, which can differ between runs at an unchanged shape where
     // no Reshape fires to clear them. The next run restages each.
@@ -2534,6 +2560,10 @@ struct CudaToroidalState {
     free_if(d_pts_x_backup_zsc); free_if(d_pts_x_backup_zcs);
     free_if(d_pts_x_backup_lsc); free_if(d_pts_x_backup_lcs);
     pts_x_backup_initialized = false;
+    free_if(d_pts_x_evaluated_rcc); free_if(d_pts_x_evaluated_rss);
+    free_if(d_pts_x_evaluated_zsc); free_if(d_pts_x_evaluated_zcs);
+    free_if(d_pts_x_evaluated_lsc); free_if(d_pts_x_evaluated_lcs);
+    pts_x_evaluated_valid = false;
     free_if(d_pts_x_final_rcc); free_if(d_pts_x_final_rss);
     free_if(d_pts_x_final_zsc); free_if(d_pts_x_final_zcs);
     free_if(d_pts_x_final_lsc); free_if(d_pts_x_final_lcs);
@@ -3607,14 +3637,24 @@ __global__ void k_m1_constraint(int n_config, int ns_local,
                                   double scalingFactor, double sigma,
                                   double* __restrict__ dec_frss,
                                   double* __restrict__ dec_fzcs);
-__global__ void k_m1_constraint_and_zero(int n_config, int ns_local,
-                                          int ns_force_local, int mpol, int ntor,
-                                          double scalingFactor, double sigma,
-                                          double* __restrict__ dec_frss,
-                                          double* __restrict__ dec_fzcs);
+__global__ void k_m1_constraint_gated(int n_config, int ns_local,
+                                      int ns_force_local, int mpol, int ntor,
+                                      double scalingFactor, double sigma,
+                                      const unsigned char* __restrict__ zero_flags,
+                                      int zero_all,
+                                      double* __restrict__ dec_frss,
+                                      double* __restrict__ dec_fzcs);
 __global__ void k_zero_z_force_for_m1(int n_config, int ns_local,
                                         int ns_force_local, int mpol, int ntor,
                                         double* __restrict__ dec_fzcs);
+__global__ void k_mask_geometry_above(int n_config, size_t cfg_stride,
+                                      int ns_count, int mpol, int ntor,
+                                      int mpol_geometry, int ntor_geometry,
+                                      int lthreed,
+                                      double* __restrict__ rcc,
+                                      double* __restrict__ rss,
+                                      double* __restrict__ zsc,
+                                      double* __restrict__ zcs);
 __global__ void k_zero_buffer(int n, double* __restrict__ p);
 __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
                                      double adiabaticIndex,

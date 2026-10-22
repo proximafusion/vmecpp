@@ -5320,22 +5320,21 @@ __global__ void k_m1_constraint(int n_config, int ns_local,
   dec_fzcs[idx] = (sigma * old_rss - old_zcs) * scalingFactor;
 }
 
-// k_m1_constraint_and_zero: fusion of k_m1_constraint + k_zero_z_force_for_m1.
-// The original sequence at m=1 (lthreed) was:
-//   dec_frss := (dec_frss + sigma * dec_fzcs) * sf   (m1_constraint)
-//   dec_fzcs := (sigma * dec_frss_orig - dec_fzcs) * sf  (m1_constraint)
-//   dec_fzcs := 0                            (zero_z_force_for_m1)
-// with sigma = -sign_of_jacobian. The fzcs computation in m1_constraint is
-// dead code, overwritten to 0 immediately. The fused kernel does only the
-// live work:
+// k_m1_constraint_gated: k_m1_constraint followed by k_zero_z_force_for_m1 on
+// the configurations whose entry of zero_flags is set, or on every
+// configuration when zero_flags is null and zero_all is set:
 //   dec_frss := (dec_frss + sigma * dec_fzcs) * sf
-//   dec_fzcs := 0
-// Saves one launch per iter and ~half the global memory ops on dec_fzcs.
-__global__ void k_m1_constraint_and_zero(int n_config, int ns_local,
-                                          int ns_force_local, int mpol, int ntor,
-                                          double scalingFactor, double sigma,
-                                          double* __restrict__ dec_frss,
-                                          double* __restrict__ dec_fzcs) {
+//   dec_fzcs := zeroed ? 0 : (sigma * dec_frss_orig - dec_fzcs) * sf
+// with sigma = -sign_of_jacobian. The CPU path zeroes the m = 1 Z force only
+// under always_fix_m1_gauge, while the previous iteration's fsqz is below
+// 1e-6, or for iter2 < 2, so until then the m = 1 gauge moves under its force.
+__global__ void k_m1_constraint_gated(int n_config, int ns_local,
+                                      int ns_force_local, int mpol, int ntor,
+                                      double scalingFactor, double sigma,
+                                      const unsigned char* __restrict__ zero_flags,
+                                      int zero_all,
+                                      double* __restrict__ dec_frss,
+                                      double* __restrict__ dec_fzcs) {
   int config = blockIdx.z;
   if (config >= n_config) return;
   int jF_force = blockIdx.y;
@@ -5347,7 +5346,39 @@ __global__ void k_m1_constraint_and_zero(int n_config, int ns_local,
   double old_rss = dec_frss[idx];
   double old_zcs = dec_fzcs[idx];
   dec_frss[idx] = (old_rss + sigma * old_zcs) * scalingFactor;
-  dec_fzcs[idx] = 0.0;
+  const bool zeroed =
+      zero_flags != nullptr ? zero_flags[config] != 0 : zero_all != 0;
+  dec_fzcs[idx] = zeroed ? 0.0 : (sigma * old_rss - old_zcs) * scalingFactor;
+}
+
+// k_mask_geometry_above: FourierCoeffs::maskGeometryAbove on the device.
+// Zeroes R and Z of every configuration at the modes m >= mpol_geometry or
+// n > ntor_geometry, on the first ns_count surfaces of buffers whose
+// configurations lie cfg_stride apart; lambda is left untouched.
+__global__ void k_mask_geometry_above(int n_config, size_t cfg_stride,
+                                      int ns_count, int mpol, int ntor,
+                                      int mpol_geometry, int ntor_geometry,
+                                      int lthreed,
+                                      double* __restrict__ rcc,
+                                      double* __restrict__ rss,
+                                      double* __restrict__ zsc,
+                                      double* __restrict__ zcs) {
+  int config = blockIdx.z;
+  if (config >= n_config) return;
+  int j = blockIdx.y;
+  int idx_mn = blockIdx.x * blockDim.x + threadIdx.x;
+  if (j >= ns_count || idx_mn >= mpol * (ntor + 1)) return;
+  int m = idx_mn / (ntor + 1);
+  int n = idx_mn - m * (ntor + 1);
+  if (m < mpol_geometry && n <= ntor_geometry) return;
+  size_t idx = (size_t)config * cfg_stride +
+               (size_t)j * (size_t)(mpol * (ntor + 1)) + (size_t)idx_mn;
+  rcc[idx] = 0.0;
+  zsc[idx] = 0.0;
+  if (lthreed) {
+    rss[idx] = 0.0;
+    zcs[idx] = 0.0;
+  }
 }
 
 // k_zero_z_force_for_m1: zero dec_fzcs[m=1, all n, all jF in [nsMinF, nsMaxF)].

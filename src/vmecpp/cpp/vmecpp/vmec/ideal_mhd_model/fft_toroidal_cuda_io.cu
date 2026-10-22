@@ -72,6 +72,7 @@ void FlushForOutputQuantitiesCuda(
     double* ruFull_host, double* zuFull_host,
     double* blmn_e_host,
     double* presH_host, double* dVdsH_host, double* bvcoH_host,
+    double* bucoH_host,
     double* jcurvF_host, double* jcuruF_host, double* presgradF_host,
     double* dVdsF_host, double* equiF_host,
     double* chipH_host, double* iotaH_host,
@@ -141,6 +142,7 @@ void FlushForOutputQuantitiesCuda(
   d2h(presH_host,          S.d_presH,          presH_bytes, "flush presH");
   d2h(dVdsH_host,          S.d_dVdsH,          presH_bytes, "flush dVdsH");
   d2h(bvcoH_host,          S.d_bvcoH,          presH_bytes, "flush bvcoH");
+  d2h(bucoH_host,          S.d_bucoH,          presH_bytes, "flush bucoH");
 
   // chipH, iotaH (ns_h doubles each), chipF, iotaF (ns_local doubles each).
   // ComputeBContraCuda previously did these as per-iter async D2Hs even though
@@ -561,7 +563,37 @@ __global__ void k_backup_pts_x(
 
 // (anonymous namespace hoisted across the split translation units)
 
-void BackupPtsXCuda() {
+void SnapshotEvaluatedPtsXCuda() {
+  auto& S = State();
+  if (!S.stream || !S.d_pts_x_rcc) return;
+  std::lock_guard<std::mutex> lk(S.mu);
+  if (!S.pts_x_initialized) return;
+  size_t x_bytes_all = sizeof(double) * (size_t)S.n_config_max *
+                       (size_t)S.pts_x_size;
+  auto alloc = [&](double*& p, const char* name) {
+    if (!p) cuda_check(cudaMalloc(&p, x_bytes_all), name);
+  };
+  alloc(S.d_pts_x_evaluated_rcc, "alloc d_pts_x_evaluated_rcc");
+  alloc(S.d_pts_x_evaluated_rss, "alloc d_pts_x_evaluated_rss");
+  alloc(S.d_pts_x_evaluated_zsc, "alloc d_pts_x_evaluated_zsc");
+  alloc(S.d_pts_x_evaluated_zcs, "alloc d_pts_x_evaluated_zcs");
+  alloc(S.d_pts_x_evaluated_lsc, "alloc d_pts_x_evaluated_lsc");
+  alloc(S.d_pts_x_evaluated_lcs, "alloc d_pts_x_evaluated_lcs");
+  const int total =
+      static_cast<int>((size_t)S.n_config_max * (size_t)S.pts_x_size);
+  const int TPB = 256;
+  k_backup_pts_x<<<(total + TPB - 1) / TPB, TPB, 0, S.stream>>>(
+      total,
+      S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
+      S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs,
+      S.d_pts_x_evaluated_rcc, S.d_pts_x_evaluated_rss,
+      S.d_pts_x_evaluated_zsc, S.d_pts_x_evaluated_zcs,
+      S.d_pts_x_evaluated_lsc, S.d_pts_x_evaluated_lcs);
+  cuda_check(cudaGetLastError(), "k_backup_pts_x (evaluated) launch");
+  S.pts_x_evaluated_valid = true;
+}
+
+void BackupPtsXCuda(bool from_evaluated) {
   auto& S = State();
   if (!S.stream || !S.d_pts_x_rcc) return;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -572,14 +604,21 @@ void BackupPtsXCuda() {
   // Skipping here keeps the backup buffer authoritative ("last good state").
   if (!S.pts_x_initialized) return;
   EnsurePTSBackupBuffers(S);
+  // backup_evaluated_state: the state of the latest force evaluation, which
+  // d_pts_x has already been advanced past.
+  const bool evaluated = from_evaluated && S.pts_x_evaluated_valid;
   const int total =
       static_cast<int>((size_t)S.n_config_max * (size_t)S.pts_x_size);
   const int TPB = 256;
   S.TKBegin(CudaToroidalState::TK_BACKUP_PTS);
   k_backup_pts_x<<<(total + TPB - 1) / TPB, TPB, 0, S.stream>>>(
       total,
-      S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
-      S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs,
+      evaluated ? S.d_pts_x_evaluated_rcc : S.d_pts_x_rcc,
+      evaluated ? S.d_pts_x_evaluated_rss : S.d_pts_x_rss,
+      evaluated ? S.d_pts_x_evaluated_zsc : S.d_pts_x_zsc,
+      evaluated ? S.d_pts_x_evaluated_zcs : S.d_pts_x_zcs,
+      evaluated ? S.d_pts_x_evaluated_lsc : S.d_pts_x_lsc,
+      evaluated ? S.d_pts_x_evaluated_lcs : S.d_pts_x_lcs,
       S.d_pts_x_backup_rcc, S.d_pts_x_backup_rss, S.d_pts_x_backup_zsc,
       S.d_pts_x_backup_zcs, S.d_pts_x_backup_lsc, S.d_pts_x_backup_lcs);
   S.TKEnd(CudaToroidalState::TK_BACKUP_PTS);
@@ -690,6 +729,10 @@ void FlushDecomposedXToHostCuda(
   auto& S = State();
   if (!S.stream || !S.d_pts_x_rcc) return;
   std::lock_guard<std::mutex> lk(S.mu);
+  // Until this run's first time step stages the host state, d_pts_x holds
+  // whatever an earlier run left there, and the host copy is authoritative: a
+  // hot restart that converges on its first evaluation never stages it.
+  if (!S.pts_x_initialized) return;
   size_t x_bytes_one = sizeof(double) * (size_t)ns_local * (size_t)mpol *
                         (size_t)(ntor + 1);
   // Multigrid stage transition guard: when ns_local changes between stages
@@ -723,6 +766,34 @@ void FlushDecomposedXToHostCuda(
                "flush dec_x lcs");
   }
   cuda_check(cudaStreamSynchronize(S.stream), "flush dec_x sync");
+}
+
+void FlushBackupXToHostCuda(int ns_local, int mpol, int ntor, bool lthreed,
+                            double* rcc, double* rss, double* zsc, double* zcs,
+                            double* lsc, double* lcs) {
+  auto& S = State();
+  if (!S.stream || !S.d_pts_x_backup_rcc) return;
+  std::lock_guard<std::mutex> lk(S.mu);
+  if (!S.pts_x_backup_initialized) return;
+  if ((size_t)ns_local * (size_t)mpol * (size_t)(ntor + 1) !=
+      (size_t)S.pts_x_size) {
+    return;
+  }
+  const size_t bytes = sizeof(double) * (size_t)S.pts_x_size;
+  auto d2h = [&](double* host, const double* dev, const char* name) {
+    cuda_check(cudaMemcpyAsync(host, dev, bytes, cudaMemcpyDeviceToHost,
+                                S.stream),
+               name);
+  };
+  d2h(rcc, S.d_pts_x_backup_rcc, "flush backup rcc");
+  d2h(zsc, S.d_pts_x_backup_zsc, "flush backup zsc");
+  d2h(lsc, S.d_pts_x_backup_lsc, "flush backup lsc");
+  if (lthreed) {
+    d2h(rss, S.d_pts_x_backup_rss, "flush backup rss");
+    d2h(zcs, S.d_pts_x_backup_zcs, "flush backup zcs");
+    d2h(lcs, S.d_pts_x_backup_lcs, "flush backup lcs");
+  }
+  cuda_check(cudaStreamSynchronize(S.stream), "flush backup sync");
 }
 
 // DumpPtsXAllCfgsCuda: write the full batched decomposed-x state (every
