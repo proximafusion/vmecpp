@@ -319,6 +319,34 @@ def test_run_batch_distinct_api():
     _assert_reference(single[0].wout, CMA)
 
 
+def test_distinct_batch_raises_for_an_unconverged_configuration():
+    # A configuration that misses the last stage's tolerance raises unless
+    # return_outputs_even_if_not_converged is set.
+    vi = _cma_input()
+    vi2 = vi.model_copy(deep=True)
+    vi2.rbc[1, vi.ntor] *= 1.05
+    vi2.zbs[1, vi.ntor] *= 1.05
+    singles = [vmecpp.run(v, max_threads=1, verbose=False) for v in (vi, vi2)]
+    counts = [single.wout.niter for single in singles]
+    fast = min(counts)
+    assert fast < max(counts)
+    niter_array = np.array(vi.niter_array)
+    niter_array[-1] = fast - 1
+    short = [v.model_copy(update={"niter_array": niter_array}) for v in (vi, vi2)]
+    with pytest.raises(RuntimeError, match="did not converge"):
+        vmecpp.run_batch(short, max_threads=1)
+    best_effort = vmecpp.run_batch(
+        [
+            v.model_copy(update={"return_outputs_even_if_not_converged": True})
+            for v in short
+        ],
+        max_threads=1,
+    )
+    assert [out.wout.niter for out in best_effort] == [fast, fast]
+    slow = best_effort[counts.index(max(counts))].wout
+    assert max(slow.fsqr, slow.fsqz, slow.fsql) > slow.ftolv
+
+
 def test_mixed_configuration_counts_one_process():
     # distinct N=2, broadcast N=4, distinct N=2, single: the
     # per-configuration buffers reallocate across the count changes and

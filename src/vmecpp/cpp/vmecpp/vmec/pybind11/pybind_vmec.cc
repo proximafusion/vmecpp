@@ -11,6 +11,7 @@
 
 #include <Eigen/Dense>
 #include <array>
+#include <cstdint>
 #include <cstring>  // memcpy
 #include <filesystem>
 #include <optional>
@@ -1993,27 +1994,20 @@ PYBIND11_MODULE(_vmecpp, m) {
             [](const std::vector<vmecpp::VmecINDATA> &indata_local, int n_cfg,
                std::optional<int> max_threads,
                const vmecpp::OutputQuantities &seed_oq,
+               const std::vector<std::uint8_t> &converged_per_cfg,
                std::vector<vmecpp::OutputQuantities> &outs) -> bool {
           // Capture the batched run's final per-configuration force-residual
           // state before any further CUDA call (the deriver's setup run below
           // resets the persistent device state). The wout reports the
-          // normalized invariant residuals fsqr/fsqz/fsql; the iteration
-          // controller builds them from the raw per-cfg residuals together
-          // with the per-cfg force-norm, pressure, and volume caches exactly
-          // as in ideal_mhd_model.cc:420-436, so capture all four here and
-          // apply the same normalization per configuration below. Paired with
-          // the lock-step batch iteration count from the seed wout, this lets
-          // each per-cfg output report its own convergence instead of the
-          // deriver's single-iteration placeholder fc.
-          // The batched solve iterates all configurations in lock-step, so the
-          // seed wout carries the per-config iteration count (the derived
-          // outputs below otherwise report niter = 0 from the hard-coded
-          // iter2). The per-config normalized force residuals come from the
-          // snapshot cache the iteration controller fills; the live residual
-          // caches are zeroed for masked (converged) configs and cannot be
-          // read here directly. Captured now, before the deriver's setup run
-          // resets the device state. Layout: 3*n_cfg as
-          // [fsqr_c, fsqz_c, fsql_c, ...].
+          // normalized invariant residuals fsqr/fsqz/fsql of each
+          // configuration's last active iteration, from the snapshot cache
+          // the iteration controller fills; the live residual caches are
+          // zeroed for masked (converged) configurations. Layout: 3*n_cfg as
+          // [fsqr_c, fsqz_c, fsql_c, ...]. niter is the batch's, from the
+          // seed's wout.
+          if (static_cast<int>(converged_per_cfg.size()) != n_cfg) {
+            return false;
+          }
           const int batch_niter = seed_oq.wout.niter;
           const std::vector<double> fsqr_snapshot_pc =
               vmecpp::GetFsqrPerCfgCache();
@@ -2268,18 +2262,15 @@ PYBIND11_MODULE(_vmecpp, m) {
                 deriver->constants_, deriver->t_, h_c, seed_oq.wout.mgrid_mode,
                 seed_oq.wout.curlabel, vmecpp::VmecCheckpoint::NONE,
                 vmecpp::VacuumPressureState::kOff,
-                vmecpp::VmecStatus::SUCCESSFUL_TERMINATION,
-                /*iter2=*/0));
-            // DeriveOutputQuantities hard-codes iter2 = 0 and copies the
-            // {fsqr,fsqz,fsql} residuals from the deriver's single-iteration
-            // setup fc, so every derived configuration reports niter = 0 and
-            // the same placeholder residuals. Replace them with this config's
-            // batched-run values: the lock-step iteration count and the
-            // normalized residual snapshot. Each output then reports its own
-            // convergence (compare against wout.ftolv).
+                converged_per_cfg[c] != 0
+                    ? vmecpp::VmecStatus::SUCCESSFUL_TERMINATION
+                    : vmecpp::VmecStatus::NORMAL_TERMINATION,
+                batch_niter));
+            // DeriveOutputQuantities copies the {fsqr,fsqz,fsql} residuals
+            // from the deriver's single-iteration setup fc; replace them with
+            // this configuration's residuals from the snapshot.
             {
               vmecpp::WOutFileContents &w_c = outs.back().wout;
-              w_c.niter = batch_niter;
               const size_t s3 = static_cast<size_t>(3) * c;
               if (fsqr_snapshot_pc.size() >= s3 + 3) {
                 w_c.fsqr = fsqr_snapshot_pc[s3 + 0];
@@ -2642,6 +2633,9 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
           return false;
         };
+        // Last-stage convergence flags of the configuration slots, from the
+        // seed run's FlowControl.
+        std::vector<std::uint8_t> converged_per_cfg;
         absl::StatusOr<vmecpp::OutputQuantities> ret_seed;
         {
           py::gil_scoped_release release;
@@ -2663,6 +2657,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             }
 #endif
             absl::StatusOr<bool> seed_ok = seed_vmec.run();
+            converged_per_cfg = seed_vmec.fc_.converged_per_cfg;
             if (seed_ok.ok()) {
               ret_seed = std::move(seed_vmec.output_quantities_);
             } else {
@@ -2683,6 +2678,27 @@ PYBIND11_MODULE(_vmecpp, m) {
               "run_batched_gpu: batched VMEC run failed: " +
               std::string(ret_seed.status().message()));
         }
+        // As in a single run, a configuration that misses the tolerance of the
+        // last multigrid stage is an error unless the inputs ask for
+        // best-effort outputs.
+        if (distinct && n_cfg > 1 &&
+            !run_seed->return_outputs_even_if_not_converged) {
+          std::string unconverged;
+          for (int c = 0; c < n_cfg; ++c) {
+            if (c >= static_cast<int>(converged_per_cfg.size()) ||
+                converged_per_cfg[c] == 0) {
+              unconverged +=
+                  (unconverged.empty() ? "" : ", ") + std::to_string(c);
+            }
+          }
+          if (!unconverged.empty()) {
+            throw std::runtime_error(
+                "run_batched_gpu: configuration(s) " + unconverged +
+                " did not converge within the niter of the last multigrid "
+                "stage; set return_outputs_even_if_not_converged for their "
+                "best-effort outputs");
+          }
+        }
 
         // Distinct mode returns one OutputQuantities per input, derived from
         // the batched run's device state; broadcast mode, and a distinct run
@@ -2691,8 +2707,9 @@ PYBIND11_MODULE(_vmecpp, m) {
         if (distinct && n_cfg > 1) {
 #ifdef VMECPP_USE_CUDA
           outs.reserve(n_cfg);
-          if (!derive_outputs_from_batched_flush(
-                  indata_local, n_cfg, max_threads, *ret_seed, outs)) {
+          if (!derive_outputs_from_batched_flush(indata_local, n_cfg,
+                                                 max_threads, *ret_seed,
+                                                 converged_per_cfg, outs)) {
             throw std::runtime_error(
                 "run_batched_gpu: the per-configuration outputs could not be "
                 "derived from the batched run");
@@ -2752,7 +2769,9 @@ the mode:
   invocation of CudaForward and drives each configuration through its own
   residual evolution under the per-configuration active-mask kernels. The
   returned list holds one OutputQuantities per input, derived from the
-  batched run's device state; a derivation that fails raises.
+  batched run's device state; a derivation that fails raises, and so
+  does a configuration that misses the tolerance of the last multigrid
+  stage unless return_outputs_even_if_not_converged is set.
 
 With return_spectra=True the return value is a tuple (outputs,
 spectra), where spectra is a float64 array of shape [6][n_cfg][spec]
