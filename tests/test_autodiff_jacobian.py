@@ -1,6 +1,8 @@
 """Jacobians through the implicit adjoint: one factorization of the transposed
 interior system serves every cotangent at a solved state."""
 
+from collections.abc import Callable
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -18,7 +20,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _input() -> vmecpp.VmecInput:
+@pytest.fixture(scope="module")
+def indata() -> vmecpp.VmecInput:
     """Solovev with one toroidal boundary mode: three-dimensional, ncurr = 0."""
     source = vmecpp.VmecInput.from_file("examples/data/solovev.json")
     mpol = source.mpol
@@ -42,13 +45,23 @@ def _input() -> vmecpp.VmecInput:
     )
 
 
-def _boundary(indata: vmecpp.VmecInput) -> jax.Array:
+@pytest.fixture(scope="module")
+def boundary(indata: vmecpp.VmecInput) -> jax.Array:
     return jnp.asarray(
         np.stack([np.asarray(indata.rbc), np.asarray(indata.zbs)]), dtype=jnp.float64
     )
 
 
-def _outputs(solver):
+@pytest.fixture
+def solver(indata: vmecpp.VmecInput) -> autodiff.DifferentiableVmec:
+    """A new solver for each test, whose cached forward solves no other test shares."""
+    return autodiff.make_solver(indata)
+
+
+@pytest.fixture
+def outputs(
+    solver: autodiff.DifferentiableVmec,
+) -> Callable[[jax.Array], jax.Array]:
     """Scalars of the solved geometry on two interior surfaces and three spans."""
 
     def outputs(boundary):
@@ -67,12 +80,7 @@ def _outputs(solver):
     return outputs
 
 
-def test_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
-    indata = _input()
-    solver = autodiff.make_solver(indata)
-    outputs = _outputs(solver)
-    boundary = _boundary(indata)
-
+def test_jacobian_rows_equal_the_single_cotangent_gradients(outputs, boundary) -> None:
     jacobian = np.asarray(jax.jacrev(outputs)(boundary))
     rows = np.stack(
         [
@@ -87,12 +95,10 @@ def test_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
     )
 
 
-def test_profile_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
-    indata = _input()
-    solver = autodiff.make_solver(indata)
-    boundary = _boundary(indata)
-
-    def outputs(profiles):
+def test_profile_jacobian_rows_equal_the_single_cotangent_gradients(
+    indata, solver, boundary
+) -> None:
+    def profile_outputs(profiles):
         geometry = solver(boundary, profiles)
         return jnp.stack(
             [
@@ -107,11 +113,13 @@ def test_profile_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
         "am": jnp.asarray(indata.am, dtype=jnp.float64),
         "ai": jnp.asarray(indata.ai, dtype=jnp.float64),
     }
-    jacobian = jax.jacrev(outputs)(profiles)
+    jacobian = jax.jacrev(profile_outputs)(profiles)
     for name, columns in jacobian.items():
         rows = np.stack(
             [
-                np.asarray(jax.grad(lambda p, k=k: outputs(p)[k])(profiles)[name])
+                np.asarray(
+                    jax.grad(lambda p, k=k: profile_outputs(p)[k])(profiles)[name]
+                )
                 for k in range(columns.shape[0])
             ]
         )
@@ -121,12 +129,10 @@ def test_profile_jacobian_rows_equal_the_single_cotangent_gradients() -> None:
         )
 
 
-def test_one_solve_and_one_factorization_serve_further_vjps(monkeypatch) -> None:
+def test_one_solve_and_one_factorization_serve_further_vjps(
+    monkeypatch, outputs, boundary
+) -> None:
     """A Jacobian, then a gradient of another objective at the same parameters."""
-    indata = _input()
-    solver = autodiff.make_solver(indata)
-    outputs = _outputs(solver)
-    boundary = _boundary(indata)
     calls = {"solve": 0, "assembly": 0}
     solve_model = autodiff._solve_model
     assemble = autodiff._assemble_block_tridiagonal
@@ -148,11 +154,29 @@ def test_one_solve_and_one_factorization_serve_further_vjps(monkeypatch) -> None
     assert calls == {"solve": 1, "assembly": 1}
 
 
-def test_gradients_at_two_parameter_points_under_vmap() -> None:
-    indata = _input()
-    solver = autodiff.make_solver(indata)
-    outputs = _outputs(solver)
-    boundary = _boundary(indata)
+def test_one_factorization_is_held_at_a_time(monkeypatch, outputs, boundary) -> None:
+    """VJPs at two parameter points build their factorizations one after the other, and
+    a solve at other parameters releases the one held."""
+    factorize = autodiff._factorize
+
+    def held() -> int:
+        return sum(
+            "factorization" in solve for solve in autodiff._FORWARD_SOLVES.values()
+        )
+
+    def checked_factorize(model):
+        assert held() == 0
+        return factorize(model)
+
+    monkeypatch.setattr(autodiff, "_factorize", checked_factorize)
+    points = jnp.stack([boundary, boundary.at[0, 1, 2].add(1.0e-3)])
+    jax.vmap(jax.grad(lambda b: outputs(b)[0]))(points)
+    assert held() == 1
+    outputs(boundary.at[0, 1, 2].add(2.0e-3))
+    assert held() == 0
+
+
+def test_gradients_at_two_parameter_points_under_vmap(outputs, boundary) -> None:
     points = jnp.stack([boundary, boundary.at[0, 1, 2].add(1.0e-3)])
 
     def first(b):
