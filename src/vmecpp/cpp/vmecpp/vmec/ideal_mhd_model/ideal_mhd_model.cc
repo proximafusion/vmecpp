@@ -6,10 +6,8 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <iostream>
 #include <numbers>
 #include <span>
@@ -33,7 +31,6 @@
 #include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
 #include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
 #include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
-#include "vmecpp/vmec/ideal_mhd_model/phase_timer.h"
 #include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
 #include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
 #include "vmecpp/vmec/radial_profiles/radial_profiles.h"
@@ -120,37 +117,20 @@ void vmecpp::deAliasConstraintForce(
         fb.cosmu.data(), rp.nsMinF, rp.nsMaxF, s_.nZeta, s_.nThetaEff,
         s_.nThetaReduced, s_.mpol, s_.ntor, s_.nnyq2, m_gsc.data(),
         m_gcs.data(), m_gCon.data());
-  } else {
-    Eigen::VectorXd gcc;
-    Eigen::VectorXd gss;
-    Eigen::VectorXd gConAsym;
-    Eigen::VectorXd refl;
+    return;
+  }
+  Eigen::VectorXd gcc;
+  Eigen::VectorXd gss;
+  Eigen::VectorXd gConAsym;
+  Eigen::VectorXd refl;
+  if (s_.lasym) {
     gcc.setZero(s_.ntor + 1);
     gss.setZero(s_.ntor + 1);
     gConAsym.setZero(s_.nZnT);
     refl.setZero(s_.nThetaReduced);
-    deAliasConstraintForce(rp, fb, s_, faccon, tcon, gConEff, m_gsc, m_gcs, gcc,
-                           gss, gConAsym, refl, m_gCon);
   }
-
-  // VMECPP_DUMP_GCON=1: print per-surface sums of the dealiased gCon
-  // (diagnostic for CPU-vs-CUDA trajectory comparisons).
-  static const int kDumpGConEnv = [] {
-    const char* e = std::getenv("VMECPP_DUMP_GCON");
-    return (e != nullptr && std::atoi(e) > 0) ? 1 : 0;
-  }();
-  if (kDumpGConEnv) {
-    static std::atomic<int> dumped{0};
-    if (dumped.exchange(1) == 0) {
-      for (int j = 0; j < rp.nsMaxF - rp.nsMinF; ++j) {
-        double rs = 0.0;
-        for (int i = 0; i < s_.nZnT; ++i) {
-          rs += std::fabs(m_gCon[j * s_.nZnT + i]);
-        }
-        std::fprintf(stderr, "[GCONROW] j=%d %.17g\n", j, rs);
-      }
-    }
-  }
+  deAliasConstraintForce(rp, fb, s_, faccon, tcon, gConEff, m_gsc, m_gcs, gcc,
+                         gss, gConAsym, refl, m_gCon);
 }
 
 void vmecpp::deAliasConstraintForce(
@@ -649,7 +629,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
     const int iter2, const VmecCheckpoint& checkpoint,
     const int iterations_before_checkpointing, bool verbose,
     bool always_fix_m1_gauge) {
-  VMECPP_PHASE_TIMER("update");
   ++force_evaluation_count_;
 
 #ifdef VMECPP_USE_CUDA
@@ -1432,8 +1411,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // this range do not invoke cuFFT and contain no intervening host
   // synchronization, which permits the segment to be captured into a
   // single cudaGraph_t and replayed on subsequent iterations with one
-  // cudaGraphLaunch. The capture is gated by the environment variable
-  // VMECPP_UPDATE_GRAPH and is enabled by default.
+  // cudaGraphLaunch.
   bool seg3_replayed = false;
 #ifdef VMECPP_USE_CUDA
   seg3_replayed = BeginUpdateSegment3GraphOrReplay();
@@ -1689,7 +1667,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
 /** inverse Fourier transform to get geometry from Fourier coefficients */
 void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
-  VMECPP_PHASE_TIMER("geometryFromFourier");
   // symmetric contribution is always needed
 #ifdef VMECPP_USE_CUDA
   // The device transform has no 2D-only variant; axisymmetric (ntor=0) runs
@@ -1765,7 +1742,6 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 // compute inv-DFTs on unique radial grid points
 void IdealMhdModel::dft_FourierToReal_3d_symm(
     const FourierGeometry& physical_x) {
-  VMECPP_PHASE_TIMER("dft_FourierToReal_3d_symm");
   auto geometry = RealSpaceGeometry{.r1_e = r1_e,
                                     .r1_o = r1_o,
                                     .ru_e = ru_e,
@@ -1827,7 +1803,6 @@ void IdealMhdModel::dft_FourierToReal_3d_asymm(
 // compute inv-DFTs on unique radial grid points
 void IdealMhdModel::dft_FourierToReal_2d_symm(
     const FourierGeometry& physical_x) {
-  VMECPP_PHASE_TIMER("dft_FourierToReal_2d_symm");
   // ntor == 0: no toroidal modes, but nZeta may exceed 1
 
   const int num_realsp = (r_.nsMaxF1 - r_.nsMinF1) * s_.nZnT;
@@ -2262,7 +2237,6 @@ void IdealMhdModel::rzConIntoVolume() {
 }
 
 void IdealMhdModel::computeJacobian() {
-  VMECPP_PHASE_TIMER("computeJacobian");
 #ifdef VMECPP_USE_CUDA
   {
     bool bad = false;
@@ -2323,7 +2297,6 @@ void IdealMhdModel::computeJacobian() {
 }
 
 void IdealMhdModel::computeMetricElements() {
-  VMECPP_PHASE_TIMER("computeMetricElements");
 #ifdef VMECPP_USE_CUDA
   {
     ComputeMetricElementsCuda(r_, s_, m_p_.sqrtSF, m_p_.sqrtSH, gsqrt, guu, guv,
@@ -2426,7 +2399,6 @@ void IdealMhdModel::updateVolume() {
  * and apply toroidal current constraint, if enabled.
  */
 void IdealMhdModel::computeBContra() {
-  VMECPP_PHASE_TIMER("computeBContra");
 #ifdef VMECPP_USE_CUDA
   {
     ComputeBContraCuda(r_, s_, m_fc_, ncurr, constants_.lamscale, m_p_.phipF,
@@ -2563,7 +2535,6 @@ void IdealMhdModel::computeBContra() {
 
 // Compute covariant magnetic field components.
 void IdealMhdModel::computeBCo() {
-  VMECPP_PHASE_TIMER("computeBCo");
 #ifdef VMECPP_USE_CUDA
   {
     ComputeBCoCuda(r_, s_, guu, guv, gvv, bsupu, bsupv, bsubu, bsubv);
@@ -2578,7 +2549,6 @@ void IdealMhdModel::computeBCo() {
 }
 
 void IdealMhdModel::pressureAndEnergies() {
-  VMECPP_PHASE_TIMER("pressureAndEnergies");
 #ifdef VMECPP_USE_CUDA
   {
     m_h_.thermalEnergy = 0.0;
@@ -2675,7 +2645,6 @@ void IdealMhdModel::pressureAndEnergies() {
 
 // COMPUTE AVERAGE FORCE BALANCE AND TOROIDAL/POLOIDAL CURRENTS
 void IdealMhdModel::radialForceBalance() {
-  VMECPP_PHASE_TIMER("radialForceBalance");
 #ifdef VMECPP_USE_CUDA
   {
     RadialForceBalanceCuda(r_, s_, signOfJacobian, m_fc_.deltaS, s_.wInt,
@@ -2731,7 +2700,6 @@ void IdealMhdModel::radialForceBalance() {
 }
 
 void IdealMhdModel::hybridLambdaForce() {
-  VMECPP_PHASE_TIMER("hybridLambdaForce");
 #ifdef VMECPP_USE_CUDA
   {
     HybridLambdaForceCuda(r_, s_, constants_.lamscale, m_p_.radialBlending,
@@ -2762,7 +2730,6 @@ void IdealMhdModel::hybridLambdaForce() {
 
 // Compute normalization factors for force residuals.
 void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
-  VMECPP_PHASE_TIMER("computeForceNorms");
 #ifdef VMECPP_USE_CUDA
   {
     // FourierGeometry::rzNorm is a host-side Fourier-space norm; compute on
@@ -2847,7 +2814,6 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
 }
 
 void IdealMhdModel::computeMHDForces() {
-  VMECPP_PHASE_TIMER("computeMHDForces");
 #ifdef VMECPP_USE_CUDA
   {
     ComputeMHDForcesCuda(r_, s_, m_fc_, m_fc_.lfreeb, m_fc_.deltaS, armn_e,
@@ -2889,7 +2855,6 @@ bool IdealMhdModel::shouldUpdateRadialPreconditioner(int iter1,
 }
 
 void IdealMhdModel::updateRadialPreconditioner() {
-  VMECPP_PHASE_TIMER("updateRadialPreconditioner");
   updateLambdaPreconditioner();
 
   // compute preconditioning matrix for R
@@ -3258,7 +3223,6 @@ double IdealMhdModel::constraintMultiplierScale() const {
 }
 
 absl::Status IdealMhdModel::constraintForceMultiplier() {
-  VMECPP_PHASE_TIMER("constraintForceMultiplier");
 #ifdef VMECPP_USE_CUDA
   {
     ConstraintForceMultiplierCuda(r_, s_, m_fc_, tcon0, ard, azd, tcon);
@@ -3314,26 +3278,10 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     tcon[r_.nsMaxF1 - 1 - r_.nsMinF] = 0.5 * tcon[r_.nsMaxF1 - 2 - r_.nsMinF];
   }
 
-  // VMECPP_DUMP_TCON=1: print the first computed profile at full
-  // precision (diagnostic for CPU-vs-CUDA trajectory comparisons).
-  static const int kDumpTConEnv = [] {
-    const char* e = std::getenv("VMECPP_DUMP_TCON");
-    return (e != nullptr && std::atoi(e) > 0) ? 1 : 0;
-  }();
-  if (kDumpTConEnv) {
-    static std::atomic<int> dumped{0};
-    if (dumped.exchange(1) == 0) {
-      for (int j = 1; j < std::min(9, r_.nsMaxF - r_.nsMinF); ++j) {
-        std::fprintf(stderr, "[TCON] j=%d %.17g\n", j, tcon[j]);
-      }
-    }
-  }
-
   return absl::OkStatus();
 }
 
 void IdealMhdModel::effectiveConstraintForce() {
-  VMECPP_PHASE_TIMER("effectiveConstraintForce");
 #ifdef VMECPP_USE_CUDA
   {
     EffectiveConstraintForceCuda(r_, s_, gConEff);
@@ -3346,31 +3294,11 @@ void IdealMhdModel::effectiveConstraintForce() {
                                   zCon0.data(), ruFull.data(), zuFull.data(),
                                   s_.nZnT, r_.nsMinF, r_.nsMaxFIncludingLcfs,
                                   gConEff.data());
-
-  // VMECPP_DUMP_GCON=1: print a serial checksum of gConEff (diagnostic
-  // for CPU-vs-CUDA trajectory comparisons).
-  static const int kDumpGConEnv = [] {
-    const char* e = std::getenv("VMECPP_DUMP_GCON");
-    return (e != nullptr && std::atoi(e) > 0) ? 1 : 0;
-  }();
-  if (kDumpGConEnv) {
-    static std::atomic<int> dumped{0};
-    if (dumped.exchange(1) == 0) {
-      double sum = 0.0;
-      const int total = (r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.nZnT;
-      for (int i = 0; i < total; ++i) sum += std::fabs(gConEff[i]);
-      std::fprintf(stderr,
-                   "[GCONEFF] sum=%.17g v[1,0..3]=%.17g %.17g %.17g %.17g\n",
-                   sum, gConEff[s_.nZnT], gConEff[s_.nZnT + 1],
-                   gConEff[s_.nZnT + 2], gConEff[s_.nZnT + 3]);
-    }
-  }
 }
 
 // perform Fourier-space bandpass filtering of constraint force
 // and apply scaling (tcon[j]) and preconditioning (faccon[m])
 void IdealMhdModel::deAliasConstraintForce() {
-  VMECPP_PHASE_TIMER("deAliasConstraintForce");
 #ifdef VMECPP_USE_CUDA
   DeAliasConstraintForceCuda(r_, t_, s_, faccon, gCon);
   return;
@@ -3381,7 +3309,6 @@ void IdealMhdModel::deAliasConstraintForce() {
 
 // add constraint force to MHD force
 void IdealMhdModel::assembleTotalForces() {
-  VMECPP_PHASE_TIMER("assembleTotalForces");
 #ifdef VMECPP_USE_CUDA
   {
     const bool vacuum_edge =
@@ -4190,8 +4117,6 @@ double IdealMhdModel::composedForceResidual(const double* geomP,
 #endif  // VMECPP_ENABLE_ENZYME
 
 void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
-  VMECPP_PHASE_TIMER("forcesToFourier");
-
   if (s_.lasym) {
     // Split the real-space forces into their standard- and reversed-parity
     // halves before the symmetric forward DFT consumes the standard half.
@@ -4242,7 +4167,6 @@ void IdealMhdModel::forcesToFourier(FourierForces& m_physical_f) {
 }
 
 void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
-  VMECPP_PHASE_TIMER("dft_ForcesToFourier_3d_symm");
   const auto input_data = RealSpaceForces{
       .armn_e = armn_e,
       .armn_o = armn_o,
@@ -4312,7 +4236,6 @@ void IdealMhdModel::dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f) {
 }
 
 void IdealMhdModel::dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f) {
-  VMECPP_PHASE_TIMER("dft_ForcesToFourier_2d_symm");
   // ntor == 0: no toroidal modes, but nZeta may exceed 1
 
   // fill target force arrays with zeros
@@ -4785,7 +4708,6 @@ void IdealMhdModel::assembleRZPreconditioner() {
 // serial variant
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
-  VMECPP_PHASE_TIMER("applyRZPreconditioner");
 #ifdef VMECPP_USE_CUDA
   // Both the symmetric 2D (ntor=0, nZeta=1) and 3D cases run the device
   // tridiagonal solve; AssembleRZPreconditionerCuda has already populated the
@@ -4972,7 +4894,6 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
  * Here, the lambda preconditioner is applied. --> see BETAS article for details
  */
 void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
-  VMECPP_PHASE_TIMER("applyLambdaPreconditioner");
 #ifdef VMECPP_USE_CUDA
   if (!s_.lasym) {
     ApplyLambdaPreconditionerCuda(
@@ -5097,7 +5018,6 @@ int IdealMhdModel::get_ivacskip() const { return ivacskip; }
 
 void IdealMhdModel::FlushForOutputCuda() {
 #ifdef VMECPP_USE_CUDA
-  VMECPP_PHASE_TIMER("FlushForOutputCuda");
   // One-shot flush of all device-resident fields that ComputeOutputQuantities
   // reads via GatherDataFromThreads. Replaces the per-iteration call that
   // accounted for ~35% of update wall.

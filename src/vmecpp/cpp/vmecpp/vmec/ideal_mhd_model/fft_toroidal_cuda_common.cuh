@@ -60,7 +60,6 @@
 
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
 #include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"  // partial-DFT fallback
-#include "vmecpp/vmec/ideal_mhd_model/phase_timer.h"
 
 namespace vmecpp {
 
@@ -219,102 +218,6 @@ struct CudaToroidalState {
   // Persistent device buffers + stream.
   cudaStream_t stream = nullptr;
   cufftHandle cufft_plan = 0;
-  // Per-kernel cudaEvent timing harness (env-gated, VMECPP_KERNEL_TIMING=1).
-  // Each slot: 2 events (start/stop) + accumulated ms + call count. Recorded
-  // around the major per-iter kernels; dumped to stderr at program exit
-  // via atexit. Slow when enabled (per-call sync); diagnostic only.
-  static constexpr int kNumTimedKernels = 19;
-  enum TimedKernel {
-    TK_CUFFT_INV = 0,        // cufftExecZ2D
-    TK_SCATTER = 1,          // k_scatter_main_and_con_v4
-    TK_JAC_METRIC_DVDSH = 2, // k_jacobian_metric_dvdsh_atomic
-    TK_BCONTRA = 3,          // k_bcontra_bsupuv (heaviest bcontra kernel)
-    TK_PRES = 4,             // pressureAndEnergies kernels
-    TK_RADIAL_FB = 5,        // k_radial_interior
-    TK_CUFFT_FWD = 6,        // cufftExecD2Z
-    TK_DECOMPOSE = 7,        // k_decompose_into
-    TK_RESIDUALS = 8,        // k_residuals (both calls)
-    TK_APPLY_M1 = 9,         // k_apply_m1_preconditioner
-    TK_APPLY_RZ = 10,        // k_apply_rz_pcr
-    TK_APPLY_LAMBDA = 11,    // k_apply_lambda_preconditioner
-    TK_EFFECTIVE_CONSTRAINT = 12,  // k_effective_constraint_force
-    TK_DEALIAS = 13,         // k_dealias_inv (main dealias kernel)
-    TK_COMPUTE_MHD = 14,     // k_compute_mhd_forces
-    TK_ASSEMBLE_TOTAL = 15,  // k_assemble_total_forces
-    TK_PCONDITION_MAT = 16,  // ComputePreconditioningMatrix (every 25 iters)
-    TK_ASSEMBLE_RZ = 17,     // k_assemble_rz_preconditioner
-    TK_BACKUP_PTS = 18,      // k_backup_pts_x (state backup at store cadence)
-  };
-  cudaEvent_t tk_start[kNumTimedKernels] = {};
-  cudaEvent_t tk_stop[kNumTimedKernels] = {};
-  double tk_total_ms[kNumTimedKernels] = {};
-  long long tk_calls[kNumTimedKernels] = {};
-  bool tk_initialized = false;
-  int tk_env = -1;  // -1 unread, 0 disabled, 1 enabled
-
-  void TKInit() {
-    if (tk_initialized) return;
-    for (int i = 0; i < kNumTimedKernels; ++i) {
-      cuda_check(cudaEventCreate(&tk_start[i]), "tk start event");
-      cuda_check(cudaEventCreate(&tk_stop[i]), "tk stop event");
-    }
-    tk_initialized = true;
-  }
-
-  void TKBegin(int slot) {
-    if (tk_env <= 0 || !tk_initialized) return;
-    cudaEventRecord(tk_start[slot], stream);
-  }
-  void TKEnd(int slot) {
-    if (tk_env <= 0 || !tk_initialized) return;
-    cudaEventRecord(tk_stop[slot], stream);
-    cudaEventSynchronize(tk_stop[slot]);
-    float ms = 0.0f;
-    cudaEventElapsedTime(&ms, tk_start[slot], tk_stop[slot]);
-    tk_total_ms[slot] += ms;
-    tk_calls[slot] += 1;
-    // Periodic dump so partial data survives abnormal process termination
-    // that skips the atexit handler. Path via VMECPP_KERNEL_TIMING_PATH
-    // (defaults to /tmp/vmecpp_kernel_timing.log). Dump every 10000 TKEnd
-    // calls.
-    static long long dump_counter = 0;
-    ++dump_counter;
-    if ((dump_counter % 10000) == 0) {
-      const char* path = std::getenv("VMECPP_KERNEL_TIMING_PATH");
-      if (!path) path = "/tmp/vmecpp_kernel_timing.log";
-      FILE* f = std::fopen(path, "w");
-      if (f) { TKDump(f); std::fclose(f); }
-    }
-  }
-  void TKDump(FILE* f) {
-    static const char* names[kNumTimedKernels] = {
-      "cufftExecZ2D (inverse)", "k_scatter_main_and_con_v4",
-      "k_jacobian_metric_dvdsh_atomic", "k_bcontra_bsupuv",
-      "pressureAndEnergies (3 kernels)", "k_radial_interior",
-      "cufftExecD2Z (forward)", "k_decompose_into",
-      "k_residuals", "k_apply_m1_preconditioner",
-      "k_apply_rz_pcr", "k_apply_lambda_preconditioner",
-      "k_effective_constraint_force", "k_dealias_inv",
-      "k_compute_mhd_forces", "k_assemble_total_forces",
-      "ComputePreconditioningMatrix", "k_assemble_rz_preconditioner",
-      "k_backup_pts_x",
-    };
-    double total = 0.0;
-    for (int i = 0; i < kNumTimedKernels; ++i) total += tk_total_ms[i];
-    std::fprintf(f, "===== VMECPP per-kernel timing =====\n");
-    for (int i = 0; i < kNumTimedKernels; ++i) {
-      double pct = (total > 0) ? (tk_total_ms[i] / total) * 100.0 : 0.0;
-      std::fprintf(f,
-          "  %-40s  total=%8.3fs  calls=%lld  avg=%.4fms  pct=%5.2f%%\n",
-          names[i], tk_total_ms[i] / 1000.0,
-          (long long)tk_calls[i],
-          (tk_calls[i] > 0) ? tk_total_ms[i] / tk_calls[i] : 0.0,
-          pct);
-    }
-    std::fprintf(f, "  ---\n  cumulative=%.3fs (per-call sync overhead included)\n",
-                 total / 1000.0);
-  }
-
   // Segment-3 graph state.
   //
   // The segment-3 graph captures the chain from
@@ -874,11 +777,8 @@ struct CudaToroidalState {
   //                   [cfg0.fac, cfg0.b1, cfg1.fac, cfg1.b1, ...].
   //                   k_perform_time_step_devfac reads this in place of the
   //                   scalar velocity_scale / conjugation_parameter args.
-  // Driven by the per-cfg time-step controller (VMECPP_BATCH_PER_CFG_TIMESTEP)
-  // and by sync-elided iterations, where the device controller is
-  // authoritative. The host fc_.invTau_ stays the source of truth when
-  // neither is active, so the existing convergence/restart logic in
-  // vmec.cc is unaffected.
+  // Batches drive k_perform_time_step from these per-configuration buffers;
+  // a single configuration takes the host fc_.invTau_ controller.
   double* d_inv_tau = nullptr;
   double* d_prev_fsq = nullptr;
   double* d_fac_b1 = nullptr;
@@ -2362,22 +2262,6 @@ __global__ void k_fill_spectra(
     const double* __restrict__ zmnsc, const double* __restrict__ zmncs,
     const double* __restrict__ lmnsc, const double* __restrict__ lmncs,
     const double* __restrict__ nscale, cufftDoubleComplex* __restrict__ X);
-__global__ void k_scatter_main_and_con_v4(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -2440,17 +2324,6 @@ __global__ void k_extract_geom_scalars(
     const double* __restrict__ d_r1_o,
     const double* __restrict__ d_z1_e,
     int outer_idx, int inner_idx, double* __restrict__ d_out);
-__global__ void k_compute_jacobian(
-    int n_config, int ns_local,
-    int ns_h, int jF_in_offset, int nZnT,
-    const double* __restrict__ r1_e, const double* __restrict__ r1_o,
-    const double* __restrict__ ru_e, const double* __restrict__ ru_o,
-    const double* __restrict__ z1_e, const double* __restrict__ z1_o,
-    const double* __restrict__ zu_e, const double* __restrict__ zu_o,
-    const double* __restrict__ sqrtSH, double deltaS, double dSHalfDsInterp,
-    double* __restrict__ r12, double* __restrict__ ru12,
-    double* __restrict__ zu12, double* __restrict__ rs,
-    double* __restrict__ zs, double* __restrict__ tau);
 __global__ void k_compute_metric_elements(
     int n_config, int ns_local,
     int ns_h, int jF_in_offset, int nZnT, bool lthreed,
@@ -2553,7 +2426,6 @@ __global__ void k_pm_half_reductions(int n_config, int ns_local, int ns_h,
                                        int nZnT, int nThetaEff,
                                        double pFactor, double deltaS,
                                        int nsMinH, int nsMinF1,
-                                       int serial_order,
                                        const double* __restrict__ r12,
                                        const double* __restrict__ totalPressure,
                                        const double* __restrict__ tau,
@@ -2742,7 +2614,6 @@ __global__ void k_bcontra_bsupuv(
     double* __restrict__ bsupu, double* __restrict__ bsupv);
 __global__ void k_bcontra_jvplasma_reduce(
     int n_config, int ns_h, int nZnT, int nThetaEff, bool lthreed,
-    int serial_order,
     const double* __restrict__ guu, const double* __restrict__ guv,
     const double* __restrict__ bsupu, const double* __restrict__ bsupv,
     const double* __restrict__ gsqrt, const double* __restrict__ wInt,
@@ -2954,9 +2825,6 @@ __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
                                      const double* __restrict__ magnetic_partial,
                                      double* __restrict__ scalars_out,
                                      const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_cfg01_max_abs_diff(int per_cfg_size,
-                                      const double* __restrict__ buf,
-                                      double* __restrict__ out_scalar);
 __global__ void k_rz_norm_per_cfg(
     int n_config, int ns_local, int j_begin, int j_count, int mpol, int ntor,
     bool lthreed,
@@ -2968,18 +2836,6 @@ __global__ void k_force_norm_final_reduce(
     int n_config, int ns_h,
     const double* __restrict__ rz_partial,
     const double* __restrict__ l_partial,
-    double* __restrict__ scalars_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_residuals(
-    int n_config, int ns_local,
-    int jLocal_max_rz, int jLocal_max_boundary,
-    int mpol, int ntor, bool lthreed,
-    const double* __restrict__ frcc,
-    const double* __restrict__ frss,
-    const double* __restrict__ fzsc,
-    const double* __restrict__ fzcs,
-    const double* __restrict__ flsc,
-    const double* __restrict__ flcs,
     double* __restrict__ scalars_out,
     const std::uint8_t* __restrict__ d_active_per_cfg);
 __global__ void k_check_convergence(
@@ -3044,12 +2900,6 @@ __global__ void k_apply_rz_pcr(int n_config, int mnsize, int ns_total, int num_b
                                  const double* __restrict__ b_in,
                                  double* __restrict__ c_inout,
                                  const std::uint8_t* __restrict__ d_active_per_cfg);
-__global__ void k_apply_rz_thomas_serial(
-    int n_config, int mnsize, int ns_total, int num_basis,
-    const int* __restrict__ jMin, int jMax,
-    const double* __restrict__ a_in, const double* __restrict__ d_in,
-    const double* __restrict__ b_in, double* __restrict__ c_inout,
-    const std::uint8_t* __restrict__ d_active_per_cfg);
 // One block per (config, mn) row; the elimination ratios live in dynamic
 // shared memory sized to jMax, so this handles ns_total beyond the 1024
 // threads-per-block limit of the PCR solver. Used for ns_total > 1024.
@@ -3132,10 +2982,6 @@ extern std::vector<double> g_batch_outputs_mem;
 extern std::vector<double> g_batch_phipF, g_batch_phipH, g_batch_currH,
     g_batch_iotaH, g_batch_massH;
 extern int g_batch_prof_ncfg, g_batch_prof_nsh, g_batch_prof_nsf;
-
-// Cross-unit internal helpers.
-void DiagCfg01DiffCuda(const double* d_buf, int per_cfg_size,
-                       const char* label);
 
 }  // namespace vmecpp
 

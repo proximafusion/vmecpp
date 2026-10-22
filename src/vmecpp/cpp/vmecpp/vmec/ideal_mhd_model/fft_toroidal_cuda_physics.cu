@@ -44,47 +44,7 @@ void ComputeJacobianCuda(
   // carried on the third grid dimension, so for n_config_max == 1
   // the launch reduces to (nZnT / TPB, ns_h, 1), matching the
   // single-configuration baseline.
-  //
-  // The VMECPP_JAC_METRIC_FUSE environment variable selects between
-  // the jacobian-only kernel and the fused jacobian-and-metric
-  // kernel; the default is the fused variant. When the fused
-  // variant runs, the metric outputs gsqrt, guu, guv, and gvv are
-  // written directly into the corresponding device buffers, the
-  // jac_metric_fused_this_iter flag is raised, and
-  // ComputeMetricElementsCuda elides its own kernel launch on
-  // observing the flag.
-  static int jac_metric_fuse_env = -1;
-  if (jac_metric_fuse_env < 0) {
-    const char* e = std::getenv("VMECPP_JAC_METRIC_FUSE");
-    jac_metric_fuse_env = (e && std::atoi(e) == 0) ? 0 : 1;
-    if (!jac_metric_fuse_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] jacobian+metric fusion "
-                           "disabled (VMECPP_JAC_METRIC_FUSE=0)\n");
-    }
-  }
-  // Three-way fusion of the jacobian, metric, and differential-volume
-  // computations through k_jacobian_metric_dvdsh_atomic. The block
-  // geometry matches the fused jacobian-and-metric kernel, and the
-  // differential volume dVdsH is accumulated through atomicAdd on
-  // the floating-point overload. The atomic accumulation introduces
-  // a small order-dependent floating-point deviation that the
-  // drift tolerance applied to dVdsH admits. The fused path is
-  // selected by VMECPP_JAC_METRIC_DVDSH_FUSE (default active when
-  // unset) and additionally requires the caller to provide
-  // wInt and signOfJacobian; setting the variable to zero falls
-  // back to the separate jacobian-and-metric kernel followed by an
-  // independent dVdsH reduction.
-  static int dvdsh_fuse_env = -1;
-  if (dvdsh_fuse_env < 0) {
-    const char* e = std::getenv("VMECPP_JAC_METRIC_DVDSH_FUSE");
-    dvdsh_fuse_env = (e && std::atoi(e) == 0) ? 0 : 1;
-    if (!dvdsh_fuse_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] jac+metric+dvdsh atomic fusion "
-                           "disabled (VMECPP_JAC_METRIC_DVDSH_FUSE=0)\n");
-    }
-  }
-  const bool use_dvdsh_fuse = dvdsh_fuse_env && wInt != nullptr &&
-                              signOfJacobian != 0 && jac_metric_fuse_env;
+  const bool use_dvdsh_fuse = wInt != nullptr && signOfJacobian != 0;
 
   if (use_dvdsh_fuse) {
     S.EnsureMetricBuffers(ns_h, nZnT);
@@ -97,19 +57,8 @@ void ComputeJacobianCuda(
                "memset d_dVdsH for atomic accumulator");
     // Atomic fusion geometry: same as separate jac+metric (TPB=64, X-blocks
     // covering nZnT), preserves occupancy.
-    // VMECPP_JAC_PAIR routes to jH-coarsened pair variant when ns_h is even.
-    // Pair caches the shared middle jF's 8 main fields in shared memory and
-    // saves 50pct of main-field jF reads per pair-block. Default ON; set =0
-    // to fall back. Measured at N=64 over five evaluations: 0.5336 ->
-    // 0.5365 eq/s (+0.54pct).
-    // Bit-exact aspect_ratio = 7.527844291824478, qi/L_grad_B unchanged.
-    static const int jac_pair_env = []() {
-      const char* e = std::getenv("VMECPP_JAC_PAIR");
-      return (e && std::atoi(e) == 0) ? 0 : 1;
-    }();
     const int TPB = 64;
-    S.TKBegin(CudaToroidalState::TK_JAC_METRIC_DVDSH);
-    if (jac_pair_env && (ns_h % 2 == 0)) {
+    if (ns_h % 2 == 0) {
       dim3 fblocks_p((nZnT + TPB - 1) / TPB, ns_h / 2, S.n_config_max);
       dim3 ftpb_p(TPB, 2, 1);
       // 8 fields cached per x-lane (blockDim.x), so 4 KB per block at TPB=64,
@@ -146,37 +95,25 @@ void ComputeJacobianCuda(
           S.d_dVdsH);
       cuda_check(cudaGetLastError(), "k_jacobian_metric_dvdsh_atomic launch");
     }
-    S.TKEnd(CudaToroidalState::TK_JAC_METRIC_DVDSH);
     S.jac_metric_fused_this_iter = true;
     S.dvdsh_fused_this_iter = true;
   } else {
     const int TPB = 64;
     dim3 blocks((nZnT + TPB - 1) / TPB, ns_h, S.n_config_max);
     dim3 tpb(TPB, 1, 1);
-    if (jac_metric_fuse_env) {
-      S.EnsureMetricBuffers(ns_h, nZnT);  // metric outputs alloc upfront
-      k_jacobian_and_metric<<<blocks, tpb, 0, S.stream>>>(
-          S.n_config_max, S.ns_local_cached,
-          ns_h, jF_in_offset, nZnT, s.lthreed,
-          S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-          S.d_z1_e, S.d_z1_o, S.d_zu_e, S.d_zu_o,
-          S.d_rv_e, S.d_rv_o, S.d_zv_e, S.d_zv_o,
-          S.d_sqrtSF, S.d_sqrtSH, deltaS, dSHalfDsInterp,
-          S.d_r12, S.d_ru12, S.d_zu12, S.d_rs, S.d_zs, S.d_tau,
-          S.d_gsqrt, S.d_guu, S.d_guv, S.d_gvv,
-          S.d_active_per_cfg);
-      cuda_check(cudaGetLastError(), "k_jacobian_and_metric launch");
-      S.jac_metric_fused_this_iter = true;
-    } else {
-      k_compute_jacobian<<<blocks, tpb, 0, S.stream>>>(
-          S.n_config_max, S.ns_local_cached,
-          ns_h, jF_in_offset, nZnT,
-          S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-          S.d_z1_e, S.d_z1_o, S.d_zu_e, S.d_zu_o,
-          S.d_sqrtSH, deltaS, dSHalfDsInterp,
-          S.d_r12, S.d_ru12, S.d_zu12, S.d_rs, S.d_zs, S.d_tau);
-      cuda_check(cudaGetLastError(), "k_compute_jacobian launch");
-    }
+    S.EnsureMetricBuffers(ns_h, nZnT);  // metric outputs alloc upfront
+    k_jacobian_and_metric<<<blocks, tpb, 0, S.stream>>>(
+        S.n_config_max, S.ns_local_cached,
+        ns_h, jF_in_offset, nZnT, s.lthreed,
+        S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
+        S.d_z1_e, S.d_z1_o, S.d_zu_e, S.d_zu_o,
+        S.d_rv_e, S.d_rv_o, S.d_zv_e, S.d_zv_o,
+        S.d_sqrtSF, S.d_sqrtSH, deltaS, dSHalfDsInterp,
+        S.d_r12, S.d_ru12, S.d_zu12, S.d_rs, S.d_zs, S.d_tau,
+        S.d_gsqrt, S.d_guu, S.d_guv, S.d_gvv,
+        S.d_active_per_cfg);
+    cuda_check(cudaGetLastError(), "k_jacobian_and_metric launch");
+    S.jac_metric_fused_this_iter = true;
   }
 
   // Device-side tau min/max -> 2 scalars per config (replaces tau D2H + host scan).
@@ -211,7 +148,6 @@ void ComputeJacobianCuda(
 
   double minTau = g_jac_minmax_cache[0], maxTau = g_jac_minmax_cache[1];
   bad_jacobian = (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
-  DiagCfg01DiffCuda(S.d_tau, ns_h * nZnT, "jac:tau");
 }
 
 // ============================================================================
@@ -424,14 +360,12 @@ void RadialForceBalanceCuda(
   const int TPB2 = 64;
   dim3 blocks2((nsi + TPB2 - 1) / TPB2, S.n_config_max, 1);
   dim3 tpb2(TPB2, 1, 1);
-  S.TKBegin(CudaToroidalState::TK_RADIAL_FB);
   k_radial_interior<<<blocks2, tpb2, 0, S.stream>>>(
       S.n_config_max, ns_h, ns_local,
       nsi, offset_jH, offset_jF, signByDeltaS, invDeltaS,
       S.d_bucoH, S.d_bvcoH, S.d_presH, S.d_dVdsH, S.d_chipF, S.d_phipF,
       S.d_jcurvF, S.d_jcuruF, S.d_presgradF, S.d_dVdsF, S.d_equiF);
   cuda_check(cudaGetLastError(), "k_radial_interior launch");
-  S.TKEnd(CudaToroidalState::TK_RADIAL_FB);
 
   // bvcoH is read on the host by the rBtor scalar evaluation; async D2H
   // here, with the stream synchronized inside the update body before the
@@ -640,30 +574,20 @@ void ComputeBContraCuda(
     const int TPB = 64;
     dim3 blocks((nZnT + TPB - 1) / TPB, ns_h, S.n_config_max);
     dim3 tpb(TPB, 1, 1);
-    S.TKBegin(CudaToroidalState::TK_BCONTRA);
     k_bcontra_bsupuv<<<blocks, tpb, 0, S.stream>>>(
         S.n_config_max, ns_local, ns_h, jF_in_offset_bcontra, nZnT, s.lthreed,
         S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o, S.d_sqrtSH, S.d_gsqrt,
         S.d_bsupu, S.d_bsupv);
     cuda_check(cudaGetLastError(), "k_bcontra_bsupuv launch");
-    S.TKEnd(CudaToroidalState::TK_BCONTRA);
   }
 
   // Stage 3 (ncurr==1 only): jvPlasma + avg_guu_gsqrt reductions.
   if (ncurr == 1) {
-    // VMECPP_CPU_ORDER_BCONTRA=1: serial ascending-kl accumulation
-    // matching the host loop bit for bit (diagnostic for trajectory
-    // comparisons against the CPU build).
-    static const int bcontra_serial_env = []() {
-      const char* e = std::getenv("VMECPP_CPU_ORDER_BCONTRA");
-      return (e && std::atoi(e) > 0) ? 1 : 0;
-    }();
     const int TPB = 32;
     dim3 blocks(ns_h, 1, S.n_config_max);
     dim3 tpb(TPB, 1, 1);
     k_bcontra_jvplasma_reduce<<<blocks, tpb, 0, S.stream>>>(
         S.n_config_max, ns_h, nZnT, nThetaEff, s.lthreed,
-        bcontra_serial_env,
         S.d_guu, S.d_guv, S.d_bsupu, S.d_bsupv,
         S.d_gsqrt, S.d_wInt, S.d_jvPlasma, S.d_avg_guu_gsqrt);
     cuda_check(cudaGetLastError(), "k_bcontra_jvplasma_reduce launch");
@@ -788,20 +712,13 @@ void ComputePreconditioningMatrixCuda(
   // Batched execution: each pm kernel gains n_config dim.
   double pFactor = -4.0;
   {
-    // VMECPP_CPU_ORDER_PRECOND=1: host-order serial accumulation of the
-    // matrix elements (diagnostic for trajectory comparisons against the
-    // CPU build).
-    static const int pm_serial_env = []() {
-      const char* e = std::getenv("VMECPP_CPU_ORDER_PRECOND");
-      return (e && std::atoi(e) > 0) ? 1 : 0;
-    }();
     const int TPB = 32;
     dim3 b(ns_h, 1, S.n_config_max); dim3 t(TPB, 1, 1);
     // Read xs/xu12/xu_e/xu_o/x1_o from the device buffers directly, not the
     // d_pm_* H2D mirrors (which are now stale/unused on the H2D-skipped path).
     k_pm_half_reductions<<<b, t, 0, S.stream>>>(
         S.n_config_max, ns_local, ns_h, nZnT, nThetaEff, pFactor, deltaS,
-        r.nsMinH, r.nsMinF1, pm_serial_env,
+        r.nsMinH, r.nsMinF1,
         S.d_r12, S.d_totalPressure, S.d_tau, S.d_wInt,
         d_xu12, d_xu_e, d_xu_o, d_x1_o, d_xs,
         S.d_sqrtSH, S.d_bsupv, S.d_gsqrt,
@@ -1044,18 +961,10 @@ void ComputeMHDForcesCuda(
   if (lfreeb) jMaxRZ = std::min(r.nsMaxF, fc.ns);
 
   // Batched execution: z-dim covers n_config_max configs.
-  // VMECPP_MHD_PAIR routes to k_compute_mhd_forces_pair when ns_force_local
-  // is even. Pair kernel caches one shared jH slab between adjacent jF blocks
-  // to skip a half-grid load per jF-pair. Default ON; set =0 to fall back.
-  // Kernel-level delta: -1.72pct TK_COMPUTE_MHD (13.025s -> 12.801s over 20k
-  // calls). Bit-exact aspect_ratio = 7.527844291824478, qi/L_grad_B unchanged.
-  static const int mhd_pair_env = []() {
-    const char* e = std::getenv("VMECPP_MHD_PAIR");
-    return (e && std::atoi(e) == 0) ? 0 : 1;
-  }();
+  // The pair kernel shares one half-grid slab between two force surfaces;
+  // it needs an even force-grid extent.
   const int TPB = 64;
-  S.TKBegin(CudaToroidalState::TK_COMPUTE_MHD);
-  if (mhd_pair_env && (ns_force_local % 2 == 0)) {
+  if (ns_force_local % 2 == 0) {
     dim3 blocks_p((nZnT + TPB - 1) / TPB, ns_force_local / 2, S.n_config_max);
     dim3 tpb_p(TPB, 2, 1);
     // 10 fields cached per x-lane (blockDim.x), independent of nZnT.
@@ -1091,8 +1000,6 @@ void ComputeMHDForcesCuda(
         S.d_crmn_e, S.d_crmn_o, S.d_czmn_e, S.d_czmn_o);
     cuda_check(cudaGetLastError(), "k_compute_mhd_forces launch");
   }
-  S.TKEnd(CudaToroidalState::TK_COMPUTE_MHD);
-  DiagCfg01DiffCuda(S.d_armn_e, ns_force_local * nZnT, "mhd:armn_e");
 
   // All outputs (armn/azmn/brmn/bzmn/crmn/czmn) stay on device; downstream
   // inverse-FFT + AssembleTotalForces read d_* directly.
@@ -1518,31 +1425,12 @@ void ConstraintForceMultiplierCuda(
         S.n_config_max, ns_con_local, last, S.d_tcon);
     cuda_check(cudaGetLastError(), "k_halve_tcon_lcfs launch");
   }
-  DiagCfg01DiffCuda(S.d_tcon, ns_con_local, "constraint:tcon");
 
   // D2H tcon for host visibility (not consumed mid-chain in CUDA mode but
   // preserved for output paths). No sync; defer to end-of-update.
   cuda_check(cudaMemcpyAsync(tcon_out.data(), S.d_tcon,
                               sizeof(double) * ns_force_local,
                               cudaMemcpyDeviceToHost, S.stream), "d2h tcon");
-
-  // VMECPP_DUMP_TCON=1: print the first computed profile at full
-  // precision (diagnostic for CPU-vs-CUDA trajectory comparisons).
-  static int dump_tcon_env = -1;
-  if (dump_tcon_env < 0) {
-    const char* e = std::getenv("VMECPP_DUMP_TCON");
-    dump_tcon_env = (e && std::atoi(e) > 0) ? 1 : 0;
-  }
-  if (dump_tcon_env) {
-    static int dumped = 0;
-    if (!dumped) {
-      dumped = 1;
-      cuda_check(cudaStreamSynchronize(S.stream), "tcon dump sync");
-      for (int j = 1; j < std::min(9, ns_force_local); ++j) {
-        std::fprintf(stderr, "[TCON] j=%d %.17g\n", j, tcon_out[j]);
-      }
-    }
-  }
 }
 
 // ============================================================================
@@ -1570,38 +1458,11 @@ void EffectiveConstraintForceCuda(
   const int TPB = 64;
   dim3 b((nZnT + TPB - 1) / TPB, ns_con_local, S.n_config_max);
   dim3 t(TPB, 1, 1);
-  S.TKBegin(CudaToroidalState::TK_EFFECTIVE_CONSTRAINT);
   k_effective_constraint_force<<<b, t, 0, S.stream>>>(
       S.n_config_max, ns_con_local, nZnT, jMin,
       S.d_rCon, S.d_rCon0, S.d_zCon, S.d_zCon0,
       S.d_ruFull, S.d_zuFull, S.d_gConEff);
   cuda_check(cudaGetLastError(), "k_effective_constraint_force launch");
-  S.TKEnd(CudaToroidalState::TK_EFFECTIVE_CONSTRAINT);
-  DiagCfg01DiffCuda(S.d_gConEff, ns_con_local * nZnT, "eff:gConEff");
-
-  // VMECPP_DUMP_GCON=1: print a serial checksum of gConEff (diagnostic
-  // for CPU-vs-CUDA trajectory comparisons).
-  static int dump_gcon_env = -1;
-  if (dump_gcon_env < 0) {
-    const char* e = std::getenv("VMECPP_DUMP_GCON");
-    dump_gcon_env = (e && std::atoi(e) > 0) ? 1 : 0;
-  }
-  if (dump_gcon_env) {
-    static int dumped = 0;
-    if (!dumped) {
-      dumped = 1;
-      std::vector<double> h((size_t)ns_con_local * nZnT, 0.0);
-      cuda_check(cudaMemcpyAsync(h.data(), S.d_gConEff,
-                                 sizeof(double) * h.size(),
-                                 cudaMemcpyDeviceToHost, S.stream),
-                 "d2h gConEff dump");
-      cuda_check(cudaStreamSynchronize(S.stream), "gConEff dump sync");
-      double sum = 0.0;
-      for (double v : h) sum += std::fabs(v);
-      std::fprintf(stderr, "[GCONEFF] sum=%.17g v[1,0..3]=%.17g %.17g %.17g %.17g\n",
-                   sum, h[nZnT], h[nZnT + 1], h[nZnT + 2], h[nZnT + 3]);
-    }
-  }
 
   // d_gConEff stays on device; DeAliasConstraintForceCuda reads it directly.
   (void)gConEff_out;
@@ -1818,7 +1679,6 @@ void AssembleTotalForcesCuda(
   const int TPB = 64;
   dim3 b((nZnT + TPB - 1) / TPB, ns_force_local, S.n_config_max);
   dim3 t(TPB, 1, 1);
-  S.TKBegin(CudaToroidalState::TK_ASSEMBLE_TOTAL);
   k_assemble_total_forces<<<b, t, 0, S.stream>>>(
       S.n_config_max, ns_con_local, ns_force_local, nZnT, nsMinF_to_nsMinF1,
       S.d_rCon, S.d_rCon0, S.d_zCon, S.d_zCon0, S.d_gCon,
@@ -1827,9 +1687,6 @@ void AssembleTotalForcesCuda(
       S.d_frcon_e, S.d_frcon_o, S.d_fzcon_e, S.d_fzcon_o,
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_assemble_total_forces launch");
-  S.TKEnd(CudaToroidalState::TK_ASSEMBLE_TOTAL);
-  DiagCfg01DiffCuda(S.d_brmn_e, ns_force_local * nZnT, "atot:brmn_e");
-  DiagCfg01DiffCuda(S.d_frcon_e, ns_force_local * nZnT, "atot:frcon_e");
 
   // All outputs stay on device; the CUDA inverse FFT reads d_brmn_*, d_bzmn_*,
   // d_frcon_*, d_fzcon_* directly.
@@ -1965,7 +1822,6 @@ void ApplyLambdaPreconditionerCuda(
   const int TPB = 16;
   dim3 b((ntor + 1 + TPB - 1) / TPB, mpol, ns_con_local * S.n_config_max);
   dim3 t(TPB, 1, 1);
-  S.TKBegin(CudaToroidalState::TK_APPLY_LAMBDA);
   k_apply_lambda_preconditioner<<<b, t, 0, st>>>(
       S.n_config_max, S.ns_local_cached, ns_con_local, mpol, ntor, s.lthreed,
       S.d_lambdaPreconditioner,
@@ -1982,9 +1838,6 @@ void ApplyLambdaPreconditionerCuda(
         S.d_decomposed_flcs, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_lambda_m0_solve launch");
   }
-  S.TKEnd(CudaToroidalState::TK_APPLY_LAMBDA);
-  DiagCfg01DiffCuda(S.d_decomposed_flsc,
-                    S.ns_local_cached * mpol * (ntor + 1), "lam:dec_flsc");
   // D2H + sync deferred to end-of-residue() FlushDecomposedToHostCuda.
   (void)flsc_host; (void)flcs_host; (void)spec_bytes;
 }
@@ -2043,7 +1896,6 @@ void AssembleRZPreconditionerCuda(
   const int TPB = 32;
   dim3 b(mnsize, (ns_total + TPB - 1) / TPB, S.n_config_max);
   dim3 t(TPB, 1, 1);
-  S.TKBegin(CudaToroidalState::TK_ASSEMBLE_RZ);
   k_assemble_rz_preconditioner<<<b, t, 0, st>>>(
       S.n_config_max, ns_h,
       mpol, ntor, s.nfp,
@@ -2060,7 +1912,6 @@ void AssembleRZPreconditionerCuda(
       S.d_rz_jMin,
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_assemble_rz_preconditioner launch");
-  S.TKEnd(CudaToroidalState::TK_ASSEMBLE_RZ);
 }
 
 // ============================================================================
@@ -2146,32 +1997,7 @@ int ApplyRZPreconditionerCuda(
   size_t pcr_smem = 5 * ns_total * sizeof(double);
   dim3 pcr_grid(mnsize, S.n_config_max, 1);
 
-  // VMECPP_CPU_ORDER_RZSOLVE=1: serial Thomas elimination in the host
-  // order instead of parallel cyclic reduction (diagnostic; the two
-  // algorithms round differently, so the preconditioned forces differ
-  // between them at the solve's conditioning level).
-  static int rz_serial_env = -1;
-  if (rz_serial_env < 0) {
-    const char* e = std::getenv("VMECPP_CPU_ORDER_RZSOLVE");
-    rz_serial_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (rz_serial_env) {
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] VMECPP_CPU_ORDER_RZSOLVE=1: serial Thomas "
-          "RZ solve active\n");
-    }
-  }
-  // VMECPP_RZ_FORCE_BLOCK=1: take the block-Thomas path even for ns <= 1024.
-  // Diagnostic only: lets the large-ns solver be exercised and compared
-  // against the one-thread-per-row serial Thomas at small ns.
-  static int rz_force_block_env = -1;
-  if (rz_force_block_env < 0) {
-    const char* e = std::getenv("VMECPP_RZ_FORCE_BLOCK");
-    rz_force_block_env = (e && std::atoi(e) > 0) ? 1 : 0;
-  }
-
-  S.TKBegin(CudaToroidalState::TK_APPLY_RZ);
-
-  if (jMaxRZ > 1024 || rz_force_block_env) {
+  if (jMaxRZ > 1024) {
     // The PCR solver needs one thread per radial point and so cannot exceed
     // 1024 (CUDA threads-per-block). For larger radial grids, solve each
     // (config, mn) tridiagonal with one block running serial Thomas, holding
@@ -2206,24 +2032,6 @@ int ApplyRZPreconditionerCuda(
         S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
         S.d_rz_aZ, S.d_rz_dZ, S.d_rz_bZ, d_cZ, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_thomas_block Z");
-  } else if (rz_serial_env) {
-    // VMECPP_CPU_ORDER_RZSOLVE=1: serial Thomas elimination in the host
-    // order, one thread per mode row (diagnostic for trajectory
-    // comparisons against the CPU build).
-    const int TPB_TH = 64;
-    int total_rows = S.n_config_max * mnsize;
-    dim3 thb((total_rows + TPB_TH - 1) / TPB_TH, 1, 1);
-    dim3 tht(TPB_TH, 1, 1);
-    k_apply_rz_thomas_serial<<<thb, tht, 0, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aR, S.d_rz_dR, S.d_rz_bR, d_cR,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_thomas_serial R");
-    k_apply_rz_thomas_serial<<<thb, tht, 0, st>>>(
-        S.n_config_max, mnsize, ns_total, num_basis, d_jMin, jMaxRZ,
-        S.d_rz_aZ, S.d_rz_dZ, S.d_rz_bZ, d_cZ,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_thomas_serial Z");
   } else {
     // Default FP64 PCR path.
     k_apply_rz_pcr<<<pcr_grid, pcr_threads, pcr_smem, st>>>(
@@ -2237,7 +2045,6 @@ int ApplyRZPreconditionerCuda(
         S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_pcr Z");
   }
-  S.TKEnd(CudaToroidalState::TK_APPLY_RZ);
 
   // Device-side transpose cR/cZ -> decomposed shadow.
   // Batched execution: z-dim covers n_config_max configs.
@@ -2254,8 +2061,6 @@ int ApplyRZPreconditionerCuda(
         S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_rz_transpose_out launch");
   }
-  DiagCfg01DiffCuda(S.d_decomposed_frcc,
-                    S.ns_local_cached * mpol * (ntor + 1), "rzapp:dec_frcc");
 
   // D2H + sync deferred to end-of-residue() FlushDecomposedToHostCuda.
   // RZ mutates the [nsMinF, nsMinF+ns_force_local) rows of the shadow
@@ -2275,8 +2080,8 @@ int ApplyRZPreconditionerCuda(
 // one warp so all 32 lanes do useful FP64 work. blockIdx.y indexes the zeta
 // GROUP; the per-lane zeta is blockIdx.y * ks_per_warp + threadIdx.x /
 // nThetaReduced. The per-(jF, k, l) arithmetic is identical to k_dealias_inv.
-// Gated by VMECPP_DEALIAS_PACK; the dispatcher only selects it when 32 is an
-// exact multiple of nThetaReduced (no lane straddles two zeta planes).
+// Selected when 32 is an exact multiple of nThetaReduced (no lane straddles
+// two zeta planes).
 __global__ void k_dealias_inv_packed(
     int n_config, int ns_force_local, int ns_con_local,
     int mpol, int ntor, int nZeta, int nThetaReduced,
@@ -2391,10 +2196,6 @@ void DeAliasConstraintForceCuda(
         S.d_dealias_gsc, S.d_dealias_gcs);
     cuda_check(cudaGetLastError(), "k_dealias_fwd launch");
   }
-  DiagCfg01DiffCuda(S.d_dealias_gsc,
-                    ns_force_local * mpol * (ntor + 1), "dealias_fwd:gsc");
-  DiagCfg01DiffCuda(S.d_dealias_gcs,
-                    ns_force_local * mpol * (ntor + 1), "dealias_fwd:gcs");
 
   // Stage 2: inverse poloidal+toroidal -> m_gCon.
   // Batched execution: k_dealias_inv uses `m_gCon[dst] = acc` (not +=) and
@@ -2406,7 +2207,6 @@ void DeAliasConstraintForceCuda(
     dim3 b((nThetaReduced + TPB - 1) / TPB, nZeta,
            ns_force_local * S.n_config_max);
     dim3 t(TPB, 1, 1);
-    S.TKBegin(CudaToroidalState::TK_DEALIAS);
     if (mpol == 10 && ntor == 10) {
       k_dealias_inv_tpl<10, 10><<<b, t, 0, st>>>(
           S.n_config_max, ns_force_local, ns_con_local,
@@ -2417,18 +2217,10 @@ void DeAliasConstraintForceCuda(
           S.d_active_per_cfg);
       cuda_check(cudaGetLastError(), "k_dealias_inv_tpl<10,10> launch");
     } else {
-      static const int dealias_pack_env = []() {
-        const char* e = std::getenv("VMECPP_DEALIAS_PACK");
-        int v = (e && std::atoi(e) == 0) ? 0 : 1;  // default ON
-        if (!v)
-          std::fprintf(stderr, "[fft_toroidal_cuda] dealias warp-pack disabled "
-                               "(VMECPP_DEALIAS_PACK=0)\n");
-        return v;
-      }();
       // Warp-pack only when more than one zeta plane fits in a 32-lane warp
       // and divides it cleanly (no lane straddles two planes); else default.
       const int ks_per_warp = (nThetaReduced > 0) ? (32 / nThetaReduced) : 0;
-      if (dealias_pack_env && ks_per_warp >= 2 && (32 % nThetaReduced) == 0) {
+      if (ks_per_warp >= 2 && (32 % nThetaReduced) == 0) {
         dim3 bp(1, (nZeta + ks_per_warp - 1) / ks_per_warp,
                 ns_force_local * S.n_config_max);
         dim3 tp(32, 1, 1);
@@ -2447,34 +2239,6 @@ void DeAliasConstraintForceCuda(
             S.d_dealias_cosnv, S.d_dealias_sinnv, S.d_dealias_faccon,
             S.d_gCon);
         cuda_check(cudaGetLastError(), "k_dealias_inv launch");
-      }
-    }
-    S.TKEnd(CudaToroidalState::TK_DEALIAS);
-  }
-  DiagCfg01DiffCuda(S.d_gCon, ns_con_local * nZeta * nThetaEff, "dealias:gCon");
-
-  // VMECPP_DUMP_GCON=1: print a serial checksum of the dealiased gCon
-  // (diagnostic for CPU-vs-CUDA trajectory comparisons).
-  static int dump_gcon_env = -1;
-  if (dump_gcon_env < 0) {
-    const char* e = std::getenv("VMECPP_DUMP_GCON");
-    dump_gcon_env = (e && std::atoi(e) > 0) ? 1 : 0;
-  }
-  if (dump_gcon_env) {
-    static int dumped = 0;
-    if (!dumped) {
-      dumped = 1;
-      const int nZnT = nZeta * nThetaEff;
-      std::vector<double> h((size_t)ns_con_local * nZnT, 0.0);
-      cuda_check(cudaMemcpyAsync(h.data(), S.d_gCon,
-                                 sizeof(double) * h.size(),
-                                 cudaMemcpyDeviceToHost, st),
-                 "d2h gCon dump");
-      cuda_check(cudaStreamSynchronize(st), "gCon dump sync");
-      for (int j = 0; j < ns_force_local; ++j) {
-        double rs = 0.0;
-        for (int i = 0; i < nZnT; ++i) rs += std::fabs(h[(size_t)j * nZnT + i]);
-        std::fprintf(stderr, "[GCONROW] j=%d %.17g\n", j, rs);
       }
     }
   }

@@ -79,12 +79,9 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
 // contains non-finite values; the caller uses this flag to drive the
 // magnetic-axis recomputation and time-step-reduction recovery logic.
 //
-// The optional signOfJacobian and wInt arguments are consumed only when
-// the three-way fusion of jacobian, metric, and dVdsH kernels is enabled
-// via the VMECPP_JAC_METRIC_DVDSH_FUSE environment variable. With fusion
-// active, the dVdsH output that ComputeJacobianCuda would otherwise leave
-// to a subsequent UpdateDifferentialVolumeCuda call is produced inline,
-// and the subsequent call becomes a no-op.
+// signOfJacobian and wInt enable the three-way fusion of the jacobian,
+// metric, and dVdsH kernels: the dVdsH output is produced inline and the
+// subsequent UpdateDifferentialVolumeCuda call becomes a no-op.
 void ComputeJacobianCuda(const RadialPartitioning& r, const Sizes& s,
                          const Eigen::VectorXd& sqrtSH, double deltaS,
                          double dSHalfDsInterp, Eigen::VectorXd& r12,
@@ -464,18 +461,6 @@ bool GetBatchOutputSpectraCuda(std::vector<double>* out, int* n_cfg, int* ns,
 // kernels continue to modify while the rest of the batch iterates.
 void SnapshotInactiveCfgCuda(int cfg);
 
-// Writes the full batched decomposed-x state (all configuration slots,
-// six spectral components) to a raw binary file. Diagnostic for cross-cfg
-// contamination A/B runs (VMECPP_STATE_DUMP_ITERS hook in vmec.cc).
-void DumpPtsXAllCfgsCuda(const char* path, long long iter);
-
-// Same for the decomposed-forces buffers (per-cfg stride pts_v_size).
-void DumpDecomposedFAllCfgsCuda(const char* path, long long iter);
-
-// Per-cfg half-grid radial profiles (chipH, iotaH, jvPlasma,
-// avg_guu_gsqrt) at stride ns_h per cfg.
-void DumpBContraProfilesAllCfgsCuda(const char* path, long long iter, int ns_h);
-
 // Transfers the host active-mask byte vector to the device-resident
 // active-mask buffer. The batched kernels read this buffer at their
 // blockIdx.z slot and return early when the byte is zero, providing the
@@ -789,22 +774,6 @@ bool PtsXInitializedCuda();
 // multigrid stage this distinguishes the post-upscale authoritative
 // device state from a stale previous-stage buffer.
 bool PtsXMatchesCuda(int ns_local, int mpol, int ntor);
-
-// Diagnostic probe that reports the maximum absolute difference between
-// configuration zero and configuration one of a device-resident buffer.
-// For each index i in [0, per_cfg_size), the routine computes
-// |d_buf[i] - d_buf[per_cfg_size + i]| and prints the maximum value to
-// the diagnostic stream, prefixed with the supplied label so that
-// multiple invocations within the same iteration can be distinguished.
-// The routine is synchronous: it waits for the device stream to complete
-// before issuing the device-to-host transfer required to evaluate the
-// reduction on the host. The probe is gated by the VMECPP_TRACE_CFG_DIFF
-// environment variable and is a no-op when the variable is unset or zero.
-// Intended use is the empirical localization of the first kernel in the
-// iteration body at which two configurations begin to diverge when the
-// batched execution mode is supplied with identical inputs.
-void DiagCfg01DiffCuda(const double* d_buf, int per_cfg_size,
-                       const char* label);
 
 // Single-configuration final-iteration flush of all device-resident
 // quantities consumed by ComputeOutputQuantities. The routine is invoked

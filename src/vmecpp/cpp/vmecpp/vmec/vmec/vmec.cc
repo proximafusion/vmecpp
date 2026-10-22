@@ -1871,21 +1871,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 #pragma omp barrier
 #endif  // _OPENMP
 
-  // VMECPP_TRACE_RESTART=1: log every store/restore event with the
-  // controller inputs that drove the decision.
-  static int trace_restart_env = -1;
-  if (trace_restart_env < 0) {
-    const char* e = std::getenv("VMECPP_TRACE_RESTART");
-    trace_restart_env = (e && std::atoi(e) > 0) ? 1 : 0;
-  }
-  if (trace_restart_env) {
-    std::fprintf(
-        stderr,
-        "[restart] iter2=%d ns=%d reason=%d delt0r=%.6e fsq=%.6e res0=%.6e\n",
-        iter2_, fc_.ns, static_cast<int>(fc_.restart_reason), m_delt0r, fc_.fsq,
-        fc_.res0);
-  }
-
   if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
     // restore previous good state
 
@@ -2041,55 +2026,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     return reached_checkpoint;
   }
 
-#ifdef VMECPP_USE_CUDA
-  // Full-state dumps for cross-cfg contamination A/B runs.
-  // VMECPP_STATE_DUMP_ITERS="1,2,26" writes the batched decomposed-x state
-  // (and with VMECPP_STATE_DUMP_F=1 the decomposed forces, with
-  // VMECPP_STATE_DUMP_PROF=1 the per-cfg chip/iota half-grid profiles) at
-  // those iter2 values to files prefixed by VMECPP_STATE_DUMP_PATH. The
-  // hook sits directly after UpdateForwardModel, outside any gate
-  // branch, so iteration 1 of each stage is captured too; the filename
-  // carries ns so per-stage dumps do not collide.
-#ifdef _OPENMP
-#pragma omp single
-#endif  // _OPENMP
-  {
-    static std::vector<int>* state_dump_iters = nullptr;
-    if (state_dump_iters == nullptr) {
-      state_dump_iters = new std::vector<int>();
-      if (const char* e = std::getenv("VMECPP_STATE_DUMP_ITERS")) {
-        std::string spec(e);
-        size_t pos = 0;
-        while (pos < spec.size()) {
-          size_t comma = spec.find(',', pos);
-          if (comma == std::string::npos) comma = spec.size();
-          int v = std::atoi(spec.substr(pos, comma - pos).c_str());
-          if (v > 0) state_dump_iters->push_back(v);
-          pos = comma + 1;
-        }
-      }
-    }
-    if (!state_dump_iters->empty() &&
-        std::find(state_dump_iters->begin(), state_dump_iters->end(), iter2_) !=
-            state_dump_iters->end()) {
-      const char* prefix = std::getenv("VMECPP_STATE_DUMP_PATH");
-      std::string base = std::string(prefix ? prefix : "/tmp/vmecpp_state") +
-                         "_ns" + std::to_string(fc_.ns) + "_iter" +
-                         std::to_string(iter2_);
-      vmecpp::DumpPtsXAllCfgsCuda((base + ".bin").c_str(), iter2_);
-      const char* dump_f = std::getenv("VMECPP_STATE_DUMP_F");
-      if (dump_f && std::atoi(dump_f) > 0) {
-        vmecpp::DumpDecomposedFAllCfgsCuda((base + "_f.bin").c_str(), iter2_);
-      }
-      const char* dump_prof = std::getenv("VMECPP_STATE_DUMP_PROF");
-      if (dump_prof && std::atoi(dump_prof) > 0) {
-        vmecpp::DumpBContraProfilesAllCfgsCuda((base + "_prof.bin").c_str(),
-                                               iter2_, fc_.ns - 1);
-      }
-    }
-  }
-#endif
-
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
@@ -2127,51 +2063,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
           static_cast<int>(fc_.fsqz_per_cfg.size()) == n_cfg &&
           static_cast<int>(fc_.fsql_per_cfg.size()) == n_cfg) {
         // Per-cfg gate. The device k_check_convergence flag decides each
-        // cfg's termination by default (same normalized-residual
-        // arithmetic as evalFResInvar, from the device-resident force-norm
-        // sums, energy scalars, and per-cfg plasma volumes); the host
-        // comparison applies when the flag buffers are absent or
-        // VMECPP_CONV_FLAG_AUTH=0.
-        // VMECPP_CONV_FLAG_DEBUG=1 logs any disagreement (passive).
-#ifdef VMECPP_USE_CUDA
-        static int per_cfg_debug_env = -1;
-        if (per_cfg_debug_env < 0) {
-          const char* e = std::getenv("VMECPP_CONV_FLAG_DEBUG");
-          per_cfg_debug_env = (e && std::atoi(e) > 0) ? 1 : 0;
-        }
-        static int per_cfg_auth_env = -1;
-        if (per_cfg_auth_env < 0) {
-          const char* e = std::getenv("VMECPP_CONV_FLAG_AUTH");
-          per_cfg_auth_env = (e && std::atoi(e) == 0) ? 0 : 1;
-          if (!per_cfg_auth_env) {
-            std::fprintf(stderr,
-                         "[vmec.cc] per-cfg device convergence flag disabled "
-                         "(VMECPP_CONV_FLAG_AUTH=0); host gate is "
-                         "authoritative\n");
-          }
-        }
-#endif
-        // Periodic per-cfg residual dump to diagnose cfg N>0 convergence in
-        // distinct mode. VMECPP_PERCFG_RESIDUAL_DUMP=K logs every K iters
-        // (default off). Useful for confirming whether each cfg is making
-        // progress vs stuck vs diverging when the shared velocity_scale is
-        // tuned for cfg 0 only.
-        static int percfg_dump_period = -1;
-        if (percfg_dump_period < 0) {
-          const char* e = std::getenv("VMECPP_PERCFG_RESIDUAL_DUMP");
-          percfg_dump_period = (e ? std::atoi(e) : 0);
-          if (percfg_dump_period < 0) percfg_dump_period = 0;
-        }
-        if (percfg_dump_period > 0 && (iter2_ % percfg_dump_period) == 0) {
-          for (int c = 0; c < n_cfg; ++c) {
-            std::fprintf(
-                stderr,
-                "[percfg] iter2=%d cfg=%d active=%d fsqr=%.3e fsqz=%.3e "
-                "fsql=%.3e ftolv=%.3e\n",
-                iter2_, c, fc_.active_per_cfg[c], fc_.fsqr_per_cfg[c],
-                fc_.fsqz_per_cfg[c], fc_.fsql_per_cfg[c], fc_.ftolv);
-          }
-        }
+        // cfg's termination when its buffers exist (the normalized-residual
+        // arithmetic of evalFResInvar); the host comparison applies otherwise.
         // Per-cfg niter cap. Read once at first entry. When set, any active
         // cfg whose iter2_per_cfg has reached the cap is marked timed-out so
         // the batch can terminate when only the slow cfgs remain. Without
@@ -2208,22 +2101,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
                                     fc_.fsqz_per_cfg[c] <= fc_.ftolv &&
                                     fc_.fsql_per_cfg[c] <= fc_.ftolv);
 #ifdef VMECPP_USE_CUDA
-            bool cfg_done = host_done;
-            if (per_cfg_auth_env || per_cfg_debug_env) {
-              const int dev_flag = vmecpp::GetConvergenceFlag(c);
-              const bool dev_done = (dev_flag == 1);
-              if (per_cfg_debug_env && dev_flag >= 0 && host_done != dev_done) {
-                std::fprintf(
-                    stderr,
-                    "[vmec.cc] WARNING cfg=%d host_norm=%d dev_norm=%d "
-                    "(host_fsqr=%.3e fsqz=%.3e fsql=%.3e ftolv=%.3e)\n",
-                    c, host_done ? 1 : 0, dev_done ? 1 : 0, fc_.fsqr_per_cfg[c],
-                    fc_.fsqz_per_cfg[c], fc_.fsql_per_cfg[c], fc_.ftolv);
-              }
-              if (per_cfg_auth_env && dev_flag >= 0) {
-                cfg_done = dev_done;
-              }
-            }
+            const int dev_flag = vmecpp::GetConvergenceFlag(c);
+            const bool cfg_done = dev_flag >= 0 ? dev_flag == 1 : host_done;
 #else
             const bool cfg_done = host_done;
 #endif
@@ -2277,40 +2156,13 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         // Fallback single-cfg gate (n_cfg vectors not yet sized, e.g. CPU
         // path or before ResizeForBatch is called).
         //
-        // The device k_check_convergence flag decides termination by
-        // default; the host comparison applies when the flag buffers are
-        // absent or VMECPP_CONV_FLAG_AUTH=0.
-        // VMECPP_CONV_FLAG_DEBUG=1 logs any disagreement (passive).
+        // The device k_check_convergence flag decides termination when its
+        // buffers exist; the host comparison applies otherwise.
 #ifdef VMECPP_USE_CUDA
-        static int auth_env = -1;
-        if (auth_env < 0) {
-          const char* e = std::getenv("VMECPP_CONV_FLAG_AUTH");
-          auth_env = (e && std::atoi(e) == 0) ? 0 : 1;
-          if (!auth_env) {
-            std::fprintf(stderr,
-                         "[vmec.cc] device convergence flag disabled "
-                         "(VMECPP_CONV_FLAG_AUTH=0); host gate is "
-                         "authoritative\n");
-          }
-        }
-        static int debug_env = -1;
-        if (debug_env < 0) {
-          const char* e = std::getenv("VMECPP_CONV_FLAG_DEBUG");
-          debug_env = (e && std::atoi(e) > 0) ? 1 : 0;
-        }
         const bool host_conv = (fc_.fsqr <= fc_.ftolv &&
                                 fc_.fsqz <= fc_.ftolv && fc_.fsql <= fc_.ftolv);
-        const int dev_flag = auth_env ? vmecpp::GetConvergenceFlag(0) : -1;
-        const bool dev_conv =
-            (auth_env && dev_flag >= 0) ? (dev_flag == 1) : host_conv;
-        if (debug_env && (host_conv != dev_conv)) {
-          std::fprintf(stderr,
-                       "[vmec.cc] WARNING: host=%d device=%d "
-                       "(fsqr=%.3e fsqz=%.3e fsql=%.3e ftolv=%.3e)\n",
-                       host_conv ? 1 : 0, dev_conv ? 1 : 0, fc_.fsqr, fc_.fsqz,
-                       fc_.fsql, fc_.ftolv);
-        }
-        if (auth_env ? dev_conv : host_conv) {
+        const int dev_flag = vmecpp::GetConvergenceFlag(0);
+        if (dev_flag >= 0 ? dev_flag == 1 : host_conv) {
           m_liter_flag = false;
           status_ = VmecStatus::SUCCESSFUL_TERMINATION;
         }

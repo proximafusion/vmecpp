@@ -52,66 +52,14 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
 
   // Batched execution: launch n_config_max blocks (one per config). Each writes 3
   // scalars at residuals_partial[config*3:].
-  static int residuals_par_env = -1;
-  if (residuals_par_env < 0) {
-    // Default ON. Parallel 256-thread tree reduce gives 3.0x wall reduction
-    // on the canonical production boundary with aspect_ratio bit-exact and
-    // all field-line metrics within the existing CPU<->CUDA drift family.
-    // Set VMECPP_RESIDUALS_PAR=0 to roll back to the legacy 1-thread serial.
-    const char* e = std::getenv("VMECPP_RESIDUALS_PAR");
-    residuals_par_env = (e && std::atoi(e) == 0) ? 0 : 1;
-    if (!residuals_par_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] residuals parallel reduction "
-                           "DISABLED (VMECPP_RESIDUALS_PAR=0, legacy serial "
-                           "1-thread fallback)\n");
-    }
-  }
-  // VMECPP_RESIDUALS_K=K selects the multi-block parallel residuals path.
-  // K=1 uses single-block k_residuals_par. K>1 launches K sub-blocks per
-  // cfg, giving K * n_config_max SM utilization instead of n_config_max.
-  // Auto-default targets ~16 SMs of total residual work:
-  //   K = max(1, 16 / n_config_max)
-  // Effective N    K_auto   blocks_total
-  //   N=1          16       16
-  //   N=2           8       16
-  //   N=4           4       16
-  //   N=8           2       16
-  //   N=16          1       16
-  //   N=64          1       64  (already saturating with K=1)
-  //   N=128         1       128
-  // Above ~16 cfgs the single-block path already covers enough SMs that
-  // the K-partition finalize-kernel overhead would net negative. K is
-  // capped at CudaToroidalState::kResidualsKPartitions (16). The env var
-  // override is honored verbatim when set.
+  // K sub-blocks per configuration, K = max(1, 16 / n_config_max), so the
+  // reduction spans about 16 blocks in total.
   if (g_residuals_k_run < 0) {
-    const char* e = std::getenv("VMECPP_RESIDUALS_K");
-    int v;
-    if (e) {
-      v = std::atoi(e);
-      if (v <= 0) v = 1;
-    } else {
-      // Auto: K = max(1, 16 / n_config_max), so K * n_config_max ~ 16.
-      int auto_k = CudaToroidalState::kResidualsKPartitions / S.n_config_max;
-      v = (auto_k < 1) ? 1 : auto_k;
-    }
-    if (v > CudaToroidalState::kResidualsKPartitions) {
-      v = CudaToroidalState::kResidualsKPartitions;
-    }
-    g_residuals_k_run = v;
-    static int last_k_printed = 0;
-    if (g_residuals_k_run > 1 && g_residuals_k_run != last_k_printed) {
-      last_k_printed = g_residuals_k_run;
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] residuals K-partition reduction ENABLED "
-          "(K=%d, n_config=%d -> K*n_cfg=%d SM coverage; "
-          "set VMECPP_RESIDUALS_K=1 to revert)\n",
-          g_residuals_k_run, S.n_config_max,
-          g_residuals_k_run * S.n_config_max);
-    }
+    const int auto_k = CudaToroidalState::kResidualsKPartitions / S.n_config_max;
+    g_residuals_k_run = (auto_k < 1) ? 1 : auto_k;
   }
   const int residuals_k_env = g_residuals_k_run;
-  S.TKBegin(CudaToroidalState::TK_RESIDUALS);
-  if (residuals_par_env && residuals_k_env > 1) {
+  if (residuals_k_env > 1) {
     // Multi-block partials path. Grid (K, n_config). Each block reduces
     // 1/K of the index space. Then finalize collapses K partials into
     // d_residuals_partial.
@@ -135,7 +83,7 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
         S.d_residuals_partial,
         S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_residuals_finalize_K launch");
-  } else if (residuals_par_env) {
+  } else {
     k_residuals_par<<<S.n_config_max, 256, 0, st>>>(
         S.n_config_max, S.ns_local_cached,
         jLocal_max_rz, jLocal_max_boundary, mpol, ntor, s.lthreed,
@@ -145,21 +93,9 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
         S.d_residuals_partial,
         S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_residuals_par launch");
-  } else {
-    k_residuals<<<S.n_config_max, 1, 0, st>>>(
-        S.n_config_max, S.ns_local_cached,
-        jLocal_max_rz, jLocal_max_boundary, mpol, ntor, s.lthreed,
-        S.d_decomposed_frcc, S.d_decomposed_frss,
-        S.d_decomposed_fzsc, S.d_decomposed_fzcs,
-        S.d_decomposed_flsc, S.d_decomposed_flcs,
-        S.d_residuals_partial,
-        S.d_active_per_cfg);
-    cuda_check(cudaGetLastError(), "k_residuals launch");
   }
-  // Device-side convergence flag on normalized residuals (consumed by
-  // GetConvergenceFlag / VMECPP_CONV_FLAG_AUTH). Launched after every
-  // residual-kernel variant above so the flag is populated regardless of
-  // which reduction path ran. The normalization inputs are the persistent
+  // Device-side convergence flag on normalized residuals (read through
+  // GetConvergenceFlag). The normalization inputs are the persistent
   // per-cfg buffers (force-norm sums, energy scalars, plasma volumes)
   // plus the cached per-run lamscale; see k_check_convergence.
   if (!is_precd && S.d_conv_flag) {
@@ -174,7 +110,6 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                                 cudaMemcpyDeviceToHost, st),
                "conv_flag d2h async");
   }
-  S.TKEnd(CudaToroidalState::TK_RESIDUALS);
 
   // Per-cfg cache: the 3-double transfer widens to 3*n_cfg doubles into
   // a static cache under the one synchronization this call already pays
@@ -282,9 +217,8 @@ void PerformTimeStepCuda(
       // scalxc, zero the odd-m axis rows.
       int scalxc_len_per_cfg = ns_new * 2;
       if (!S.scalxc_prev_valid || !S.d_scalxc_prev) {
-        std::fprintf(stderr,
-            "[fft_toroidal_cuda] WARN: upscale dispatch but d_scalxc_prev "
-            "missing; falling back to skipping upscale\n");
+        throw std::runtime_error(
+            "CUDA multigrid upscale without the previous stage's scalxc");
       } else {
         // Device upscale, bit-identical to
         // Vmec::InterpolateToNextMultigridStep: scale the previous stage
@@ -318,72 +252,6 @@ void PerformTimeStepCuda(
             S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs,
             S.d_scalxc);
         cuda_check(cudaGetLastError(), "k_radial_interpolate_pts_x launch");
-      }
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] multigrid upscale: host-exact per-cfg interp "
-          "ns %d -> %d (n_cfg=%d mpol=%d ntor=%d, scalxc_staged=%d)\n",
-          ns_old, ns_new, S.n_config_max, mpol, ntor,
-          (int)S.scalxc_staged);
-      // Probe: D2H both cfg 0 and cfg 1 of d_pts_x_rcc post-upscale; the cfg
-      // 0 comparison validates against the host upscale, the cfg 1 norm
-      // confirms per-cfg distinct state survives.
-      {
-        size_t spec_doubles = (size_t)ns_new * mpol * (ntor + 1);
-        size_t bytes_one = spec_doubles * sizeof(double);
-        std::vector<double> host_dev0(spec_doubles, 0.0);
-        cuda_check(cudaMemcpyAsync(host_dev0.data(), S.d_pts_x_rcc,
-                                    bytes_one, cudaMemcpyDeviceToHost, st),
-                   "d2h probe d_pts_x_rcc cfg 0");
-        std::vector<double> host_dev1;
-        bool have_cfg1 = (S.n_config_max >= 2);
-        if (have_cfg1) {
-          host_dev1.assign(spec_doubles, 0.0);
-          cuda_check(cudaMemcpyAsync(host_dev1.data(),
-                                      S.d_pts_x_rcc + spec_doubles,
-                                      bytes_one, cudaMemcpyDeviceToHost, st),
-                     "d2h probe d_pts_x_rcc cfg 1");
-        }
-        cuda_check(cudaStreamSynchronize(st), "probe sync");
-        auto sumsq_max = [&](const std::vector<double>& v,
-                             double* sumsq, double* max_abs) {
-          *sumsq = 0.0; *max_abs = 0.0;
-          for (double x : v) {
-            *sumsq += x * x;
-            double a = std::fabs(x);
-            if (a > *max_abs) *max_abs = a;
-          }
-        };
-        double dev0_sumsq, dev0_max;
-        sumsq_max(host_dev0, &dev0_sumsq, &dev0_max);
-        double host_sumsq = 0.0, host_max = 0.0;
-        if (m_dec_x_rcc) {
-          for (size_t i = 0; i < spec_doubles; ++i) {
-            double x = m_dec_x_rcc[i];
-            host_sumsq += x * x;
-            double a = std::fabs(x);
-            if (a > host_max) host_max = a;
-          }
-        }
-        std::fprintf(stderr,
-            "[fft_toroidal_cuda] upscale probe: dev[cfg=0] rcc "
-            "L2=%.6e max|x|=%.6e   host m_dec_x_rcc L2=%.6e max|x|=%.6e\n",
-            std::sqrt(dev0_sumsq), dev0_max,
-            std::sqrt(host_sumsq), host_max);
-        if (have_cfg1) {
-          double dev1_sumsq, dev1_max;
-          sumsq_max(host_dev1, &dev1_sumsq, &dev1_max);
-          // Compute L2 diff cfg 0 vs cfg 1: the magnitude of per-cfg distinct
-          // state in this spec component.
-          double diff_sumsq = 0.0;
-          for (size_t i = 0; i < spec_doubles; ++i) {
-            double d = host_dev0[i] - host_dev1[i];
-            diff_sumsq += d * d;
-          }
-          std::fprintf(stderr,
-              "[fft_toroidal_cuda] upscale probe: dev[cfg=1] rcc "
-              "L2=%.6e max|x|=%.6e   ||cfg1 - cfg0||=%.6e\n",
-              std::sqrt(dev1_sumsq), dev1_max, std::sqrt(diff_sumsq));
-        }
       }
       // Host-shadow refresh: copy cfg 0's upscaled state into the host
       // m_decomposed_x arrays so host-side consumers (rzNorm / fNorm1,
@@ -428,42 +296,6 @@ void PerformTimeStepCuda(
       S.pts_x_prev_valid = false;
       S.scalxc_prev_valid = false;
       initialized_by_upscale = true;
-      // Post-upscale state dump for stage-transition contamination A/B
-      // runs: written before the first iteration of the new stage so a
-      // diff against the per-iteration dumps brackets whether lane state
-      // diverges in the upscale itself or in the stage's early iterations.
-      // Inline rather than DumpPtsXAllCfgsCuda: this scope already holds
-      // the state lock.
-      if (const char* dump_prefix = std::getenv("VMECPP_STATE_DUMP_PATH")) {
-        size_t per_cfg = (size_t)ns_new * mpol * (ntor + 1);
-        size_t n_per = (size_t)S.n_config_max * per_cfg;
-        std::vector<double> hdump(n_per * 6, 0.0);
-        const double* dump_srcs[6] = {S.d_pts_x_rcc, S.d_pts_x_rss,
-                                       S.d_pts_x_zsc, S.d_pts_x_zcs,
-                                       S.d_pts_x_lsc, S.d_pts_x_lcs};
-        for (int i = 0; i < 6; ++i) {
-          if (dump_srcs[i] == nullptr) continue;
-          cuda_check(cudaMemcpyAsync(hdump.data() + (size_t)i * n_per,
-                                      dump_srcs[i], sizeof(double) * n_per,
-                                      cudaMemcpyDeviceToHost, st),
-                     "postupscale dump d2h");
-        }
-        cuda_check(cudaStreamSynchronize(st), "postupscale dump sync");
-        std::string dump_path = std::string(dump_prefix) +
-                                 "_postupscale_ns" + std::to_string(ns_new) +
-                                 ".bin";
-        FILE* f = std::fopen(dump_path.c_str(), "wb");
-        if (f != nullptr) {
-          long long hdr[4] = {(long long)S.n_config_max, (long long)per_cfg,
-                              0, 6};
-          std::fwrite(hdr, sizeof(long long), 4, f);
-          std::fwrite(hdump.data(), sizeof(double), hdump.size(), f);
-          std::fclose(f);
-          std::fprintf(stderr,
-              "[fft_toroidal_cuda] postupscale state dump: ns=%d -> %s\n",
-              ns_new, dump_path.c_str());
-        }
-      }
     }
     if (!initialized_by_upscale) {
     // Distinct-mode override: load per-cfg decomposed_x from the file
@@ -566,41 +398,10 @@ void PerformTimeStepCuda(
 
   int nsMinF_to_nsMinF1 = r.nsMinF - r.nsMinF1;
 
-  // VMECPP_VALIDATE_DEVICE_TIMESTEP=1: compare the device fac/b1 to the
-  // host-computed velocity_scale/conjugation_parameter each iteration.
-  // The comparison runs after the per-cfg controller dispatch below;
-  // k_update_timestep mutates the inv_tau ring, so it is launched at most
-  // once per iteration.
-  static int validate_devstep_env = -1;
-  if (validate_devstep_env < 0) {
-    const char* e = std::getenv("VMECPP_VALIDATE_DEVICE_TIMESTEP");
-    validate_devstep_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (validate_devstep_env) {
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] VMECPP_VALIDATE_DEVICE_TIMESTEP=1: "
-          "on-device fac/b1 will be compared to host values per iter\n");
-    }
-  }
-
-  // Per-cfg time-step controller, default ON for batches larger than one
-  // slot; VMECPP_BATCH_PER_CFG_TIMESTEP=0 restores the shared scalar.
-  // k_update_timestep computes per-cfg (fac, b1) from d_residuals_partial
-  // and writes d_fac_b1, read by k_perform_time_step in place of the
-  // shared velocity_scale + conjugation_parameter tuned by cfg 0.
-  // iter_phase=0 on the first call after a Reshape (resets the inv_tau
-  // ring), 1 otherwise.
-  static int percfg_ts_env = -1;
-  if (percfg_ts_env < 0) {
-    const char* e = std::getenv("VMECPP_BATCH_PER_CFG_TIMESTEP");
-    percfg_ts_env = (e && std::atoi(e) == 0) ? 0 : 1;
-    if (!percfg_ts_env) {
-      std::fprintf(stderr,
-                   "[fft_toroidal_cuda] per-cfg time-step controller "
-                   "disabled (VMECPP_BATCH_PER_CFG_TIMESTEP=0)\n");
-    }
-  }
+  // Batches take the per-configuration time-step controller: k_update_timestep
+  // computes each configuration's (fac, b1) from its own residuals.
   const double* d_fac_b1_for_step = nullptr;
-  if (percfg_ts_env > 0 && S.n_config_max > 1) {
+  if (S.n_config_max > 1) {
     S.EnsureTimestepBuffers(time_step);
     S.StageFnorm1(fnorm1);
     // Reset the ring on the same iterations the host controller does
@@ -617,43 +418,6 @@ void PerformTimeStepCuda(
                "k_update_timestep launch (per-cfg ts)");
     S.timestep_first_call_after_reset = false;
     d_fac_b1_for_step = S.d_fac_b1;
-  }
-
-  if (validate_devstep_env) {
-    static int call_counter = 0;
-    call_counter++;
-    if (d_fac_b1_for_step == nullptr) {
-      // Controller not dispatched this iteration: launch the kernel for
-      // the comparison only; the step below still consumes the host
-      // scalars. iter_phase resets the device ring on exactly the
-      // iterations the host ring resets: stage starts and restarts.
-      S.EnsureTimestepBuffers(time_step);
-      S.StageFnorm1(fnorm1);
-      k_update_timestep<<<S.n_config_max, 32, 0, st>>>(
-          S.n_config_max, iter_phase, time_step, S.d_fnorm1, fc.deltaS,
-          S.d_residuals_partial,
-          S.d_inv_tau, S.d_prev_fsq, S.d_fac_b1,
-          S.d_active_per_cfg);
-      cuda_check(cudaGetLastError(), "k_update_timestep validate launch");
-    }
-    // D2H d_fac_b1 (cfg 0 only), sync, compare.
-    double h_fac_b1[2] = {0.0, 0.0};
-    cuda_check(cudaMemcpyAsync(h_fac_b1, S.d_fac_b1, 2 * sizeof(double),
-                                cudaMemcpyDeviceToHost, st),
-               "d2h d_fac_b1 validate");
-    cuda_check(cudaStreamSynchronize(st), "validate sync");
-    double dev_fac = h_fac_b1[0];
-    double dev_b1  = h_fac_b1[1];
-    double dfac = dev_fac - velocity_scale;
-    double db1  = dev_b1  - conjugation_parameter;
-    if (std::fabs(dfac) > 1e-12 || std::fabs(db1) > 1e-12) {
-      std::fprintf(stderr,
-          "[validate_devstep] iter#%d phase=%d  host fac=%.17g b1=%.17g  "
-          "dev fac=%.17g b1=%.17g  dfac=%.3e db1=%.3e\n",
-          call_counter, iter_phase,
-          velocity_scale, conjugation_parameter,
-          dev_fac, dev_b1, dfac, db1);
-    }
   }
 
   // Launch k_perform_time_step.
@@ -687,7 +451,6 @@ void PerformTimeStepCuda(
     cuda_check(cudaMemsetAsync(S.d_pts_v_zcs, 0, z_bytes, st), "zero 2d v_zcs");
     cuda_check(cudaMemsetAsync(S.d_pts_v_lcs, 0, z_bytes, st), "zero 2d v_lcs");
   }
-  DiagCfg01DiffCuda(S.d_pts_x_rcc, S.pts_x_size, "pts:x_rcc");
 
   // Sync deferral (every-K backup cadence):
   //   - per-iter D2H + sync of d_pts_x -> host m_decomposed_x ELIDED here.

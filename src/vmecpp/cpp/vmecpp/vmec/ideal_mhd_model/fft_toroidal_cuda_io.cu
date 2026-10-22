@@ -583,7 +583,6 @@ void BackupPtsXCuda(bool from_evaluated) {
   const int total =
       static_cast<int>((size_t)S.n_config_max * (size_t)S.pts_x_size);
   const int TPB = 256;
-  S.TKBegin(CudaToroidalState::TK_BACKUP_PTS);
   k_backup_pts_x<<<(total + TPB - 1) / TPB, TPB, 0, S.stream>>>(
       total,
       evaluated ? S.d_pts_x_evaluated_rcc : S.d_pts_x_rcc,
@@ -594,7 +593,6 @@ void BackupPtsXCuda(bool from_evaluated) {
       evaluated ? S.d_pts_x_evaluated_lcs : S.d_pts_x_lcs,
       S.d_pts_x_backup_rcc, S.d_pts_x_backup_rss, S.d_pts_x_backup_zsc,
       S.d_pts_x_backup_zcs, S.d_pts_x_backup_lsc, S.d_pts_x_backup_lcs);
-  S.TKEnd(CudaToroidalState::TK_BACKUP_PTS);
   cuda_check(cudaGetLastError(), "k_backup_pts_x launch");
 }
 
@@ -767,115 +765,6 @@ void FlushBackupXToHostCuda(int ns_local, int mpol, int ntor, bool lthreed,
     d2h(lcs, S.d_pts_x_backup_lcs, "flush backup lcs");
   }
   cuda_check(cudaStreamSynchronize(S.stream), "flush backup sync");
-}
-
-// DumpPtsXAllCfgsCuda: write the full batched decomposed-x state (every
-// configuration slot, six spectral components) to a raw binary file.
-// Layout: 4 int64 header (n_config_max, pts_x_size, iter, n_components=6)
-// followed by six contiguous arrays of n_config_max*pts_x_size doubles in
-// the order rcc, rss, zsc, zcs, lsc, lcs (zeros for absent components).
-// Diagnostic for cross-cfg contamination A/B runs; see the
-// VMECPP_STATE_DUMP_ITERS hook in vmec.cc.
-void DumpPtsXAllCfgsCuda(const char* path, long long iter) {
-  auto& S = State();
-  if (!S.stream || !S.d_pts_x_rcc || S.pts_x_size <= 0) return;
-  std::lock_guard<std::mutex> lk(S.mu);
-  size_t n_per = (size_t)S.n_config_max * (size_t)S.pts_x_size;
-  std::vector<double> h(n_per * 6, 0.0);
-  const double* srcs[6] = {S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
-                            S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs};
-  for (int i = 0; i < 6; ++i) {
-    if (srcs[i] == nullptr) continue;
-    cuda_check(cudaMemcpyAsync(h.data() + (size_t)i * n_per, srcs[i],
-                                sizeof(double) * n_per,
-                                cudaMemcpyDeviceToHost, S.stream),
-               "dump pts_x d2h");
-  }
-  cuda_check(cudaStreamSynchronize(S.stream), "dump pts_x sync");
-  FILE* f = std::fopen(path, "wb");
-  if (f == nullptr) {
-    std::fprintf(stderr, "[fft_toroidal_cuda] state dump: fopen failed: %s\n",
-                 path);
-    return;
-  }
-  long long hdr[4] = {(long long)S.n_config_max, (long long)S.pts_x_size,
-                      iter, 6};
-  std::fwrite(hdr, sizeof(long long), 4, f);
-  std::fwrite(h.data(), sizeof(double), h.size(), f);
-  std::fclose(f);
-  std::fprintf(stderr,
-      "[fft_toroidal_cuda] state dump: iter=%lld n_cfg=%d pts_x_size=%d -> %s\n",
-      iter, S.n_config_max, S.pts_x_size, path);
-}
-
-// DumpDecomposedFAllCfgsCuda: same layout as DumpPtsXAllCfgsCuda but for
-// the decomposed-forces buffers (frcc, frss, fzsc, fzcs, flsc, flcs) at
-// per-cfg stride pts_v_size. Captures the forces of the most recent
-// iteration; with the state dump it splits "physics inputs differ" from
-// "controller decisions differ" in cross-cfg contamination A/B runs.
-void DumpDecomposedFAllCfgsCuda(const char* path, long long iter) {
-  auto& S = State();
-  if (!S.stream || !S.d_decomposed_frcc || S.pts_v_size <= 0) return;
-  std::lock_guard<std::mutex> lk(S.mu);
-  size_t n_per = (size_t)S.n_config_max * (size_t)S.pts_v_size;
-  std::vector<double> h(n_per * 6, 0.0);
-  const double* srcs[6] = {S.d_decomposed_frcc, S.d_decomposed_frss,
-                            S.d_decomposed_fzsc, S.d_decomposed_fzcs,
-                            S.d_decomposed_flsc, S.d_decomposed_flcs};
-  for (int i = 0; i < 6; ++i) {
-    if (srcs[i] == nullptr) continue;
-    cuda_check(cudaMemcpyAsync(h.data() + (size_t)i * n_per, srcs[i],
-                                sizeof(double) * n_per,
-                                cudaMemcpyDeviceToHost, S.stream),
-               "dump dec_f d2h");
-  }
-  cuda_check(cudaStreamSynchronize(S.stream), "dump dec_f sync");
-  FILE* f = std::fopen(path, "wb");
-  if (f == nullptr) {
-    std::fprintf(stderr, "[fft_toroidal_cuda] force dump: fopen failed: %s\n",
-                 path);
-    return;
-  }
-  long long hdr[4] = {(long long)S.n_config_max, (long long)S.pts_v_size,
-                      iter, 6};
-  std::fwrite(hdr, sizeof(long long), 4, f);
-  std::fwrite(h.data(), sizeof(double), h.size(), f);
-  std::fclose(f);
-  std::fprintf(stderr,
-      "[fft_toroidal_cuda] force dump: iter=%lld n_cfg=%d pts_v_size=%d -> %s\n",
-      iter, S.n_config_max, S.pts_v_size, path);
-}
-
-// DumpBContraProfilesAllCfgsCuda: per-cfg half-grid radial profiles from
-// the UpdateBContravariant chain (chipH, iotaH, jvPlasma, avg_guu_gsqrt),
-// stride ns_h per cfg. Same header convention as the other dumpers with
-// n_components=4.
-void DumpBContraProfilesAllCfgsCuda(const char* path, long long iter,
-                                    int ns_h) {
-  auto& S = State();
-  if (!S.stream || !S.d_chipH || ns_h <= 0) return;
-  std::lock_guard<std::mutex> lk(S.mu);
-  size_t n_per = (size_t)S.n_config_max * (size_t)ns_h;
-  std::vector<double> h(n_per * 4, 0.0);
-  const double* srcs[4] = {S.d_chipH, S.d_iotaH, S.d_jvPlasma,
-                            S.d_avg_guu_gsqrt};
-  for (int i = 0; i < 4; ++i) {
-    if (srcs[i] == nullptr) continue;
-    cuda_check(cudaMemcpyAsync(h.data() + (size_t)i * n_per, srcs[i],
-                                sizeof(double) * n_per,
-                                cudaMemcpyDeviceToHost, S.stream),
-               "dump bcontra prof d2h");
-  }
-  cuda_check(cudaStreamSynchronize(S.stream), "dump bcontra prof sync");
-  FILE* f = std::fopen(path, "wb");
-  if (f == nullptr) return;
-  long long hdr[4] = {(long long)S.n_config_max, (long long)ns_h, iter, 4};
-  std::fwrite(hdr, sizeof(long long), 4, f);
-  std::fwrite(h.data(), sizeof(double), h.size(), f);
-  std::fclose(f);
-  std::fprintf(stderr,
-      "[fft_toroidal_cuda] bcontra prof dump: iter=%lld n_cfg=%d ns_h=%d -> %s\n",
-      iter, S.n_config_max, ns_h, path);
 }
 
 }  // namespace vmecpp

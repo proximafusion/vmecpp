@@ -146,125 +146,6 @@ __global__ void k_fill_spectra(
   X[dst_idx].y = im;
 }
 
-// k_scatter_main_and_con_v4 fuses the sixteen even-and-odd
-// real-space scatter outputs of k_scatter_main with the two
-// constraint-grid outputs rCon and zCon emitted by k_scatter_con
-// into a single kernel. The block geometry assigns four
-// independent warps per block, each warp handling one
-// (configuration, jF_local, k) tuple; the per-warp arithmetic is
-// identical to the unfused baseline kernel. Aggregating four
-// warps per block reduces the launched block count by a factor of
-// four for the same total work, raising the number of warps
-// resident on each streaming multiprocessor and admitting greater
-// double-precision instruction-issue concurrency under the
-// scheduler. The kernel uses neither shared memory nor warp-level
-// synchronisation primitives, since each warp is fully independent
-// of the others in the same block.
-__global__ void k_scatter_main_and_con_v4(
-    int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
-    const double* __restrict__ Y, const double* __restrict__ cosmu,
-    const double* __restrict__ sinmu, const double* __restrict__ cosmum,
-    const double* __restrict__ sinmum,
-    const double* __restrict__ xmpq, const double* __restrict__ sqrtSF,
-    double* __restrict__ r1_e, double* __restrict__ r1_o,
-    double* __restrict__ ru_e, double* __restrict__ ru_o,
-    double* __restrict__ rv_e, double* __restrict__ rv_o,
-    double* __restrict__ z1_e, double* __restrict__ z1_o,
-    double* __restrict__ zu_e, double* __restrict__ zu_o,
-    double* __restrict__ zv_e, double* __restrict__ zv_o,
-    double* __restrict__ lu_e, double* __restrict__ lu_o,
-    double* __restrict__ lv_e, double* __restrict__ lv_o,
-    double* __restrict__ rCon, double* __restrict__ zCon,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
-  // Each warp (threadIdx.y) picks its own z index within the 4-warp group.
-  int warp_id = threadIdx.y;
-  int z_base = blockIdx.z * blockDim.y;
-  int z_global = z_base + warp_id;
-  int config = z_global / ns_local;
-  int jF_local = z_global - config * ns_local;
-  if (config >= n_config || jF_local >= ns_local) return;
-  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
-  int k = blockIdx.y;
-  int lane = threadIdx.x;
-  // One x-block per 32 poloidal points, so nThetaReduced > 32 is covered by
-  // multiple warps (matches the forward and scatter-basis kernels).
-  int l = blockIdx.x * blockDim.x + lane;
-  if (l >= nThetaReduced) return;
-
-  size_t cfg_Y    = (size_t)config * (size_t)ns_local * (size_t)mpol *
-                    (size_t)kBatch * (size_t)nZeta;
-  size_t cfg_full = (size_t)config * (size_t)ns_local *
-                    (size_t)nZeta * (size_t)nThetaEff;
-
-  double r1e_acc = 0.0, r1o_acc = 0.0;
-  double rue_acc = 0.0, ruo_acc = 0.0;
-  double rve_acc = 0.0, rvo_acc = 0.0;
-  double z1e_acc = 0.0, z1o_acc = 0.0;
-  double zue_acc = 0.0, zuo_acc = 0.0;
-  double zve_acc = 0.0, zvo_acc = 0.0;
-  double lue_acc = 0.0, luo_acc = 0.0;
-  double lve_acc = 0.0, lvo_acc = 0.0;
-  double rcon_acc = 0.0, zcon_acc = 0.0;
-
-  double sqrtSF_jF = sqrtSF[jF_local];
-
-  for (int m = 0; m < mpol; ++m) {
-    const size_t y_base_local = (size_t)((jF_local * mpol + m) * kBatch);
-    double rmkcc  = Y[cfg_Y + (y_base_local + kRmkcc)  * nZeta + k];
-    double rmkss  = Y[cfg_Y + (y_base_local + kRmkss)  * nZeta + k];
-    double rmkccN = Y[cfg_Y + (y_base_local + kRmkccN) * nZeta + k];
-    double rmkssN = Y[cfg_Y + (y_base_local + kRmkssN) * nZeta + k];
-    double zmksc  = Y[cfg_Y + (y_base_local + kZmksc)  * nZeta + k];
-    double zmkcs  = Y[cfg_Y + (y_base_local + kZmkcs)  * nZeta + k];
-    double zmkscN = Y[cfg_Y + (y_base_local + kZmkscN) * nZeta + k];
-    double zmkcsN = Y[cfg_Y + (y_base_local + kZmkcsN) * nZeta + k];
-    double lmksc  = Y[cfg_Y + (y_base_local + kLmksc)  * nZeta + k];
-    double lmkcs  = Y[cfg_Y + (y_base_local + kLmkcs)  * nZeta + k];
-    double lmkscN = Y[cfg_Y + (y_base_local + kLmkscN) * nZeta + k];
-    double lmkcsN = Y[cfg_Y + (y_base_local + kLmkcsN) * nZeta + k];
-
-    int bml = m * nThetaReduced + l;
-    double cmu  = cosmu[bml];
-    double smu  = sinmu[bml];
-    double cmum = cosmum[bml];
-    double smum = sinmum[bml];
-    bool m_even = ((m & 1) == 0);
-
-    double r1_contrib = rmkcc * cmu + rmkss * smu;
-    double ru_contrib = rmkcc * smum + rmkss * cmum;
-    double rv_contrib = rmkccN * cmu + rmkssN * smu;
-    double z1_contrib = zmksc * smu + zmkcs * cmu;
-    double zu_contrib = zmksc * cmum + zmkcs * smum;
-    double zv_contrib = zmkscN * smu + zmkcsN * cmu;
-    double lu_contrib = lmksc * cmum + lmkcs * smum;
-    double lv_contrib = -(lmkscN * smu + lmkcsN * cmu);
-    if (m_even) {
-      r1e_acc += r1_contrib; rue_acc += ru_contrib; rve_acc += rv_contrib;
-      z1e_acc += z1_contrib; zue_acc += zu_contrib; zve_acc += zv_contrib;
-      lue_acc += lu_contrib; lve_acc += lv_contrib;
-    } else {
-      r1o_acc += r1_contrib; ruo_acc += ru_contrib; rvo_acc += rv_contrib;
-      z1o_acc += z1_contrib; zuo_acc += zu_contrib; zvo_acc += zv_contrib;
-      luo_acc += lu_contrib; lvo_acc += lv_contrib;
-    }
-    double con_factor = m_even ? xmpq[m] : xmpq[m] * sqrtSF_jF;
-    rcon_acc += r1_contrib * con_factor;
-    zcon_acc += z1_contrib * con_factor;
-  }
-
-  size_t idx = cfg_full + (size_t)((jF_local * nZeta + k) * nThetaEff + l);
-  r1_e[idx] = r1e_acc; r1_o[idx] = r1o_acc;
-  ru_e[idx] = rue_acc; ru_o[idx] = ruo_acc;
-  rv_e[idx] = rve_acc; rv_o[idx] = rvo_acc;
-  z1_e[idx] = z1e_acc; z1_o[idx] = z1o_acc;
-  zu_e[idx] = zue_acc; zu_o[idx] = zuo_acc;
-  zv_e[idx] = zve_acc; zv_o[idx] = zvo_acc;
-  lu_e[idx] = lue_acc; lu_o[idx] = luo_acc;
-  lv_e[idx] = lve_acc; lv_o[idx] = lvo_acc;
-  rCon[idx] = rcon_acc;
-  zCon[idx] = zcon_acc;
-}
-
 // Shared-memory cached variant of the fused main-and-constraint scatter.
 //
 // The kernel adopts the same per-warp work assignment as the v4 variant
@@ -752,88 +633,6 @@ __global__ void k_extract_geom_scalars(
   d_out[3] = d_r1_o[inner_idx];
   d_out[4] = d_r1_e[0];
   d_out[5] = d_z1_e[0];
-}
-
-// k_compute_jacobian assigns one thread to each (jH_local, kl) pair
-// and derives the half-grid geometric quantities r12, ru12, zu12, rs,
-// zs, and tau from the full-grid even-odd geometry components
-// produced by the preceding inverse FFT. The configuration axis is
-// carried on blockIdx.z, with each configuration occupying its own
-// strided slice of the full-grid input buffers (r1_e, r1_o, ru_e,
-// ru_o, z1_e, z1_o, zu_e, zu_o) and half-grid output buffers (r12,
-// ru12, zu12, rs, zs, tau). The radial-coordinate auxiliary sqrtSH
-// is invariant across configurations under the assumption of a
-// shared radial grid and is consumed without a per-configuration
-// offset. At n_config equal to one the configuration axis collapses
-// to blockIdx.z equal to zero and the per-configuration offsets
-// degenerate to the single-configuration layout, preserving the
-// pre-batched behaviour bit-for-bit.
-__global__ void k_compute_jacobian(
-    int n_config, int ns_local,
-    int ns_h, int jF_in_offset, int nZnT,
-    const double* __restrict__ r1_e, const double* __restrict__ r1_o,
-    const double* __restrict__ ru_e, const double* __restrict__ ru_o,
-    const double* __restrict__ z1_e, const double* __restrict__ z1_o,
-    const double* __restrict__ zu_e, const double* __restrict__ zu_o,
-    const double* __restrict__ sqrtSH, double deltaS, double dSHalfDsInterp,
-    double* __restrict__ r12, double* __restrict__ ru12,
-    double* __restrict__ zu12, double* __restrict__ rs,
-    double* __restrict__ zs, double* __restrict__ tau) {
-  int config = blockIdx.z;
-  if (config >= n_config) return;
-  int jH_local = blockIdx.y;
-  int kl = blockIdx.x * blockDim.x + threadIdx.x;
-  if (kl >= nZnT) return;
-  if (jH_local >= ns_h) return;
-
-  size_t cfg_full = (size_t)config * (size_t)ns_local * (size_t)nZnT;
-  size_t cfg_half = (size_t)config * (size_t)ns_h    * (size_t)nZnT;
-
-  // Inside full-grid surface: jF_in (local). Outside: jF_in + 1.
-  int jF_in = jH_local + jF_in_offset;
-  int jF_out = jF_in + 1;
-
-  double r1e_i = r1_e[cfg_full + jF_in  * nZnT + kl];
-  double r1o_i = r1_o[cfg_full + jF_in  * nZnT + kl];
-  double z1e_i = z1_e[cfg_full + jF_in  * nZnT + kl];
-  double z1o_i = z1_o[cfg_full + jF_in  * nZnT + kl];
-  double rue_i = ru_e[cfg_full + jF_in  * nZnT + kl];
-  double ruo_i = ru_o[cfg_full + jF_in  * nZnT + kl];
-  double zue_i = zu_e[cfg_full + jF_in  * nZnT + kl];
-  double zuo_i = zu_o[cfg_full + jF_in  * nZnT + kl];
-
-  double r1e_o = r1_e[cfg_full + jF_out * nZnT + kl];
-  double r1o_o = r1_o[cfg_full + jF_out * nZnT + kl];
-  double z1e_o = z1_e[cfg_full + jF_out * nZnT + kl];
-  double z1o_o = z1_o[cfg_full + jF_out * nZnT + kl];
-  double rue_o = ru_e[cfg_full + jF_out * nZnT + kl];
-  double ruo_o = ru_o[cfg_full + jF_out * nZnT + kl];
-  double zue_o = zu_e[cfg_full + jF_out * nZnT + kl];
-  double zuo_o = zu_o[cfg_full + jF_out * nZnT + kl];
-
-  double sH = sqrtSH[jH_local];
-
-  size_t iHalf = cfg_half + (size_t)jH_local * (size_t)nZnT + (size_t)kl;
-
-  double r12_v  = 0.5 * ((r1e_i + r1e_o) + sH * (r1o_i + r1o_o));
-  double ru12_v = 0.5 * ((rue_i + rue_o) + sH * (ruo_i + ruo_o));
-  double zu12_v = 0.5 * ((zue_i + zue_o) + sH * (zuo_i + zuo_o));
-  double rs_v   = ((r1e_o - r1e_i) + sH * (r1o_o - r1o_i)) / deltaS;
-  double zs_v   = ((z1e_o - z1e_i) + sH * (z1o_o - z1o_i)) / deltaS;
-
-  double tau1 = ru12_v * zs_v - rs_v * zu12_v;
-  double tau2 = ruo_o * z1o_o + ruo_i * z1o_i -
-                zuo_o * r1o_o - zuo_i * r1o_i +
-                (rue_o * z1o_o + rue_i * z1o_i -
-                 zue_o * r1o_o - zue_i * r1o_i) / sH;
-  double tau_v = tau1 + dSHalfDsInterp * tau2;
-
-  r12[iHalf]  = r12_v;
-  ru12[iHalf] = ru12_v;
-  zu12[iHalf] = zu12_v;
-  rs[iHalf]   = rs_v;
-  zs[iHalf]   = zs_v;
-  tau[iHalf]  = tau_v;
 }
 
 // k_compute_metric_elements assigns one thread to each (jH_local, kl)
@@ -1583,7 +1382,6 @@ __global__ void k_pm_half_reductions(int n_config, int ns_local, int ns_h,
                                        int nZnT, int nThetaEff,
                                        double pFactor, double deltaS,
                                        int nsMinH, int nsMinF1,
-                                       int serial_order,
                                        const double* __restrict__ r12,
                                        const double* __restrict__ totalPressure,
                                        const double* __restrict__ tau,
@@ -1612,46 +1410,6 @@ __global__ void k_pm_half_reductions(int n_config, int ns_local, int ns_h,
   int jH_global = jH + nsMinH;
   int jF_in_local = jH_global - nsMinF1;
   int jF_out_local = jF_in_local + 1;
-  if (serial_order) {
-    // Diagnostic: the host loop's ascending-kl order and arithmetic
-    // (divisions by sqrtSH rather than reciprocal multiplies), so the
-    // matrix elements match the host bit for bit.
-    if (threadIdx.x == 0) {
-      double ax0 = 0.0, ax1 = 0.0, ax2 = 0.0, ax3 = 0.0;
-      double bx0 = 0.0, bx1 = 0.0, bx2 = 0.0, cxv = 0.0;
-      for (int kl = 0; kl < nZnT; ++kl) {
-        size_t iHalf = cfg_half + (size_t)jH * (size_t)nZnT + (size_t)kl;
-        size_t iFull_0 = cfg_full + (size_t)jF_in_local * (size_t)nZnT + kl;
-        size_t iFull_1 = cfg_full + (size_t)jF_out_local * (size_t)nZnT + kl;
-        int l = kl % nThetaEff;
-        double pTau = pFactor * r12[iHalf] * totalPressure[iHalf] /
-                      tau[iHalf] * wInt[l];
-        double t1a = xu12[iHalf] / deltaS;
-        double t2a = 0.25 * (xu_e[iFull_1] / sH + xu_o[iFull_1]) / sH;
-        double t3a = 0.25 * (xu_e[iFull_0] / sH + xu_o[iFull_0]) / sH;
-        ax0 += pTau * t1a * t1a;
-        ax1 += pTau * (t1a + t2a) * (-t1a + t3a);
-        ax2 += pTau * (t1a + t2a) * (t1a + t2a);
-        ax3 += pTau * (-t1a + t3a) * (-t1a + t3a);
-        double t1b = 0.5 * (xs[iHalf] + 0.5 / sH * x1_o[iFull_1]);
-        double t2b = 0.5 * (xs[iHalf] + 0.5 / sH * x1_o[iFull_0]);
-        bx0 += pTau * t1b * t2b;
-        bx1 += pTau * t1b * t1b;
-        bx2 += pTau * t2b * t2b;
-        cxv += 0.25 * pFactor * bsupv[iHalf] * bsupv[iHalf] *
-               gsqrt[iHalf] * wInt[l];
-      }
-      ax_scratch[cfg_ax + jH * 4 + 0] = ax0;
-      ax_scratch[cfg_ax + jH * 4 + 1] = ax1;
-      ax_scratch[cfg_ax + jH * 4 + 2] = ax2;
-      ax_scratch[cfg_ax + jH * 4 + 3] = ax3;
-      bx_scratch[cfg_bx + jH * 3 + 0] = bx0;
-      bx_scratch[cfg_bx + jH * 3 + 1] = bx1;
-      bx_scratch[cfg_bx + jH * 3 + 2] = bx2;
-      cx_scratch[cfg_cx + jH] = cxv;
-    }
-    return;
-  }
   __shared__ double s_ax0[32], s_ax1[32], s_ax2[32], s_ax3[32];
   __shared__ double s_bx0[32], s_bx1[32], s_bx2[32];
   __shared__ double s_cx[32];
@@ -2877,7 +2635,6 @@ __global__ void k_bcontra_bsupuv(
 // jvPlasma/avg_guu_gsqrt per-config profile.
 __global__ void k_bcontra_jvplasma_reduce(
     int n_config, int ns_h, int nZnT, int nThetaEff, bool lthreed,
-    int serial_order,
     const double* __restrict__ guu, const double* __restrict__ guv,
     const double* __restrict__ bsupu, const double* __restrict__ bsupv,
     const double* __restrict__ gsqrt, const double* __restrict__ wInt,
@@ -2888,27 +2645,6 @@ __global__ void k_bcontra_jvplasma_reduce(
   if (jH_local >= ns_h) return;
   size_t cfg_half = (size_t)config * (size_t)ns_h * (size_t)nZnT;
   size_t cfg_prof = (size_t)config * (size_t)ns_h;
-  if (serial_order) {
-    // Diagnostic: accumulate in the CPU loop's ascending-kl order so the
-    // sums match the host bit for bit.
-    if (threadIdx.x == 0) {
-      double jv = 0.0, avg = 0.0;
-      for (int kl = 0; kl < nZnT; ++kl) {
-        size_t i = cfg_half + (size_t)jH_local * (size_t)nZnT + (size_t)kl;
-        int l = kl % nThetaEff;
-        double w = wInt[l];
-        double term = guu[i] * bsupu[i];
-        if (lthreed) {
-          term += guv[i] * bsupv[i];
-        }
-        jv += term * w;
-        avg += guu[i] / gsqrt[i] * w;
-      }
-      jvPlasma[cfg_prof + jH_local] = jv;
-      avg_guu_gsqrt[cfg_prof + jH_local] = avg;
-    }
-    return;
-  }
   __shared__ double s_jv[32];
   __shared__ double s_avg[32];
   double acc_jv = 0.0, acc_avg = 0.0;
@@ -3981,42 +3717,6 @@ __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
   }
 }
 
-// k_cfg01_max_abs_diff is a diagnostic kernel that compares two
-// consecutive per-configuration slices of a device buffer and emits
-// the largest pointwise absolute difference between them. For an
-// input buffer of size 2 * per_cfg_size the kernel evaluates
-//   max over i in [0, per_cfg_size)  |buf[i] - buf[per_cfg_size + i]|,
-// which under the batched layout corresponds to the divergence
-// between the configuration-zero and configuration-one slices of any
-// per-configuration device buffer. A single block of 256 threads
-// performs the reduction and writes the result to out_scalar as a
-// single double. The kernel is invoked through DiagCfg01DiffCuda when
-// localising the kernel responsible for an unintended divergence
-// between configuration zero and configuration one in a batched run
-// with n_config_max equal to two.
-__global__ void k_cfg01_max_abs_diff(int per_cfg_size,
-                                      const double* __restrict__ buf,
-                                      double* __restrict__ out_scalar) {
-  __shared__ double s_max[256];
-  double m = 0.0;
-  for (int i = threadIdx.x; i < per_cfg_size; i += blockDim.x) {
-    double d = buf[i] - buf[per_cfg_size + i];
-    double a = (d < 0.0) ? -d : d;
-    if (a > m) m = a;
-  }
-  s_max[threadIdx.x] = m;
-  __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) {
-      if (s_max[threadIdx.x + stride] > s_max[threadIdx.x]) {
-        s_max[threadIdx.x] = s_max[threadIdx.x + stride];
-      }
-    }
-    __syncthreads();
-  }
-  if (threadIdx.x == 0) out_scalar[0] = s_max[0];
-}
-
 // k_force_norm_final_reduce: one block per config, threads cooperate to sum
 // Per-cfg rzNorm for the device time-step controller: one serial thread
 // per cfg accumulates the squared R/Z position coefficients over the force
@@ -4092,83 +3792,13 @@ __global__ void k_force_norm_final_reduce(
   }
 }
 
-// k_residuals: one block, ONE THREAD per config; performs the three
-// sum-of-squares reductions in the exact (jF, m, n) order CPU uses, with
-// the per-index accumulation order CPU uses (rcc, zsc, lsc, then under
-// lthreed rss, zcs, lcs). Mirrors FourierForces::residuals() in serial.
-// Parallel reduction over indices was reordered relative to the CPU and
-// compounded ULP-level rounding into the sub-percent drift family across
-// ~10^4 iters. The serial single-thread accumulation here matches CPU
-// bit-for-bit per call, eliminating that source of drift. Performance
-// cost is small at this kernel's tiny problem size (mpol*(ntor+1)*ns
-// ~ 2750 squared-sums per cfg); the kernel was already memory-bound.
-//
-// Stellarator-symmetric path only (lasym=false). The (jLocal_max_rz,
-// jLocal_max_boundary) integer pair encodes the CPU's (jMaxRZ,
-// jMaxIncludeBoundary) thresholds shifted by nsMin_.
-// Batched execution: n_config via blockIdx.x (one block per config). spectra
-// per-config (ns_local * mpol * (ntor+1)); scalars_out sized n_config*3.
-__global__ void k_residuals(
-    int n_config, int ns_local,
-    int jLocal_max_rz, int jLocal_max_boundary,
-    int mpol, int ntor, bool lthreed,
-    const double* __restrict__ frcc,
-    const double* __restrict__ frss,
-    const double* __restrict__ fzsc,
-    const double* __restrict__ fzcs,
-    const double* __restrict__ flsc,
-    const double* __restrict__ flcs,
-    double* __restrict__ scalars_out,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
-  int config = blockIdx.x;
-  if (config >= n_config) return;
-  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
-  if (threadIdx.x != 0) return;
-  size_t cfg_spec = (size_t)config * (size_t)ns_local *
-                    (size_t)mpol * (size_t)(ntor + 1);
-  double acc_R = 0.0, acc_Z = 0.0, acc_L = 0.0;
-  // CPU loop: for jF in [0, jLocal_max_boundary), for m in [0, mpol),
-  // for n in [0, ntor+1). Within each (jF, m, n) the per-component order
-  // is rcc, zsc, lsc, then (lthreed) rss, zcs, lcs.
-  for (int jLocal = 0; jLocal < jLocal_max_boundary; ++jLocal) {
-    const bool in_rz = (jLocal < jLocal_max_rz);
-    for (int m = 0; m < mpol; ++m) {
-      for (int n = 0; n < ntor + 1; ++n) {
-        int idx = (jLocal * mpol + m) * (ntor + 1) + n;
-        size_t cidx = cfg_spec + (size_t)idx;
-        double v;
-        if (in_rz) {
-          v = frcc[cidx]; acc_R += v * v;
-          v = fzsc[cidx]; acc_Z += v * v;
-        }
-        v = flsc[cidx]; acc_L += v * v;
-        if (lthreed) {
-          if (in_rz) {
-            v = frss[cidx]; acc_R += v * v;
-            v = fzcs[cidx]; acc_Z += v * v;
-          }
-          v = flcs[cidx]; acc_L += v * v;
-        }
-      }  // n
-    }  // m
-  }  // j
-  scalars_out[config * 3 + 0] = acc_R;
-  scalars_out[config * 3 + 1] = acc_Z;
-  scalars_out[config * 3 + 2] = acc_L;
-}
-
 // k_residuals_par: parallel FP64 reduction matching k_residuals output
 // for VMEC's stop gate. Same math as the serial path but each block
 // (one per config) splits the (jLocal, m, n) cell list across 256
 // threads. Each thread accumulates its strided subset; shared-memory
 // tree reduce produces the final per-config (acc_R, acc_Z, acc_L).
 //
-// Reduction order differs from the serial path by a few ULPs per call,
-// which compounds to <1e-10 relative drift on aspect_ratio over ~10^4
-// iters. That's well below the CPU<->CUDA drift family floor (1e-3 to
-// 1e-5 on the field-line metrics), so the change is invisible at
-// the production metric tolerances. The serial path remains the default; gated
-// by VMECPP_RESIDUALS_PAR=1.
+// The reduction order differs from a serial sum by a few ULPs per call.
 
 // k_check_convergence: device-side per-cfg convergence check on NORMALIZED
 // residuals, mirroring the per-cfg arithmetic of
@@ -4667,49 +4297,6 @@ __global__ void k_apply_rz_pcr(int n_config, int mnsize, int ns_total, int num_b
     int gi = tid + j0;
     for (int ib = 0; ib < num_basis; ++ib) {
       c_inout[cfg_c + (size_t)((mn * num_basis + ib) * ns_total + gi)] = s_c[tid * 2 + ib] / s_d[tid];
-    }
-  }
-}
-
-// k_apply_rz_thomas_serial: serial Thomas elimination per (cfg, mn) row in
-// the host loop's exact order and association (TridiagonalSolveSerial),
-// for trajectory comparisons against the CPU build. One thread per row;
-// the mutable elimination ratios live in local memory (ns_total <= 1024
-// by the shape guard). Diagnostic path, gated by
-// VMECPP_CPU_ORDER_RZSOLVE=1.
-__global__ void k_apply_rz_thomas_serial(
-    int n_config, int mnsize, int ns_total, int num_basis,
-    const int* __restrict__ jMin, int jMax,
-    const double* __restrict__ a_in, const double* __restrict__ d_in,
-    const double* __restrict__ b_in, double* __restrict__ c_inout,
-    const std::uint8_t* __restrict__ d_active_per_cfg) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int config = idx / mnsize;
-  int mn = idx - config * mnsize;
-  if (config >= n_config) return;
-  if (d_active_per_cfg && !d_active_per_cfg[config]) return;
-  int j0 = jMin[mn];
-  if (jMax - j0 <= 0) return;
-  size_t row = ((size_t)config * (size_t)mnsize + (size_t)mn) *
-               (size_t)ns_total;
-  size_t cfg_c = (size_t)config * (size_t)mnsize * (size_t)num_basis *
-                 (size_t)ns_total;
-  double a_loc[1024];
-  for (int j = j0; j < jMax; ++j) a_loc[j] = a_in[row + j];
-  a_loc[j0] /= d_in[row + j0];
-  for (int j = j0 + 1; j < jMax - 1; ++j) {
-    const double denominator = d_in[row + j] - a_loc[j - 1] * b_in[row + j];
-    a_loc[j] /= denominator;
-  }
-  for (int ib = 0; ib < num_basis; ++ib) {
-    double* c = c_inout + cfg_c + (size_t)(mn * num_basis + ib) * ns_total;
-    c[j0] /= d_in[row + j0];
-    for (int j = j0 + 1; j < jMax; ++j) {
-      const double denominator = d_in[row + j] - a_loc[j - 1] * b_in[row + j];
-      c[j] = (c[j] - c[j - 1] * b_in[row + j]) / denominator;
-    }
-    for (int j = jMax - 2; j > j0 - 1; --j) {
-      c[j] -= a_loc[j] * c[j + 1];
     }
   }
 }

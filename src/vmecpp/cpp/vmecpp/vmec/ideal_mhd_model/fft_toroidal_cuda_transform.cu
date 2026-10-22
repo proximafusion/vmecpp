@@ -31,8 +31,8 @@ __global__ void k_d2z_identity_nzeta1(int n, const double* __restrict__ Y,
 // (poloidal point), so all 32 lanes do useful work. The shared Y tile is
 // replicated ks_per_warp times per warp (one tile per packed zeta plane).
 // Registers stay the occupancy limiter, so the extra shared memory is free.
-// Gated by VMECPP_SCATTER_PACK; selected only when 32 is an exact multiple of
-// nThetaReduced. Per-(jF, k, l) arithmetic is identical to v5.
+// Selected when 32 is an exact multiple of nThetaReduced. Per-(jF, k, l)
+// arithmetic is identical to v5.
 __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_v5_packed(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced,
     int nThetaEff,
@@ -179,19 +179,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
   const int nThetaReduced = s.nThetaReduced;
   const int nThetaEff = s.nThetaEff;
 
-  // Diagnostic on first call only.
-  static bool logged_shape = false;
-  if (!logged_shape) {
-    std::fprintf(stderr,
-        "[fft_toroidal_cuda] FW shape: ns_local=%d ns_con_local=%d mpol=%d ntor=%d "
-        "nhalf=%d nZeta=%d nThetaReduced=%d nThetaEff=%d nfp=%d nsMinF1=%d "
-        "nsMinF=%d nsMaxF1=%d nsMaxFIncludingLcfs=%d xmpq.size=%d rp.sqrtSF.size=%d\n",
-        ns_local, ns_con_local, mpol, ntor, nhalf, nZeta, nThetaReduced,
-        nThetaEff, nfp, r.nsMinF1, r.nsMinF, r.nsMaxF1, r.nsMaxFIncludingLcfs,
-        (int)xmpq.size(), (int)rp.sqrtSF.size());
-    logged_shape = true;
-  }
-
   if (ns_local <= 0) {
     // Nothing to do for this MPI rank's local range.
     return;
@@ -202,15 +189,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
   // bit-exact. At N>1, distinct inputs arrive through the run_batched_gpu
   // staging; otherwise the same input is broadcast to all N slots.
   const int n_cfg = GetNConfigMaxCuda();
-  {
-    static int logged_n_cfg = 1;
-    if (n_cfg > 1 && n_cfg != logged_n_cfg) {
-      logged_n_cfg = n_cfg;
-      std::fprintf(stderr, "[fft_toroidal_cuda] batched mode active: n_config_max=%d "
-                           "(broadcast input to all slots; only config 0 result "
-                           "flows back to host)\n", n_cfg);
-    }
-  }
 
   // (Re)allocate device buffers if shape changed.
   std::lock_guard<std::mutex> lk(S.mu);
@@ -258,30 +236,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
     const double* src[6] = {physical_x.rmncc.data(), physical_x.rmnss.data(),
                             physical_x.zmnsc.data(), physical_x.zmncs.data(),
                             physical_x.lmnsc.data(), physical_x.lmncs.data()};
-    // The VMECPP_BATCH_PERTURB environment variable provides an
-    // opt-in perturbation knob for exercising the per-configuration
-    // execution path with non-identical inputs. When the variable
-    // names a non-zero scale, each configuration cfg's spectra are
-    // scaled by the factor (1 + scale * cfg / n_cfg) before staging,
-    // so the configurations drive slightly different equilibria
-    // through the iteration chain. The kernel arithmetic is
-    // independent of the input values, so the wall time under
-    // perturbation is expected to match the broadcast baseline once
-    // the configuration-zero-only write paths have been closed by the
-    // per-configuration audit. The default state (variable unset or
-    // zero) preserves pure broadcast.
-    static double phase_d_perturb = -1.0;
-    if (phase_d_perturb < 0.0) {
-      const char* e = std::getenv("VMECPP_BATCH_PERTURB");
-      phase_d_perturb = (e && *e) ? std::atof(e) : 0.0;
-      if (phase_d_perturb != 0.0) {
-        std::fprintf(stderr,
-                     "[fft_toroidal_cuda] per-cfg input perturbation active "
-                     "(VMECPP_BATCH_PERTURB=%.3e: per-cfg scale "
-                     "1+%.3e*cfg/n_cfg)\n",
-                     phase_d_perturb, phase_d_perturb);
-      }
-    }
     // Distinct-boundary spectral input pipeline. When the
     // VMECPP_BATCH_INPUTS_FILE environment variable identifies a
     // binary file, that file holds N_cfg * 6 * one_spec_doubles
@@ -310,10 +264,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
       S.batch_inputs_one_spec_doubles =
           (size_t)ns_local * mpol * (ntor + 1);
       S.batch_inputs_loaded = 1;
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] batch inputs loaded: N=%d ns=%d "
-          "mpol=%d ntor=%d (%zu doubles from memory)\n",
-          n_cfg, ns_local, mpol, ntor, total);
     }
     if (S.batch_inputs_loaded < 0) {
       const char* path = std::getenv("VMECPP_BATCH_INPUTS_FILE");
@@ -381,7 +331,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
         }
       }
       S.batch_inputs_consumed = true;
-    } else if (phase_d_perturb == 0.0) {
+    } else {
       for (int sp = 0; sp < 6; ++sp) {
         // rmnss/zmncs/lmncs (odd sp) are the lthreed-only modes; for an
         // axisymmetric (ntor=0) run they are absent on the host, so stage
@@ -395,54 +345,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
             std::memcpy(dst, src[sp], one_spec_bytes);
           }
         }
-      }
-    } else {
-      for (int sp = 0; sp < 6; ++sp) {
-        const bool absent_2d = !s.lthreed && (sp == 1 || sp == 3 || sp == 5);
-        for (int cfg = 0; cfg < n_cfg; ++cfg) {
-          double scale = 1.0 + phase_d_perturb *
-                         (double)cfg / (double)std::max(1, n_cfg);
-          double* dst = h + sp * block_doubles + cfg * one_spec_doubles;
-          if (absent_2d) {
-            std::memset(dst, 0, one_spec_bytes);
-          } else {
-            for (size_t i = 0; i < one_spec_doubles; ++i) {
-              dst[i] = src[sp][i] * scale;
-            }
-          }
-        }
-      }
-    }
-  }
-  // VMECPP_DUMP_SPECS=1: one-shot dump of h_specs_pinned cfg-0 slot for each
-  // spec section, plus running sum and abs-sum. For distinct-vs-broadcast
-  // bit-equivalence verification at iter 1.
-  {
-    static int dump_specs_env = -1;
-    if (dump_specs_env < 0) {
-      const char* e = std::getenv("VMECPP_DUMP_SPECS");
-      dump_specs_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    }
-    static int dump_count = 0;
-    if (dump_specs_env && dump_count == 0) {
-      dump_count = 1;
-      const char* sp_names[6] = {"rmncc", "rmnss", "zmnsc", "zmncs",
-                                  "lmnsc", "lmncs"};
-      const char* env_batch = std::getenv("VMECPP_BATCH_INPUTS_FILE");
-      const char* path_label = (env_batch && *env_batch) ? "FILE" : "BCAST";
-      for (int sp = 0; sp < 6; ++sp) {
-        double* cfg0 = h + sp * block_doubles + 0 * one_spec_doubles;
-        double sum = 0.0, abs_sum = 0.0;
-        for (size_t i = 0; i < one_spec_doubles; ++i) {
-          sum += cfg0[i];
-          abs_sum += std::abs(cfg0[i]);
-        }
-        std::fprintf(stderr,
-                     "[DUMP_SPECS path=%s] %s cfg0 first5=%.16e %.16e %.16e %.16e %.16e "
-                     "sum=%.16e abs_sum=%.16e\n",
-                     path_label, sp_names[sp],
-                     cfg0[0], cfg0[1], cfg0[2], cfg0[3], cfg0[4],
-                     sum, abs_sum);
       }
     }
   }
@@ -513,87 +415,29 @@ void FourierToReal3DSymmFastPoloidalCuda(
         total_batches, S.d_X, S.d_Y);
     cuda_check(cudaGetLastError(), "k_z2d_identity_nzeta1");
   } else {
-    S.TKBegin(CudaToroidalState::TK_CUFFT_INV);
     cufft_check(cufftExecZ2D(S.cufft_plan, S.d_X, S.d_Y), "cufftExecZ2D");
-    S.TKEnd(CudaToroidalState::TK_CUFFT_INV);
   }
 
   // The fused scatter writes the main and the constraint outputs in one pass
   // over Y.
   {
-    // The v4 variant launches one block per (configuration,
-    // jF_local), with the block split into four warps that each
-    // process one (configuration, jF_local, k) triple. The
-    // four-warp arrangement raises the warp count resident on a
-    // single SM and thereby the instruction-issue concurrency of
-    // the floating-point pipeline, without altering the per-warp
-    // work assignment of the underlying scatter algorithm.
+    // One warp per (configuration, jF_local, k), four warps per block.
     constexpr int WARPS_PER_BLOCK = 4;
     int z_total = ns_local * S.n_config_max;
     int z_blocks = (z_total + WARPS_PER_BLOCK - 1) / WARPS_PER_BLOCK;
     dim3 v4_blocks((nThetaReduced + 31) / 32, nZeta, z_blocks);
     dim3 v4_tpb(32, WARPS_PER_BLOCK, 1);
-    S.TKBegin(CudaToroidalState::TK_SCATTER);
-    // The v5 variant of the fused scatter caches the Y values
-    // consumed during the inner toroidal-mode loop in a per-warp
-    // shared-memory tile, removing the L1 broadcast that the v4
-    // variant uses for the same loads. Selection is governed by
-    // the VMECPP_SCATTER_V5 environment variable; the default is
-    // active when unset and falls back to the v4 variant when the
-    // variable is set to zero.
-    static int scatter_v5_env = -1;
-    if (scatter_v5_env < 0) {
-      const char* e = std::getenv("VMECPP_SCATTER_V5");
-      scatter_v5_env = (e && std::atoi(e) == 0) ? 0 : 1;
-      if (!scatter_v5_env) {
-        std::fprintf(stderr, "[fft_toroidal_cuda] k_scatter v5 (shared-mem "
-                             "Y cache) disabled (VMECPP_SCATTER_V5=0)\n");
-      }
-    }
-    if (scatter_v5_env) {
-      static const int scatter_pack_env = []() {
-        const char* e = std::getenv("VMECPP_SCATTER_PACK");
-        int v = (e && std::atoi(e) == 0) ? 0 : 1;  // default ON
-        if (!v)
-          std::fprintf(stderr, "[fft_toroidal_cuda] scatter warp-pack disabled "
-                               "(VMECPP_SCATTER_PACK=0)\n");
-        return v;
-      }();
-      const int ks_per_warp = (nThetaReduced > 0) ? (32 / nThetaReduced) : 0;
-      if (scatter_pack_env && ks_per_warp >= 2 && (32 % nThetaReduced) == 0) {
-        // Warp-pack ks_per_warp zeta planes so all 32 lanes compute; the Y
-        // tile is replicated per packed plane (ks_per_warp * mpol * kBatch).
-        dim3 pk_blocks(1, (nZeta + ks_per_warp - 1) / ks_per_warp, z_blocks);
-        dim3 pk_tpb(32, WARPS_PER_BLOCK, 1);
-        size_t pk_smem = sizeof(double) * (size_t)WARPS_PER_BLOCK *
-                         (size_t)ks_per_warp * (size_t)mpol * (size_t)kBatch;
-        k_scatter_main_and_con_v5_packed<<<pk_blocks, pk_tpb, pk_smem, st>>>(
-            S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
-            S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-            S.d_xmpq, S.d_sqrtSF,
-            S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-            S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
-            S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
-            S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
-            S.d_rCon, S.d_zCon);
-        cuda_check(cudaGetLastError(),
-                   "k_scatter_main_and_con_v5_packed launch");
-      } else {
-        // Shared memory per block: blockDim.y warps * mpol * kBatch doubles.
-        size_t smem_bytes = sizeof(double) * v4_tpb.y * mpol * kBatch;
-        k_scatter_main_and_con_v5<<<v4_blocks, v4_tpb, smem_bytes, st>>>(
-            S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
-            S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
-            S.d_xmpq, S.d_sqrtSF,
-            S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
-            S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
-            S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
-            S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
-            S.d_rCon, S.d_zCon);
-        cuda_check(cudaGetLastError(), "k_scatter_main_and_con_v5 launch");
-      }
-    } else {
-      k_scatter_main_and_con_v4<<<v4_blocks, v4_tpb, 0, st>>>(
+    // Each warp caches its Y tile in shared memory; when 32 is a multiple of
+    // nThetaReduced, a warp packs several zeta planes.
+    const int ks_per_warp = (nThetaReduced > 0) ? (32 / nThetaReduced) : 0;
+    if (ks_per_warp >= 2 && (32 % nThetaReduced) == 0) {
+      // Warp-pack ks_per_warp zeta planes so all 32 lanes compute; the Y
+      // tile is replicated per packed plane (ks_per_warp * mpol * kBatch).
+      dim3 pk_blocks(1, (nZeta + ks_per_warp - 1) / ks_per_warp, z_blocks);
+      dim3 pk_tpb(32, WARPS_PER_BLOCK, 1);
+      size_t pk_smem = sizeof(double) * (size_t)WARPS_PER_BLOCK *
+                       (size_t)ks_per_warp * (size_t)mpol * (size_t)kBatch;
+      k_scatter_main_and_con_v5_packed<<<pk_blocks, pk_tpb, pk_smem, st>>>(
           S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
           S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
           S.d_xmpq, S.d_sqrtSF,
@@ -601,11 +445,23 @@ void FourierToReal3DSymmFastPoloidalCuda(
           S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
           S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
           S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
-          S.d_rCon, S.d_zCon,
-          S.d_active_per_cfg);
-      cuda_check(cudaGetLastError(), "k_scatter_main_and_con_v4 launch");
+          S.d_rCon, S.d_zCon);
+      cuda_check(cudaGetLastError(),
+                 "k_scatter_main_and_con_v5_packed launch");
+    } else {
+      // Shared memory per block: blockDim.y warps * mpol * kBatch doubles.
+      size_t smem_bytes = sizeof(double) * v4_tpb.y * mpol * kBatch;
+      k_scatter_main_and_con_v5<<<v4_blocks, v4_tpb, smem_bytes, st>>>(
+          S.n_config_max, ns_local, mpol, nZeta, nThetaReduced, nThetaEff,
+          S.d_Y, S.d_cosmu, S.d_sinmu, S.d_cosmum, S.d_sinmum,
+          S.d_xmpq, S.d_sqrtSF,
+          S.d_r1_e, S.d_r1_o, S.d_ru_e, S.d_ru_o,
+          S.d_rv_e, S.d_rv_o, S.d_z1_e, S.d_z1_o,
+          S.d_zu_e, S.d_zu_o, S.d_zv_e, S.d_zv_o,
+          S.d_lu_e, S.d_lu_o, S.d_lv_e, S.d_lv_o,
+          S.d_rCon, S.d_zCon);
+      cuda_check(cudaGetLastError(), "k_scatter_main_and_con_v5 launch");
     }
-    S.TKEnd(CudaToroidalState::TK_SCATTER);
   }
 
   // Per-iteration D2H reduction: the previous 1.2 MB (at N=1) / 76 MB (at N=64) D2H +
@@ -643,7 +499,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
   S.fwd_geom_pending = true;
   S.fwd_geom_outer_idx = outer_idx_pre;
   S.fwd_geom_inner_idx = inner_idx_pre;
-  DiagCfg01DiffCuda(S.d_r1_e, ns_local * nZeta * nThetaEff, "fwd:r1_e");
 }
 
 // ============================================================================
@@ -713,9 +568,7 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
         total_batches, S.d_Y, S.d_X);
     cuda_check(cudaGetLastError(), "k_d2z_identity_nzeta1");
   } else {
-    S.TKBegin(CudaToroidalState::TK_CUFFT_FWD);
     cufft_check(cufftExecD2Z(S.cufft_plan_r2c, S.d_Y, S.d_X), "cufftExecD2Z");
-    S.TKEnd(CudaToroidalState::TK_CUFFT_FWD);
   }
 
   // Stage 3: k_inverse_scatter populates spec arrays from X.
@@ -743,7 +596,6 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
         S.d_frcc, S.d_frss, S.d_fzsc, S.d_fzcs, S.d_flsc, S.d_flcs);
     cuda_check(cudaGetLastError(), "k_inverse_scatter launch");
   }
-  DiagCfg01DiffCuda(S.d_frcc, ns_local * mpol * (ntor + 1), "inv:frcc");
 
   // In CUDA mode, host m_physical_forces is never read again: DecomposeAndConstrainCuda
   // reads S.d_frcc/etc. on the same stream, so kernel ordering is enforced without a sync.
@@ -877,7 +729,6 @@ void DecomposeAndConstrainCuda(
     dim3 b((ntor + 1 + TPB - 1) / TPB, mpol,
            ns_dec_local * S.n_config_max);
     dim3 t(TPB, 1, 1);
-    S.TKBegin(CudaToroidalState::TK_DECOMPOSE);
     k_decompose_into<<<b, t, 0, st>>>(
         S.n_config_max, ns_dec_local, S.ns_local_cached,
         mpol, ntor, nsMin_to_nsMinF1, s.lthreed, S.d_scalxc,
@@ -885,7 +736,6 @@ void DecomposeAndConstrainCuda(
         S.d_decomposed_frcc, S.d_decomposed_frss, S.d_decomposed_fzsc,
         S.d_decomposed_fzcs, S.d_decomposed_flsc, S.d_decomposed_flcs);
     cuda_check(cudaGetLastError(), "k_decompose_into launch");
-    S.TKEnd(CudaToroidalState::TK_DECOMPOSE);
   }
 
   // Stage 2+3: m=1 constraint, then the Z force at m=1 zeroed where the CPU
@@ -935,8 +785,6 @@ void DecomposeAndConstrainCuda(
         S.d_decomposed_frss, S.d_decomposed_fzcs);
     cuda_check(cudaGetLastError(), "k_m1_constraint_gated launch");
   }
-  DiagCfg01DiffCuda(S.d_decomposed_frcc, S.ns_local_cached * mpol * (ntor + 1),
-                    "dec:dec_frcc");
 
   // D2Hs deferred: device shadow S.d_decomposed_* is the source of truth
   // until FlushDecomposedToHostCuda runs at the end of residue(). Stream
@@ -979,17 +827,12 @@ void ApplyM1PreconditionerCuda(
   const int TPB = 32;
   dim3 b((ntor + 1 + TPB - 1) / TPB, ns_force_local, S.n_config_max);
   dim3 t(TPB, 1, 1);
-  // TK timing safe when graphs are auto-disabled (timing-on path).
-  S.TKBegin(CudaToroidalState::TK_APPLY_M1);
   k_apply_m1_preconditioner<<<b, t, 0, st>>>(
       S.n_config_max, S.ns_local_cached, ns_force_local, mpol, ntor,
       S.d_pmat_ard, S.d_pmat_brd, S.d_pmat_azd, S.d_pmat_bzd,
       S.d_decomposed_frss, S.d_decomposed_fzcs,
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_apply_m1 launch");
-  S.TKEnd(CudaToroidalState::TK_APPLY_M1);
-  DiagCfg01DiffCuda(S.d_decomposed_frss,
-                    S.ns_local_cached * mpol * (ntor + 1), "m1:dec_frss");
   // D2H + sync deferred to end-of-residue() FlushDecomposedToHostCuda.
   (void)frss_host; (void)fzcs_host; (void)spec_bytes;
 }
@@ -1189,11 +1032,6 @@ void RecomposeToPhysicalCuda(
               "h2d per-cfg dec_x (Recompose)");
         }
       }
-      std::fprintf(stderr,
-          "[fft_toroidal_cuda] loaded per-cfg dec_x from %s into "
-          "d_pts_x (N=%d ns=%d mpol=%d ntor=%d)\n",
-          (dec_x_path && *dec_x_path) ? dec_x_path : "memory",
-          S.n_config_max, ns_local, mpol, ntor);
     } else {
       const double* src_x[6] = {m_dec_x_rcc, m_dec_x_rss,
                                 m_dec_x_zsc, m_dec_x_zcs,
@@ -1211,34 +1049,6 @@ void RecomposeToPhysicalCuda(
     // Arm the device backup with the stage's initial state; same
     // contract as the matching call in PerformTimeStepCuda.
     EnsurePTSBackupBuffers(S);
-  }
-
-  // VMECPP_DEFENSIVE_BROADCAST=1: every RecomposeToPhysicalCuda entry
-  // re-copies the cfg-0 slice of d_pts_x into all other slices.
-  // Correct under broadcast inputs, redundant under per-cfg-correct
-  // ones; an opt-in net for catching cfg-zero-only write regressions.
-  static int defensive_broadcast_env = -1;
-  if (defensive_broadcast_env < 0) {
-    const char* e = std::getenv("VMECPP_DEFENSIVE_BROADCAST");
-    defensive_broadcast_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (defensive_broadcast_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] Recompose defensive broadcast "
-                           "ENABLED (VMECPP_DEFENSIVE_BROADCAST=1)\n");
-    }
-  }
-  if (defensive_broadcast_env) {
-    double* dst_x[6] = {S.d_pts_x_rcc, S.d_pts_x_rss, S.d_pts_x_zsc,
-                        S.d_pts_x_zcs, S.d_pts_x_lsc, S.d_pts_x_lcs};
-    for (int i = 0; i < 6; ++i) {
-      for (int cfg = 1; cfg < S.n_config_max; ++cfg) {
-        cuda_check(cudaMemcpyAsync(
-            dst_x[i] + (size_t)cfg * ns_local * mpol * (ntor + 1),
-            dst_x[i],
-            x_bytes_one,
-            cudaMemcpyDeviceToDevice, st),
-            "d2d pts x cfg=0 broadcast (Recompose)");
-      }
-    }
   }
 
   // Stage 1: decomposeInto -> write d_specs_block sections from d_pts_x via

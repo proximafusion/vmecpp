@@ -92,27 +92,6 @@ long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
 // explicit cleanup or a dtor on Reshape's allocated buffers.
 CudaToroidalState& State() {
   thread_local CudaToroidalState s;
-  if (s.tk_env < 0) {
-    const char* e = std::getenv("VMECPP_KERNEL_TIMING");
-    s.tk_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (s.tk_env) {
-      s.TKInit();
-      // Auto-disable CUDA Graphs (seg-2, seg-3, seg-4) when timing is on;
-      // cudaEventRecord inside stream capture is illegal. _setenv_ ensures
-      // the wrappers see graphs-off.
-      setenv("VMECPP_UPDATE_GRAPH", "0", 1);  // disables seg-3
-      setenv("VMECPP_SEG4_GRAPH",   "0", 1);  // disables seg-4
-      setenv("VMECPP_SEG2_GRAPH",   "0", 1);  // disables seg-2
-      std::fprintf(stderr, "[fft_toroidal_cuda] per-kernel cudaEvent timing "
-                           "ENABLED (VMECPP_KERNEL_TIMING=1); graphs auto-"
-                           "disabled to allow event capture\n");
-      static bool atexit_installed = false;
-      if (!atexit_installed) {
-        atexit_installed = true;
-        std::atexit([]() { State().TKDump(stderr); });
-      }
-    }
-  }
   return s;
 }
 
@@ -269,19 +248,6 @@ bool BeginUpdateSegment3GraphOrReplay() {
     S0.seg3_graph_captured = false;
     S0.seg3_warmup_calls = 0;
   }
-  static int env_enable = -1;
-  if (env_enable < 0) {
-    const char* e = std::getenv("VMECPP_UPDATE_GRAPH");
-    // Default ON; set VMECPP_UPDATE_GRAPH=0 to disable. Validated bit-exact at
-    // N=1 and N=16 against baseline; segment 3 is cuFFT-free so the forward-
-    // graph regression (~6%) doesn't apply.
-    env_enable = (e && std::atoi(e) == 0) ? 0 : 1;
-    if (!env_enable) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] segment-3 CUDA Graph disabled "
-                           "(VMECPP_UPDATE_GRAPH=0)\n");
-    }
-  }
-  if (!env_enable) return false;
   auto& S = State();
   if (!S.stream) return false;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -310,12 +276,6 @@ bool BeginUpdateSegment3GraphOrReplay() {
 // and launch the just-captured graph. If we already replayed (Begin returned
 // true), this is a no-op.
 void EndUpdateSegment3GraphOrLaunch() {
-  static int env_enable = -1;
-  if (env_enable < 0) {
-    const char* e = std::getenv("VMECPP_UPDATE_GRAPH");
-    env_enable = (e && std::atoi(e) == 0) ? 0 : 1;  // default ON
-  }
-  if (!env_enable) return;
   auto& S = State();
   if (!S.stream) return;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -356,21 +316,7 @@ void EndUpdateSegment3GraphOrLaunch() {
 // destruction and re-capture of the segment graph. In the canonical
 // fixed-boundary benchmark jMax remains constant throughout the run,
 // so a single captured graph services every iteration.
-//
-// Enablement is governed by the VMECPP_SEG4_GRAPH environment
-// variable, which defaults to active when unset and is disabled when
-// set to zero.
 bool BeginUpdateSegment4GraphOrReplay(int jMax) {
-  static int env_enable = -1;
-  if (env_enable < 0) {
-    const char* e = std::getenv("VMECPP_SEG4_GRAPH");
-    env_enable = (e && std::atoi(e) == 0) ? 0 : 1;  // default ON
-    if (!env_enable) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] segment-4 CUDA Graph disabled "
-                           "(VMECPP_SEG4_GRAPH=0)\n");
-    }
-  }
-  if (!env_enable) return false;
   auto& S = State();
   if (!S.stream) return false;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -402,12 +348,6 @@ bool BeginUpdateSegment4GraphOrReplay(int jMax) {
 }
 
 void EndUpdateSegment4GraphOrLaunch() {
-  static int env_enable = -1;
-  if (env_enable < 0) {
-    const char* e = std::getenv("VMECPP_SEG4_GRAPH");
-    env_enable = (e && std::atoi(e) == 0) ? 0 : 1;
-  }
-  if (!env_enable) return;
   auto& S = State();
   if (!S.stream) return;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -436,24 +376,10 @@ void EndUpdateSegment4GraphOrLaunch() {
 // this window once the iter-one initialization host-to-device
 // transfers have completed.
 //
-// Enablement is governed by the VMECPP_SEG2_GRAPH environment
-// variable, which defaults to active when unset and is disabled when
-// set to zero.
-//
 // defer_capture: the caller's segment body performs a host synchronization
 // on this iteration, which is illegal inside stream capture; run the
 // wrappers uncaptured. An already-captured graph still replays.
 bool BeginUpdateSegment2GraphOrReplay(bool defer_capture) {
-  static int env_enable = -1;
-  if (env_enable < 0) {
-    const char* e = std::getenv("VMECPP_SEG2_GRAPH");
-    env_enable = (e && std::atoi(e) == 0) ? 0 : 1;
-    if (!env_enable) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] segment-2 CUDA Graph disabled "
-                           "(VMECPP_SEG2_GRAPH=0)\n");
-    }
-  }
-  if (!env_enable) return false;
   auto& S = State();
   if (!S.stream) return false;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -475,12 +401,6 @@ bool BeginUpdateSegment2GraphOrReplay(bool defer_capture) {
 }
 
 void EndUpdateSegment2GraphOrLaunch() {
-  static int env_enable = -1;
-  if (env_enable < 0) {
-    const char* e = std::getenv("VMECPP_SEG2_GRAPH");
-    env_enable = (e && std::atoi(e) == 0) ? 0 : 1;
-  }
-  if (!env_enable) return;
   auto& S = State();
   if (!S.stream) return;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -509,33 +429,6 @@ void FlushFwdGeomScalarsToHost(double* r1_e, double* r1_o, double* z1_e) {
   r1_e[0]         = S.h_geom_scalars[4];
   z1_e[0]         = S.h_geom_scalars[5];
   S.fwd_geom_pending = false;
-}
-
-void DiagCfg01DiffCuda(const double* d_buf, int per_cfg_size,
-                       const char* label) {
-  static int trace_env = -1;
-  if (trace_env < 0) {
-    const char* e = std::getenv("VMECPP_TRACE_CFG_DIFF");
-    trace_env = (e && std::atoi(e) > 0) ? 1 : 0;
-  }
-  if (!trace_env) return;
-  auto& S = State();
-  if (!S.stream || S.n_config_max < 2 || per_cfg_size <= 0) return;
-  // No mu lock here: this is called from inside wrappers that already hold
-  // S.mu (e.g. FourierToReal3DSymmFastPoloidalCuda, ComputeJacobianCuda).
-  // std::mutex is non-recursive; re-locking would deadlock.
-  // Reuse d_scalar (1 double) as the output target.
-  S.EnsureScalarBuffer();
-  k_cfg01_max_abs_diff<<<1, 256, 0, S.stream>>>(
-      per_cfg_size, d_buf, S.d_scalar);
-  cuda_check(cudaGetLastError(), "k_cfg01_max_abs_diff launch");
-  double h_max = 0.0;
-  cuda_check(cudaMemcpyAsync(&h_max, S.d_scalar, sizeof(double),
-                              cudaMemcpyDeviceToHost, S.stream),
-             "d2h diag cfg01");
-  cuda_check(cudaStreamSynchronize(S.stream), "diag cfg01 sync");
-  std::fprintf(stderr, "[diag-cfg01 %s] max|cfg0-cfg1| = %.15e\n",
-               label, h_max);
 }
 
 }  // namespace vmecpp
