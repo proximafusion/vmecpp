@@ -197,10 +197,6 @@ class Vmec {
   Vmec(Vmec&&) = delete;
   Vmec& operator=(Vmec&&) = delete;
 
-  // Tears down the IdealMhdModel instances (joining the asynchronous NESTOR
-  // workers) before this Vmec's vacuum buffers are destroyed. See vmec.cc.
-  ~Vmec();
-
   // sign of Jacobian between cylindrical and flux coordinates
   // This is called `signgs` in Fortran VMEC.
   static constexpr int kSignOfJacobian = -1;
@@ -396,21 +392,6 @@ class Vmec {
   std::vector<Eigen::PartialPivLU<Eigen::MatrixXd>> fb_lu_per_cfg_;
   std::vector<Eigen::VectorXd> fb_bvec_per_cfg_;
   std::vector<Eigen::VectorXd> fb_reduce_slots_per_cfg_;
-
-  // Asynchronous NESTOR (VMECPP_FB_ASYNC_NESTOR, single configuration): a
-  // thread-private vacuum solver with its own response matrix, right-hand
-  // side, LU decomposition, reduction slots, and field/pressure output
-  // buffers, run by the worker thread inside IdealMhdModel while the device
-  // iterates.
-  std::unique_ptr<FreeBoundaryBase> fb_async_;
-  Eigen::VectorXd fb_async_matrix_;
-  Eigen::PartialPivLU<Eigen::MatrixXd> fb_async_lu_;
-  Eigen::VectorXd fb_async_bvec_;
-  Eigen::VectorXd fb_async_reduce_slots_;
-  Eigen::VectorXd fb_async_bsqvac_;
-  Eigen::VectorXd fb_async_br_;
-  Eigen::VectorXd fb_async_bphi_;
-  Eigen::VectorXd fb_async_bz_;
 #endif
 
  private:
@@ -519,13 +500,6 @@ class Vmec {
   // file-scope statics; scoping them to the Vmec keeps this run state on the
   // object.
   int per_cfg_niter_cap_ = -1;  // VMECPP_PER_CFG_NITER_CAP
-#ifdef VMECPP_USE_CUDA
-  // True while the current iteration runs with elided host syncs
-  // (VMECPP_SYNC_ELIDE=K, non-boundary iteration); written in Evolve, read by
-  // the convergence gate and restart/store bookkeeping in SolveEquilibriumLoop.
-  bool sync_elided_iter_ = false;
-  int sync_elide_k_ = -2;  // VMECPP_SYNC_ELIDE
-#endif
 };
 
 }  // namespace vmecpp

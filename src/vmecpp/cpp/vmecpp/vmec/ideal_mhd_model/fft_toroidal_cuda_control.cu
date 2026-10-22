@@ -176,25 +176,6 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   }
   S.TKEnd(CudaToroidalState::TK_RESIDUALS);
 
-  // Deferred-sync residuals D2H (env-gated).
-  // VMECPP_RESIDUALS_DEFER=1 returns 1-iter-stale residual values to the
-  // caller. The current iter's k_residuals output is async-memcpy'd to a
-  // pinned host buffer; the next call to ResidualsCuda first waits on the
-  // previous iter's memcpy via cudaEventSynchronize (much cheaper than
-  // cudaStreamSynchronize because it doesn't drain unrelated stream work),
-  // copies that previous iter's values into the cache, returns them, then
-  // queues this iter's memcpy. Saves ~50us sync stall per iter at the
-  // cost of 1-iter-stale residual values feeding into evalFResInvar.
-  static int defer_env = -1;
-  if (defer_env < 0) {
-    const char* e = std::getenv("VMECPP_RESIDUALS_DEFER");
-    defer_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (defer_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] residuals D2H deferred sync "
-                           "ENABLED (VMECPP_RESIDUALS_DEFER=1, 1-iter-stale)\n");
-    }
-  }
-  //
   // Per-cfg cache: the 3-double transfer widens to 3*n_cfg doubles into
   // a static cache under the one synchronization this call already pays
   // (the transfer delta is ~100 ns at n_cfg = 64; the sync wait
@@ -207,55 +188,6 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                                           : g_residuals_invar_cache;
   if ((int)cache.size() != 3 * n_cfg) {
     cache.assign(3 * n_cfg, 0.0);
-  }
-  // Sync elision: the residual reduction kernels ran above (the device
-  // partials stay current for k_update_timestep and k_check_convergence);
-  // the host receives the last boundary-synced triple. The convergence
-  // gate and the restart bookkeeping only evaluate on boundary
-  // iterations, so the stale values are inert.
-  if (S.sync_elide_iter) {
-    fResR_out = cache[0];
-    fResZ_out = cache[1];
-    fResL_out = cache[2];
-    return;
-  }
-  // Only defer the INVAR path. The precd path runs after preconditioning
-  // and uses a separate cache; deferring both would clobber the single
-  // pinned buffer. Near-convergence (stale residual sum within 10x ftolv),
-  // do an immediate sync so the convergence-check sees the current value
-  // rather than the stale one; otherwise the iter declares premature
-  // convergence on a non-equilibrium state.
-  if (defer_env && !is_precd && S.h_residuals_pinned) {
-    double stale_sum = cache[0] + cache[1] + cache[2];
-    bool near_convergence = stale_sum < 10.0 * fc.ftolv;
-    if (S.residuals_d2h_pending) {
-      // Drain previous iter's pending memcpy into cache.
-      cuda_check(cudaEventSynchronize(S.residuals_d2h_event),
-                 "residuals d2h event sync");
-      std::memcpy(cache.data(), S.h_residuals_pinned,
-                  (size_t)3 * n_cfg * sizeof(double));
-      S.residuals_d2h_pending = false;
-    }
-    // Launch THIS iter's memcpy to pinned buf and record event.
-    cuda_check(cudaMemcpyAsync(S.h_residuals_pinned, S.d_residuals_partial,
-                                (size_t)3 * n_cfg * sizeof(double),
-                                cudaMemcpyDeviceToHost, st),
-               "d2h residuals (deferred)");
-    cuda_check(cudaEventRecord(S.residuals_d2h_event, st),
-               "record residuals event");
-    S.residuals_d2h_pending = true;
-    if (near_convergence) {
-      // Force-sync this iter's value so the convergence-check is fresh.
-      cuda_check(cudaEventSynchronize(S.residuals_d2h_event),
-                 "near-convergence sync");
-      std::memcpy(cache.data(), S.h_residuals_pinned,
-                  (size_t)3 * n_cfg * sizeof(double));
-      S.residuals_d2h_pending = false;
-    }
-    fResR_out = cache[0];
-    fResZ_out = cache[1];
-    fResL_out = cache[2];
-    return;
   }
   cuda_check(cudaMemcpyAsync(cache.data(), S.d_residuals_partial,
                               (size_t)3 * n_cfg * sizeof(double),
@@ -667,16 +599,8 @@ void PerformTimeStepCuda(
                    "disabled (VMECPP_BATCH_PER_CFG_TIMESTEP=0)\n");
     }
   }
-  // Under sync elision the host fac/b1 are computed from stale residuals
-  // mid-window, so the device controller is authoritative for every
-  // iteration (boundaries included, keeping the device ring continuous)
-  // at any n_config. The gate reads the run-scoped elision flag staged
-  // by Vmec::Evolve: a process-lifetime latch on the environment value
-  // would keep the device controller selected in later runs of the same
-  // process after an elided run, shifting their trajectories by the
-  // controller's arithmetic family.
   const double* d_fac_b1_for_step = nullptr;
-  if ((percfg_ts_env > 0 && S.n_config_max > 1) || g_sync_elide_run) {
+  if (percfg_ts_env > 0 && S.n_config_max > 1) {
     S.EnsureTimestepBuffers(time_step);
     S.StageFnorm1(fnorm1);
     // Reset the ring on the same iterations the host controller does
@@ -970,14 +894,5 @@ bool PtsXMatchesCuda(int ns_local, int mpol, int ntor) {
   return S.pts_x_initialized &&
          S.pts_x_size == ns_local * mpol * (ntor + 1);
 }
-
-// Marks the current iteration as sync-elided (1) or a sync boundary (0).
-// See CudaToroidalState::sync_elide_iter.
-void SetSyncElideIterCuda(int elide) {
-  auto& S = State();
-  S.sync_elide_iter = elide;
-}
-
-bool SyncElidedIterCuda() { return State().sync_elide_iter != 0; }
 
 }  // namespace vmecpp

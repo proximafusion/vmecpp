@@ -203,18 +203,6 @@ void ComputeJacobianCuda(
     g_jac_minmax_cache.assign(2 * n_cfg, 0.0);
   }
   (void)r12; (void)ru12; (void)zu12; (void)rs; (void)zs; (void)tau;
-  // Sync elision: the tau min/max reduction ran above (device state stays
-  // current); the bad-jacobian decision is evaluated against the last
-  // boundary-synced extrema. A sign flip occurring mid-window is caught
-  // at the next boundary; the restore path rewinds at most K-1
-  // iterations, which the every-K backup cadence covers.
-  if (S.sync_elide_iter) {
-    double minTau_st = g_jac_minmax_cache[0];
-    double maxTau_st = g_jac_minmax_cache[1];
-    bad_jacobian = (minTau_st * maxTau_st < 0.0) ||
-                   !std::isfinite(minTau_st * maxTau_st);
-    return;
-  }
   cuda_check(cudaMemcpyAsync(g_jac_minmax_cache.data(), S.d_jac_minmax,
                               (size_t)2 * n_cfg * sizeof(double),
                               cudaMemcpyDeviceToHost, S.stream),
@@ -1464,14 +1452,6 @@ void UpdateVolumeCuda(
   const int n_cfg_v = S.n_config_max;
   if (static_cast<int>(g_plasma_volume_cache.size()) != n_cfg_v) {
     g_plasma_volume_cache.assign(n_cfg_v, 0.0);
-  }
-  // Sync elision: reduction launched (device slot current); host reads
-  // the last boundary-synced volume. plasmaVolume feeds the host-side
-  // fsq normalization and printout only; the device convergence kernel
-  // consumes the device-resident slot.
-  if (S.sync_elide_iter) {
-    plasmaVolume_out = g_plasma_volume_cache[0];
-    return;
   }
   cuda_check(cudaMemcpyAsync(g_plasma_volume_cache.data(), S.d_scalar,
                               sizeof(double) * n_cfg_v,

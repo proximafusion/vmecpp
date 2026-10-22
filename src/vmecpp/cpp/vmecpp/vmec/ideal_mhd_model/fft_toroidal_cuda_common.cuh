@@ -198,7 +198,6 @@ long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
 // (defined in fft_toroidal_cuda_state.cu).
 extern bool g_free_boundary_run;
 extern bool g_vacuum_edge_run;
-extern bool g_sync_elide_run;
 
 // =========================================================================
 // Process-static CUDA state
@@ -252,14 +251,6 @@ struct CudaToroidalState {
   long long tk_calls[kNumTimedKernels] = {};
   bool tk_initialized = false;
   int tk_env = -1;  // -1 unread, 0 disabled, 1 enabled
-
-  // K-window sync elision (VMECPP_SYNC_ELIDE=K). When nonzero for the
-  // current iteration, the per-iteration scalar D2H + stream-sync sites
-  // (jacobian tau extrema, residual triples, plasma volume) launch their
-  // reduction kernels as usual but skip the transfer and sync; host
-  // callers receive the last boundary-synced values from the static
-  // caches. Set per iteration by Vmec::Evolve via SetSyncElideIterCuda.
-  int sync_elide_iter = 0;
 
   void TKInit() {
     if (tk_initialized) return;
@@ -323,29 +314,6 @@ struct CudaToroidalState {
     std::fprintf(f, "  ---\n  cumulative=%.3fs (per-call sync overhead included)\n",
                  total / 1000.0);
   }
-
-  // Forward-FFT CUDA graph state.
-  //
-  // The forward graph captures the chain consisting of k_fill_spectra,
-  // the toroidal Fourier transform (either cufftExecZ2D or the
-  // hand-coded radix-8x3 inverse DFT), k_scatter_main_and_con, the
-  // geometric scalar extraction, and the device-to-host transfers
-  // that follow. Capture occurs once per shape and replay is used
-  // thereafter; the captured graph removes the per-iteration kernel
-  // launch overhead of approximately five separate launches.
-  cudaGraph_t fwd_graph = nullptr;
-  cudaGraphExec_t fwd_graph_exec = nullptr;
-  bool fwd_graph_captured = false;
-  // Whole-iteration graph (VMECPP_ITER_GRAPH=1 under sync elision): one
-  // cudaGraphLaunch replays the complete elided iteration body. Captured
-  // after kIterGraphWarmups eligible iterations; invalidated on Reshape,
-  // on restarts, and when the segment-4 graph re-captures on a jMax
-  // change.
-  cudaGraph_t iter_graph = nullptr;
-  cudaGraphExec_t iter_graph_exec = nullptr;
-  bool iter_graph_captured = false;
-  int iter_graph_warmups = 0;
-  static constexpr int kIterGraphWarmups = 2;
 
   // Segment-3 graph state.
   //
@@ -1289,19 +1257,12 @@ struct CudaToroidalState {
     batch_inputs_one_spec_doubles = 0;
     cuda_free_if((void*&)d_fnorm_scalars);
     cuda_free_if((void*&)d_active_per_cfg);
-    // Convergence-flag, deferred-residual, and restart-mask buffers are
-    // sized by n_config_max and allocated behind null guards outside
-    // Reshape; free them here so a run with a different configuration
-    // count reallocates them at the new size instead of overrunning the
-    // old allocations.
+    // Convergence-flag and restart-mask buffers are sized by n_config_max
+    // and allocated behind null guards outside Reshape; free them here so a
+    // run with a different configuration count reallocates them at the new
+    // size instead of overrunning the old allocations.
     cuda_free_if((void*&)d_conv_flag);
     pinned_free_if((void*&)h_conv_flag_pinned);
-    pinned_free_if((void*&)h_residuals_pinned);
-    if (residuals_d2h_event) {
-      cudaEventDestroy(residuals_d2h_event);
-      residuals_d2h_event = nullptr;
-    }
-    residuals_d2h_pending = false;
     cuda_free_if((void*&)d_restart_mask);
     ns_h_cached = -1;
     nZnT_cached = -1;
@@ -1318,13 +1279,6 @@ struct CudaToroidalState {
     // graphs reference, so the executable graphs and the underlying
     // graph descriptors are destroyed here and rebuilt lazily on the
     // next capture attempt.
-    if (fwd_graph_exec) { cudaGraphExecDestroy(fwd_graph_exec); fwd_graph_exec = nullptr; }
-    if (fwd_graph) { cudaGraphDestroy(fwd_graph); fwd_graph = nullptr; }
-    fwd_graph_captured = false;
-    if (iter_graph_exec) { cudaGraphExecDestroy(iter_graph_exec); iter_graph_exec = nullptr; }
-    if (iter_graph) { cudaGraphDestroy(iter_graph); iter_graph = nullptr; }
-    iter_graph_captured = false;
-    iter_graph_warmups = 0;
     if (seg3_graph_exec) { cudaGraphExecDestroy(seg3_graph_exec); seg3_graph_exec = nullptr; }
     if (seg3_graph) { cudaGraphDestroy(seg3_graph); seg3_graph = nullptr; }
     seg3_graph_captured = false;
@@ -1744,17 +1698,6 @@ struct CudaToroidalState {
                              sizeof(double) * n_config_max),
                  "alloc d_residuals_partials_K");
     }
-    if (!h_residuals_pinned) {
-      // Pinned host buffer for deferred-sync residuals D2H. Allocated
-      // once per Reshape; freed in the dtor. Size matches d_residuals_partial.
-      cuda_check(cudaMallocHost(&h_residuals_pinned,
-                                 3 * sizeof(double) * n_config_max),
-                 "alloc h_residuals_pinned");
-      cuda_check(cudaEventCreateWithFlags(&residuals_d2h_event,
-                                           cudaEventDisableTiming),
-                 "create residuals_d2h_event");
-      residuals_d2h_pending = false;
-    }
     if (!d_conv_flag) {
       // Device + pinned-host buffers for k_check_convergence flag. The
       // device kernel writes a per-cfg byte (1 = converged, 0 = not) and
@@ -1768,9 +1711,6 @@ struct CudaToroidalState {
                  "alloc h_conv_flag_pinned");
     }
   }
-  double* h_residuals_pinned = nullptr;
-  cudaEvent_t residuals_d2h_event = nullptr;
-  bool residuals_d2h_pending = false;
   std::uint8_t* d_conv_flag = nullptr;
   std::uint8_t* h_conv_flag_pinned = nullptr;
   // Per-run lamscale, cached by ComputeForceNormsCuda for the device-side
@@ -2019,15 +1959,12 @@ struct CudaToroidalState {
     drop_graph(seg2_graph_exec, seg2_graph, seg2_graph_captured);
     drop_graph(seg3_graph_exec, seg3_graph, seg3_graph_captured);
     drop_graph(seg4_graph_exec, seg4_graph, seg4_graph_captured);
-    drop_graph(fwd_graph_exec, fwd_graph, fwd_graph_captured);
-    drop_graph(iter_graph_exec, iter_graph, iter_graph_captured);
     seg2_in_capture = false;
     seg3_in_capture = false;
     seg4_in_capture = false;
     seg2_warmup_calls = 0;
     seg3_warmup_calls = 0;
     seg4_warmup_calls = 0;
-    iter_graph_warmups = 0;
   }
 
   void EnsureConstraintMultiplierBuffers(int ns_force_local, int ns_con_local,
@@ -3185,11 +3122,9 @@ __global__ __launch_bounds__(32, 16) void k_dealias_inv_tpl(
 }
 
 // Run-scoped and process-scoped globals (defined in fft_toroidal_cuda_state.cu).
-extern bool g_iter_graph_capturing;
 extern bool g_pts_init_only;
 extern int g_batch_mem_shape[4];
 extern int g_batch_outputs_shape[4];
-extern int g_iter_graph_env;
 extern int g_residuals_k_run;
 extern std::vector<double> g_batch_dec_x_mem;
 extern std::vector<double> g_batch_inputs_mem;

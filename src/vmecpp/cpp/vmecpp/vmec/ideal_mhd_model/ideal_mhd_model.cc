@@ -1056,30 +1056,29 @@ absl::StatusOr<bool> IdealMhdModel::update(
       // As on the CPU path, the status holds the latest vacuum solve; in a
       // batch, the first configuration whose solve fails.
       m_h_.vacuum_status = absl::OkStatus();
-
-      // Asynchronous NESTOR (VMECPP_FB_ASYNC_NESTOR): once the vacuum
-      // contribution is fully active in a single-configuration run, the host
-      // solve runs on a worker thread and the device applies the previous
-      // iteration's edge force. The geometry flush and handover stay on the
-      // main thread; only the solve and the rBSq assembly are one iteration
-      // stale, which converges (the K=2 sync-elision case established that a
-      // one-iteration-stale vacuum response converges, K >= 2 partitioning
-      // did not). The soft-start window and the batched path use the inline
-      // solve below.
-      static const int kAsyncNestorEnv = [] {
-        const char* e = std::getenv("VMECPP_FB_ASYNC_NESTOR");
-        return (e != nullptr && std::atoi(e) > 0) ? 1 : 0;
-      }();
-      const bool async_steady =
-          kAsyncNestorEnv && nestor_async_worker_ != nullptr &&
-          n_vac_cfg == 1 &&
-          m_vacuum_pressure_state_ >= VacuumPressureState::kActive &&
-          nestor_async_primed_;
-
-      if (async_steady) {
-        vmecpp::FlushVacuumHostDataCuda(0, r_, s_, r1_e, r1_o, z1_e,
+      for (int vac_cfg = 0; vac_cfg < n_vac_cfg; ++vac_cfg) {
+        // Under the CUDA build the vacuum solve is not partitioned
+        // (vac_num_threads_ == 1; see Vmec::SetupVacuumSolvers), so
+        // (*m_fb_vac_)[0] is the full-tangential-grid solver.
+        FreeBoundaryBase* fb_cfg =
+            fb_per_cfg_.empty() ? (*m_fb_vac_)[0].get() : fb_per_cfg_[vac_cfg];
+        vmecpp::FlushVacuumHostDataCuda(vac_cfg, r_, s_, r1_e, r1_o, z1_e,
                                         totalPressure, m_p_.presH, m_p_.bucoH,
                                         m_p_.bvcoH);
+        if (n_vac_cfg > 1) {
+          // Refresh the host triplet from this configuration's device
+          // state so HandOverBoundaryGeometry reads its LCFS spectrum.
+          vmecpp::FlushDecomposedXToHostCuda(
+              vac_cfg, r_.nsMaxF1 - r_.nsMinF1, s_.mpol, s_.ntor, s_.lthreed,
+              m_decomposed_x.rmncc.data(), m_decomposed_x.rmnss.data(),
+              m_decomposed_x.zmnsc.data(), m_decomposed_x.zmncs.data(),
+              m_decomposed_x.lmnsc.data(), m_decomposed_x.lmncs.data());
+          m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
+          m_physical_x.m1Constraint(1.0, signOfJacobian);
+          m_physical_x.extrapolateTowardsAxis();
+        }
+        // The NESTOR call below consumes the toroidal-current scalars;
+        // their inputs arrived with the synchronized flush above.
         if (r_.nsMinH == 0) {
           m_h_.rBtor0 = 1.5 * m_p_.bvcoH[r_.nsMinH - r_.nsMinH] -
                         0.5 * m_p_.bvcoH[r_.nsMinH + 1 - r_.nsMinH];
@@ -1091,217 +1090,135 @@ absl::StatusOr<bool> IdealMhdModel::update(
                        0.5 * m_p_.bucoH[r_.nsMaxH - 2 - r_.nsMinH]) *
                       signOfJacobian * 2.0 * M_PI;
         }
+
         if (r_.nsMaxF1 == m_fc_.ns) {
-          HandOverBoundaryGeometry(m_h_, m_physical_x, s_,
-                                   (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
+          // can only get this from thread that has the LCFS !!!
+          HandOverBoundaryGeometry(
+              m_h_, m_physical_x, s_,
+              /*offset=*/(r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
         }
+
         if (r_.nsMinF == 0) {
+          // this thread has the magnetic axis
+          // Note: axis geometry is zero-th flux surface, l = 0, k fastest
+          // index
           HandOverMagneticAxis(m_h_, r1_e, z1_e, s_);
         }
 
-        // Apply the previous iteration's solved edge force.
-        const NestorAsyncWorker::Outputs& prev =
-            nestor_async_worker_->CollectPrevious();
-        if (!prev.status.ok() && m_h_.vacuum_status.ok()) {
-          m_h_.vacuum_status = prev.status;
+        const double netToroidalCurrent = m_h_.cTor / MU_0;
+        const absl::StatusOr<bool> rc = fb_cfg->update(
+            m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
+            m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
+            signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
+            &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
+            iter2 >= iterations_before_checkpointing);
+        // A boundary may leave the vacuum grid transiently while the
+        // equilibrium is still moving; the first error is kept and
+        // Vmec::run turns a still-outside boundary into an error once the
+        // run has converged.
+        if (!rc.ok()) {
+          if (m_h_.vacuum_status.ok()) {
+            m_h_.vacuum_status = rc.status();
+          }
+          if (verbose) {
+            std::cout << "WARNING: " << rc.status().message() << "\n";
+          }
+        } else if (*rc) {
+          return true;
         }
-        if (m_h_.rBtor * prev.bSubVVac < 0.0) {
+
+        if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
           return absl::InternalError(
               "IdealMHDModel::update: rbtor and bsubvvac must have the same "
               "sign - maybe flip the sign of phiedge or the sign of the coil "
               "currents");
-        } else if (fabs((m_h_.cTor - prev.bSubUVac) / m_h_.rBtor) > 0.01) {
+        } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
           return absl::InternalError(
               "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
               "ENCLOSE EXT. COIL");
         }
+
         if (r_.nsMaxF1 == m_fc_.ns) {
+          // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS
+          // PRECONDITIONER!
+          double edgePressure =
+              m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
+          if (edgePressure != 0.0) {
+            edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
+                           m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
+          }
+
           for (int kl = 0; kl < s_.nZnT; ++kl) {
-            rBSq[kl] = prev.rBSq[kl];
-            delBSq[kl] = 0.0;
+            // extrapolate total pressure (from inside) to LCFS
+            insideTotalPressure[kl] =
+                1.5 *
+                    totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl] -
+                0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
+
+            // net pressure from outside on LCFS
+            // NOTE: here is the interface between the fast-toroidal setup
+            // in Nestor and fast-poloidal setup in VMEC
+            const int k = kl / s_.nThetaEff;
+            const int l = kl % s_.nThetaEff;
+            const int idx_lk = l * s_.nZeta + k;
+            double outsideEdgePressure =
+                m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+
+            // term to enter MHD forces
+            int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
+            rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
+                       m_fc_.deltaS;
+
+            // for printout: global mismatch between inside and outside
+            // pressure
+            delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
           }
-          vmecpp::StageRbsqCuda(0, rBSq);
-          // Hand this iteration's geometry to the worker for the next solve.
-          SnapshotAndSubmitAsyncNestor();
+          vmecpp::StageRbsqCuda(vac_cfg, rBSq);
         }
-        m_need_restart = false;
+      }  // vac_cfg
+
+      if (n_vac_cfg > 1) {
+        // Restore configuration zero's host triplet for the downstream
+        // host consumers.
+        vmecpp::FlushDecomposedXToHostCuda(
+            0, r_.nsMaxF1 - r_.nsMinF1, s_.mpol, s_.ntor, s_.lthreed,
+            m_decomposed_x.rmncc.data(), m_decomposed_x.rmnss.data(),
+            m_decomposed_x.zmnsc.data(), m_decomposed_x.zmncs.data(),
+            m_decomposed_x.lmnsc.data(), m_decomposed_x.lmncs.data());
+        m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
+        m_physical_x.m1Constraint(1.0, signOfJacobian);
+        m_physical_x.extrapolateTowardsAxis();
+      }
+
+      {
+        // In educational_VMEC, this is part of Nestor.
+        if (m_vacuum_pressure_state_ == VacuumPressureState::kInitializing) {
+          m_vacuum_pressure_state_ = VacuumPressureState::kInitialized;
+
+          if (verbose) {
+            // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
+            // bSubUVac and above for cTor
+            const double fac = 1.0e-6 / MU_0;  // in MA
+            std::cout << "\n";
+            std::cout << absl::StrFormat(
+                "2*pi * a * -BPOL(vac) = %10.2e MA       R * BTOR(vacuum) = "
+                "%10.2e\n",
+                m_h_.bSubUVac * fac, m_h_.bSubVVac);
+            std::cout << absl::StrFormat(
+                "     TOROIDAL CURRENT = %10.2e MA       R * BTOR(plasma) = "
+                "%10.2e\n",
+                m_h_.cTor * fac, m_h_.rBtor);
+          }
+        }  // fullUpdate printout
+      }
+
+      // RESET FIRST TIME FOR SOFT START
+      if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
+        m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        m_need_restart = true;
       } else {
-        for (int vac_cfg = 0; vac_cfg < n_vac_cfg; ++vac_cfg) {
-          // Under the CUDA build the vacuum solve is not partitioned
-          // (vac_num_threads_ == 1; see Vmec::SetupVacuumSolvers), so
-          // (*m_fb_vac_)[0] is the full-tangential-grid solver.
-          FreeBoundaryBase* fb_cfg = fb_per_cfg_.empty() ? (*m_fb_vac_)[0].get()
-                                                         : fb_per_cfg_[vac_cfg];
-          vmecpp::FlushVacuumHostDataCuda(vac_cfg, r_, s_, r1_e, r1_o, z1_e,
-                                          totalPressure, m_p_.presH, m_p_.bucoH,
-                                          m_p_.bvcoH);
-          if (n_vac_cfg > 1) {
-            // Refresh the host triplet from this configuration's device
-            // state so HandOverBoundaryGeometry reads its LCFS spectrum.
-            vmecpp::FlushDecomposedXToHostCuda(
-                vac_cfg, r_.nsMaxF1 - r_.nsMinF1, s_.mpol, s_.ntor, s_.lthreed,
-                m_decomposed_x.rmncc.data(), m_decomposed_x.rmnss.data(),
-                m_decomposed_x.zmnsc.data(), m_decomposed_x.zmncs.data(),
-                m_decomposed_x.lmnsc.data(), m_decomposed_x.lmncs.data());
-            m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
-            m_physical_x.m1Constraint(1.0, signOfJacobian);
-            m_physical_x.extrapolateTowardsAxis();
-          }
-          // The NESTOR call below consumes the toroidal-current scalars;
-          // their inputs arrived with the synchronized flush above.
-          if (r_.nsMinH == 0) {
-            m_h_.rBtor0 = 1.5 * m_p_.bvcoH[r_.nsMinH - r_.nsMinH] -
-                          0.5 * m_p_.bvcoH[r_.nsMinH + 1 - r_.nsMinH];
-          }
-          if (r_.nsMaxH == m_fc_.ns - 1) {
-            m_h_.rBtor = 1.5 * m_p_.bvcoH[r_.nsMaxH - 1 - r_.nsMinH] -
-                         0.5 * m_p_.bvcoH[r_.nsMaxH - 2 - r_.nsMinH];
-            m_h_.cTor = (1.5 * m_p_.bucoH[r_.nsMaxH - 1 - r_.nsMinH] -
-                         0.5 * m_p_.bucoH[r_.nsMaxH - 2 - r_.nsMinH]) *
-                        signOfJacobian * 2.0 * M_PI;
-          }
-
-          if (r_.nsMaxF1 == m_fc_.ns) {
-            // can only get this from thread that has the LCFS !!!
-            HandOverBoundaryGeometry(
-                m_h_, m_physical_x, s_,
-                /*offset=*/(r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
-          }
-
-          if (r_.nsMinF == 0) {
-            // this thread has the magnetic axis
-            // Note: axis geometry is zero-th flux surface, l = 0, k fastest
-            // index
-            HandOverMagneticAxis(m_h_, r1_e, z1_e, s_);
-          }
-
-          const double netToroidalCurrent = m_h_.cTor / MU_0;
-          const absl::StatusOr<bool> rc = fb_cfg->update(
-              m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
-              m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-              signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-              &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-              iter2 >= iterations_before_checkpointing);
-          // A boundary may leave the vacuum grid transiently while the
-          // equilibrium is still moving; the first error is kept and
-          // Vmec::run turns a still-outside boundary into an error once the
-          // run has converged.
-          if (!rc.ok()) {
-            if (m_h_.vacuum_status.ok()) {
-              m_h_.vacuum_status = rc.status();
-            }
-            if (verbose) {
-              std::cout << "WARNING: " << rc.status().message() << "\n";
-            }
-          } else if (*rc) {
-            return true;
-          }
-
-          if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
-            return absl::InternalError(
-                "IdealMHDModel::update: rbtor and bsubvvac must have the same "
-                "sign - maybe flip the sign of phiedge or the sign of the coil "
-                "currents");
-          } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
-            return absl::InternalError(
-                "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
-                "ENCLOSE EXT. COIL");
-          }
-
-          if (r_.nsMaxF1 == m_fc_.ns) {
-            // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS
-            // PRECONDITIONER!
-            double edgePressure =
-                m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-            if (edgePressure != 0.0) {
-              edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
-                             m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
-            }
-
-            for (int kl = 0; kl < s_.nZnT; ++kl) {
-              // extrapolate total pressure (from inside) to LCFS
-              insideTotalPressure[kl] =
-                  1.5 * totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT +
-                                      kl] -
-                  0.5 *
-                      totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
-
-              // net pressure from outside on LCFS
-              // NOTE: here is the interface between the fast-toroidal setup
-              // in Nestor and fast-poloidal setup in VMEC
-              const int k = kl / s_.nThetaEff;
-              const int l = kl % s_.nThetaEff;
-              const int idx_lk = l * s_.nZeta + k;
-              double outsideEdgePressure =
-                  m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
-
-              // term to enter MHD forces
-              int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
-              rBSq[kl] = outsideEdgePressure * (r1_e[idx_kl] + r1_o[idx_kl]) /
-                         m_fc_.deltaS;
-
-              // for printout: global mismatch between inside and outside
-              // pressure
-              delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
-            }
-            vmecpp::StageRbsqCuda(vac_cfg, rBSq);
-          }
-        }  // vac_cfg
-
-        if (n_vac_cfg > 1) {
-          // Restore configuration zero's host triplet for the downstream
-          // host consumers.
-          vmecpp::FlushDecomposedXToHostCuda(
-              0, r_.nsMaxF1 - r_.nsMinF1, s_.mpol, s_.ntor, s_.lthreed,
-              m_decomposed_x.rmncc.data(), m_decomposed_x.rmnss.data(),
-              m_decomposed_x.zmnsc.data(), m_decomposed_x.zmncs.data(),
-              m_decomposed_x.lmnsc.data(), m_decomposed_x.lmncs.data());
-          m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
-          m_physical_x.m1Constraint(1.0, signOfJacobian);
-          m_physical_x.extrapolateTowardsAxis();
-        }
-
-        {
-          // In educational_VMEC, this is part of Nestor.
-          if (m_vacuum_pressure_state_ == VacuumPressureState::kInitializing) {
-            m_vacuum_pressure_state_ = VacuumPressureState::kInitialized;
-
-            if (verbose) {
-              // bSubUVac and cTor contain 2*pi already; see Nestor.cc for
-              // bSubUVac and above for cTor
-              const double fac = 1.0e-6 / MU_0;  // in MA
-              std::cout << "\n";
-              std::cout << absl::StrFormat(
-                  "2*pi * a * -BPOL(vac) = %10.2e MA       R * BTOR(vacuum) = "
-                  "%10.2e\n",
-                  m_h_.bSubUVac * fac, m_h_.bSubVVac);
-              std::cout << absl::StrFormat(
-                  "     TOROIDAL CURRENT = %10.2e MA       R * BTOR(plasma) = "
-                  "%10.2e\n",
-                  m_h_.cTor * fac, m_h_.rBtor);
-            }
-          }  // fullUpdate printout
-        }
-
-        // RESET FIRST TIME FOR SOFT START
-        if (m_vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
-          m_fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-          m_need_restart = true;
-        } else {
-          m_need_restart = false;
-        }
-
-        // Prime the asynchronous worker at the first fully-active iteration:
-        // this iteration was solved inline above, so snapshot it and submit so
-        // the next iteration has a result to collect.
-        if (kAsyncNestorEnv && nestor_async_worker_ != nullptr &&
-            n_vac_cfg == 1 &&
-            m_vacuum_pressure_state_ >= VacuumPressureState::kActive &&
-            !nestor_async_primed_ && r_.nsMaxF1 == m_fc_.ns) {
-          SnapshotAndSubmitAsyncNestor();
-          nestor_async_primed_ = true;
-        }
-      }  // async_steady ? ... : inline vacuum solve
+        m_need_restart = false;
+      }
 #else
       for (int jF = r_.nsMinF; jF < r_.nsMaxF; ++jF) {
         for (int kl = 0; kl < s_.nZnT; ++kl) {
@@ -1732,12 +1649,6 @@ absl::StatusOr<bool> IdealMhdModel::update(
   Eigen::Vector3d localFResPrecd;
   localFResPrecd.setZero();
 #ifdef VMECPP_USE_CUDA
-  // The preconditioned residual call defers its synchronization and
-  // returns the prior iteration's value. The result feeds only the tau
-  // and time-step evolution; the convergence gate in
-  // SolveEquilibriumLoop consumes the invariant residual call above,
-  // and a bad Jacobian is caught at the next ComputeJacobianCuda
-  // synchronization.
   ResidualsCuda(r_, s_, m_fc_, /*includeEdgeRZForces=*/true, localFResPrecd[0],
                 localFResPrecd[1], localFResPrecd[2],
                 /*is_precd=*/true);
@@ -5218,56 +5129,5 @@ void IdealMhdModel::FlushForOutputCuda() {
   }
 #endif
 }
-
-#ifdef VMECPP_USE_CUDA
-void IdealMhdModel::SetAsyncFreeBoundary(FreeBoundaryBase* fb_async,
-                                         std::span<const double> bsqvac) {
-  nestor_async_worker_ = std::make_unique<NestorAsyncWorker>(
-      fb_async, bsqvac, s_.nZnT, s_.nZeta, s_.nThetaEff);
-  nestor_async_primed_ = false;
-}
-
-void IdealMhdModel::SnapshotAndSubmitAsyncNestor() {
-  NestorAsyncWorker::Inputs& in = nestor_async_worker_->input_buffer();
-  const auto cp = [](std::vector<double>& dst, const Eigen::VectorXd& src) {
-    dst.assign(src.data(), src.data() + src.size());
-  };
-  cp(in.rCC, m_h_.rCC_LCFS);
-  cp(in.rSS, m_h_.rSS_LCFS);
-  cp(in.rSC, m_h_.rSC_LCFS);
-  cp(in.rCS, m_h_.rCS_LCFS);
-  cp(in.zSC, m_h_.zSC_LCFS);
-  cp(in.zCS, m_h_.zCS_LCFS);
-  cp(in.zCC, m_h_.zCC_LCFS);
-  cp(in.zSS, m_h_.zSS_LCFS);
-  cp(in.rAxis, m_h_.rAxis);
-  cp(in.zAxis, m_h_.zAxis);
-  in.signOfJacobian = signOfJacobian;
-  in.netToroidalCurrent = m_h_.cTor / MU_0;
-  // The worker's Nestor is a separate instance: it builds and factorizes its
-  // response matrix only on a full update (ivacskip == 0) but solves (dgetrs,
-  // reading those pivots) every step. The main Nestor reuses a factorization
-  // across the nvacskip cadence because its own prior full update produced it;
-  // the worker has no such history, so following the main cadence would run a
-  // skip-solve against an unfactorized matrix and zero pivots (dlaswp then
-  // indexes one element before the right-hand side). The worker always runs a
-  // full update, which keeps its factorization current with the geometry it was
-  // handed and leaves only the intended one-iteration staleness.
-  in.ivacskip = 0;
-  in.deltaS = m_fc_.deltaS;
-  double edgePressure =
-      m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-  if (edgePressure != 0.0) {
-    edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
-                   m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
-  }
-  in.edgePressure = edgePressure;
-  for (int kl = 0; kl < s_.nZnT; ++kl) {
-    const int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
-    in.r1_lcfs[kl] = r1_e[idx_kl] + r1_o[idx_kl];
-  }
-  nestor_async_worker_->Submit();
-}
-#endif
 
 }  // namespace vmecpp

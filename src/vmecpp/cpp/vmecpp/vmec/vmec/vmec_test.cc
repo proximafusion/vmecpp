@@ -5,7 +5,6 @@
 #include "vmecpp/vmec/vmec/vmec.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -1402,30 +1401,4 @@ TEST(TestVmec, CudaRadialResolutionRejectedBeyondDeviceLimit) {
                 ::testing::HasSubstr("radial resolutions up to"));
   }
 }  // CudaRadialResolutionRejectedBeyondDeviceLimit
-
-// The asynchronous NESTOR worker (VMECPP_FB_ASYNC_NESTOR) solves the vacuum
-// field on a background thread that writes into buffers owned by Vmec. A solve
-// is in flight when the run ends, so Vmec teardown must join the worker before
-// those buffers are freed (Vmec::~Vmec); otherwise the worker's final write
-// lands in freed memory. Running the free-boundary case with the worker enabled
-// exercises that teardown path. return_outputs_even_if_not_converged keeps the
-// check on teardown rather than the worker's slower convergence.
-TEST(TestVmec, CudaAsyncNestorTeardown) {
-  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
-  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
-  ASSERT_TRUE(indata_json.ok());
-
-  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
-  ASSERT_TRUE(indata.ok());
-
-  // Enough iterations to engage the worker; we test teardown, not convergence.
-  indata->niter_array[0] = 200;
-  indata->return_outputs_even_if_not_converged = true;
-
-  setenv("VMECPP_FB_ASYNC_NESTOR", "1", /*overwrite=*/1);
-  const auto output = vmecpp::run(*indata);
-  unsetenv("VMECPP_FB_ASYNC_NESTOR");
-
-  ASSERT_TRUE(output.ok());
-}  // CudaAsyncNestorTeardown
 #endif  // VMECPP_USE_CUDA

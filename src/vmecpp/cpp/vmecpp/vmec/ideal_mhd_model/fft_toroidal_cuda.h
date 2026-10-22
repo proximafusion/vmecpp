@@ -256,9 +256,8 @@ void AssembleTotalForcesCuda(
 // Records whether the vacuum edge force is active this iteration; the
 // segment-3 graph recaptures when the value changes.
 void SetVacuumEdgeCuda(int active);
-// Marks the current Vmec::run as free-boundary; the segment and
-// whole-iteration CUDA graphs are disabled for the run. Reset by
-// ResetCudaStateForNewVmecRun.
+// Marks the current Vmec::run as free-boundary, whose vacuum block reads
+// bucoH on the host every iteration. Reset by ResetCudaStateForNewVmecRun.
 void SetFreeBoundaryRunCuda(int enabled);
 // Scales the device rCon0/zCon0 volume profiles in place.
 void ScaleRZCon0Cuda(double factor);
@@ -369,19 +368,8 @@ void DeAliasConstraintForceCuda(const RadialPartitioning& r,
 // CPU loop, ensuring that the residual sum-of-squares is taken over the
 // identical set of radial surfaces.
 //
-// The is_precd argument selects between two synchronization regimes. The
-// invariant residual call (is_precd == false) synchronizes the device
-// stream immediately after the reduction so that the host-visible output
-// reflects the current iteration's geometry. This is required because the
-// convergence test that drives multigrid stage termination consumes the
-// invariant residual immediately. The preconditioned residual call
-// (is_precd == true) defers the synchronization by using a cudaEvent and
-// returns the prior iteration's reduced value. The deferral is acceptable
-// because the preconditioned residual drives only the time-step controller
-// and tau acceleration, both of which are tolerant of single-iteration
-// staleness; the immediate convergence test for sign-flipped Jacobians
-// is the responsibility of the subsequent ComputeJacobianCuda call and
-// is not affected by the deferral.
+// Both calls synchronize the stream and return this iteration's values; the
+// invariant call also launches the device convergence check.
 void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                    const FlowControl& fc, bool includeEdgeRZForces,
                    double& fResR_out, double& fResZ_out, double& fResL_out,
@@ -439,23 +427,6 @@ bool CudaVramBudgetCuda(long long n_cfg, long long ns, long long mpol,
 // Returns -1 if the convergence-flag infrastructure is unallocated or the
 // cfg index is out of range; callers fall back to the host comparison.
 int GetConvergenceFlag(int cfg);
-
-// Whole-iteration CUDA graph (VMECPP_ITER_GRAPH=1, requires active sync
-// elision). One cudaGraphLaunch replays the complete elided iteration
-// body: forward transforms, jacobian/metric, the segment-graph kernel
-// sequences in raw form, force transforms, residuals, the convergence
-// flag, and the time step. Capture brackets one normal elided iteration
-// in Vmec::Evolve after two warmup iterations; the segment-graph
-// Begin/End functions run in passthrough while the capture is open.
-// Invalidated on Reshape, on restarts (the baked time_step changes), and
-// on a segment-4 jMax re-capture.
-bool IterGraphEnabledCuda();
-bool IterGraphCapturingCuda();
-bool IterGraphReplayCuda();
-bool IterGraphBeginCaptureCuda();
-void IterGraphEndCaptureCuda();
-void AbortIterGraphCaptureCuda();
-void InvalidateIterationGraphCuda();
 
 // Hands the distinct-mode per-cfg staging blocks to the CUDA layer in
 // memory: the spectral inputs consumed by the first forward transform and
@@ -818,26 +789,6 @@ bool PtsXInitializedCuda();
 // multigrid stage this distinguishes the post-upscale authoritative
 // device state from a stale previous-stage buffer.
 bool PtsXMatchesCuda(int ns_local, int mpol, int ntor);
-
-// Marks the current iteration as sync-elided (1) or a sync boundary (0).
-// On elided iterations the per-iteration scalar D2H + stream-sync sites
-// (jacobian tau extrema, residual triples, plasma volume) launch their
-// reduction kernels but skip the transfer and sync; host callers receive
-// the last boundary-synced values. Driven by VMECPP_SYNC_ELIDE=K
-// orchestration in Vmec::Evolve.
-void SetSyncElideIterCuda(int elide);
-// Reads the flag staged by SetSyncElideIterCuda: true on iterations
-// whose host syncs are elided, false on boundary iterations and when
-// elision is off. The free-boundary path consults it to skip the host
-// vacuum block on elided iterations.
-bool SyncElidedIterCuda();
-// Run-level counterpart, set once per run by Vmec::Evolve when the
-// VMECPP_SYNC_ELIDE value resolves: true when the run carries an active
-// elision window, independent of the current iteration. The
-// free-boundary vacuum block consults it to force full NESTOR updates
-// at the window boundaries. Reset by ResetCudaStateForNewVmecRun.
-void SetSyncElideRunCuda(int active);
-bool SyncElideRunActiveCuda();
 
 // Diagnostic probe that reports the maximum absolute difference between
 // configuration zero and configuration one of a device-resident buffer.

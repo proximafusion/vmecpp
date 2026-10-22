@@ -494,50 +494,9 @@ void FourierToReal3DSymmFastPoloidalCuda(
                    ns_local * S.n_config_max);
   dim3 fill_tpb(FILL_TPB, 1, 1);
 
-  // Forward-FFT CUDA graph enablement governed by the
-  // VMECPP_FWD_GRAPH environment variable. The default is disabled
-  // because the captured forward-FFT chain contains a cuFFT call,
-  // and the cuFFT replay path on the current cuda-toolkit release
-  // delivers no measurable improvement over the direct stream
-  // execution at the canonical problem shape. The control is
-  // retained as an opt-in for future toolkit releases whose
-  // graph-mode cuFFT implementation may yield a positive delta.
-  static int fwd_graph_env = -1;
-  if (fwd_graph_env < 0) {
-    const char* e = std::getenv("VMECPP_FWD_GRAPH");
-    fwd_graph_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (fwd_graph_env) {
-      std::fprintf(stderr, "[fft_toroidal_cuda] forward-FFT CUDA Graph "
-                           "ENABLED (VMECPP_FWD_GRAPH=1; default is off, "
-                           "+2.2pct regression at N=64)\n");
-    }
-  }
-  const bool use_fwd_graph = (fwd_graph_env != 0) && !g_iter_graph_capturing;
   const int nZnT_local_pre = nZeta * nThetaEff;
   const int outer_idx_pre = (ns_local - 1) * nZnT_local_pre + 0;
   const int inner_idx_pre = (ns_local - 1) * nZnT_local_pre + (nThetaReduced - 1);
-  bool replay_only = use_fwd_graph && S.fwd_graph_captured;
-  bool capture_then_launch = use_fwd_graph && !S.fwd_graph_captured;
-
-  // Forward-FFT CUDA graph dispatch. The graph state declared above
-  // distinguishes three cases of the current invocation. When the
-  // forward graph is enabled and a previous capture is already
-  // available, the captured executable is launched and the remainder
-  // of the chain is bypassed. When the forward graph is enabled but
-  // no capture is available, stream capture is begun and the chain
-  // body that follows is recorded; the capture is then ended,
-  // instantiated, and launched at the bottom of the block. When the
-  // forward graph is disabled, the chain body executes directly on
-  // the stream with no capture in effect.
-  if (replay_only) {
-    cuda_check(cudaGraphLaunch(S.fwd_graph_exec, st), "graph launch fwd");
-    goto fwd_chain_done;
-  }
-
-  if (capture_then_launch) {
-    cuda_check(cudaStreamBeginCapture(st, cudaStreamCaptureModeGlobal),
-               "begin capture fwd graph");
-  }
 
   k_fill_spectra<<<fill_blocks, fill_tpb, 0, st>>>(
       S.n_config_max, ns_local, mpol, ntor, nhalf, nfp, r.nsMinF1,
@@ -668,18 +627,6 @@ void FourierToReal3DSymmFastPoloidalCuda(
                              cudaMemcpyDeviceToHost, st),
              "d2h geom_scalars");
 
-  if (capture_then_launch) {
-    cuda_check(cudaStreamEndCapture(st, &S.fwd_graph), "end capture fwd graph");
-    cuda_check(cudaGraphInstantiate(&S.fwd_graph_exec, S.fwd_graph, nullptr,
-                                     nullptr, 0),
-               "graph instantiate fwd");
-    S.fwd_graph_captured = true;
-    // Launch the graph to run the recorded work; during capture mode the
-    // kernels were recorded but did not execute.
-    cuda_check(cudaGraphLaunch(S.fwd_graph_exec, st), "graph launch fwd (first)");
-  }
-
-fwd_chain_done:
   // The cudaStreamSynchronize that would otherwise close the
   // forward chain is omitted here; the asynchronous device-to-host
   // transfer of S.h_geom_scalars remains queued on the stream and

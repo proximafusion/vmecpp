@@ -269,15 +269,6 @@ absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
   return v;
 }
 
-// The asynchronous NESTOR workers (owned by the IdealMhdModel instances in m_)
-// solve the vacuum field on a background thread that writes into fb_async_ and
-// its response buffers, all of which are members of this Vmec. Destroy the
-// models first, so each worker is joined and its final in-flight solve has
-// completed, while fb_async_ is still alive. The implicit member teardown would
-// otherwise free fb_async_ before m_ (m_ is declared earlier), leaving a worker
-// writing into freed memory.
-Vmec::~Vmec() { m_.clear(); }
-
 // initialize based on input file contents
 namespace {
 // Fourier cutoffs of the vacuum potential: the plasma's unless raised.
@@ -417,7 +408,6 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   // run's configuration count rather than the previous run's. The other
   // run-scoped gates re-read with the same per-run scope.
   vmecpp::ResetCudaStateForNewVmecRun();
-  sync_elide_k_ = -2;
   per_cfg_niter_cap_ = -1;
   vmecpp::SetFreeBoundaryRunCuda(indata_.lfreeb ? 1 : 0);
   if (indata_.lfreeb && vmecpp::GetNConfigMaxCuda() > 1 &&
@@ -905,41 +895,6 @@ void Vmec::SetupVacuumSolvers() {
                             fb_reduce_slots_per_cfg_[c].size()));
     }
   }
-
-  // Asynchronous NESTOR (single configuration): a thread-private Nestor
-  // with its own response matrix, right-hand side, LU decomposition,
-  // reduction slots, and field/pressure output buffers, so the worker
-  // thread can run it concurrently with the device iteration without racing
-  // the shared HandoverStorage. Persists across multigrid stages like
-  // fb_vac_. The overlap is opt-in: IdealMhdModel::update uses the worker
-  // only when VMECPP_FB_ASYNC_NESTOR is set to 1, so the instance is built
-  // only then.
-  const char* async_env = std::getenv("VMECPP_FB_ASYNC_NESTOR");
-  const bool async_enabled = (async_env != nullptr && std::atoi(async_env) > 0);
-  if (n_cfg_fb == 1 && async_enabled &&
-      indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
-    const int nf = vacuum_s_.ntor;
-    const int mf = vacuum_s_.mpol + 1;
-    const int mnpd = (2 * nf + 1) * (mf + 1);
-    fb_async_matrix_.setZero(mnpd * mnpd);
-    fb_async_bvec_.setZero(mnpd);
-    fb_async_reduce_slots_.setZero(mnpd * mnpd);
-    fb_async_bsqvac_.setZero(h_.vacuum_magnetic_pressure.size());
-    fb_async_br_.setZero(h_.vacuum_b_r.size());
-    fb_async_bphi_.setZero(h_.vacuum_b_phi.size());
-    fb_async_bz_.setZero(h_.vacuum_b_z.size());
-    fb_async_ = std::make_unique<Nestor>(
-        &vacuum_s_, tp_vac_[0].get(), &magnetic_field_,
-        std::span<double>(fb_async_matrix_.data(), fb_async_matrix_.size()),
-        std::span<double>(fb_async_bvec_.data(), fb_async_bvec_.size()),
-        std::span<double>(fb_async_bsqvac_.data(), fb_async_bsqvac_.size()),
-        &fb_async_lu_,
-        std::span<double>(fb_async_br_.data(), fb_async_br_.size()),
-        std::span<double>(fb_async_bphi_.data(), fb_async_bphi_.size()),
-        std::span<double>(fb_async_bz_.data(), fb_async_bz_.size()),
-        std::span<double>(fb_async_reduce_slots_.data(),
-                          fb_async_reduce_slots_.size()));
-  }
 #endif  // VMECPP_USE_CUDA
 }  // SetupVacuumSolvers
 
@@ -1131,11 +1086,6 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
           fb_ptrs.push_back(fb.get());
         }
         m_[thread_id]->SetPerCfgFreeBoundary(std::move(fb_ptrs));
-      }
-      if (fb_async_) {
-        m_[thread_id]->SetAsyncFreeBoundary(
-            fb_async_.get(), std::span<const double>(fb_async_bsqvac_.data(),
-                                                     fb_async_bsqvac_.size()));
       }
 #endif
     }  // thread_id
@@ -1720,12 +1670,6 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #endif  // _OPENMP
         fc_.restart_reason = RestartReason::BAD_PROGRESS;
       }
-#ifdef VMECPP_USE_CUDA
-    } else if (sync_elided_iter_) {
-      // Sync-elided iteration: fsq/res0 are stale; the store/restart
-      // bookkeeping runs on boundary iterations only, which also sets the
-      // device-state backup cadence to once per K-window.
-#endif
     } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
       // --> was able to reduce force consistenly over at least 10 iterations
@@ -1927,13 +1871,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 #pragma omp barrier
 #endif  // _OPENMP
 
-#ifdef VMECPP_USE_CUDA
-  // A restart changes the time step baked into the captured
-  // whole-iteration graph; drop it and re-capture on the next eligible
-  // window.
-  vmecpp::InvalidateIterationGraphCuda();
-#endif
-
   // VMECPP_TRACE_RESTART=1: log every store/restore event with the
   // controller inputs that drove the decision.
   static int trace_restart_env = -1;
@@ -2097,80 +2034,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     fc_.restart_reason = RestartReason::NO_RESTART;
   }
 
-#ifdef VMECPP_USE_CUDA
-  // K-window sync elision (VMECPP_SYNC_ELIDE=K). On elided iterations the
-  // per-iteration scalar D2H + stream-sync sites in the CUDA wrappers
-  // skip their transfers (host receives last boundary-synced values), the
-  // device time-step controller is authoritative, and the convergence
-  // gate plus the restart/store bookkeeping are skipped until the next
-  // boundary. Boundaries: iterations 1-2 of a segment (HUGE_INITIAL_FORCES
-  // and ring-reset semantics), every K-th iteration (K=25 aligns with the
-  // preconditioner-update cadence), and any iteration entered with a
-  // pending restart disposition.
-  if (sync_elide_k_ == -2) {
-    const char* e = std::getenv("VMECPP_SYNC_ELIDE");
-    sync_elide_k_ = (e ? std::atoi(e) : 0);
-    if (sync_elide_k_ < 0) sync_elide_k_ = 0;
-    vmecpp::SetSyncElideRunCuda(sync_elide_k_ > 0 ? 1 : 0);
-    static int last_printed = 0;
-    if (sync_elide_k_ > 0 && sync_elide_k_ != last_printed) {
-      last_printed = sync_elide_k_;
-      std::fprintf(
-          stderr,
-          "[vmec.cc] sync elision ENABLED (VMECPP_SYNC_ELIDE=%d): host "
-          "syncs, convergence gate, and restart bookkeeping run every %d "
-          "iterations; device controller authoritative\n",
-          sync_elide_k_, sync_elide_k_);
-    }
-  }
-  const int sync_elide_k = sync_elide_k_;
-  if (sync_elide_k > 0) {
-    // Free-boundary runs elide only with the vacuum contribution fully
-    // active: every iteration up to the kActive transition runs live, so
-    // the activation check reads fresh residuals and fires on time (a
-    // boundary moving without its vacuum constraint for a window of
-    // K - 1 iterations can leave the mgrid extent), and the soft-start
-    // restart replays the live sequence. Once active, the elision
-    // covers the scalar sync sites while the vacuum block keeps its
-    // per-iteration cadence: the NESTOR response must track the
-    // boundary every iteration, and a window-frozen edge force leaves
-    // the iteration orbiting its stale vacuum target instead of
-    // converging, with or without device-side geometry tracking of the
-    // staged edge pressure.
-    const bool boundary =
-        (iter2_ <= 2) || ((iter2_ - iter1_) <= 2) ||
-        ((iter2_ % sync_elide_k) == 1) ||
-        (fc_.restart_reason != RestartReason::NO_RESTART) ||
-        (fc_.lfreeb && vacuum_pressure_state_ != VacuumPressureState::kActive);
-    sync_elided_iter_ = !boundary;
-  } else {
-    sync_elided_iter_ = false;
-  }
-  vmecpp::SetSyncElideIterCuda(sync_elided_iter_ ? 1 : 0);
-
-  // Whole-iteration graph (VMECPP_ITER_GRAPH=1): a captured sync-elided
-  // iteration replays as one cudaGraphLaunch and the host dispatch below
-  // is skipped. The residual-trace logging still runs so the output
-  // trace lengths match the non-graph path. Capture brackets one normal
-  // elided iteration; warmups and boundary iterations run the normal
-  // path.
-  bool iter_graph_capture_open = false;
-  if (sync_elide_k > 0 && sync_elided_iter_ && vmecpp::IterGraphEnabledCuda()) {
-    if (vmecpp::IterGraphReplayCuda()) {
-      if (r_[thread_id]->nsMaxF1 == fc_.ns) {
-        fc_.force_residual_r.push_back(fc_.fsqr);
-        fc_.force_residual_z.push_back(fc_.fsqz);
-        fc_.force_residual_lambda.push_back(fc_.fsql);
-        fc_.delbsq.push_back(0.0);
-        fc_.restart_reasons.push_back(fc_.restart_reason);
-        fc_.mhd_energy.push_back(h_.mhdEnergy);
-      }
-      return false;
-    }
-    iter_graph_capture_open = vmecpp::IterGraphBeginCaptureCuda();
-  }
-#endif
-
   // `funct3d` - COMPUTE MHD FORCES
   absl::StatusOr<bool> reached_checkpoint = UpdateForwardModel(
       checkpoint, iterations_before_checkpointing, thread_id);
@@ -2236,16 +2099,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     bool all_residuals_finite = std::isfinite(fc_.fsqr) &&
                                 std::isfinite(fc_.fsqz) &&
                                 std::isfinite(fc_.fsql);
-#ifdef VMECPP_USE_CUDA
-    if (sync_elided_iter_) {
-      // Sync-elided iteration: the host residual fields are stale; the
-      // convergence gate, AUTH flag reads, and status update run on the
-      // next boundary iteration with fresh values.
-    } else
-#endif
-        if ((iter2_ == 1 &&
-             fc_.restart_reason == RestartReason::BAD_JACOBIAN) ||
-            !all_residuals_finite) {
+    if ((iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) ||
+        !all_residuals_finite) {
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
     } else {
@@ -2472,14 +2327,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }  // #pragma omp single (there is an implicit omp barrier here)
 
   if (status_ != VmecStatus::NORMAL_TERMINATION || !m_liter_flag) {
-#ifdef VMECPP_USE_CUDA
-    // Unreachable on elided iterations (the gate above is skipped), so an
-    // open capture here means a future edit changed that invariant;
-    // discard the capture rather than leak it into the next iteration.
-    if (iter_graph_capture_open) {
-      vmecpp::AbortIterGraphCaptureCuda();
-    }
-#endif
     // erroneous iteration or shall not iterate further
     return false;
   }
@@ -2556,12 +2403,6 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
   PerformTimeStep(fac, b1, time_step, thread_id);
-
-#ifdef VMECPP_USE_CUDA
-  if (iter_graph_capture_open) {
-    vmecpp::IterGraphEndCaptureCuda();
-  }
-#endif
 
   return false;
 }

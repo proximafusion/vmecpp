@@ -97,13 +97,12 @@ CudaToroidalState& State() {
     s.tk_env = (e && std::atoi(e) > 0) ? 1 : 0;
     if (s.tk_env) {
       s.TKInit();
-      // Auto-disable CUDA Graphs (seg-3, seg-4, fwd) when timing is on;
+      // Auto-disable CUDA Graphs (seg-2, seg-3, seg-4) when timing is on;
       // cudaEventRecord inside stream capture is illegal. _setenv_ ensures
       // the wrappers see graphs-off.
       setenv("VMECPP_UPDATE_GRAPH", "0", 1);  // disables seg-3
       setenv("VMECPP_SEG4_GRAPH",   "0", 1);  // disables seg-4
       setenv("VMECPP_SEG2_GRAPH",   "0", 1);  // disables seg-2
-      setenv("VMECPP_FWD_GRAPH",    "0", 1);  // disables fwd
       std::fprintf(stderr, "[fft_toroidal_cuda] per-kernel cudaEvent timing "
                            "ENABLED (VMECPP_KERNEL_TIMING=1); graphs auto-"
                            "disabled to allow event capture\n");
@@ -117,14 +116,8 @@ CudaToroidalState& State() {
   return s;
 }
 
-// Resets the thread-local CudaToroidalState at the start of each
-// Vmec::run so persistent device buffers carry nothing between runs
-// in one process. Safe to invoke before the stream exists (no-op).
-// True while the current Vmec::run solves a free-boundary input. The
-// segment and whole-iteration CUDA graphs are disabled for the run: the
-// vacuum block synchronizes the stream on every iteration and the edge
-// force kernel toggles with the vacuum pressure state, both of which
-// invalidate a captured kernel sequence.
+// True while the current Vmec::run solves a free-boundary input, whose vacuum
+// block reads bucoH on the host every iteration.
 bool g_free_boundary_run = false;
 
 // Vacuum-edge force state for the current iteration. The segment-3
@@ -133,21 +126,6 @@ bool g_free_boundary_run = false;
 bool g_vacuum_edge_run = false;
 
 void SetVacuumEdgeCuda(int active) { g_vacuum_edge_run = (active != 0); }
-
-// Run-level sync-elision flag (VMECPP_SYNC_ELIDE=K with K > 0), set by
-// Vmec::Evolve when the run's K resolves. Distinct from the
-// per-iteration sync_elide_iter flag: the free-boundary vacuum block
-// consults this one to force full NESTOR updates at the window
-// boundaries, where the partial-update cadence has no meaning.
-bool g_sync_elide_run = false;
-
-void SetSyncElideRunCuda(int active) { g_sync_elide_run = (active != 0); }
-
-bool SyncElideRunActiveCuda() { return g_sync_elide_run; }
-
-// Whole-iteration graph gate (VMECPP_ITER_GRAPH), run-scoped like the
-// other gates: re-read at the start of every Vmec::run.
-int g_iter_graph_env = -1;
 
 // Residuals K-partition count, run-scoped: the auto default derives from
 // the run's configuration count, and the partition count fixes the
@@ -161,6 +139,9 @@ void SetFreeBoundaryRunCuda(int enabled) {
   g_free_boundary_run = (enabled != 0);
 }
 
+// Resets the thread-local CudaToroidalState at the start of each Vmec::run so
+// persistent device buffers carry nothing between runs in one process. Safe
+// to invoke before the stream exists.
 void ResetCudaStateForNewVmecRun() {
   // Re-read the configuration count so a run can carry a different
   // VMECPP_N_CONFIG_MAX than its predecessor; the next Reshape resizes
@@ -169,120 +150,13 @@ void ResetCudaStateForNewVmecRun() {
     const char* env = std::getenv("VMECPP_N_CONFIG_MAX");
     g_n_config_run = (env != nullptr) ? std::max(1, std::atoi(env)) : 1;
   }
-  // The multigrid-upscale, iteration-graph, residuals-partition, and
-  // int8-limb gates re-read with the same per-run scope.
+  // The multigrid-upscale and residuals-partition gates re-read with the same
+  // per-run scope.
   g_batch_upscale_env = -1;
   g_batch_upscale_kernel_env = -1;
-  g_iter_graph_env = -1;
   g_residuals_k_run = -1;
   g_free_boundary_run = false;
-  g_sync_elide_run = false;
   State().ResetForNewVmecRun();
-}
-
-// Segment-3 CUDA graph capture and replay coordinator.
-//
-// On successful replay of a previously captured graph the function
-// returns true and the caller is expected to skip the wrapper
-// invocations that the graph already executes; on a first capture
-// pass or with graph capture disabled the function returns false and
-// the caller proceeds to run the wrappers normally.
-// Returns false if either:
-//   (a) graphs are disabled (no env var): caller runs wrappers normally
-//   (b) first call after Reshape: caller runs wrappers; their CUDA work
-//       will be captured into the graph, then launched by EndUpdateSegment3.
-// Whole-iteration graph. While its capture is open, the segment-graph
-// Begin/End functions below run in passthrough: no replay (cudaGraphLaunch
-// is illegal inside stream capture) and no nested capture; their raw
-// kernel sequences feed the outer capture instead. Segment state machines
-// do not advance during whole-iteration capture or replay.
-bool g_iter_graph_capturing = false;
-
-bool IterGraphEnabledCuda() {
-  if (g_free_boundary_run) return false;
-  if (g_iter_graph_env < 0) {
-    const char* e = std::getenv("VMECPP_ITER_GRAPH");
-    g_iter_graph_env = (e && std::atoi(e) > 0) ? 1 : 0;
-    if (g_iter_graph_env) {
-      std::fprintf(stderr,
-                   "[fft_toroidal_cuda] whole-iteration CUDA Graph ENABLED "
-                   "(VMECPP_ITER_GRAPH=1; replays sync-elided iterations)\n");
-    }
-  }
-  return g_iter_graph_env != 0;
-}
-
-bool IterGraphCapturingCuda() { return g_iter_graph_capturing; }
-
-bool IterGraphReplayCuda() {
-  auto& S = State();
-  if (!S.stream) return false;
-  std::lock_guard<std::mutex> lk(S.mu);
-  if (!S.iter_graph_captured) return false;
-  cuda_check(cudaGraphLaunch(S.iter_graph_exec, S.stream),
-             "iter graph launch (replay)");
-  return true;
-}
-
-bool IterGraphBeginCaptureCuda() {
-  auto& S = State();
-  if (!S.stream) return false;
-  std::lock_guard<std::mutex> lk(S.mu);
-  if (S.iter_graph_captured || g_iter_graph_capturing) return false;
-  if (S.iter_graph_warmups < CudaToroidalState::kIterGraphWarmups) {
-    S.iter_graph_warmups += 1;
-    return false;
-  }
-  cuda_check(cudaStreamBeginCapture(S.stream, cudaStreamCaptureModeGlobal),
-             "begin capture iter graph");
-  g_iter_graph_capturing = true;
-  return true;
-}
-
-void IterGraphEndCaptureCuda() {
-  auto& S = State();
-  if (!g_iter_graph_capturing) return;
-  std::lock_guard<std::mutex> lk(S.mu);
-  cuda_check(cudaStreamEndCapture(S.stream, &S.iter_graph),
-             "end capture iter graph");
-  cuda_check(cudaGraphInstantiate(&S.iter_graph_exec, S.iter_graph,
-                                   nullptr, nullptr, 0),
-             "instantiate iter graph");
-  g_iter_graph_capturing = false;
-  S.iter_graph_captured = true;
-  // The captured iteration was enqueued, not executed; the first launch
-  // runs it.
-  cuda_check(cudaGraphLaunch(S.iter_graph_exec, S.stream),
-             "iter graph launch (first)");
-}
-
-// Ends an open capture without instantiating and discards the graph. For
-// early exits between the capture brackets; the iteration that was being
-// captured re-runs uncaptured after the caller's normal control flow.
-void AbortIterGraphCaptureCuda() {
-  auto& S = State();
-  if (!g_iter_graph_capturing) return;
-  std::lock_guard<std::mutex> lk(S.mu);
-  cudaGraph_t scratch = nullptr;
-  cudaStreamEndCapture(S.stream, &scratch);
-  if (scratch) cudaGraphDestroy(scratch);
-  g_iter_graph_capturing = false;
-  S.iter_graph_warmups = 0;
-}
-
-void InvalidateIterationGraphCuda() {
-  auto& S = State();
-  std::lock_guard<std::mutex> lk(S.mu);
-  if (S.iter_graph_exec) {
-    cudaGraphExecDestroy(S.iter_graph_exec);
-    S.iter_graph_exec = nullptr;
-  }
-  if (S.iter_graph) {
-    cudaGraphDestroy(S.iter_graph);
-    S.iter_graph = nullptr;
-  }
-  S.iter_graph_captured = false;
-  S.iter_graph_warmups = 0;
 }
 
 // In-memory batch staging blocks (typed batch path). pybind
@@ -374,6 +248,9 @@ void ClearBatchStagingCuda() {
   g_batch_mem_shape[3] = 0;
 }
 
+// Segment-3 CUDA graph: launches the captured graph and returns true, or
+// returns false so the caller runs the wrappers, which are captured once the
+// warmup calls are done; EndUpdateSegment3GraphOrLaunch closes the capture.
 bool BeginUpdateSegment3GraphOrReplay() {
   auto& S0 = State();
   if (S0.seg3_graph_captured &&
@@ -405,7 +282,6 @@ bool BeginUpdateSegment3GraphOrReplay() {
     }
   }
   if (!env_enable) return false;
-  if (g_iter_graph_capturing) return false;
   auto& S = State();
   if (!S.stream) return false;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -440,7 +316,6 @@ void EndUpdateSegment3GraphOrLaunch() {
     env_enable = (e && std::atoi(e) == 0) ? 0 : 1;  // default ON
   }
   if (!env_enable) return;
-  if (g_iter_graph_capturing) return;
   auto& S = State();
   if (!S.stream) return;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -496,7 +371,6 @@ bool BeginUpdateSegment4GraphOrReplay(int jMax) {
     }
   }
   if (!env_enable) return false;
-  if (g_iter_graph_capturing) return false;
   auto& S = State();
   if (!S.stream) return false;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -509,18 +383,6 @@ bool BeginUpdateSegment4GraphOrReplay(int jMax) {
     S.seg4_graph = nullptr;
     S.seg4_graph_captured = false;
     S.seg4_warmup_calls = 0;
-    // The whole-iteration graph embeds the seg4 kernel sequence; a jMax
-    // change invalidates it for the same reason.
-    if (S.iter_graph_exec) {
-      cudaGraphExecDestroy(S.iter_graph_exec);
-      S.iter_graph_exec = nullptr;
-    }
-    if (S.iter_graph) {
-      cudaGraphDestroy(S.iter_graph);
-      S.iter_graph = nullptr;
-    }
-    S.iter_graph_captured = false;
-    S.iter_graph_warmups = 0;
   }
   S.seg4_last_jMax = jMax;
   if (S.seg4_graph_captured) {
@@ -546,7 +408,6 @@ void EndUpdateSegment4GraphOrLaunch() {
     env_enable = (e && std::atoi(e) == 0) ? 0 : 1;
   }
   if (!env_enable) return;
-  if (g_iter_graph_capturing) return;
   auto& S = State();
   if (!S.stream) return;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -593,7 +454,6 @@ bool BeginUpdateSegment2GraphOrReplay(bool defer_capture) {
     }
   }
   if (!env_enable) return false;
-  if (g_iter_graph_capturing) return false;
   auto& S = State();
   if (!S.stream) return false;
   std::lock_guard<std::mutex> lk(S.mu);
@@ -621,7 +481,6 @@ void EndUpdateSegment2GraphOrLaunch() {
     env_enable = (e && std::atoi(e) == 0) ? 0 : 1;
   }
   if (!env_enable) return;
-  if (g_iter_graph_capturing) return;
   auto& S = State();
   if (!S.stream) return;
   std::lock_guard<std::mutex> lk(S.mu);
