@@ -9,6 +9,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "H5Cpp.h"
@@ -358,6 +359,9 @@ VmecINDATA::VmecINDATA() {
     rbs.emplace().setZero(mpol, 2 * ntor + 1);
     zbc.emplace().setZero(mpol, 2 * ntor + 1);
   }
+
+  // magnetic axis at s = 0, no inner boundary
+  inner_boundary_s = 0.0;
 }  // VmecINDATA()
 
 void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
@@ -372,6 +376,19 @@ void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
     if (!zaxis_c.has_value()) zaxis_c.emplace().setZero(ntor + 1);
     if (!rbs.has_value()) rbs.emplace().setZero(mpol, 2 * ntor + 1);
     if (!zbc.has_value()) zbc.emplace().setZero(mpol, 2 * ntor + 1);
+  }
+  // The same for the inner boundary arrays when inner_boundary_s is set.
+  if (inner_boundary_s > 0.0) {
+    if (!rbc_inner.has_value()) rbc_inner.emplace().setZero(mpol, 2 * ntor + 1);
+    if (!zbs_inner.has_value()) zbs_inner.emplace().setZero(mpol, 2 * ntor + 1);
+    if (lasym) {
+      if (!rbs_inner.has_value()) {
+        rbs_inner.emplace().setZero(mpol, 2 * ntor + 1);
+      }
+      if (!zbc_inner.has_value()) {
+        zbc_inner.emplace().setZero(mpol, 2 * ntor + 1);
+      }
+    }
   }
 
   const bool both_same_as_before = (new_mpol == mpol && new_ntor == ntor);
@@ -422,6 +439,13 @@ void VmecINDATA::SetMpolNtor(int new_mpol, int new_ntor) {
   if (lasym) {
     rbs = resized_2d_coeff(rbs.value());
     zbc = resized_2d_coeff(zbc.value());
+  }
+
+  for (std::optional<RowMatrixXd>* inner :
+       {&rbc_inner, &zbs_inner, &rbs_inner, &zbc_inner}) {
+    if (inner->has_value()) {
+      *inner = resized_2d_coeff(inner->value());
+    }
   }
 
   mpol = new_mpol;
@@ -510,6 +534,21 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   if (lasym) {
     WriteH5Dataset(*rbs, "/indata/rbs", file);
     WriteH5Dataset(*zbc, "/indata/zbc", file);
+  }
+
+  // inner boundary, its coefficient arrays only when set
+  WriteH5Dataset(inner_boundary_s, "/indata/inner_boundary_s", file);
+  if (rbc_inner.has_value()) {
+    WriteH5Dataset(*rbc_inner, "/indata/rbc_inner", file);
+  }
+  if (zbs_inner.has_value()) {
+    WriteH5Dataset(*zbs_inner, "/indata/zbs_inner", file);
+  }
+  if (rbs_inner.has_value()) {
+    WriteH5Dataset(*rbs_inner, "/indata/rbs_inner", file);
+  }
+  if (zbc_inner.has_value()) {
+    WriteH5Dataset(*zbc_inner, "/indata/zbc_inner", file);
   }
 
   return absl::OkStatus();
@@ -716,6 +755,36 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
       return absl::InvalidArgumentError(
           absl::StrCat("expected zbc to have ", num_cols, " columns, but had ",
                        m_indata.zbc->cols()));
+    }
+  }
+
+  // Inner boundary; files that predate it load the defaults of the
+  // constructor, a magnetic axis and no inner boundary arrays.
+  if (H5Lexists(from_file.getId(), "/indata/inner_boundary_s", 0) == 1) {
+    ReadH5Dataset(m_indata.inner_boundary_s, "/indata/inner_boundary_s",
+                  from_file);
+  }
+  const auto read_inner = [&](std::optional<RowMatrixXd>& m_inner,
+                              const std::string& name) -> absl::Status {
+    const std::string dataset = "/indata/" + name;
+    if (H5Lexists(from_file.getId(), dataset.c_str(), 0) != 1) {
+      return absl::OkStatus();
+    }
+    ReadH5Dataset(m_inner.emplace(), dataset, from_file);
+    if (m_inner->rows() != m_indata.mpol || m_inner->cols() != num_cols) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "expected %s to have shape (%d, %d), but had (%d, %d)", name,
+          m_indata.mpol, num_cols, m_inner->rows(), m_inner->cols()));
+    }
+    return absl::OkStatus();
+  };
+  for (const auto& [inner, name] :
+       {std::pair{&m_indata.rbc_inner, "rbc_inner"},
+        std::pair{&m_indata.zbs_inner, "zbs_inner"},
+        std::pair{&m_indata.rbs_inner, "rbs_inner"},
+        std::pair{&m_indata.zbc_inner, "zbc_inner"}}) {
+    if (absl::Status status = read_inner(*inner, name); !status.ok()) {
+      return status;
     }
   }
 
@@ -1432,6 +1501,65 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     }
   }
 
+  // -----------------------------------------------
+
+  auto maybe_inner_boundary_s = JsonReadDouble(j, "inner_boundary_s");
+  if (!maybe_inner_boundary_s.ok()) {
+    return maybe_inner_boundary_s.status();
+  }
+  if (maybe_inner_boundary_s->has_value()) {
+    vmec_indata.inner_boundary_s = maybe_inner_boundary_s->value();
+  }
+
+  // An inner boundary array given in the JSON is read like rbc, and a null one,
+  // which VmecInput writes for an unset array, is absent; with lasym, an absent
+  // rbs_inner or zbc_inner is a zero one, as for rbs and zbc.
+  const auto read_inner = [&vmec_indata, &j](
+                              const std::string& key,
+                              std::optional<RowMatrixXd>& m_inner,
+                              bool zero_if_absent) -> absl::Status {
+    absl::StatusOr<std::optional<std::vector<BoundaryCoefficient>>>
+        maybe_entries = std::optional<std::vector<BoundaryCoefficient>>();
+    if (!j.contains(key) || !j.at(key).is_null()) {
+      maybe_entries = BoundaryCoefficient::FromJson(j, key);
+    }
+    if (!maybe_entries.ok()) {
+      return maybe_entries.status();
+    }
+    if (!maybe_entries->has_value() && !zero_if_absent) {
+      return absl::OkStatus();
+    }
+    m_inner.emplace().setZero(vmec_indata.mpol, 2 * vmec_indata.ntor + 1);
+    if (!maybe_entries->has_value()) {
+      return absl::OkStatus();
+    }
+    for (const BoundaryCoefficient& entry : maybe_entries->value()) {
+      if (entry.m > vmec_indata.mpol - 1 ||
+          std::abs(entry.n) > vmec_indata.ntor) {
+        LOG(INFO) << absl::StrFormat(
+            "Ignoring %s entry with m = %d, n = %d, outside of mpol = %d, "
+            "ntor = %d",
+            key, entry.m, entry.n, vmec_indata.mpol, vmec_indata.ntor);
+        continue;
+      }
+      (*m_inner)(entry.m, vmec_indata.ntor + entry.n) = entry.value;
+    }
+    return absl::OkStatus();
+  };
+  const bool zero_asymmetric_inner =
+      vmec_indata.lasym && vmec_indata.inner_boundary_s > 0.0;
+  for (const auto& [key, inner, zero_if_absent] :
+       {std::tuple{"rbc_inner", &vmec_indata.rbc_inner, false},
+        std::tuple{"zbs_inner", &vmec_indata.zbs_inner, false},
+        std::tuple{"rbs_inner", &vmec_indata.rbs_inner, zero_asymmetric_inner},
+        std::tuple{"zbc_inner", &vmec_indata.zbc_inner,
+                   zero_asymmetric_inner}}) {
+    if (absl::Status status = read_inner(key, *inner, zero_if_absent);
+        !status.ok()) {
+      return status;
+    }
+  }
+
   static constexpr bool kEnableInfoMessages = false;
   absl::Status consistency_check_status =
       IsConsistent(vmec_indata, kEnableInfoMessages);
@@ -1572,6 +1700,27 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
         // we also have non-stellarator-symmetric components
         push_nonzero("rbs", (*rbs)(m, ntor + n));
         push_nonzero("zbc", (*zbc)(m, ntor + n));
+      }
+    }
+  }
+
+  // Inner Boundary Geometry, null where unset as in the JSON of VmecInput
+  output["inner_boundary_s"] = inner_boundary_s;
+  for (const auto& [key, inner] :
+       {std::pair{"rbc_inner", &rbc_inner}, std::pair{"zbs_inner", &zbs_inner},
+        std::pair{"rbs_inner", &rbs_inner},
+        std::pair{"zbc_inner", &zbc_inner}}) {
+    if (!inner->has_value()) {
+      output[key] = nullptr;
+      continue;
+    }
+    output[key] = std::vector<nlohmann::json>();
+    for (int m = 0; m < mpol; ++m) {
+      for (int n = -ntor; n <= ntor; ++n) {
+        const double value = (**inner)(m, ntor + n);
+        if (value != 0.0) {
+          output[key].push_back({{"m", m}, {"n", n}, {"value", value}});
+        }
       }
     }
   }
@@ -2107,6 +2256,71 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
       LOG(INFO) << absl::StrFormat(
           "ignoring irrelevant rbs entry for m=0, n=0: %g\n",
           (*vmec_indata.rbs)(0, vmec_indata.ntor));
+    }
+  }
+
+  // inner boundary
+  if (!(vmec_indata.inner_boundary_s >= 0.0 &&
+        vmec_indata.inner_boundary_s < 1.0)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'inner_boundary_s' has to be in [0, 1), but is %g",
+        vmec_indata.inner_boundary_s));
+  }
+  const bool has_inner_boundary = vmec_indata.inner_boundary_s > 0.0;
+  if (has_inner_boundary && vmec_indata.lfreeb) {
+    return absl::InvalidArgumentError(
+        "an inner boundary ('inner_boundary_s' > 0) requires a fixed boundary "
+        "('lfreeb' false)");
+  }
+  const bool has_asymmetric_inner_boundary =
+      has_inner_boundary && vmec_indata.lasym;
+  for (const auto& [name, inner, required, condition] :
+       {std::tuple{"rbc_inner", &vmec_indata.rbc_inner, has_inner_boundary, ""},
+        std::tuple{"zbs_inner", &vmec_indata.zbs_inner, has_inner_boundary, ""},
+        std::tuple{"rbs_inner", &vmec_indata.rbs_inner,
+                   has_asymmetric_inner_boundary, " and 'lasym' is true"},
+        std::tuple{"zbc_inner", &vmec_indata.zbc_inner,
+                   has_asymmetric_inner_boundary, " and 'lasym' is true"}}) {
+    if (inner->has_value() != required) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("input variable '%s' has to be set if and only if "
+                          "'inner_boundary_s' > 0%s",
+                          name, condition));
+    }
+    if (inner->has_value() && ((*inner)->rows() != vmec_indata.mpol ||
+                               (*inner)->cols() != 2 * vmec_indata.ntor + 1)) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variable '%s' has wrong shape: should be (%i, %i), but it is "
+          "(%i, %i).",
+          name, vmec_indata.mpol, 2 * vmec_indata.ntor + 1, (*inner)->rows(),
+          (*inner)->cols()));
+    }
+  }
+  if (has_inner_boundary) {
+    // The signed area of the m = 1 ellipse gives the poloidal direction of a
+    // surface (Boundaries::checkSignOfJacobian); the inner boundary has to run
+    // in the direction of the boundary.
+    const auto handedness =
+        [&vmec_indata](const RowMatrixXd& r_cos, const RowMatrixXd& z_sin,
+                       const std::optional<RowMatrixXd>& r_sin,
+                       const std::optional<RowMatrixXd>& z_cos) {
+          const double r_test = r_cos.row(1).sum();
+          const double z_test = z_sin.row(1).sum();
+          double asymmetric = 0.0;
+          if (vmec_indata.lasym) {
+            asymmetric = r_sin->row(1).sum() * z_cos->row(1).sum();
+          }
+          return r_test * z_test - asymmetric;
+        };
+    const double outer = handedness(vmec_indata.rbc, vmec_indata.zbs,
+                                    vmec_indata.rbs, vmec_indata.zbc);
+    const double inner =
+        handedness(*vmec_indata.rbc_inner, *vmec_indata.zbs_inner,
+                   vmec_indata.rbs_inner, vmec_indata.zbc_inner);
+    if (outer * inner < 0.0) {
+      return absl::InvalidArgumentError(
+          "the inner boundary runs in the opposite poloidal direction to the "
+          "boundary");
     }
   }
 

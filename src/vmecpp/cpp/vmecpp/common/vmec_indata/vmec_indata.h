@@ -316,6 +316,32 @@ class VmecINDATA {
   // non-stellarator-symmetric
   std::optional<RowMatrixXd> zbc;
 
+  // ---------------------------------
+  // inner boundary of a plasma without a magnetic axis
+
+  // radial coordinate s of the inner boundary: 0 places the magnetic axis at
+  // s = 0; a value in (0, 1) makes the plasma a shell between the fixed inner
+  // boundary below and the boundary, without a magnetic axis
+  double inner_boundary_s;
+
+  // [mpol, (2*ntor+1)] inner boundary coefficients for R ~ cos(m*u - n*v);
+  // stellarator-symmetric; set if and only if inner_boundary_s > 0
+  std::optional<RowMatrixXd> rbc_inner;
+
+  // [mpol, (2*ntor+1)] inner boundary coefficients for Z ~ sin(m*u - n*v);
+  // stellarator-symmetric; set if and only if inner_boundary_s > 0
+  std::optional<RowMatrixXd> zbs_inner;
+
+  // [mpol, (2*ntor+1)] inner boundary coefficients for R ~ sin(m*u - n*v);
+  // non-stellarator-symmetric; set if and only if inner_boundary_s > 0 and
+  // lasym
+  std::optional<RowMatrixXd> rbs_inner;
+
+  // [mpol, (2*ntor+1)] inner boundary coefficients for Z ~ cos(m*u - n*v);
+  // non-stellarator-symmetric; set if and only if inner_boundary_s > 0 and
+  // lasym
+  std::optional<RowMatrixXd> zbc_inner;
+
   // Construct a VmecINDATA instance with default values, except for profile
   // coefficients or knot locations/values. Axis geometry coefficients and
   // boundary geometry coefficients are zero-initialized.

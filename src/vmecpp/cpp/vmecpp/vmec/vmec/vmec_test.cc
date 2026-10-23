@@ -8,6 +8,7 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1327,3 +1328,98 @@ TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
     EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
   }
 }  // CurrentDensityEndsAtTheSmallestRadialResolution
+
+// A plasma without a magnetic axis fills the shell between a fixed inner
+// boundary, here the boundary with its m > 0 coefficients halved, and the
+// boundary. On one and on two radial threads, through a multigrid step and from
+// a hot restart, its first surface stays the inner boundary and encloses the
+// toroidal flux at s = inner_boundary_s.
+TEST(TestVmec, ShellWithoutMagneticAxis) {
+  for (const std::string identifier :
+       {"cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
+    ASSERT_TRUE(indata_json.ok());
+    const absl::StatusOr<VmecINDATA> base_indata =
+        VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok());
+
+    VmecINDATA indata = *base_indata;
+    indata.ns_array.resize(2);
+    indata.ns_array << 5, 11;
+    indata.ftol_array.resize(2);
+    indata.ftol_array << 1.0e-8, 1.0e-12;
+    indata.niter_array.resize(2);
+    indata.niter_array << 2000, 10000;
+    indata.inner_boundary_s = 0.25;
+    indata.rbc_inner = indata.rbc;
+    indata.zbs_inner = indata.zbs;
+    if (indata.lasym) {
+      indata.rbs_inner = indata.rbs;
+      indata.zbc_inner = indata.zbc;
+    }
+    for (std::optional<vmecpp::RowMatrixXd>* inner :
+         {&indata.rbc_inner, &indata.zbs_inner, &indata.rbs_inner,
+          &indata.zbc_inner}) {
+      if (inner->has_value()) {
+        (*inner)->bottomRows(indata.mpol - 1) *= 0.5;
+      }
+    }
+
+    std::vector<vmecpp::OutputQuantities> outputs;
+    for (const int max_threads : {1, 2}) {
+      absl::StatusOr<vmecpp::OutputQuantities> output =
+          vmecpp::run(indata, std::nullopt, max_threads);
+      ASSERT_TRUE(output.ok()) << identifier << ": " << output.status();
+      outputs.push_back(*std::move(output));
+    }
+
+    VmecINDATA restart_indata = indata;
+    restart_indata.ns_array = Eigen::VectorXi::Constant(1, 11);
+    restart_indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-12);
+    restart_indata.niter_array = Eigen::VectorXi::Constant(1, 10000);
+    absl::StatusOr<vmecpp::OutputQuantities> restarted = vmecpp::run(
+        restart_indata, vmecpp::HotRestartState(outputs[0]), /*max_threads=*/1);
+    ASSERT_TRUE(restarted.ok()) << identifier << ": " << restarted.status();
+    EXPECT_LT(restarted->wout.itfsq, outputs[0].wout.itfsq / 5) << identifier;
+    outputs.push_back(*std::move(restarted));
+
+    for (const vmecpp::OutputQuantities& output : outputs) {
+      const vmecpp::WOutFileContents& wout = output.wout;
+      ASSERT_EQ(wout.ns, 11);
+      std::vector<const vmecpp::RowMatrixXd*> geometry = {&wout.rmnc,
+                                                          &wout.zmns};
+      if (indata.lasym) {
+        geometry.push_back(&wout.rmns);
+        geometry.push_back(&wout.zmnc);
+      }
+      // in whatever poloidal angle the run uses, the m > 0 coefficients of the
+      // inner boundary are half those of the boundary
+      for (const vmecpp::RowMatrixXd* coefficients : geometry) {
+        for (int mn = 0; mn < wout.mnmax; ++mn) {
+          const double factor = wout.xm[mn] == 0 ? 1.0 : 0.5;
+          EXPECT_TRUE(IsCloseRelAbs(factor * (*coefficients)(mn, wout.ns - 1),
+                                    (*coefficients)(mn, 0), 1.0e-13))
+              << identifier << ", mn = " << mn;
+        }
+      }
+      EXPECT_TRUE(IsCloseRelAbs(indata.inner_boundary_s * wout.phi[wout.ns - 1],
+                                wout.phi[0], 1.0e-13))
+          << identifier;
+    }
+
+    // the thread counts and the restart reach the same equilibrium; two threads
+    // differ from one by 1e-13 of the largest coefficient
+    const double scale = outputs[0].wout.rmnc.cwiseAbs().maxCoeff();
+    for (int i = 1; i < 3; ++i) {
+      EXPECT_LT(
+          (outputs[i].wout.rmnc - outputs[0].wout.rmnc).cwiseAbs().maxCoeff(),
+          1.0e-10 * scale)
+          << identifier << ", output " << i;
+      EXPECT_LT(
+          (outputs[i].wout.zmns - outputs[0].wout.zmns).cwiseAbs().maxCoeff(),
+          1.0e-10 * scale)
+          << identifier << ", output " << i;
+    }
+  }
+}  // ShellWithoutMagneticAxis

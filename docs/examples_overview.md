@@ -15,6 +15,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`sample_hot_restarts_with_random_perturbations.py`](../examples/sample_hot_restarts_with_random_perturbations.py): explore restart sensitivity to small boundary perturbations.
 - [`force_residual_convergence.py`](../examples/force_residual_convergence.py): plot convergence of force residuals during VMEC++ runs.
 - [`fourier_resolution_increase.py`](../examples/fourier_resolution_increase.py): reach a high Fourier resolution by continuation, in fewer iterations than a fixed-resolution solve.
+- [`plasma_without_magnetic_axis.py`](../examples/plasma_without_magnetic_axis.py): solve the plasma between a fixed inner boundary and the boundary, without a magnetic axis, and compare it with the equilibrium it was cut from.
 - [`watch_solve.py`](../examples/watch_solve.py): draw the flux surfaces and the force residuals while VMEC++ converges, through the iteration callback of `vmecpp.run`.
 - [`self_consistent_bootstrap_current.py`](../examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
 - [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.

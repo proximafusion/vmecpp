@@ -487,7 +487,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // undo m=1 constraint
   m_physical_x.m1Constraint(1.0, signOfJacobian);
 
-  m_physical_x.extrapolateTowardsAxis();
+  if (r_.has_inner_boundary()) {
+    m_physical_x.ExtrapolateLambdaToInnerBoundary();
+  } else {
+    m_physical_x.extrapolateTowardsAxis();
+  }
 
   // inv-DFT to get realspace geometric quantities
   geometryFromFourier(m_physical_x);
@@ -913,6 +917,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   m_physical_f.decomposeInto(m_decomposed_f, m_p_.scalxc);
 
+  if (r_.has_inner_boundary()) {
+    // R and Z are fixed on the inner boundary, as on the boundary
+    m_decomposed_f.ZeroGeometryOnInnerBoundary();
+  }
+
   // ----- start of residue
 
   // re-establish m=1 constraint
@@ -1088,8 +1097,11 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
     m_h_.SetRadialExtent(radial_extent);
   }
   if (r_.nsMinF1 == 0) {
-    // This thread has the magnetic axis.
-    GeometricOffset geometric_offset = {.r_00 = r1_e[0], .z_00 = z1_e[0]};
+    // This thread has the magnetic axis, where the odd-m terms vanish, or the
+    // inner boundary.
+    const double sqrt_s_0 = m_p_.sqrtSF[0];
+    GeometricOffset geometric_offset = {.r_00 = r1_e[0] + sqrt_s_0 * r1_o[0],
+                                        .z_00 = z1_e[0] + sqrt_s_0 * z1_o[0]};
     m_h_.SetGeometricOffset(geometric_offset);
   }
 }
@@ -1192,9 +1204,10 @@ void IdealMhdModel::dft_FourierToReal_2d_symm(
       // half-grid point for computing a better near-axis approximation of the
       // Jacobian.
       //
-      // Regular case: all poloidal contributions up to m = mpol - 1.
+      // Regular case: all poloidal contributions up to m = mpol - 1, also on
+      // an inner boundary.
       int num_m = s_.mpol;
-      if (jF == 0) {
+      if (jF == 0 && !r_.has_inner_boundary()) {
         // axis: num_m = 2 -> m = 0, 1
         num_m = 2;
       }
@@ -1366,7 +1379,7 @@ void IdealMhdModel::dft_FourierToReal_2d_asymm(
       std::array<double, 2> lnkcc_m = {0.0, 0.0};
 
       int num_m = s_.mpol;
-      if (jF == 0) {
+      if (jF == 0 && !r_.has_inner_boundary()) {
         num_m = 2;
       }
 
@@ -1609,6 +1622,12 @@ void IdealMhdModel::computeJacobian() {
 
   bool localBadJacobian =
       (minTau * maxTau < 0.0) || !std::isfinite(minTau * maxTau);
+  // Without a magnetic axis the surfaces can also be nested inside out as a
+  // whole, with an inner boundary outside the boundary: tau then has the sign
+  // opposite to signgs everywhere.
+  if (r_.has_inner_boundary() && minTau * signOfJacobian < 0.0) {
+    localBadJacobian = true;
+  }
 
   if (localBadJacobian) {
 #ifdef _OPENMP
@@ -2417,9 +2436,14 @@ void IdealMhdModel::computePreconditioningMatrix(
  * Note that this needs to have the radial preconditioner updated.
  */
 double IdealMhdModel::constraintMultiplierScale() const {
-  // An empirically determined scaling.
+  // An empirically determined scaling with the number of surfaces, which for a
+  // plasma with an inner boundary is that of the grid of the same spacing that
+  // extends to s = 0.
+  const double num_surfaces =
+      r_.has_inner_boundary() ? 1.0 + 1.0 / m_fc_.deltaS : m_fc_.ns;
   const double tcon_multiplier =
-      tcon0 * (1.0 + m_fc_.ns * (1.0 / 60.0 + m_fc_.ns / (200.0 * 120.0)));
+      tcon0 *
+      (1.0 + num_surfaces * (1.0 / 60.0 + num_surfaces / (200.0 * 120.0)));
 
   // Fortran bcovar.f90: tcon_mul / (4 * r0scale**2)**2, undoing the scaling of
   // ard and azd (2*r0scale**2) and of cos**2 in alias (4*r0scale**2). r0scale
@@ -3690,9 +3714,10 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
 void IdealMhdModel::assembleRZPreconditioner() {
   for (int m = 0; m < s_.mpol; ++m) {
     // magnetic axis only gets m=0 contributions
-    // since it has no poloidal dimension/coordinate
+    // since it has no poloidal dimension/coordinate;
+    // an inner boundary gets none, since it is fixed
     int jMin = 0;
-    if (m > 0) {
+    if (m > 0 || r_.has_inner_boundary()) {
       jMin = 1;
     }
 
@@ -3739,7 +3764,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
                            bzm[(jF - 1 - r_.nsMinH) * 2 + m_parity] * m * m);
           }
 
-          if (jF == 1 && m == 1) {
+          if (jF == 1 && m == 1 && !r_.has_inner_boundary()) {
             // Fortran scalfor.f90: dx(2,n,1) = dx(2,n,1) + bx(2,n,1). The m=1
             // amplitude at the axis is not an independent unknown, so the
             // coupling to it folds into the diagonal of the innermost surface
@@ -4053,7 +4078,9 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   // with faclam_j = (A_{j-1/2} + A_{j+1/2}) / 2 the diagonal of VMEC 8.52 and
   // floor = lambda_precondition_checkerboard_terms.
   // The axis copies lambda_1 (FourierGeometry::extrapolateTowardsAxis), which
-  // adds A_{1/2} / 4 to M_11; there is no half cell outside the LCFS.
+  // adds A_{1/2} / 4 to M_11; an inner boundary takes 2 lambda_1 - lambda_2
+  // (FourierGeometry::ExtrapolateLambdaToInnerBoundary), which adds A_{1/2} / 2
+  // to M_11 and -A_{1/2} / 4 to M_12; there is no half cell outside the LCFS.
   // The step is lambda_preconditioner_scale / lamscale^2 M^-1 F.
   if (r_.get_thread_id() == 0) {
     const int ns = m_fc_.ns;
@@ -4070,7 +4097,12 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
             (0.25 + 0.5 * lambda_precondition_checkerboard_terms_) *
             (a_in + a_out);
       }  // jF
-      m_h_.lambda_m0_d[1] += 0.25 * tnn * m_h_.lambda_b_half[1];
+      if (r_.has_inner_boundary()) {
+        m_h_.lambda_m0_d[1] += 0.5 * tnn * m_h_.lambda_b_half[1];
+        m_h_.lambda_m0_a[1] -= 0.25 * tnn * m_h_.lambda_b_half[1];
+      } else {
+        m_h_.lambda_m0_d[1] += 0.25 * tnn * m_h_.lambda_b_half[1];
+      }
       TridiagonalSolveSerial(std::span<double>(m_h_.lambda_m0_a.data(), ns),
                              std::span<double>(m_h_.lambda_m0_d.data(), ns),
                              std::span<double>(m_h_.lambda_m0_b.data(), ns),

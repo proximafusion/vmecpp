@@ -26,12 +26,28 @@ class FourierGeometry : public FourierCoeffs {
   void interpFromBoundaryAndAxis(const FourierBasisFastPoloidal& t,
                                  const Boundaries& b, const RadialProfiles& p);
 
+  // Initial guess for a plasma with an inner boundary: every coefficient
+  // interpolated between the inner boundary and the boundary b with the
+  // weights of InterpolationWeight, which are those of
+  // interpFromBoundaryAndAxis at inner_boundary_s = 0, and the m=1 gauge
+  // combinations set by setM1GaugeFromBoundaries.
+  void interpFromBoundaries(const FourierBasisFastPoloidal& t,
+                            const Boundaries& inner, const Boundaries& b,
+                            const RadialProfiles& p);
+
   // Set the m=1 gauge combinations (the zmncs and, for lasym, zmncc slots
   // that FourierCoeffs::m1Constraint couples to rmnss / rmnsc) on every
   // owned surface to their interpFromBoundaryAndAxis value, the boundary
   // gauge scaled by sqrt(s). Leaves all other coefficients untouched.
   void setM1GaugeFromBoundary(const FourierBasisFastPoloidal& t,
                               const Boundaries& b, const RadialProfiles& p);
+
+  // The same for a plasma with an inner boundary: the gauge linear in sqrt(s)
+  // between the inner boundary and the boundary b, which is sqrt(s) times the
+  // gauge of b when the inner boundary carries sqrt(s) times it.
+  void setM1GaugeFromBoundaries(const FourierBasisFastPoloidal& t,
+                                const Boundaries& inner, const Boundaries& b,
+                                const RadialProfiles& p);
 
   // Initialize the state of this FourierGeometry with the given Fourier
   // coefficients. If a Boundaries object is specified (defaults to nullptr; in
@@ -45,14 +61,31 @@ class FourierGeometry : public FourierCoeffs {
   // rmns, zmnc and lmnc_full carry the non-stellarator-symmetric half of the
   // state and are read only when lasym is set; a stellarator-symmetric run
   // leaves them empty.
+  // For a plasma with an inner boundary, the geometry of surface 0 is taken
+  // from inner, and the surfaces in between are shifted by the differences
+  // between inner and surface 0 of the state and between b and the outermost
+  // surface of the state, with the weights of the initial guess
+  // interpFromBoundaries.
   void InitFromState(const FourierBasisFastPoloidal& fb,
                      const RowMatrixXd& rmnc, const RowMatrixXd& zmns,
                      const RowMatrixXd& lmns_full, const RowMatrixXd& rmns,
                      const RowMatrixXd& zmnc, const RowMatrixXd& lmnc_full,
                      const RadialProfiles& p, const VmecConstants& constants,
-                     int sign_of_jacobian, const Boundaries* b = nullptr);
+                     int sign_of_jacobian, const Boundaries* b = nullptr,
+                     const Boundaries* inner = nullptr);
 
   void extrapolateTowardsAxis();
+
+  // Set R and Z of surface 0 to the inner boundary inner, which carries the
+  // m=1 constraint.
+  void SetInnerBoundary(const FourierBasisFastPoloidal& t,
+                        const Boundaries& inner);
+
+  // On the inner boundary of a plasma without a magnetic axis, lambda is not a
+  // free variable: it enters the half-grid field only through its average
+  // with the first interior surface, so it is extrapolated linearly from the
+  // first two interior surfaces.
+  void ExtrapolateLambdaToInnerBoundary();
 
   // Transpose of extrapolateTowardsAxis: the forward copies surface-1 m=1 (and
   // m=0 lambda) coefficients onto the axis, so the adjoint folds the axis
@@ -110,6 +143,12 @@ class FourierGeometry : public FourierCoeffs {
 
  private:
   void BindSpans();
+
+  // Weight of the boundary against the inner boundary of mode m on surface jF
+  // of a plasma without a magnetic axis: the weight of the boundary in
+  // interpFromBoundaryAndAxis, s for m = 0 and s^(m/2) for m > 0, rescaled to
+  // run from 0 on the inner boundary to 1 on the boundary.
+  double InterpolationWeight(int jF, int m, const RadialProfiles& p) const;
 };
 
 }  // namespace vmecpp

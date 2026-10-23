@@ -231,9 +231,9 @@ void FourierToReal3DSymmFastPoloidal(const FourierGeometry& physical_x,
       // innermost half-grid point interpolates the full-grid values at j = 0
       // and j = 1 and does read that finite m = 1 value. Even-m modes are not
       // suppressed by any sqrt(s) factor, so only m = 0, the axis position
-      // itself, may be nonzero among them.
+      // itself, may be nonzero among them. An inner boundary gets every m.
       int jMin = 1;
-      if (m == 0 || m == 1) {
+      if (m == 0 || m == 1 || r.has_inner_boundary()) {
         jMin = 0;
       }
 
@@ -396,7 +396,7 @@ void FourierToReal3DAsymFastPoloidal(const FourierGeometry& physical_x,
       auto& lv = m_even ? m_geometry.lv_e : m_geometry.lv_o;
 
       int jMin = 1;
-      if (m == 0 || m == 1) {
+      if (m == 0 || m == 1 || r.has_inner_boundary()) {
         jMin = 0;
       }
       if (jF < jMin) {
