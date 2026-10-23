@@ -139,19 +139,26 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - Fix a Fortran-side bug in educational_VMEC first, with a test that fails before and passes after, then regenerate the reference files
 - A symmetric equilibrium run through the asymmetric code paths must reproduce the symmetric result to machine precision (`tests/test_lasym.py`)
 - Match tolerances to the numerics; compare Fourier coefficients directly, a scalar such as the volume is not a physics check
+- Keep the existing tolerances through a refactoring; compare results that should agree at tight tolerances
 - Validate changes to the iteration on the force-residual progression, not on the converged state
 - Axisymmetric cases alone do not establish correctness; include asymmetric, three-dimensional and high-beta cases.
 
 **Tests**:
 - Turn derived invariants into unit tests
 - Keep coverage proportionate; simple, already verified logic is not tested separately
+- Put shared setup in pytest fixtures and compare arrays with `np.testing.assert_allclose`
+- Keep tests free of `__main__` blocks, `ImportError` fallbacks and guards for required dependencies such as simsopt
+- Do not assert timings in tests; track performance in the benchmark suite
 
 **Code**:
 - Use Eigen types where the file uses Eigen; keep fixed-size locals on the stack
 - Reuse existing logic rather than duplicating it
+- Add no guards for constructed edge cases or for conditions handled elsewhere
 
 **Comments**:
 - Describe the code as it is, briefly; history and rationale go in the pull request description
+- Keep a TODO or explanatory comment unless the change resolves it
+- Explain a constant by its physical or numerical meaning, not by its origin in Fortran VMEC
 
 **Prose**:
 - Comments and pull request descriptions do not pre-empt objections; they state what is and stop
@@ -167,6 +174,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 - One concern per pull request; unrelated changes, including CI, go separately
 - Address review comments before merge
 - Back performance claims with local measurements; the benchmark job is part of review
+- Put benchmark results and experiment write-ups in the pull request description, not the repository; `docs/` holds long-lived user documentation, and large binary files go in Git LFS
 - When an issue already has linked work, state why a different approach is taken
 
 ## Physics Domain Knowledge
