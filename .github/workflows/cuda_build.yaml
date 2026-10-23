@@ -1,0 +1,47 @@
+name: Build the CUDA path
+
+# The runners have no GPU, so this compiles the CUDA iteration body and links the
+# Python module without running it; tests/test_cuda_gpu.py and
+# examples/cuda_cross_validation.py run it on a machine with one.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+
+jobs:
+  build-cuda:
+    name: Build with VMECPP_USE_CUDA=ON
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the CUDA toolkit and the build dependencies
+        run: |
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build zlib1g-dev libomp-dev \
+            cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcufft-dev-12-6
+          echo "/usr/local/cuda-12.6/bin" >> "$GITHUB_PATH"
+      - name: Build the wheel with the CUDA iteration body
+        env:
+          CMAKE_ARGS: -DVMECPP_USE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89
+          CMAKE_BUILD_PARALLEL_LEVEL: 4
+        run: python -m pip wheel . --no-deps --wheel-dir dist
+      - name: Check that the core library links the CUDA runtime and cuFFT
+        run: |
+          python -m zipfile -e dist/*.whl wheel
+          core=$(find wheel -name "libvmecpp_core.so" | head -1)
+          ldd "$core" | grep libcudart
+          ldd "$core" | grep libcufft

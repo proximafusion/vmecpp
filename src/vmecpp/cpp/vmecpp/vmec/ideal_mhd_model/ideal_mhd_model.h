@@ -69,6 +69,16 @@ class IdealMhdModel {
                      bool lforbal, double lambda_preconditioner_scale,
                      double lambda_precondition_checkerboard_terms);
 
+#ifdef VMECPP_USE_CUDA
+  // Batched free-boundary: one vacuum solver per configuration slot
+  // (entry 0 is the full-grid solver fb_vac_[0] owned by Vmec). The vacuum
+  // block in update() loops the geometry handover, vacuum solve, and edge
+  // pressure over the configurations when this is populated.
+  void SetPerCfgFreeBoundary(std::vector<FreeBoundaryBase*> fbs) {
+    fb_per_cfg_ = std::move(fbs);
+  }
+#endif
+
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
   void evalFResInvar(const Eigen::Vector3d& localFResInvar);
@@ -356,9 +366,22 @@ class IdealMhdModel {
   // Computes the mismatch in |B|^2 at the LCFS.
   double get_delbsq() const;
 
+  // get_delbsq of one configuration of a batched free-boundary run, from that
+  // configuration's latest vacuum solve.
+  double get_delbsq_per_cfg(int cfg) const;
+
   // `ivacskip` is the current counter that controls whether a full update or a
   // partial update of the Nestor free boundary force contribution is computed.
   int get_ivacskip() const;
+
+  // Device-to-host flush of all device-resident fields consumed by the
+  // post-iteration output-derivation path (GatherDataFromThreads and the
+  // routines invoked from ComputeOutputQuantities). Invoked exactly once
+  // from Vmec::run after the iteration loop terminates, in place of the
+  // per-iteration partial flushes that the host triplet would otherwise
+  // require. On builds without VMECPP_USE_CUDA the implementation is a
+  // no-op, allowing call sites to remain unconditional.
+  void FlushForOutputCuda();
 
   /**********************************************/
 
@@ -489,6 +512,21 @@ class IdealMhdModel {
   // mismatch in |B|^2 between plasma and vacuum regions at LCFS
   Eigen::VectorXd delBSq;
 
+  // get_delbsq of each configuration of a batched free-boundary run
+  std::vector<double> delbsq_per_cfg_;
+
+  // fNormRZ of each configuration of a batch, from its latest force-norm
+  // update, as HandoverStorage holds it for a single run
+  std::vector<double> fnorm_rz_per_cfg_;
+
+  // Under per-configuration restart control: the configurations this force
+  // evaluation takes (the active ones whose Jacobian kept its sign), those due
+  // for a radial preconditioner update in this iteration, and those whose
+  // invariant residuals count the edge R and Z forces
+  std::vector<std::uint8_t> evaluated_per_cfg_;
+  std::vector<std::uint8_t> precond_due_;
+  std::vector<std::uint8_t> edge_per_cfg_;
+
   /**********************************************/
 
   // real-space forces
@@ -618,6 +656,9 @@ class IdealMhdModel {
   const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
+#ifdef VMECPP_USE_CUDA
+  std::vector<FreeBoundaryBase*> fb_per_cfg_;
+#endif
 
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
