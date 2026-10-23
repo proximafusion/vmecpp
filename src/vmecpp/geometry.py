@@ -31,14 +31,16 @@ class Geometry:
     lambda_cc: jax.Array
     lambda_ss: jax.Array
     nfp: int
+    # the harmonic n has the toroidal mode number n * nfp / toroidal_transits in zeta
+    toroidal_transits: int = 1
 
     def tree_flatten(self):
-        children = dataclasses.astuple(self)[:-1]
-        return children, self.nfp
+        children = dataclasses.astuple(self)[:-2]
+        return children, (self.nfp, self.toroidal_transits)
 
     @classmethod
-    def tree_unflatten(cls, nfp, children):
-        return cls(*children, nfp)  # pyright: ignore[reportCallIssue]
+    def tree_unflatten(cls, aux, children):
+        return cls(*children, *aux)  # pyright: ignore[reportCallIssue]
 
 
 def _array(values, shape):
@@ -69,6 +71,7 @@ def from_cpp(geometry) -> Geometry:
         _array(coefficients.lambda_cc, shape),
         _array(coefficients.lambda_ss, shape),
         dimensions.nfp,
+        dimensions.toroidal_transits,
     )
 
 
@@ -129,7 +132,7 @@ def _series_jet(geometry: Geometry, coefficients, s, theta, zeta):
     mpol = coefficients[0].shape[1]
     ntor = coefficients[0].shape[2] - 1
     m = jnp.arange(mpol)[:, None]
-    n = jnp.arange(ntor + 1)[None, :] * geometry.nfp
+    n = jnp.arange(ntor + 1)[None, :] * (geometry.nfp / geometry.toroidal_transits)
     mtheta = m * theta
     nzeta = n * zeta
     poloidal_cosine = (
