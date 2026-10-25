@@ -1267,6 +1267,11 @@ class VmecWOut(BaseModelWithNumpy):
     )
     """Evolution of the force residual at the vacuum boundary along the run."""
 
+    lcfs_force: jt.Float[NpOrJax, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Evolution of the normalized squared R and Z force residuals on the LCFS."""
+
     restart_reason_timetrace: typing.Annotated[
         jt.Int[NpOrJax, "time"],
         pydantic.Field(alias="restart_reasons"),

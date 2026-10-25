@@ -174,5 +174,20 @@ TEST_F(FourierForcesMoveTest, CopyAssignmentCreatesIndependentCopy) {
   EXPECT_DOUBLE_EQ(source->frcc[0], 11.0);
 }
 
+TEST_F(FourierForcesMoveTest, ComputesLcfsRZResidual) {
+  RadialPartitioning free_boundary_partitioning;
+  free_boundary_partitioning.adjustRadialPartitioning(
+      /*num_threads=*/1, /*thread_id=*/0, ns, /*lfreeb=*/true,
+      /*printout=*/false);
+  FourierForces forces(sizes.get(), &free_boundary_partitioning, ns);
+  for (auto& value : forces.frcc) value = 1.0;
+  for (auto& value : forces.fzsc) value = 1.0;
+  for (auto& value : forces.frss) value = 1.0;
+  for (auto& value : forces.fzcs) value = 1.0;
+
+  EXPECT_DOUBLE_EQ(forces.lcfsRZResidual(),
+                   4.0 * sizes->mpol * (sizes->ntor + 1));
+}
+
 }  // namespace
 }  // namespace vmecpp

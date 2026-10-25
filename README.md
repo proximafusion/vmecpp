@@ -75,7 +75,7 @@ See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for
 Suitable input files are found in [`examples/data`](https://github.com/proximafusion/vmecpp/blob/main/examples/data).
 If unsure where to start, we suggest giving the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
 
-For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs fixed-boundary VMEC++ on the W7-X case and plots the convergence of the force residuals.
+For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs VMEC++ and plots the force residual convergence. It defaults to the fixed-boundary W7-X case; pass a free-boundary input file to include the vacuum-boundary traces.
 <!-- SPHINX-END1 -->
 ![W7-X force residual convergence](docs/w7x_force_convergence.png)
 <!-- SPHINX-START2 -->
