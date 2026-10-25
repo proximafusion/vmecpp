@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792740116148,
+  "lastUpdate": 1792940821395,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -25719,6 +25719,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.16486572799999522,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b33193b56c4c8138a93aab2166c71a745a5fced3",
+          "message": "Reuse one adjoint factorization for every cotangent (#1007)\n\n* Reuse one factorization of the implicit adjoint for every cotangent at a solved state\n\n* Restore the solved state before each cotangent of a batched adjoint\n\n* Wrap two docstrings as the pinned docformatter does\n\n* Set up the adjoint Jacobian tests with pytest fixtures\n\nThe input, the boundary, the solver and the output scalars of\ntests/test_autodiff_jacobian.py are fixtures in place of the helper\ncalls each test made. The input and the boundary are module-scoped, and\neach test gets a solver of its own.\n\n* Hold at most one adjoint factorization and release it when the parameters change",
+          "timestamp": "2026-10-25T15:58:57+01:00",
+          "tree_id": "47a02a476564593471f9692c2f770bcdd0347597",
+          "url": "https://github.com/proximafusion/vmecpp/commit/b33193b56c4c8138a93aab2166c71a745a5fced3"
+        },
+        "date": 1792940813150,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6743900430000395,
+            "range": "stddev: 0.011264634142761952",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.630153288333228,
+            "range": "stddev: 0.033420530734442115",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.1069029646667634,
+            "range": "stddev: 0.014595222794404667",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6664129896666207,
+            "range": "stddev: 0.022247614569310764",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.4920836993333069,
+            "range": "stddev: 0.015013403131248096",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.872475582999944,
+            "range": "stddev: 0.016477159248235437",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.548402375000023,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.47927135500003715,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
