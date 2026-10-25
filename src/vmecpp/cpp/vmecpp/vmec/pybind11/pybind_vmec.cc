@@ -887,6 +887,9 @@ class VmecModel {
   // Residuals (set by Evaluate()): invariant {fsqr,fsqz,fsql} and
   // preconditioned {fsqr1,fsqz1,fsql1}.
   double fsqr() const { return vmec_->fc_.fsqr; }
+  double fsqr_edge() const { return vmec_->fc_.fsqr_edge; }
+  double fsqz_edge() const { return vmec_->fc_.fsqz_edge; }
+  bool has_converged() const { return vmec_->HasConverged(); }
   double fsqz() const { return vmec_->fc_.fsqz; }
   double fsql() const { return vmec_->fc_.fsql; }
   double fsqr1() const { return vmec_->fc_.fsqr1; }
@@ -1050,6 +1053,7 @@ PYBIND11_MODULE(_vmecpp, m) {
   // multi-grid steps
   DefEigenProperty(pyindata, "ns_array", &VmecINDATA::ns_array);
   DefEigenProperty(pyindata, "ftol_array", &VmecINDATA::ftol_array);
+  pyindata.def_readwrite("ftol_edge", &VmecINDATA::ftol_edge);
   DefEigenProperty(pyindata, "niter_array", &VmecINDATA::niter_array);
 
   // global physics parameters
@@ -1474,6 +1478,13 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("volume", &vmecpp::WOutFileContents::volume)
       //
       .def_readwrite("fsqr", &vmecpp::WOutFileContents::fsqr)
+      .def_readwrite("fsqr_edge", &vmecpp::WOutFileContents::fsqr_edge)
+      .def_readwrite("fsqz_edge", &vmecpp::WOutFileContents::fsqz_edge)
+      .def_readwrite("ftol_edge", &vmecpp::WOutFileContents::ftol_edge)
+      .def_readwrite("force_residual_r_edge",
+                     &vmecpp::WOutFileContents::force_residual_r_edge)
+      .def_readwrite("force_residual_z_edge",
+                     &vmecpp::WOutFileContents::force_residual_z_edge)
       .def_readwrite("fsqz", &vmecpp::WOutFileContents::fsqz)
       .def_readwrite("fsql", &vmecpp::WOutFileContents::fsql)
       .def_readwrite("itfsq", &vmecpp::WOutFileContents::itfsq)
@@ -1668,6 +1679,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("multigrid_step", &vmecpp::SolverState::multigrid_step)
       .def_readonly("ns", &vmecpp::SolverState::ns)
       .def_readonly("fsqr", &vmecpp::SolverState::fsqr)
+      .def_readonly("fsqr_edge", &vmecpp::SolverState::fsqr_edge)
+      .def_readonly("fsqz_edge", &vmecpp::SolverState::fsqz_edge)
+      .def_readonly("ftol_edge", &vmecpp::SolverState::ftol_edge)
       .def_readonly("fsqz", &vmecpp::SolverState::fsqz)
       .def_readonly("fsql", &vmecpp::SolverState::fsql)
       .def_readonly("ftol", &vmecpp::SolverState::ftol)
@@ -1973,6 +1987,9 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("force_eval_count", &VmecModel::force_eval_count)
       .def("reset_force_eval_count", &VmecModel::reset_force_eval_count)
       .def_property_readonly("fsqr", &VmecModel::fsqr)
+      .def_property_readonly("fsqr_edge", &VmecModel::fsqr_edge)
+      .def_property_readonly("fsqz_edge", &VmecModel::fsqz_edge)
+      .def_property_readonly("has_converged", &VmecModel::has_converged)
       .def_property_readonly("fsqz", &VmecModel::fsqz)
       .def_property_readonly("fsql", &VmecModel::fsql)
       .def_property_readonly("fsqr1", &VmecModel::fsqr1)

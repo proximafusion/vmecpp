@@ -86,12 +86,18 @@ class FlowControl {
   // Cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResInvar`
   double fsqr, fsqz, fsql;
+  // LCFS-only invariant R/Z residuals, with the same normalization as
+  // fsqr/fsqz.
+  double fsqr_edge = 0.0;
+  double fsqz_edge = 0.0;
 
   // Time-trace of the invariant force residuals during convergence
   // fsqt = (force_residual_r + force_residual_z + force_residual_lambda)
   std::vector<double> force_residual_r;
   std::vector<double> force_residual_z;
   std::vector<double> force_residual_lambda;
+  std::vector<double> force_residual_r_edge;
+  std::vector<double> force_residual_z_edge;
 
   // Preconditioned cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResPrecd`

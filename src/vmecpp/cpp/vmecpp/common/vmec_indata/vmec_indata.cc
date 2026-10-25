@@ -484,6 +484,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   // 1D arrays
   WriteH5Dataset(ns_array, "/indata/ns_array", file);
   WriteH5Dataset(ftol_array, "/indata/ftol_array", file);
+  WriteH5Dataset(ftol_edge, "/indata/ftol_edge", file);
   WriteH5Dataset(niter_array, "/indata/niter_array", file);
   WriteH5Dataset(am, "/indata/am", file);
   WriteH5Dataset(am_aux_s, "/indata/am_aux_s", file);
@@ -643,6 +644,9 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   // 1D arrays
   ReadH5Dataset(m_indata.ns_array, "/indata/ns_array", from_file);
   ReadH5Dataset(m_indata.ftol_array, "/indata/ftol_array", from_file);
+  if (from_file.nameExists("/indata/ftol_edge")) {
+    ReadH5Dataset(m_indata.ftol_edge, "/indata/ftol_edge", from_file);
+  }
   ReadH5Dataset(m_indata.niter_array, "/indata/niter_array", from_file);
   ReadH5Dataset(m_indata.am, "/indata/am", from_file);
   ReadH5Dataset(m_indata.am_aux_s, "/indata/am_aux_s", from_file);
@@ -836,6 +840,13 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_ftol_array->has_value()) {
     vmec_indata.ftol_array = maybe_ftol_array->value();
+  }
+  auto maybe_ftol_edge = JsonReadDouble(j, "ftol_edge");
+  if (!maybe_ftol_edge.ok()) {
+    return maybe_ftol_edge.status();
+  }
+  if (maybe_ftol_edge->has_value()) {
+    vmec_indata.ftol_edge = maybe_ftol_edge->value();
   }
 
   if (vmec_indata.ftol_array.size() != vmec_indata.ns_array.size()) {
@@ -1481,6 +1492,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   // Multi-Grid Steps
   output["ns_array"] = ns_array;
   output["ftol_array"] = ftol_array;
+  output["ftol_edge"] = ftol_edge;
   output["niter_array"] = niter_array;
 
   // Global Physics Parameters
@@ -1710,6 +1722,11 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         "input variable 'niter_array' needs an entry for every 'ns_array' "
         "entry, but has %ld against %ld\n",
         vmec_indata.niter_array.size(), vmec_indata.ns_array.size()));
+  }
+
+  if (!std::isfinite(vmec_indata.ftol_edge) || vmec_indata.ftol_edge < 0.0) {
+    return absl::InvalidArgumentError(
+        "input variable 'ftol_edge' must be finite and non-negative");
   }
 
   // ftol_array

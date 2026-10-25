@@ -111,6 +111,9 @@ class VmecINDATA {
 
   // [numGrids] requested force tolerance for convergence per multigrid step
   Eigen::VectorXd ftol_array;
+  // Additional LCFS-only R/Z force tolerance at every free-boundary stage.
+  // Zero disables this criterion; fixed-boundary runs ignore it.
+  double ftol_edge = 0.0;
 
   // [numGrids] maximum number of iterations per multigrid step
   Eigen::VectorXi niter_array;

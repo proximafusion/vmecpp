@@ -38,6 +38,8 @@ struct RunSummary {
   double fsqr = 0.0;
   double fsqz = 0.0;
   double fsql = 0.0;
+  double fsqr_edge = 0.0;
+  double fsqz_edge = 0.0;
   double ftolv = 0.0;
   double betatot = 0.0;
   double betapol = 0.0;
@@ -60,13 +62,15 @@ class IterationLogger {
 
   // Called at the start of each multigrid stage.
   void BeginStage(int stage_index, int num_stages, int ns, int mnmax,
-                  double ftolv, int niter, bool is_free_boundary);
+                  double ftolv, int niter, bool is_free_boundary,
+                  double ftol_edge = 0.0);
 
   // Called every nstep iterations with current convergence data.
   void LogIteration(int iter, double fsqr, double fsqz, double fsql,
                     double fsqr1, double fsqz1, double fsql1, double delt,
                     double rax, double w_mhd, double beta_vol_avg,
-                    double vol_avg_m, double delbsq);
+                    double vol_avg_m, double delbsq, double fsqr_edge = 0.0,
+                    double fsqz_edge = 0.0);
 
   // Called after SolveEquilibrium completes for a stage.
   void EndStage(double mhd_energy);
@@ -87,6 +91,8 @@ class IterationLogger {
     double last_w_mhd = 0.0;
     double last_rax = 0.0;
     double last_delbsq = 0.0;
+    double last_fsqr_edge = 0.0;
+    double last_fsqz_edge = 0.0;
     bool initial_fsq_set = false;
     bool completed = false;
   };
@@ -117,7 +123,8 @@ class IterationLogger {
   void PrintLegacyRow(int iter, double fsqr, double fsqz, double fsql,
                       double fsqr1, double fsqz1, double fsql1, double delt,
                       double rax, double w_mhd, double beta_vol_avg,
-                      double vol_avg_m, double delbsq) const;
+                      double vol_avg_m, double delbsq, double fsqr_edge,
+                      double fsqz_edge) const;
 
   std::ostream& output_;
   OutputMode mode_;

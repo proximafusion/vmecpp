@@ -318,6 +318,31 @@ cmake --build build --parallel  # build VMEC++
 
 The main C++ source code tree is located at [`src/vmecpp/cpp/vmecpp`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
 
+## Free-boundary convergence
+
+`ftol_array` controls the invariant force residuals `fsqr`, `fsqz`, and `fsql`.
+For compatibility with Fortran VMEC, the R/Z residuals normally exclude the last
+closed flux surface (LCFS). Therefore `ftol_array` does not bound the LCFS
+position, and a small interior force residual can coexist with a slowly moving
+boundary.
+
+Free-boundary runs also report LCFS-only `fsqr_edge` and `fsqz_edge` in
+`SolverState`, the iteration log, and `wout`. These are sums of squared Fourier
+forces before preconditioning, with the same normalization as `fsqr`/`fsqz`.
+Their histories are `wout.force_residual_r_edge` and
+`wout.force_residual_z_edge`, sampled like the existing force-residual histories.
+They are zero for fixed-boundary runs.
+
+Set `vmec_input.ftol_edge` to a positive value to require both LCFS residuals
+to fall below this additional tolerance at every multigrid stage, with vacuum
+pressure active, as well as satisfying `ftol_array`. The default, `0.0`, disables
+this extra stopping criterion and preserves legacy convergence. Fixed-boundary
+runs ignore it.
+
+Neither tolerance is a bound on geometric displacement in metres. Check boundary
+geometry under tighter tolerances and increased radial resolution when positional
+accuracy matters; radial discretization error is separate from iteration error.
+
 ## Hot restart
 
 By passing the output of a VMEC++ run as initial state for a subsequent one,

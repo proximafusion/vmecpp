@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>  // VectorXd
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -1184,6 +1185,9 @@ struct WOutFileContents {
   double fsqr;
   double fsqz;
   double fsql;
+  double fsqr_edge = std::numeric_limits<double>::quiet_NaN();
+  double fsqz_edge = std::numeric_limits<double>::quiet_NaN();
+  double ftol_edge = 0.0;
 
   // Number of "time steps" of the force relaxation that were actually required
   // to achieve convergence. (How many of the maximum niter steps we ended up
@@ -1223,6 +1227,8 @@ struct WOutFileContents {
   Eigen::VectorXd force_residual_r;
   Eigen::VectorXd force_residual_z;
   Eigen::VectorXd force_residual_lambda;
+  Eigen::VectorXd force_residual_r_edge;
+  Eigen::VectorXd force_residual_z_edge;
   Eigen::VectorXd delbsq;
   Eigen::VectorXi restart_reason_timetrace;
 

@@ -22,6 +22,8 @@ class FourierForces : public FourierCoeffs {
 
   void zeroZForceForM1();
   void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
+  // Unnormalized squared R/Z forces on the LCFS, zero without a free boundary.
+  Eigen::Vector2d EdgeResiduals() const;
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> frcc;

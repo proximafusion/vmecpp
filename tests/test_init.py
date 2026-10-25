@@ -370,6 +370,15 @@ def test_vmecwout_io():
     expected_variables = set(expected_dataset.variables.keys()) - set(
         _MISSING_FORTRAN_VARIABLES
     )
+    expected_variables.update(
+        {
+            "fsqr_edge",
+            "fsqz_edge",
+            "ftol_edge",
+            "force_residual_r_edge",
+            "force_residual_z_edge",
+        }
+    )
     assert expected_variables == set(test_dataset.variables.keys())
 
     for varname, expected_value in expected_dataset.variables.items():

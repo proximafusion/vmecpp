@@ -197,7 +197,6 @@ def solve_equilibrium(
     parvmec = style == _PARVMEC
     robust = style == _ROBUST
 
-    ftolv = model.ftolv
     niterv = model.niterv
     delt_user = model.delt  # indata.delt, the reference time step
 
@@ -275,12 +274,7 @@ def solve_equilibrium(
 
             # converged? Evolve returns before recording / time-stepping once the
             # invariant residuals are below tolerance (vmec.cc lines 1194-1206).
-            if (
-                not status_bad_jacobian
-                and fsqr <= ftolv
-                and fsqz <= ftolv
-                and (fsql <= ftolv)
-            ):
+            if not status_bad_jacobian and model.has_converged:
                 converged = True
                 break
 

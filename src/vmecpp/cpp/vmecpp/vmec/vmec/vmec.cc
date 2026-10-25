@@ -474,6 +474,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.force_residual_r.reserve(cap);
         fc_.force_residual_z.reserve(cap);
         fc_.force_residual_lambda.reserve(cap);
+        fc_.force_residual_r_edge.reserve(cap);
+        fc_.force_residual_z_edge.reserve(cap);
         fc_.mhd_energy.reserve(cap);
         fc_.delbsq.reserve(cap);
         fc_.restart_reasons.reserve(cap);
@@ -481,7 +483,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
 
       // notify logger of the next multigrid stage
       logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
-                         s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb);
+                         s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb,
+                         indata_.ftol_edge);
 
       // initialize ns-dependent arrays
       // and (if previous solution is available) interpolate to current ns
@@ -580,12 +583,18 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // loop above, so status_ is always NORMAL_TERMINATION: the last
     // multigrid stage exhausted its iteration budget without reaching
     // ftol. Diagnostics help distinguish 'almost-converged' runs from 'failing'
-    const auto msg = absl::StrFormat(
+    auto msg = absl::StrFormat(
         "VMEC++ did not converge: %s. Completed %d/%d iterations at ns = "
-        "%d without meeting ftol = %.3e; final force residuals were "
+        "%d without converging at ftol = %.3e; final force residuals were "
         "fsqr = %.3e, fsqz = %.3e, fsql = %.3e.",
         VmecStatusAsString(status_), iter2_ - 1, fc_.niterv, fc_.nsval,
         fc_.ftolv, fc_.fsqr, fc_.fsqz, fc_.fsql);
+    if (fc_.lfreeb && indata_.ftol_edge > 0.0) {
+      msg += absl::StrFormat(
+          " LCFS tolerance ftol_edge = %.3e; fsqr_edge = %.3e, fsqz_edge = "
+          "%.3e.",
+          indata_.ftol_edge, fc_.fsqr_edge, fc_.fsqz_edge);
+    }
     return absl::InternalError(msg);
   }
 
@@ -629,6 +638,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     summary.fsqr = w.fsqr;
     summary.fsqz = w.fsqz;
     summary.fsql = w.fsql;
+    summary.fsqr_edge = w.fsqr_edge;
+    summary.fsqz_edge = w.fsqz_edge;
     summary.ftolv = fc_.ftolv;
     summary.betatot = w.betatotal;
     summary.betapol = w.betapol;
@@ -1615,8 +1626,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
         !all_residuals_finite) {
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
-    } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
-               fc_.fsql <= fc_.ftolv) {
+    } else if (HasConverged()) {
       // converged to desired tolerance
 
       m_liter_flag = false;
@@ -1680,6 +1690,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     fc_.force_residual_r.push_back(fc_.fsqr);
     fc_.force_residual_z.push_back(fc_.fsqz);
     fc_.force_residual_lambda.push_back(fc_.fsql);
+    fc_.force_residual_r_edge.push_back(fc_.fsqr_edge);
+    fc_.force_residual_z_edge.push_back(fc_.fsqz_edge);
     if (fc_.lfreeb) {
       // delbsq is only available on the LCFS thread
       fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
@@ -1705,6 +1717,15 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   return false;
 }
 
+bool Vmec::HasConverged() const {
+  return fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
+         fc_.fsql <= fc_.ftolv &&
+         (!fc_.lfreeb || indata_.ftol_edge == 0.0 ||
+          (vacuum_pressure_state_ >= VacuumPressureState::kInitialized &&
+           fc_.fsqr_edge <= indata_.ftol_edge &&
+           fc_.fsqz_edge <= indata_.ftol_edge));
+}
+
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
                                    bool& m_liter_flag) {
   SolverState state{
@@ -1714,7 +1735,10 @@ void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
       .fsqr = fc_.fsqr,
       .fsqz = fc_.fsqz,
       .fsql = fc_.fsql,
+      .fsqr_edge = fc_.fsqr_edge,
+      .fsqz_edge = fc_.fsqz_edge,
       .ftol = fc_.ftolv,
+      .ftol_edge = indata_.ftol_edge,
       .delt = fc_.delt0r,
       .restart_reason = restart_reason,
       .jacobian_resets = fc_.ijacob,
@@ -1853,7 +1877,7 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 
     logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
                          fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
-                         volAvgM, delbsq);
+                         volAvgM, delbsq, fc_.fsqr_edge, fc_.fsqz_edge);
   }  // thread which has boundary
 }
 
