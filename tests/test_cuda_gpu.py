@@ -88,6 +88,16 @@ CTH_LIKE_FREE_MULTIGRID = {
     "volume": 0.3074173204816206,
     "aspect": 5.433276425079897,
 }
+# cth_like_free_bdy with a power-series pressure of 0.4 * pres_scale at the boundary
+CTH_LIKE_FREE_EDGE_PRESSURE = {
+    "wb": 0.0012834159311966673,
+    "raxis_cc0": 0.7737483769738878,
+    "iota_axis": 1.26987671303095,
+    "iota_edge": 0.8694316278550754,
+    "rbtor": -0.45093385928062507,
+    "volume": 0.30782668196524837,
+    "aspect": 5.433378435172268,
+}
 W7X = {
     "wb": 1.858625986732257,
     "raxis_cc0": 5.644890855046078,
@@ -529,6 +539,16 @@ def test_free_boundary_multigrid_stage_transition():
 def test_free_boundary_cth_like(free_boundary_input):
     out = vmecpp.run(free_boundary_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CTH_LIKE_FREE)
+
+
+def test_free_boundary_with_edge_pressure(free_boundary_input):
+    # The vacuum magnetic pressure alone balances the total pressure at a boundary
+    # where the kinetic pressure does not vanish.
+    vi = free_boundary_input
+    vi.pmass_type = "power_series"
+    vi.am = np.array([1.0, -0.6])
+    out = vmecpp.run(vi, max_threads=1, verbose=False)
+    _assert_reference(out.wout, CTH_LIKE_FREE_EDGE_PRESSURE)
 
 
 def test_free_boundary_wout_fields_match_reference(free_boundary_input):
