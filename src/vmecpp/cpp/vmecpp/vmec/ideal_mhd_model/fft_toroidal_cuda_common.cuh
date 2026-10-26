@@ -1,45 +1,9 @@
-// Internal header for the CUDA iteration body: shared device
-// helpers, the persistent device-state struct, kernel
-// declarations, and the run-scoped globals. Included by the
-// fft_toroidal_cuda_*.cu translation units only.
+// Internal header of the CUDA iteration body: device helpers, the persistent
+// device state, kernel declarations and run-scoped globals.
 #pragma once
 
-// CUDA implementation of the toroidal Fourier transforms used by the vmecpp
-// ideal-MHD iteration body. Both directions of the transform are resident on
-// the device: the spectrum-to-real-space mapping is implemented by
-// FourierToReal3DSymmFastPoloidalCuda, and the real-space-to-spectrum mapping
-// by ForcesToFourier3DSymmFastPoloidalCuda. The two paths share the device
-// state held in CudaToroidalState, including the persistent intermediate
-// buffers d_X and d_Y, the cuFFT plans, and the poloidal basis tables.
-//
-// Forward pipeline (spectrum-to-real-space, mirroring the structure of
-// fft_toroidal.cc's FourierToReal3DSymmFastPoloidalFft):
-//   1. Stage the six spectral coefficient arrays (rmncc, rmnss, zmnsc, zmncs,
-//      lmnsc, lmncs) into d_specs_block on the device.
-//   2. k_fill_spectra populates X_batch[jF][m][q][n] for q in [0, 12). Empty
-//      combinations (jF below jMin for the given mode) are written as zero
-//      directly by the kernel rather than requiring a separate memset.
-//   3. A cufftExecZ2D batched over (jF, m, q) executes all toroidal
-//      transforms in a single call, producing the real-space intermediate
-//      Y.
-//   4. k_scatter_main_and_con accumulates the sixteen even-parity and
-//      odd-parity outputs (r1_e/o, ru_e/o, rv_e/o, z1_e/o, zu_e/o, zv_e/o,
-//      lu_e/o, lv_e/o) and the two constraint outputs (rCon, zCon) in a
-//      single pass over Y.
-//   5. The eighteen output arrays are exposed to the iteration controller
-//      through pointers held by CudaToroidalState; copy-back to host is
-//      performed only at the surfaces where the host iteration controller
-//      genuinely consumes the values.
-//
-// The poloidal basis arrays (fb.cosmu, fb.sinmu, fb.cosmum, fb.sinmum) and
-// the toroidal mode-scaling factors nscale are invariant across the run and
-// are staged once in CudaToroidalState::Init rather than reissued each
-// invocation. Per-configuration extensions to all of the above are handled
-// by the n_config_max dimension on the device buffers and by the
-// configuration axis applied to each kernel's grid; the single-configuration
-// path remains a special case at n_config_max = 1.
-//
-// SPDX-License-Identifier: MIT
+// Both toroidal transform directions run on the device and share the persistent
+// buffers of CudaToroidalState.
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal_cuda.h"
 
 #ifdef VMECPP_USE_CUDA
@@ -63,43 +27,19 @@
 
 namespace vmecpp {
 
-// File-scope per-configuration caches populated as side effects of the
-// device-to-host transfers already performed by the corresponding kernel
-// wrappers. The iteration controller consumes the cached values through
-// the GetResidualsPerCfgCache* and related accessors declared in
-// fft_toroidal_cuda.h. Maintaining these caches at file scope avoids
-// reissuing the per-configuration transfer separately for each consumer
-// and permits the synchronization that the wrapper already performs to
-// serve as the cache-validity boundary.
-//
-// Layout of the residual caches: 3 * n_cfg doubles, ordered as
-// [fResR_0, fResZ_0, fResL_0, fResR_1, fResZ_1, fResL_1, ...]. The
-// caches are resized lazily by the corresponding wrapper when n_cfg
-// changes between successive iterations.
+// Per-configuration caches filled by the device-to-host transfers the kernel
+// wrappers already make, read through the accessors in fft_toroidal_cuda.h.
 extern std::vector<double> g_residuals_invar_cache;
 extern std::vector<double> g_residuals_precd_cache;
-// Force-norm scalar cache. Layout: 2 * n_cfg doubles ordered as
-// [sum_rz_0, sum_l_0, sum_rz_1, sum_l_1, ...]. Populated by
-// ComputeForceNormsCuda. The iteration controller derives per-configuration
-// normalization factors fNormRZ and fNormL by combining these sums with
-// the per-configuration energyDensity values that the pressure-and-energy
-// cache below holds.
+// Force-norm sums [sum_rz, sum_l] per configuration from ComputeForceNormsCuda.
 extern std::vector<double> g_fnorm_scalars_cache;
-// Jacobian-extrema cache. Layout: 2 * n_cfg doubles ordered as
-// [minTau_0, maxTau_0, minTau_1, maxTau_1, ...]. Populated by
-// ComputeJacobianCuda. The host-side per-configuration bad-Jacobian
-// decision is computed from these values as
-// (minTau[c] * maxTau[c] < 0) || !std::isfinite(minTau[c] * maxTau[c]).
+// Jacobian extrema [minTau, maxTau] per configuration from ComputeJacobianCuda.
 extern std::vector<double> g_jac_minmax_cache;
-// 3*n_cfg [thermalEnergy_0, magneticEnergy_0, mhdEnergy_0,
-//          thermalEnergy_1, magneticEnergy_1, mhdEnergy_1, ...].
-// Populated by PressureAndEnergiesCuda's added per-cfg D2H. Becomes valid
-// after the caller's next stream sync (same as the existing single-cfg
-// scalar writes).
+// PressureAndEnergiesCuda's energies [thermal, magnetic, mhd] per
+// configuration, valid after the caller's next synchronization.
 extern std::vector<double> g_pressure_scalars_cache;
-// n_cfg per-cfg plasmaVolume. Populated by UpdateVolumeCuda's added per-cfg
-// D2H. Becomes valid after the existing single-cfg sync that
-// UpdateVolumeCuda already does.
+// Plasma volume per configuration from UpdateVolumeCuda, valid after its
+// synchronization.
 extern std::vector<double> g_plasma_volume_cache;
 
 const std::vector<double>& GetResidualsPerCfgCacheInvar();
@@ -112,9 +52,8 @@ const std::vector<double>& GetJacMinmaxPerCfgCache();
 
 const std::vector<double>& GetPressureScalarsPerCfgCache();
 
-// n_cfg per-cfg fNorm1 (reciprocal rzNorm over each configuration's own
-// device position state). Populated by ComputeForceNormsCuda at the
-// force-norm cadence; cfg 0 matches the host scalar bit for bit.
+// fNorm1 per configuration, the reciprocal rzNorm of its device positions, from
+// ComputeForceNormsCuda at the force-norm cadence.
 extern std::vector<double> g_fnorm1_per_cfg_cache;
 
 const std::vector<double>& GetPlasmaVolumePerCfgCache();
@@ -125,10 +64,8 @@ const std::vector<double>& GetFnorm1PerCfgCache();
 // at the start of every Vmec::run and stable within the run.
 extern int g_n_config_run;
 
-// Whether the configurations of the current run carry their own inputs
-// (distinct mode of run_batched_gpu). Such a run interpolates each
-// configuration's state on the device at the multigrid transitions; the
-// other runs take the host interpolation.
+// Whether the run's configurations carry their own inputs (distinct mode), so
+// the device interpolates each at the multigrid transitions.
 extern bool g_batch_distinct_run;
 
 // Slot indices for the 12 quantities transformed per (jF, m).
@@ -139,13 +76,8 @@ enum Slot {
 };
 constexpr int kBatch = 12;
 
-// CUDA and cuFFT failures throw instead of aborting so an embedding
-// process (the Python interpreter in particular) receives a catchable
-// error rather than dying. The throw unwinds out of Vmec::run; pybind
-// translates it into a Python RuntimeError, and vmec_standalone
-// terminates with the message. Device state after a thrown CUDA error
-// is unspecified; the next run's ResetCudaStateForNewVmecRun plus the
-// shape-triggered Reshape rebuild it.
+// CUDA and cuFFT failures throw, so an embedding process gets a catchable
+// error; the next run's reset and Reshape rebuild the device state.
 static void cuda_check(cudaError_t err, const char* what) {
   if (err != cudaSuccess) {
     char msg[256];
@@ -163,17 +95,8 @@ static void cufft_check(cufftResult res, const char* what) {
   }
 }
 
-// Raw upper estimate, in bytes, of the persistent device allocation at the
-// given shape and configuration count, without the safety margin or the
-// context cushion that the admission pre-flight adds on top. Shared by
-// CudaVramBudgetCuda and by the per-Reshape bookkeeping that credits a
-// follow-up run with the memory the next Reshape frees. The coefficient
-// families: spectral-coefficient blocks (specs, force spectra, decomposed
-// shadow, dealias intermediates, position/velocity/backup/final/prev
-// state, lambda preconditioner, RZ tridiagonal rows), full-grid real-space
-// arrays (outputs, forces, constraint terms, preconditioner inputs),
-// half-grid arrays (jacobian, metric, fields, pressure), and the cuFFT
-// scratch with its plan workspace.
+// Raw upper estimate in bytes of the persistent device allocation at this shape
+// and count, without the pre-flight's margins.
 long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
                              long long ntor, long long nZeta,
                              long long nThetaEff);
@@ -183,9 +106,7 @@ long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
 extern bool g_free_boundary_run;
 extern bool g_vacuum_edge_run;
 
-// =========================================================================
-// Process-static CUDA state
-// =========================================================================
+// Process-static CUDA state.
 struct CudaToroidalState {
   bool initialized = false;
   // Cached shape parameters.
@@ -194,27 +115,15 @@ struct CudaToroidalState {
   int nThetaReduced_cached = -1, nThetaEff_cached = -1, nZeta_cached = -1;
   int ns_con_local_cached = -1;
 
-  // Maximum concurrent equilibria the device buffers are sized for. Each
-  // per-config buffer's size is multiplied by n_config_max and every kernel
-  // carries the configuration axis on its launch grid; at the default of 1
-  // the single-call path is preserved bit-exact.
+  // Equilibria the device buffers are sized for, carried on every kernel's
+  // launch grid; 1 keeps the single-call path bit-exact.
   int n_config_max = 1;
 
   // Persistent device buffers + stream.
   cudaStream_t stream = nullptr;
   cufftHandle cufft_plan = 0;
-  // Segment-3 graph state.
-  //
-  // The segment-3 graph captures the chain from
-  // effectiveConstraintForceCuda through DecomposeAndConstrainCuda,
-  // comprising approximately six CUDA wrappers and on the order of
-  // ten to fifteen launches in total. The chain runs entirely on a
-  // single stream with no host scalar reads or stream
-  // synchronizations between the boundary points, so the capture
-  // window is well defined. The graph is captured on the first call
-  // following a Reshape and replayed on subsequent invocations until
-  // a Reshape reissues the underlying allocations and invalidates
-  // the captured pointers.
+  // Segment-three graph: effectiveConstraintForceCuda through
+  // DecomposeAndConstrainCuda on one stream without host reads.
   cudaGraph_t seg3_graph = nullptr;
   bool seg3_vacuum_edge_at_capture = false;
   cudaGraphExec_t seg3_graph_exec = nullptr;
@@ -222,19 +131,8 @@ struct CudaToroidalState {
   bool seg3_in_capture = false;  // true while between BeginSeg3 and EndSeg3 in capture mode
   int seg3_warmup_calls = 0;     // capture begins only after the first warmup invocation completes lazy allocations
 
-  // Segment-4 graph state.
-  //
-  // The segment-4 graph captures the preconditioner chain consisting
-  // of ApplyM1PreconditionerCuda, AssembleRZPreconditionerCuda,
-  // ApplyRZPreconditionerCuda, and ApplyLambdaPreconditionerCuda.
-  // Each of these wrappers is kernel-only and contains no host
-  // synchronization or host reads, and the chain runs between the
-  // two ResidualsCuda invocations within each iteration. The single
-  // kernel argument that varies across iterations is jMax, which
-  // depends on lfreeb together with the vacuum-pressure-state
-  // transitions; the last-captured value of jMax is retained, and a
-  // change in that value triggers re-capture. Reshape invalidates
-  // the captured pointers and resets the capture state.
+  // Segment-four graph: the four preconditioner wrappers between the two
+  // ResidualsCuda calls, re-captured when jMax changes.
   cudaGraph_t seg4_graph = nullptr;
   cudaGraphExec_t seg4_graph_exec = nullptr;
   bool seg4_graph_captured = false;
@@ -242,16 +140,8 @@ struct CudaToroidalState {
   int seg4_warmup_calls = 0;
   int seg4_last_jMax = -1;       // re-capture if jMax changes
 
-  // Segment-2 graph state.
-  //
-  // The segment-2 graph captures the six kernel-only wrappers that
-  // run between ComputeJacobianCuda's stream synchronization and the
-  // preconditioner-update block, namely
-  // ComputeMetricElementsCuda, UpdateDifferentialVolumeCuda,
-  // ComputeBContraCuda, ComputeBCoCuda, PressureAndEnergiesCuda, and
-  // RadialForceBalanceCuda. No host synchronization or host read
-  // occurs in this window. Reshape invalidates the captured pointers
-  // and resets the capture state.
+  // Segment-two graph: the six kernel-only wrappers from ComputeJacobianCuda's
+  // synchronization to the preconditioner update.
   cudaGraph_t seg2_graph = nullptr;
   cudaGraphExec_t seg2_graph_exec = nullptr;
   bool seg2_graph_captured = false;
@@ -305,31 +195,17 @@ struct CudaToroidalState {
   size_t fft_x_elems = 0;  // element count of the complex buffer d_X
   size_t fft_y_elems = 0;  // element count of the real buffer d_Y
 
-  // Single contiguous buffer for the 18 output arrays. Each output is a
-  // contiguous slice of (ns_local * nZeta * nThetaEff) (16 main) or
-  // (ns_con_local * nZeta * nThetaEff) (2 con).
+  // One buffer for the 18 output arrays: 16 slices of ns_local * nZeta *
+  // nThetaEff and 2 of ns_con_local * nZeta * nThetaEff.
   double* d_outputs_block = nullptr;
   double* h_outputs_pinned = nullptr;
   size_t outputs_block_bytes = 0;
-  // Six-double extract for the geometric-scalar consumers
-  // SetRadialExtent and SetGeometricOffset, which are the only host
-  // sites that read r1_e, r1_o, and z1_e under VMECPP_USE_CUDA. The
-  // extract is staged on the device in d_geom_scalars and copied to a
-  // pinned host buffer h_geom_scalars; the larger device-to-host
-  // transfer of d_outputs_block together with the host-side scatter
-  // that would otherwise follow each forward FFT is unnecessary, since
-  // the downstream output phase reads the device buffers directly via
-  // FlushForOutputQuantitiesCuda at end-of-run.
+  // The six doubles SetRadialExtent and SetGeometricOffset read, copied to
+  // pinned host memory in place of the whole outputs block.
   double* d_geom_scalars = nullptr;  // six doubles resident on the device
   double* h_geom_scalars = nullptr;  // six doubles in pinned host memory
-  // Deferred-commit state for the geometric-scalar host writes. The
-  // SetRadialExtent and SetGeometricOffset writes are deferred until
-  // after the next natural stream synchronization, namely the
-  // tau-minmax synchronization that ComputeJacobianCuda performs.
-  // The flag fwd_geom_pending records that a deferred write is
-  // outstanding, and the index fields hold the outputs-block offsets
-  // that FlushFwdGeomScalarsToHost will commit. The commit call is
-  // valid only after a stream synchronization has occurred.
+  // Deferred geometry-scalar writes, committed by FlushFwdGeomScalarsToHost
+  // after ComputeJacobianCuda's synchronization.
   bool fwd_geom_pending = false;
   int fwd_geom_outer_idx = -1;
   int fwd_geom_inner_idx = -1;
@@ -355,30 +231,18 @@ struct CudaToroidalState {
   double* d_zs = nullptr;
   double* d_tau = nullptr;
   double* d_sqrtSH = nullptr;
-  // Staging optimization: track whether d_sqrtSH has been staged since the last
-  // Reshape. sqrtSH is invariant for a given ns (radial grid), so the per-iter
-  // H2Ds in ComputeJacobianCuda + ComputeMetricElementsCuda are redundant.
-  // Reset in EnsureJacobianBuffers when ns_h changes.
+  // d_sqrtSH depends on ns alone, so it is staged once per Reshape.
   bool sqrtSH_staged = false;
 
-  // When ComputeJacobianCuda dispatches the fused jacobian-and-metric
-  // kernel, the metric outputs gsqrt, guu, guv, and gvv are produced
-  // alongside the jacobian outputs. This per-iteration flag is raised
-  // by the jacobian wrapper to inform ComputeMetricElementsCuda that
-  // its kernel launch may be elided. The flag is cleared inside
-  // ComputeMetricElementsCuda after the elision has taken effect, so
-  // it does not persist across iterations.
+  // Raised when the fused Jacobian and metric kernel produced the metric, so
+  // ComputeMetricElementsCuda skips its launch this iteration.
   bool jac_metric_fused_this_iter = false;
 
-  // Persistent-kernel direction: when the 3-way jacobian+metric+dvdsh fused
-  // kernel runs, dvdsh outputs are also done. This per-iter flag tells
-  // UpdateDifferentialVolumeCuda to skip its kernel launch (work already done).
-  // Reset to false at end of UpdateDifferentialVolumeCuda (consumed).
+  // Raised when the fused kernel also produced dVdsH, so
+  // UpdateDifferentialVolumeCuda skips its launch this iteration.
   bool dvdsh_fused_this_iter = false;
-  // Same caching pattern for the other per-iter-invariant radial profiles:
-  // massH/currH/phipF/phipH/radialBlending all depend only on radial grid +
-  // input parameters (fixed for a given multigrid level). Flags reset in
-  // Reshape (which is also where ns_h_cached etc. change).
+  // massH, currH, phipF, phipH and the radial blending depend on the grid and
+  // the inputs only; staged once, reset in Reshape.
   bool massH_staged = false;
   bool currH_staged = false;
   bool phipF_staged = false;
@@ -391,15 +255,11 @@ struct CudaToroidalState {
   // scalxc is the radial scaling for FourierCoeffs decomposeInto. Function of
   // radial grid; invariant per Reshape.
   bool scalxc_staged = false;
-  // dealias faccon is `-0.25 * signOfJacobian / xmpq[m]^2`, set once in
-  // IdealMhdModel ctor and never changed. The per-iter H2D in
-  // DeAliasConstraintForceCuda is redundant.
+  // The dealias faccon is fixed by the IdealMhdModel constructor, so it is
+  // staged once.
   bool dealias_faccon_staged = false;
-  // BContra iotaH seeding/input: d_iotaH (ncurr=1) and d_iotaH_in (ncurr=0)
-  // only need to be seeded once. For ncurr=1 the device value is updated by
-  // k_bcontra_chipH_iotaH each iter; the host m_p_.iotaH is a stale D2H copy
-  // that we'd re-upload, contributing nothing. For ncurr=0 iotaH_in is a
-  // prescribed profile that doesn't change.
+  // iotaH needs seeding once: with ncurr = 1 the device updates it each
+  // iteration, with ncurr = 0 it is the prescribed profile.
   bool iotaH_seeded = false;
   double* h_jac_pinned = nullptr;  // staging for D2H of 6 jacobian outputs
   int ns_h_cached = -1;
@@ -422,9 +282,8 @@ struct CudaToroidalState {
   double* d_bsubu = nullptr;
   double* d_bsubv = nullptr;
 
-  // radialForceBalance outputs (half-grid ns_h: bucoH, bvcoH; interior ns_fi:
-  // jcurvF, jcuruF, presgradF, dVdsF, equiF). Plus inputs presH, chipF, phipF
-  // copied per-call.
+  // radialForceBalance outputs: half-grid bucoH, bvcoH; interior jcurvF,
+  // jcuruF, presgradF, dVdsF, equiF; and the presH, chipF, phipF inputs.
   double* d_bucoH = nullptr;
   double* d_bvcoH = nullptr;
   double* d_jcurvF = nullptr;
@@ -442,9 +301,8 @@ struct CudaToroidalState {
   int rzcon0_ns_con_cached = -1;
   int rzcon0_nZnT_cached = -1;
 
-  // computeBContra: bsupu, bsupv (half-grid, persistent), chip/iota profiles,
-  // plus per-call H2D inputs (phipF, phipH, currH, iotaH_in) and ncurr=1
-  // reduction scratch (jvPlasma, avg_guu_gsqrt).
+  // computeBContra: half-grid bsupu, bsupv, the chip and iota profiles, their
+  // inputs and the ncurr = 1 reduction scratch.
   double* d_bsupu = nullptr;
   double* d_bsupv = nullptr;
   double* d_chipH = nullptr;
@@ -473,16 +331,14 @@ struct CudaToroidalState {
   double* d_forceNormRZ_partial = nullptr;  // ns_h
   double* d_forceNormL_partial = nullptr;   // ns_h
 
-  // updateLambdaPreconditioner buffers.
-  // bLambda/dLambda/cLambda: size ns_h + 1 (offset-1 indexing to mirror CPU).
-  // lambdaPreconditioner: size ns_con_local * mpol * (ntor+1).
+  // updateLambdaPreconditioner: bLambda, dLambda, cLambda of ns_h + 1 (offset
+  // by one as on the CPU), and lambdaPreconditioner.
   double* d_bLambda = nullptr;
   double* d_dLambda = nullptr;
   double* d_cLambda = nullptr;
   double* d_lambdaPreconditioner = nullptr;
-  // Tridiagonal m = 0 lambda preconditioner: the half-grid <g_uu / sqrt g>
-  // profile (stride lambda_stride per cfg, slots 0 and ns zero), and per
-  // (cfg, n) the right-hand side and the eliminated upper diagonal (stride ns).
+  // Tridiagonal m = 0 lambda preconditioner: the half-grid <g_uu / sqrt g> per
+  // configuration and, per (cfg, n), the right side and upper diagonal.
   double* d_lambda_b_half = nullptr;
   double* d_lambda_m0_c = nullptr;
   double* d_lambda_m0_a = nullptr;
@@ -510,17 +366,8 @@ struct CudaToroidalState {
   double* d_pm_bxd = nullptr;  // ns_force_local * 2
   double* d_pm_cxd = nullptr;  // ns_force_local
 
-  // Persistent per-side snapshots of the preconditioner-matrix
-  // coefficients produced by computePreconditioningMatrix. The shared
-  // scratch buffers d_pm_axm, d_pm_axd, d_pm_bxm, d_pm_bxd, and
-  // d_pm_cxd are overwritten on the second (Z-side) invocation of
-  // ComputePreconditioningMatrixCuda, so dedicated R-side and Z-side
-  // destinations are required if AssembleRZPreconditionerCuda is to
-  // read both halves. The snapshots are populated through a device-
-  // to-device memcpy issued at the end of each
-  // ComputePreconditioningMatrixCuda call, supplanting the host-side
-  // m_axm and related arrays that the CPU implementation of
-  // assembleRZPreconditioner consumes.
+  // R-side and Z-side snapshots of the preconditioning-matrix coefficients,
+  // since the second call overwrites the shared scratch.
   double* d_pmat_arm = nullptr;  // R-side half-grid coefficient: ns_h * 2
   double* d_pmat_brm = nullptr;  // R-side half-grid coefficient: ns_h * 2
   double* d_pmat_ard = nullptr;  // R-side full-grid coefficient: ns_force_local * 2
@@ -540,9 +387,8 @@ struct CudaToroidalState {
   double* d_tcon = nullptr;
   double* d_ruFull = nullptr;
   double* d_zuFull = nullptr;
-  // Free-boundary vacuum edge term. d_rbsq holds the host-computed rBSq
-  // profile (nZnT doubles, single configuration); rbsq_staged marks it
-  // current for the iteration's force assembly.
+  // The host-computed rBSq profile of the free-boundary edge term, nZnT
+  // doubles; rbsq_staged marks it current for this iteration.
   double* d_rbsq = nullptr;
   int rbsq_size = 0;
   bool rbsq_staged = false;
@@ -565,9 +411,8 @@ struct CudaToroidalState {
   double* d_dealias_sinnv = nullptr;
   int dealias_nnyq2_plus_1_cached = -1;
 
-  // Decomposed FourierForces shadow (m_decomposed_f mirror). Populated by
-  // DecomposeAndConstrainCuda from S.d_frcc/etc. (physical) via decomposeInto
-  // + m1Constraint + zeroZForceForM1. Read by M1/Lambda/RZ preconditioners.
+  // DecomposeAndConstrainCuda fills this shadow of m_decomposed_f, which the
+  // M1, lambda and RZ preconditioners read.
   double* d_decomposed_frcc = nullptr;
   double* d_decomposed_frss = nullptr;
   double* d_decomposed_fzsc = nullptr;
@@ -577,26 +422,8 @@ struct CudaToroidalState {
   double* d_scalxc = nullptr;        // host m_p_.scalxc staged per call
   int decomposed_size_cached = -1;
 
-  // Velocity and decomposed-position state for the device-resident
-  // conjugate-gradient time integrator implemented by
-  // PerformTimeStepCuda. The velocity tensor d_pts_v_* is sized
-  // ns_con_local * mpol * (ntor + 1) and the position tensor
-  // d_pts_x_* is sized ns_local * mpol * (ntor + 1); each carries
-  // six spectral coefficient fields under the three-dimensional
-  // stellarator-symmetric workload (lthreed = true, lasym = false).
-  // Both tensors are extended along the configuration axis to
-  // n_config_max.
-  //
-  // The state is allocated lazily on the first call to
-  // PerformTimeStepCuda. On that first call the host buffers are
-  // copied to the device once: the host velocity m_decomposed_v
-  // begins zeroed, and the host position m_decomposed_x carries the
-  // initial boundary spectra. After each kernel invocation the
-  // device position d_pts_x_* is copied back to the host
-  // m_decomposed_x so that the host triplet of
-  // decomposeInto, m1Constraint, and extrapolateTowardsAxis at the
-  // start of the next iteration's update operates on the most
-  // recent decomposed position.
+  // Velocity (ns_con_local) and position (ns_local) of the device time
+  // integrator, six spectral fields each, per configuration.
   double* d_pts_v_rcc = nullptr;
   double* d_pts_v_rss = nullptr;
   double* d_pts_v_zsc = nullptr;
@@ -609,11 +436,8 @@ struct CudaToroidalState {
   double* d_pts_x_zcs = nullptr;
   double* d_pts_x_lsc = nullptr;
   double* d_pts_x_lcs = nullptr;
-  // Device twin of host physical_x_backup. RestartIteration periodically
-  // saves d_pts_x -> d_pts_x_backup on the NO_RESTART path and restores on
-  // BAD_JACOBIAN/BAD_PROGRESS. Mirrors the host backup mechanism so the
-  // device state participates in rollback; required when the per-iter D2H
-  // of d_pts_x -> host m_decomposed_x is removed.
+  // Device twin of the host physical_x_backup: stored on NO_RESTART, restored
+  // on BAD_JACOBIAN and BAD_PROGRESS.
   double* d_pts_x_backup_rcc = nullptr;
   double* d_pts_x_backup_rss = nullptr;
   double* d_pts_x_backup_zsc = nullptr;
@@ -621,9 +445,8 @@ struct CudaToroidalState {
   double* d_pts_x_backup_lsc = nullptr;
   double* d_pts_x_backup_lcs = nullptr;
   bool pts_x_backup_initialized = false;
-  // Device twin of host last_evaluated_x: the state of the latest force
-  // evaluation, taken before the time step moves d_pts_x on. The backup copies
-  // it under backup_evaluated_state, as the host path does.
+  // Device twin of the host last_evaluated_x, the state of the latest force
+  // evaluation, which the backup takes under backup_evaluated_state.
   double* d_pts_x_evaluated_rcc = nullptr;
   double* d_pts_x_evaluated_rss = nullptr;
   double* d_pts_x_evaluated_zsc = nullptr;
@@ -631,12 +454,8 @@ struct CudaToroidalState {
   double* d_pts_x_evaluated_lsc = nullptr;
   double* d_pts_x_evaluated_lcs = nullptr;
   bool pts_x_evaluated_valid = false;
-  // Per-cfg converged-state snapshots. When the iteration controller marks
-  // a cfg inactive (converged or timed out), its d_pts_x slice is copied
-  // here and the batch outputs dump prefers the snapshot. The live
-  // d_pts_x slice of an inactive cfg continues to be modified by
-  // mask-agnostic kernels while the rest of the batch iterates and is not
-  // trustworthy at end of run.
+  // Per-configuration converged-state snapshots, which the outputs prefer,
+  // since kernels that ignore the mask keep modifying the live slice.
   double* d_pts_x_final_rcc = nullptr;
   double* d_pts_x_final_rss = nullptr;
   double* d_pts_x_final_zsc = nullptr;
@@ -649,13 +468,8 @@ struct CudaToroidalState {
   int pts_x_ns = -1;          // ns_local (for the latest EnsurePTSBuffers call)
   bool pts_v_initialized = false;
   bool pts_x_initialized = false;
-  // Multigrid-stage transition state. Captured BEFORE freeing d_pts_x in
-  // EnsurePTSBuffers when the new ns_local differs from the old; the per-cfg
-  // radial-interp kernel in PerformTimeStepCuda's init branch reads from
-  // these and writes into the freshly allocated d_pts_x at the new ns_local.
-  // This is the device-side analogue of the host m_decomposed_x upscale that
-  // runs at each multigrid stage boundary in vmec.cc, but operating per cfg
-  // so distinct-mode batched runs preserve per-cfg state across stages.
+  // Each configuration's positions at the old ns, which the radial
+  // interpolation of the stage transition upscales into the new d_pts_x.
   double* d_pts_x_prev_rcc = nullptr;
   double* d_pts_x_prev_rss = nullptr;
   double* d_pts_x_prev_zsc = nullptr;
@@ -667,28 +481,16 @@ struct CudaToroidalState {
   int pts_x_prev_mpol = -1;
   int pts_x_prev_ntor = -1;
   bool pts_x_prev_valid = false;
-  // d_scalxc snapshot at the old ns, captured at the same Reshape transition
-  // point as d_pts_x_prev. The upscale kernel multiplies d_pts_x_prev by
-  // this OLD scalxc to recover physical-space coefficients (matching the
-  // host's old_xc_scaled_), interpolates radially, then divides by the
-  // freshly-staged d_scalxc at the new ns. Sized n_config_max * old_ns * 2.
+  // d_scalxc at the old ns: the upscale multiplies by it, interpolates radially
+  // and divides by the new scalxc, as the host's old_xc_scaled_.
   double* d_scalxc_prev = nullptr;
   int scalxc_prev_len = -1;
   bool scalxc_prev_valid = false;
-  // Per-cfg time-step controller state. timestep_first_call_after_reset
-  // flips to true whenever EnsurePTSBuffers reallocates (a new multigrid
-  // stage starts) or Reshape resets state. The k_update_timestep dispatch
-  // uses this to pass iter_phase=0 (resets inv_tau ring) on that first
-  // call, then iter_phase=1 on subsequent calls.
+  // True on the first time step after a reallocation or reset, which resets the
+  // damping ring (iter_phase = 0).
   bool timestep_first_call_after_reset = true;
-  // Producer-consumer signal between RecomposeToPhysicalCuda and
-  // CudaForward. RecomposeToPhysicalCuda raises this flag after it
-  // has written d_specs_block on the device, having executed the
-  // device-side decomposeInto, m1Constraint, and extrapolation
-  // sequence on d_pts_x. CudaForward clears the flag after consuming
-  // d_specs_block, and, while the flag is set, skips the
-  // host-to-device transfer of the spectral block that would
-  // otherwise occur at the start of each forward FFT call.
+  // Raised when RecomposeToPhysicalCuda has written d_specs_block on the
+  // device, so CudaForward skips the host transfer and clears it.
   bool specs_populated_from_device = false;
 
   // Per-configuration flags of the m = 1 Z-force zeroing in a batch, staged
@@ -744,49 +546,30 @@ struct CudaToroidalState {
   // Residuals: 3 device scalars [fResR, fResZ, fResL]. Read once at end of
   // ResidualsCuda via small D2H.
   double* d_residuals_partial = nullptr;
-  // Multi-block partials buffer for k_residuals_par_K: K * n_config_max * 3
-  // doubles. K sub-blocks per cfg each write one triple; finalize kernel
-  // reduces across the K axis into d_residuals_partial. Sized in
-  // EnsureResidualsBuffer with K_partitions = kResidualsKPartitions.
+  // Partial residual triples of the K sub-blocks per configuration, which the
+  // finalize kernel reduces into d_residuals_partial.
   double* d_residuals_partials_K = nullptr;
   static constexpr int kResidualsKPartitions = 16;
 
-  // Time-step controller on device.
-  // Layout (per-cfg, sized in EnsureTimestepBuffers):
-  //   d_inv_tau     : [n_config_max * kNDamp] doubles; ring buffer of 1/tau
-  //                   samples. Each iter shifts left by 1 and writes the new
-  //                   sample at position kNDamp - 1.
-  //   d_prev_fsq    : [n_config_max] doubles; fc.fsq from previous iter
-  //                   (initialized to 1.0 on first call per cfg).
-  //   d_fac_b1      : [n_config_max * 2] doubles; laid out as
-  //                   [cfg0.fac, cfg0.b1, cfg1.fac, cfg1.b1, ...].
-  //                   k_perform_time_step_devfac reads this in place of the
-  //                   scalar velocity_scale / conjugation_parameter args.
-  // Batches drive k_perform_time_step from these per-configuration buffers;
-  // a single configuration takes the host fc_.invTau_ controller.
+  // Device time-step controller, per configuration: the 1/tau ring of kNDamp
+  // samples, the previous fsq, and fac and b1.
   double* d_inv_tau = nullptr;
   double* d_prev_fsq = nullptr;
   double* d_fac_b1 = nullptr;
-  // d_fnorm1: [n_config_max] doubles; the evalFResPrecd force-norm factor
-  // consumed by k_update_timestep. Staged by StageFnorm1 whenever the host
-  // value changes (preconditioner boundaries), so the kernel carries no
-  // baked host-scalar argument and the launch is stream-capturable across
-  // boundaries. One slot per cfg, broadcast today; ready for per-cfg
-  // force norms.
+  // The evalFResPrecd normalization per configuration for k_update_timestep,
+  // staged when it changes so the launch stays capturable.
   double* d_fnorm1 = nullptr;
   double fnorm1_staged = 0.0;
   bool fnorm1_staged_valid = false;
-  // Set once k_rz_norm_per_cfg starts filling d_fnorm1 with per-cfg values
-  // at the force-norm cadence; StageFnorm1's host broadcast then stands
-  // down so it cannot overwrite the per-cfg values.
+  // Set once k_rz_norm_per_cfg fills d_fnorm1 per configuration, after which
+  // StageFnorm1 no longer broadcasts the host value.
   bool fnorm1_device_filled = false;
   // kNDamp matches FlowControl::kNDamp on host (10 by convention; if the
   // host constant changes, this needs to match).
   static constexpr int kTimestepNDamp = 10;
 
-  // Batched-input staging cache, one-shot per run. State members rather
-  // than function-local statics so ResetForNewVmecRun rearms the staging
-  // for the next run in the same process.
+  // Batched-input staging, once per run; members rather than statics so
+  // ResetForNewVmecRun rearms it.
   double* batch_inputs_pinned = nullptr;
   int batch_inputs_n_cfg = 0;
   size_t batch_inputs_one_spec_doubles = 0;
@@ -797,24 +580,18 @@ struct CudaToroidalState {
   // reduction. Replaces the ns_h-D2H + host accumulator.
   double* d_fnorm_scalars = nullptr;
 
-  // RZ-preconditioner transpose cache. The host hAR/hDR/hBR/hAZ/hDZ/hBZ
-  // transpose work + 6 H2Ds only need to happen when the preconditioner
-  // updates (every kPreconditionerUpdateInterval iters). We sentinel on
-  // ar[0]: when it matches the cached value, d_rz_aR/dR/bR/aZ/dZ/bZ are
-  // already up to date and we skip the transpose + H2D entirely.
+  // The RZ transpose runs when the preconditioner changes, detected by ar[0]
+  // differing from this sentinel.
   double rz_cache_ar_sentinel = std::numeric_limits<double>::quiet_NaN();
 
-  // Raw byte estimate of the persistent allocation made by the most
-  // recent Reshape, credited by the admission pre-flight as memory the
-  // next Reshape would free.
+  // Raw bytes allocated by the latest Reshape, which the pre-flight credits as
+  // freed by the next one.
   long long reshape_budget_raw_bytes = 0;
 
   std::mutex mu;
 
-  // Reallocate device buffers for a new shape. Frees previous buffers.
-  // Batched layout: optional n_config_max parameter (default 1) sizes
-  // per-config buffers for N concurrent equilibria. At n_config_max=1
-  // the layout and behavior are identical to single-call.
+  // Reallocates the device buffers for a new shape, sized for n_config_max
+  // configurations; one configuration keeps the single-call layout.
   void Reshape(int ns_local, int ns_con_local, int mpol, int ntor, int nhalf,
                int nZeta, int nThetaReduced, int nThetaEff,
                int n_config_max_in = 1) {
@@ -988,18 +765,11 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_decomposed_fzcs);
     cuda_free_if((void*&)d_decomposed_flsc);
     cuda_free_if((void*&)d_decomposed_flcs);
-    // Snapshot d_scalxc into d_scalxc_prev BEFORE freeing it. Pairs with the
-    // d_pts_x_prev snapshot below so the upscale kernel can interpolate in
-    // physical space (decomposed * scalxc_OLD) matching the host upscale.
-    // Distinct batches only.
+    // Snapshots the old d_scalxc before it is freed, so the upscale
+    // interpolates in physical space as the host does; distinct batches only.
     {
-      // scalxc_staged is reset earlier in Reshape, so don't
-      // check it here. d_scalxc != null is the right guard for the data:
-      // the buffer still holds the OLD ns staged values until the
-      // cuda_free_if below. pts_x_initialized distinguishes a genuine
-      // stage transition (position state live) from the first Reshape of
-      // a fresh run after ResetForNewVmecRun, whose leftover scalxc
-      // belongs to the prior run and must not arm the upscale.
+      // d_scalxc still holds the old ns values; pts_x_initialized tells a stage
+      // transition from a fresh run, whose scalxc is the prior run's.
       if (g_batch_distinct_run && d_scalxc && pts_x_initialized &&
           pts_x_ns > 0 && pts_x_ns != ns_local) {
         int scalxc_len_old = pts_x_ns * 2;
@@ -1024,11 +794,8 @@ struct CudaToroidalState {
     cuda_free_if((void*&)d_pts_v_zcs);
     cuda_free_if((void*&)d_pts_v_lsc);
     cuda_free_if((void*&)d_pts_v_lcs);
-    // Multigrid-stage transition snapshot: capture per-cfg d_pts_x slices
-    // into d_pts_x_prev BEFORE freeing d_pts_x, so PerformTimeStepCuda's
-    // init branch can dispatch the radial-interp kernel into the freshly
-    // allocated buffers at the new ns_local. Required for distinct-mode
-    // batched runs to preserve per-cfg state across stages.
+    // Snapshots each configuration's positions before d_pts_x is freed, for the
+    // stage-transition upscale of a distinct batch.
     if (g_batch_distinct_run && pts_x_initialized && d_pts_x_rcc &&
         pts_x_size > 0 && pts_x_ns > 0 &&
         ns_local != pts_x_ns) {
@@ -1129,10 +896,8 @@ struct CudaToroidalState {
     batch_inputs_one_spec_doubles = 0;
     cuda_free_if((void*&)d_fnorm_scalars);
     cuda_free_if((void*&)d_active_per_cfg);
-    // Convergence-flag and restart-mask buffers are sized by n_config_max
-    // and allocated behind null guards outside Reshape; free them here so a
-    // run with a different configuration count reallocates them at the new
-    // size instead of overrunning the old allocations.
+    // Frees the flag and mask buffers sized by n_config_max, so a run with
+    // another configuration count reallocates them.
     cuda_free_if((void*&)d_conv_flag);
     pinned_free_if((void*&)h_conv_flag_pinned);
     cuda_free_if((void*&)d_restart_mask);
@@ -1151,10 +916,8 @@ struct CudaToroidalState {
     d_lu_e = d_lu_o = d_lv_e = d_lv_o = nullptr;
     d_rCon = d_zCon = nullptr;
     if (cufft_plan) { cufftDestroy(cufft_plan); cufft_plan = 0; }
-    // Reshape may change the device pointers that the captured CUDA
-    // graphs reference, so the executable graphs and the underlying
-    // graph descriptors are destroyed here and rebuilt lazily on the
-    // next capture attempt.
+    // Reshape may move the pointers the captured graphs reference, so they are
+    // destroyed and recaptured lazily.
     if (seg3_graph_exec) { cudaGraphExecDestroy(seg3_graph_exec); seg3_graph_exec = nullptr; }
     if (seg3_graph) { cudaGraphDestroy(seg3_graph); seg3_graph = nullptr; }
     seg3_graph_captured = false;
@@ -1173,10 +936,8 @@ struct CudaToroidalState {
     seg2_warmup_calls = 0;
     if (stream) { cudaStreamDestroy(stream); stream = nullptr; }
 
-    // ----- Single contiguous specs block: 6 spec arrays + xmpq + sqrtSF -----
-    // Batched layout: per-config buffers sized by n_config_max. xmpq stays
-    // shared across configs (constant per shape). At n_config_max=1 the
-    // layout is identical to the single-configuration arrangement.
+    // Specs block of the six spectra, xmpq and sqrtSF, per configuration except
+    // the shared xmpq.
     size_t one_spec_bytes = sizeof(double) * n_config_max * ns_local * mpol * (ntor + 1);
     specs_block_bytes = 6 * one_spec_bytes + sizeof(double) * mpol +
                         sizeof(double) * ns_local * n_config_max;
@@ -1194,9 +955,8 @@ struct CudaToroidalState {
     d_xmpq  = d_specs_block + off / sizeof(double); off += sizeof(double) * mpol;
     d_sqrtSF = d_specs_block + off / sizeof(double);
 
-    // ----- FFT scratch (X, Y) -----
-    // Batched layout: scratch sized by n_config_max so cuFFT batch covers
-    // N configs. cuFFT plan also takes n_config_max via the batch arg below.
+    // FFT scratch X and Y for n_config_max configurations, which the cuFFT
+    // batch covers.
     fft_x_elems = (size_t)n_config_max * ns_local * mpol * kBatch * nhalf;
     fft_y_elems = (size_t)n_config_max * ns_local * mpol * kBatch * nZeta;
     size_t X_bytes = sizeof(cufftDoubleComplex) * fft_x_elems;
@@ -1267,9 +1027,8 @@ struct CudaToroidalState {
     nZeta_cached = nZeta;
     nThetaReduced_cached = nThetaReduced;
     nThetaEff_cached = nThetaEff;
-    // Footprint bookkeeping for the admission pre-flight: the next
-    // Reshape frees this much before a new run's allocations land, so
-    // CudaVramBudgetCuda credits it against the free-memory query.
+    // The next Reshape frees this much before a new run allocates, which
+    // CudaVramBudgetCuda credits against the free memory.
     reshape_budget_raw_bytes = CudaBudgetRawBytes(
         n_config_max, ns_local, mpol, ntor, nZeta, nThetaEff);
   }
@@ -1322,9 +1081,7 @@ struct CudaToroidalState {
                                 cudaMemcpyHostToDevice, stream), "h2d sinmumi");
   }
 
-  // Toroidal basis arrays (cosnv/sinnv) for deAlias and elsewhere. Staged once
-  // per shape at Reshape-time (called from FourierToReal3DSymmFastPoloidalCuda
-  // after StageBasis/StageBasisI).
+  // Toroidal basis cosnv and sinnv, staged once per shape.
   void StageToroidalBasis(int nZeta, int nnyq2_plus_1,
                           const double* cosnv, const double* sinnv) {
     size_t cv_bytes = sizeof(double) * nZeta * nnyq2_plus_1;
@@ -1344,15 +1101,8 @@ struct CudaToroidalState {
     auto alloc_if_null = [this](double*& p, size_t bytes) {
       if (!p) {
         cuda_check(cudaMalloc(&p, bytes), "alloc fForces buf");
-        // Zero-initialize the freshly allocated device buffer so that
-        // configuration slots whose corresponding kernels fail to
-        // write them present a deterministic zero rather than the
-        // uninitialized bit pattern that may otherwise decode as a
-        // signaling NaN. The configuration slots beyond cfg = 0 are
-        // consumed by RecomposeToPhysicalCuda, which reads each
-        // d_pts_x configuration slot derived from these forces; an
-        // uninitialized NaN would propagate through the subsequent
-        // arithmetic and contaminate downstream kernel outputs.
+        // Zero-fills the new buffer, so slots no kernel writes read zero and
+        // not a NaN bit pattern that would reach RecomposeToPhysicalCuda.
         cuda_check(cudaMemsetAsync(p, 0, bytes, stream),
                    "memset fForces buf zero-init");
       }
@@ -1502,10 +1252,8 @@ struct CudaToroidalState {
       cuda_check(cudaMalloc(&d_inv_tau,
                              (size_t)kTimestepNDamp * sizeof(double) * n_config_max),
                  "alloc d_inv_tau");
-      // Initialize all entries to 0.15 / time_step (matches host
-      // invTau_.setConstant(0.15 / time_step) at iter1 == iter2).
-      // We do this once per allocation; the per-iter init logic inside
-      // k_update_timestep also resets when iter_idx == 0.
+      // All entries start at 0.15 / time_step, as the host invTau_ does at
+      // iter1 == iter2.
       const double init_val = 0.15 / time_step_init;
       std::vector<double> host_init((size_t)kTimestepNDamp * n_config_max,
                                      init_val);
@@ -1545,11 +1293,8 @@ struct CudaToroidalState {
     }
   }
 
-  // Refresh the device fnorm1 slots when the host value changes (the host
-  // recomputes fnorm1 at preconditioner boundaries). Mid-window calls hit
-  // the staged cache and enqueue nothing, so the controller launch stays
-  // capturable; the boundary refresh itself must run outside capture.
-  // Stands down once k_rz_norm_per_cfg fills the slots per cfg.
+  // Refreshes the device fnorm1 when the host value changes; unchanged calls
+  // enqueue nothing, keeping the controller capturable.
   void StageFnorm1(double fnorm1) {
     if (fnorm1_device_filled) return;
     if (fnorm1_staged_valid && fnorm1 == fnorm1_staged) return;
@@ -1574,10 +1319,8 @@ struct CudaToroidalState {
                  "alloc d_residuals_partials_K");
     }
     if (!d_conv_flag) {
-      // Device + pinned-host buffers for k_check_convergence flag. The
-      // device kernel writes a per-cfg byte (1 = converged, 0 = not) and
-      // an async memcpy copies it to the pinned host buffer for non-
-      // blocking polling by the iter loop control.
+      // Device and pinned-host convergence flags: k_check_convergence writes a
+      // byte per configuration, copied asynchronously for polling.
       cuda_check(cudaMalloc(&d_conv_flag,
                              sizeof(std::uint8_t) * n_config_max),
                  "alloc d_conv_flag");
@@ -1588,9 +1331,8 @@ struct CudaToroidalState {
   }
   std::uint8_t* d_conv_flag = nullptr;
   std::uint8_t* h_conv_flag_pinned = nullptr;
-  // Per-run lamscale, cached by ComputeForceNormsCuda for the device-side
-  // normalized convergence check (k_check_convergence). Zero means "not
-  // yet seen this run"; the kernel falls back to raw-residual comparison.
+  // lamscale cached by ComputeForceNormsCuda for k_check_convergence; zero
+  // until seen this run, when the kernel compares raw residuals.
   double lamscale_cached = 0.0;
 
   void EnsureFnormScalarsBuffer() {
@@ -1600,11 +1342,8 @@ struct CudaToroidalState {
     }
   }
 
-  // Per-config control: device-resident per-cfg active mask. 1 byte per cfg.
-  // Mask-aware kernels early-return when d_active_per_cfg[blockIdx.z] == 0,
-  // eliminating GPU work for already-converged cfgs. nullptr until first
-  // EnsureActivePerCfgBuffer() call; kernels treat nullptr as "all active"
-  // (preserves single-cfg behavior).
+  // Device active mask, one byte per configuration; mask-aware kernels return
+  // early for a zero byte, and nullptr means all active.
   std::uint8_t* d_active_per_cfg = nullptr;
   std::vector<std::uint8_t> h_active_staged;  // tracks last H2D'd state
   void EnsureActivePerCfgBuffer() {
@@ -1621,9 +1360,8 @@ struct CudaToroidalState {
     }
   }
 
-  // Per-cfg restart mask: used by RestorePtsXFromBackupPerCfgCuda to gate
-  // the d_pts_x backup->main copy on a per-cfg basis. nullptr until the first
-  // EnsureRestartMaskBuffer() call.
+  // Per-configuration restart mask gating RestorePtsXFromBackupPerCfgCuda;
+  // nullptr until EnsureRestartMaskBuffer.
   std::uint8_t* d_restart_mask = nullptr;
   void EnsureRestartMaskBuffer() {
     if (!d_restart_mask) {
@@ -1633,10 +1371,8 @@ struct CudaToroidalState {
     }
   }
 
-  // Per-configuration restart control: the mask of a masked snapshot or
-  // store, each configuration's time step and damping-ring flag (0 resets
-  // the ring) for the time-step kernels, and the configurations whose
-  // invariant residuals count the edge forces.
+  // Per-configuration restart control: the snapshot and store mask, each
+  // configuration's time step and ring flag, and its edge-force mask.
   std::uint8_t* d_copy_mask = nullptr;
   double* d_time_step_per_cfg = nullptr;
   std::uint8_t* d_phase_per_cfg = nullptr;
@@ -1664,12 +1400,8 @@ struct CudaToroidalState {
   }
 
   void EnsureLambdaPrecondBuffers(int ns_h, int ns_con_local, int mpol, int ntor) {
-    // Batched layout: per-config lambda preconditioner buffers.
-    // Per-cfg stride = ns_con_local + 1, mirroring CPU's
-    // bLambda.setZero(nsMaxF1 - nsMinF1 + 1). The +1 is a headroom slot the
-    // CPU's full-grid average reads at jF = ns_con_local - 1 (which dereferences
-    // bLambda[ns_con_local]). On the GPU at N>1, omitting it lets cfg=0's read
-    // fall into cfg=1's slot[0], corrupting FGA's last output.
+    // Per-configuration lambda preconditioner stride ns_con_local + 1, the slot
+    // the full-grid average reads at its last surface.
     size_t lambda_stride = (size_t)(ns_con_local + 1);
     size_t bytes_prof = sizeof(double) * (size_t)n_config_max * lambda_stride;
     auto alloc_zero_if_null = [bytes_prof](double*& p) {
@@ -1719,9 +1451,8 @@ struct CudaToroidalState {
     auto alloc_if_null = [](double*& p, size_t bytes) {
       if (!p) cuda_check(cudaMalloc(&p, bytes), "alloc precond mat buf");
     };
-    // Batched layout: per-config preconditioner-matrix scratch + outputs.
-    // sm, sp are radial sqrt grid values (shape-constant), but we still
-    // size them per-config for layout uniformity at the cost of small mem.
+    // Per-configuration preconditioning-matrix scratch and outputs; sm and sp
+    // are sized per configuration for a uniform layout.
     alloc_if_null(d_ax_scratch, sizeof(double) * n_config_max * ns_h * 4);
     alloc_if_null(d_bx_scratch, sizeof(double) * n_config_max * ns_h * 3);
     alloc_if_null(d_cx_scratch, sizeof(double) * n_config_max * ns_h);
@@ -1737,12 +1468,8 @@ struct CudaToroidalState {
     alloc_if_null(d_pm_bxm,    sizeof(double) * n_config_max * ns_h * 2);
     alloc_if_null(d_pm_bxd,    sizeof(double) * n_config_max * ns_force_local * 2);
     alloc_if_null(d_pm_cxd,    sizeof(double) * n_config_max * ns_force_local);
-    // Per-side snapshot buffers consumed by AssembleRZPreconditionerCuda.
-    // Each pmat_* allocation mirrors the layout of its scratch counterpart
-    // pm_* but with the configuration axis incorporated so that the R-side
-    // and Z-side coefficients computed by successive
-    // ComputePreconditioningMatrixCuda calls remain accessible to the
-    // tridiagonal assembly downstream.
+    // Per-side snapshots of the preconditioning matrices, laid out as their
+    // scratch with the configuration axis, for the RZ assembly.
     alloc_if_null(d_pmat_arm,  sizeof(double) * n_config_max * ns_h * 2);
     alloc_if_null(d_pmat_brm,  sizeof(double) * n_config_max * ns_h * 2);
     alloc_if_null(d_pmat_ard,  sizeof(double) * n_config_max * ns_force_local * 2);
@@ -1756,28 +1483,19 @@ struct CudaToroidalState {
     pmat_ns_force_local_cached = ns_force_local;
   }
 
-  // Reinitialisation at the entry to a new Vmec::run: zeroes the
-  // preconditioner-matrix snapshots and the RZ-preconditioner
-  // outputs. The CPU build gets the equivalent reset implicitly by
-  // re-constructing IdealMhdModel per Vmec instance; the persistent
-  // device buffers survive instances, so the reset is explicit here.
+  // Zeroes the preconditioning-matrix snapshots and RZ outputs for a new
+  // Vmec::run, which survive across Vmec instances on the device.
   void ResetForNewVmecRun() {
     std::lock_guard<std::mutex> lk(mu);
     if (!stream) return;
-    // Force the next vmecpp::run to H2D its host decomposed_x and
-    // velocity vector into the per-cfg device buffers from scratch.
-    // Without this, the per-cfg recompute path in pybind's
-    // run_batched_gpu sees the batched run's stale d_pts_x slots and
-    // RecomposeToPhysicalCuda produces a d_specs_block inconsistent
-    // with the new Vmec's host state, which CudaForward then
-    // misinterprets as a bad-Jacobian initial geometry.
+    // The next run loads its positions and velocity from the host afresh
+    // instead of reading the previous run's device slots.
     pts_x_initialized = false;
     pts_v_initialized = false;
     pts_x_backup_initialized = false;
     pts_x_evaluated_valid = false;
-    // Invariant-staging caches: the profiles they guard derive from the
-    // input, which can differ between runs at an unchanged shape where
-    // no Reshape fires to clear them. The next run restages each.
+    // The input-derived profiles can change between runs of one shape without a
+    // Reshape, so the next run restages each.
     sqrtSH_staged = false;
     massH_staged = false;
     currH_staged = false;
@@ -1874,11 +1592,8 @@ struct CudaToroidalState {
 
   void EnsureConstraintMultiplierBuffers(int ns_force_local, int ns_con_local,
                                           int nZnT) {
-    // Zero-fill on allocation: the CPU counterparts are setZero'd at
-    // construction, and the writers skip rows outside their domain (the
-    // axis row under jMin = 1, the LCFS row of the force-local arrays).
-    // Without the fill those rows read allocator residue, which varies
-    // with the process's prior allocation history.
+    // Zero-fills on allocation, as the CPU arrays are, since writers skip rows
+    // outside their domain such as the axis or LCFS row.
     auto alloc_if_null = [this](double*& p, size_t bytes) {
       if (!p) {
         cuda_check(cudaMalloc(&p, bytes), "alloc cm buf");
@@ -1922,11 +1637,8 @@ struct CudaToroidalState {
     cuda_check(cudaMalloc(&d_decomposed_fzcs, bytes), "alloc d_decomposed_fzcs");
     cuda_check(cudaMalloc(&d_decomposed_flsc, bytes), "alloc d_decomposed_flsc");
     cuda_check(cudaMalloc(&d_decomposed_flcs, bytes), "alloc d_decomposed_flcs");
-    // Zero-initialize the freshly allocated decomposed-force buffers
-    // so that configuration slots whose corresponding force-chain
-    // kernels do not write them present a deterministic zero rather
-    // than an uninitialized bit pattern that may decode as a
-    // signaling NaN.
+    // Zero-fills the decomposed-force buffers so slots no kernel writes read
+    // zero and not a NaN bit pattern.
     cuda_check(cudaMemsetAsync(d_decomposed_frcc, 0, bytes, stream), "memset dec_frcc");
     cuda_check(cudaMemsetAsync(d_decomposed_frss, 0, bytes, stream), "memset dec_frss");
     cuda_check(cudaMemsetAsync(d_decomposed_fzsc, 0, bytes, stream), "memset dec_fzsc");
@@ -1946,12 +1658,8 @@ struct CudaToroidalState {
     int v_size = ns_con_local * mpol * (ntor + 1);
     int x_size = ns_local * mpol * (ntor + 1);
     if (d_pts_v_rcc && pts_v_size == v_size && pts_x_size == x_size) return;
-    // Multigrid stage transition snapshot: if d_pts_x is currently allocated,
-    // initialized, AND its size is changing (ns went up), copy each cfg's
-    // d_pts_x slice into d_pts_x_prev so the per-cfg radial-interp kernel
-    // in PerformTimeStepCuda's init branch can upscale per cfg into the
-    // newly-allocated d_pts_x. Without this, the host m_decomposed_x
-    // broadcast at the new ns washes out per-cfg state for cfg != 0.
+    // On a stage transition of a distinct batch, snapshots each configuration's
+    // positions for the per-configuration upscale.
     bool snapshot = (g_batch_distinct_run && pts_x_initialized && d_pts_x_rcc &&
                       pts_x_size > 0 && pts_x_size != x_size &&
                       pts_x_ns > 0);
@@ -1989,9 +1697,8 @@ struct CudaToroidalState {
     free_if(d_pts_x_rcc); free_if(d_pts_x_rss);
     free_if(d_pts_x_zsc); free_if(d_pts_x_zcs);
     free_if(d_pts_x_lsc); free_if(d_pts_x_lcs);
-    // Multigrid-stage transition: pts_x shape changed, so the backup buffers
-    // (sized at pts_x_size) must also be freed and re-lazied. Without this,
-    // BackupPtsXCuda would memcpy NEW size into OLD-sized buffer.
+    // The backup buffers follow the new position size, so they are freed and
+    // reallocated lazily.
     free_if(d_pts_x_backup_rcc); free_if(d_pts_x_backup_rss);
     free_if(d_pts_x_backup_zsc); free_if(d_pts_x_backup_zcs);
     free_if(d_pts_x_backup_lsc); free_if(d_pts_x_backup_lcs);
@@ -2079,9 +1786,8 @@ struct CudaToroidalState {
     rz_cache_ar_sentinel = std::numeric_limits<double>::quiet_NaN();
   }
 
-  // deAliasConstraintForce buffers. gsc/gcs/faccon are per-call sizes but
-  // allocated once. cosnv/sinnv are staged by StageToroidalBasis at Reshape
-  // time; no per-call check needed here.
+  // deAliasConstraintForce buffers, allocated once; StageToroidalBasis stages
+  // cosnv and sinnv at Reshape.
   void EnsureDealiasBuffers(int mpol, int ntor, int ns_force_local) {
     auto alloc_if_null = [](double*& p, size_t bytes) {
       if (!p) cuda_check(cudaMalloc(&p, bytes), "alloc dealias buf");
@@ -2179,11 +1885,8 @@ struct CudaToroidalState {
     };
     cuda_free_if((void*&)d_rCon0);
     cuda_free_if((void*&)d_zCon0);
-    // Batched layout: per-config rCon0/zCon0. Fresh buffers start at
-    // zero, matching the host arrays at a multigrid stage where
-    // rzConIntoVolume does not run (the vacuum pressure is already
-    // active there); RzConIntoVolumeCuda overwrites them in full when
-    // it does run.
+    // Per-configuration rCon0 and zCon0 start at zero, as the host arrays at a
+    // stage where rzConIntoVolume does not run.
     size_t bytes = sizeof(double) * n_config_max * ns_con_local * nZnT;
     cuda_check(cudaMalloc(&d_rCon0, bytes), "alloc d_rCon0");
     cuda_check(cudaMalloc(&d_zCon0, bytes), "alloc d_zCon0");
@@ -2891,9 +2594,8 @@ __global__ void k_apply_rz_pcr(int n_config, int mnsize, int ns_total, int num_b
                                  const double* __restrict__ b_in,
                                  double* __restrict__ c_inout,
                                  const std::uint8_t* __restrict__ d_active_per_cfg);
-// One block per (config, mn) row; the elimination ratios live in dynamic
-// shared memory sized to jMax, so this handles ns_total beyond the 1024
-// threads-per-block limit of the PCR solver. Used for ns_total > 1024.
+// One block per (config, mn) row with the elimination ratios in dynamic shared
+// memory, for ns_total beyond the PCR solver's 1024.
 __global__ void k_apply_rz_thomas_block(
     int n_config, int mnsize, int ns_total, int num_basis,
     const int* __restrict__ jMin, int jMax,
@@ -2916,10 +2618,8 @@ __global__ void k_assemble_rz_preconditioner(
     int* __restrict__ d_jMin,
     const std::uint8_t* __restrict__ d_active_per_cfg);
 
-// Template kernels (instantiated at their launch sites).
-// Templated specialization for compile-time-known (MPOL, NTOR). Lets the
-// compiler fully unroll the m and n loops and pipeline the cosnv/sinnv +
-// gsc/gcs loads. Used for the production shape (mpol=10, ntor=10).
+// Kernels specialized for compile-time (MPOL, NTOR), unrolling the m and n
+// loops; instantiated for the production shape mpol = ntor = 10.
 template <int MPOL, int NTOR>
 __global__ __launch_bounds__(32, 16) void k_dealias_inv_tpl(
     int n_config, int ns_force_local, int ns_con_local,

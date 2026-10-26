@@ -34,11 +34,8 @@ import vmecpp
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_DATA = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
 
-# name: (input file, updates); the inputs cover axisymmetric and three-dimensional
-# boundaries, prescribed current and prescribed iota, power-series and spline pressure,
-# vacuum, lbsubs, nfp = 1 to 5, an odd nzeta, a missing axis guess, a bad initial
-# Jacobian, the block-Thomas radial solver above 1024 surfaces, the largest poloidal
-# grid the device kernels accept, and free boundary at two vacuum cadences
+# name: (input file, updates): axisymmetric and 3D, current and iota, spline pressure,
+# vacuum, lbsubs, nfp 1-5, odd nzeta, bad axis or Jacobian, ns 1101, free boundary
 CASES: dict[str, tuple[Path, dict]] = {
     "cma": (TEST_DATA / "cma.json", {}),
     "solovev": (TEST_DATA / "solovev.json", {}),

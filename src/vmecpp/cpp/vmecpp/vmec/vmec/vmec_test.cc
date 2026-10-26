@@ -1328,11 +1328,8 @@ TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
   }
 }  // CurrentDensityEndsAtTheSmallestRadialResolution
 
-// nThetaReduced > 32 (here 44, from ntheta = 86) exercises the multi-warp
-// poloidal scatter in the CUDA build: one x-block per 32 poloidal points. A
-// regression there re-surfaces as a first-iteration divergence, because
-// poloidal points past index 31 would be left stale. Runs on the host poloidal
-// path in non-CUDA builds.
+// nThetaReduced = 44 > 32 exercises the multi-warp poloidal scatter of the CUDA
+// build; a stale point past index 31 diverges the first iterations.
 TEST(TestVmec, PoloidalResolutionAbove32) {
   const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
   const absl::StatusOr<std::string> indata_json = ReadFile(filename);
@@ -1343,10 +1340,8 @@ TEST(TestVmec, PoloidalResolutionAbove32) {
 
   indata->ntheta = 86;  // nThetaReduced = 44 > 32
 
-  // A stale poloidal point diverges the run within its first iterations, so
-  // twenty of them catch what this guards. Converging at this resolution costs
-  // four times the default case instead of matching it, which the tsan suite
-  // cannot afford: it passes in 268 s of a 300 s budget without this test.
+  // A stale poloidal point diverges the run within twenty iterations;
+  // converging here would cost the tsan suite four times the default case.
   indata->niter_array[0] = 20;
   indata->return_outputs_even_if_not_converged = true;
 
@@ -1355,9 +1350,8 @@ TEST(TestVmec, PoloidalResolutionAbove32) {
 }  // PoloidalResolutionAbove32
 
 #ifdef VMECPP_USE_CUDA
-// ns > 1024 (here 1100) uses the block-Thomas radial solver, which holds the
-// elimination ratios in dynamic shared memory; the PCR preconditioner cannot
-// exceed 1024 threads per block. CUDA-only: the host build has no such cap.
+// ns = 1100 > 1024 takes the block-Thomas radial solver, which holds its
+// elimination ratios in dynamic shared memory; CUDA only.
 TEST(TestVmec, CudaRadialResolutionAbove1024) {
   const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
   const absl::StatusOr<std::string> indata_json = ReadFile(filename);

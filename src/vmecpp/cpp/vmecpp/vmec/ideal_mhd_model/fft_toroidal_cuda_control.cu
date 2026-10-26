@@ -2,18 +2,8 @@
 
 namespace vmecpp {
 
-// ============================================================================
-// ResidualsCuda
-//
-// Mirror of FourierForces::residuals() against the device-resident decomposed
-// shadow S.d_decomposed_frcc/frss/fzsc/fzcs/flsc/flcs. Single-block reduction
-// kernel writes 3 doubles [fResR, fResZ, fResL] to S.d_residuals_partial; one
-// small D2H + stream sync returns them.
-//
-// Honors the same jMaxRZ (with includeEdgeRZForces) and jMaxIncludeBoundary
-// range logic as the CPU loop. Stellarator-symmetric only (lasym = false),
-// matching the supported scope of the CUDA build.
-// ============================================================================
+// ResidualsCuda: FourierForces::residuals() on the device's decomposed shadow,
+// returning [fResR, fResZ, fResL] over the CPU's radial range.
 void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                     const FlowControl& fc, bool includeEdgeRZForces,
                     double& fResR_out, double& fResZ_out, double& fResL_out,
@@ -69,19 +59,16 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
     d_edge = S.d_edge_per_cfg;
   }
 
-  // Batched execution: launch n_config_max blocks (one per config). Each writes 3
-  // scalars at residuals_partial[config*3:].
-  // K sub-blocks per configuration, K = max(1, 16 / n_config_max), so the
-  // reduction spans about 16 blocks in total.
+  // One reduction per configuration in K = max(1, 16 / n_config_max)
+  // sub-blocks, about 16 blocks in total.
   if (g_residuals_k_run < 0) {
     const int auto_k = CudaToroidalState::kResidualsKPartitions / S.n_config_max;
     g_residuals_k_run = (auto_k < 1) ? 1 : auto_k;
   }
   const int residuals_k_env = g_residuals_k_run;
   if (residuals_k_env > 1) {
-    // Multi-block partials path. Grid (K, n_config). Each block reduces
-    // 1/K of the index space. Then finalize collapses K partials into
-    // d_residuals_partial.
+    // Grid (K, n_config): each block reduces 1/K of the index space, and the
+    // finalize kernel collapses the K partials.
     dim3 partials_grid(residuals_k_env, S.n_config_max);
     k_residuals_par_K<<<partials_grid, 256, 0, st>>>(
         S.n_config_max, S.ns_local_cached,
@@ -93,9 +80,8 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
         S.d_residuals_partials_K,
         S.d_active_per_cfg, jLocal_max_rz_edge, d_edge);
     cuda_check(cudaGetLastError(), "k_residuals_par_K launch");
-    // Finalize: grid (n_config), TPB=32 (covers up to 32 partitions; we cap
-    // K at 16 so half the lanes load zeros and the butterfly still gives
-    // the correct sum).
+    // Finalize: one block of 32 threads per configuration, covering up to 32
+    // partitions; K is capped at 16.
     k_residuals_finalize_K<<<S.n_config_max, 32, 0, st>>>(
         S.n_config_max, residuals_k_env,
         S.d_residuals_partials_K,
@@ -113,10 +99,8 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
         S.d_active_per_cfg, jLocal_max_rz_edge, d_edge);
     cuda_check(cudaGetLastError(), "k_residuals_par launch");
   }
-  // Device-side convergence flag on normalized residuals (read through
-  // GetConvergenceFlag). The normalization inputs are the persistent
-  // per-cfg buffers (force-norm sums, energy scalars, plasma volumes)
-  // plus the cached per-run lamscale; see k_check_convergence.
+  // Device convergence flag on the normalized residuals, from the
+  // per-configuration norms, energies, volumes and lamscale.
   if (!is_precd && S.d_conv_flag) {
     k_check_convergence<<<S.n_config_max, 1, 0, st>>>(
         S.n_config_max, S.d_residuals_partial,
@@ -130,13 +114,8 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
                "conv_flag d2h async");
   }
 
-  // Per-cfg cache: the 3-double transfer widens to 3*n_cfg doubles into
-  // a static cache under the one synchronization this call already pays
-  // (the transfer delta is ~100 ns at n_cfg = 64; the sync wait
-  // dominates). Single-cfg behavior is preserved (fResR_out = cache[0]),
-  // and the per-cfg consumers in evalFResInvar/Precd read the cache via
-  // GetResidualsPerCfgCacheInvar / GetResidualsPerCfgCachePrecd with no
-  // additional transfer or sync.
+  // The transfer covers 3 * n_cfg doubles under the synchronization this call
+  // already pays; evalFResInvar and evalFResPrecd read the cache.
   int n_cfg = S.n_config_max;
   std::vector<double>& cache = is_precd ? g_residuals_precd_cache
                                           : g_residuals_invar_cache;
@@ -153,28 +132,16 @@ void ResidualsCuda(const RadialPartitioning& r, const Sizes& s,
   fResL_out = cache[2];
 }
 
-// ============================================================================
-// FlushDecomposedToHostCuda
-//
-// Flush the decomposed shadow S.d_decomposed_* back to host m_decomposed_f
-// buffers. Consolidates the per-wrapper D2H+sync that
-// DecomposeAndConstrainCuda and the ApplyM1/Lambda/RZ wrappers would
-// otherwise pay individually. The iteration body does not call this per
-// iteration (the device shadow is the authoritative state); the entry point
-// serves the controller's explicit flush sites and diagnostics.
-// ============================================================================
+// FlushDecomposedToHostCuda: copies the decomposed force shadow to the host
+// m_decomposed_f, which the iteration body itself does not need.
 
-// (anonymous namespace hoisted across the split translation units)
-// Declared ahead of its definition below so the d_pts_x initialization
-// sites can arm the backup mirror as soon as the stage's initial state
-// is resident on the device.
+// (anonymous namespace hoisted across the split translation units) Declared
+// here so the d_pts_x initialization sites can arm the backup.
 void EnsurePTSBackupBuffers(CudaToroidalState& S);
 // (anonymous namespace hoisted across the split translation units)
 
-// When set, PerformTimeStepCuda runs only its buffer-init section
-// (EnsurePTSBuffers + the multigrid upscale / per-cfg dec_x load /
-// broadcast fallback) and returns before the time-step kernel. Used by
-// PrepareStagePtsXCuda.
+// When set, PerformTimeStepCuda only initializes its buffers and the stage's
+// positions and returns before the time step (PrepareStagePtsXCuda).
 bool g_pts_init_only = false;
 
 void PerformTimeStepCuda(
@@ -202,9 +169,7 @@ void PerformTimeStepCuda(
 
   // One-shot init: v starts as zero, x starts from host m_decomposed_x.
   if (!S.pts_v_initialized) {
-    // cudaMalloc generally returns zeroed memory but be explicit: zero ALL N
-    // config slots so cfg 1..N-1 are clean at first call (in case the
-    // broadcast convergence-fix is needed for v state, too).
+    // Zeroes the velocity of every configuration slot at the first call.
     size_t v_bytes_all = sizeof(double) * (size_t)S.n_config_max * ns_con_local
                           * mpol * (ntor + 1);
     cuda_check(cudaMemsetAsync(S.d_pts_v_rcc, 0, v_bytes_all, st), "memset v_rcc");
@@ -217,32 +182,21 @@ void PerformTimeStepCuda(
   }
   if (!S.pts_x_initialized) {
     bool initialized_by_upscale = false;
-    // Multigrid-stage transition path: if EnsurePTSBuffers captured the
-    // pre-Reshape d_pts_x into d_pts_x_prev because ns_local changed,
-    // run the per-cfg radial-interp kernel to upscale the snapshot into
-    // the freshly-allocated d_pts_x. This preserves per-cfg state across
-    // multigrid stages in distinct mode (host m_decomposed_x is single-cfg
-    // and would otherwise wipe cfg != 0 via the broadcast fallback below).
+    // On a distinct batch's stage transition, upscale each configuration's
+    // snapshot into the new d_pts_x, which the host's single shadow cannot.
     if (g_batch_distinct_run && S.pts_x_prev_valid && S.pts_x_prev_ns > 0 &&
         S.pts_x_prev_size > 0 && S.d_scalxc) {
       int ns_old = S.pts_x_prev_ns;
       int ns_new = ns_local;
-      // Per-cfg upscale on device, bit-identical to
-      // Vmec::InterpolateToNextMultigridStep. Sequence per cfg: scale the
-      // old stage by its scalxc, extrapolate the odd-m axis on the scaled
-      // values, interpolate linearly in s dividing by the new stage's
-      // scalxc, zero the odd-m axis rows.
+      // Vmec::InterpolateToNextMultigridStep per configuration, bit for bit:
+      // scaling, axis extrapolation, interpolation.
       int scalxc_len_per_cfg = ns_new * 2;
       if (!S.scalxc_prev_valid || !S.d_scalxc_prev) {
         throw std::runtime_error(
             "CUDA multigrid upscale without the previous stage's scalxc");
       } else {
-        // Device upscale, bit-identical to
-        // Vmec::InterpolateToNextMultigridStep: scale the previous stage
-        // by its scalxc (the caller-side decomposeInto pass), extrapolate
-        // the odd-m axis on the scaled values, interpolate linearly in s
-        // dividing by the new stage's scalxc, and zero the odd-m axis
-        // rows. The snapshot is consumed in place; no host round trip.
+        // Vmec::InterpolateToNextMultigridStep on the device, bit for bit,
+        // consuming the snapshot in place.
         const int n_cfg = S.n_config_max;
         const int TPB = 32;
         dim3 tpb(TPB, 1, 1);
@@ -270,12 +224,8 @@ void PerformTimeStepCuda(
             S.d_scalxc);
         cuda_check(cudaGetLastError(), "k_radial_interpolate_pts_x launch");
       }
-      // Host-shadow refresh: copy cfg 0's upscaled state into the host
-      // m_decomposed_x arrays so host-side consumers (rzNorm / fNorm1,
-      // restart backups) read the state the device evolves. The device
-      // upscale is bit-identical to the host interpolation, so this is a
-      // consistency guarantee rather than a correction; cfgs > 0 have no
-      // host shadow.
+      // Copies configuration zero's upscaled state to the host shadow that
+      // rzNorm, fNorm1 and the restart backups read.
       if (m_dec_x_rcc) {
         size_t up_spec_doubles = (size_t)ns_new * mpol * (ntor + 1);
         size_t up_bytes = up_spec_doubles * sizeof(double);
@@ -288,9 +238,8 @@ void PerformTimeStepCuda(
         cuda_check(cudaMemcpyAsync(m_dec_x_lsc, S.d_pts_x_lsc, up_bytes,
                                     cudaMemcpyDeviceToHost, st),
                    "d2h upscaled cfg0 lsc");
-        // The rss/zcs/lcs (odd-parity) spectra are absent for axisymmetric
-        // (ntor = 0) inputs: neither the host shadow nor the device slot is
-        // allocated, so skip their transfer rather than issue an invalid copy.
+        // The odd-parity spectra are absent at ntor = 0, with neither a host
+        // nor a device buffer, so they are not copied.
         if (m_dec_x_rss && S.d_pts_x_rss)
           cuda_check(cudaMemcpyAsync(m_dec_x_rss, S.d_pts_x_rss, up_bytes,
                                       cudaMemcpyDeviceToHost, st),
@@ -315,11 +264,8 @@ void PerformTimeStepCuda(
       initialized_by_upscale = true;
     }
     if (!initialized_by_upscale) {
-    // Distinct batches: load each configuration's decomposed position from
-    // the run_batched_gpu staging block ([sp][cfg][spec] layout).
-    // RecomposeToPhysicalCuda loads the same block into the same d_pts_x_*
-    // destinations, so whichever runs first on iteration 1 populates them and
-    // the other's init branch is skipped via pts_x_initialized.
+    // Distinct batches load each configuration's positions from the staging
+    // block; RecomposeToPhysicalCuda loads the same, whichever runs first.
     size_t one_spec_doubles = (size_t)ns_local * mpol * (ntor + 1);
     const bool dec_x_loaded =
         !g_batch_dec_x_mem.empty() && g_batch_mem_shape[0] == S.n_config_max &&
@@ -362,11 +308,8 @@ void PerformTimeStepCuda(
     }
     }  // !initialized_by_upscale
     S.pts_x_initialized = true;
-    // Arm the device backup with the stage's initial state so a
-    // bad-Jacobian or bad-progress restore that fires before the first
-    // periodic backup rewinds to a valid geometry. Mirrors the host
-    // path, whose backup is synced from decomposed_x at stage start by
-    // the RestartIteration call in InitializeRadial.
+    // Arms the device backup with the stage's initial state, as the host backup
+    // is synced at stage start, so an early restore rewinds validly.
     EnsurePTSBackupBuffers(S);
   }
   (void)m_dec_v_rcc; (void)m_dec_v_rss; (void)m_dec_v_zsc;
@@ -409,9 +352,8 @@ void PerformTimeStepCuda(
       d_time_step_for_step = S.d_time_step_per_cfg;
       d_phase_for_step = S.d_phase_per_cfg;
     }
-    // Reset the ring on the same iterations the host controller does
-    // (iter2 == iter1: stage starts and restarts), plus defensively after
-    // a Reshape reallocated the ring buffers.
+    // The damping ring resets where the host's does (iter2 == iter1) and after
+    // a Reshape reallocated it.
     int phase = (iter_phase == 0 || S.timestep_first_call_after_reset)
         ? 0 : 1;
     k_update_timestep<<<S.n_config_max, 32, 0, st>>>(
@@ -443,10 +385,8 @@ void PerformTimeStepCuda(
       d_fac_b1_for_step, S.d_active_per_cfg, d_time_step_for_step);
   cuda_check(cudaGetLastError(), "k_perform_time_step launch");
   if (!s.lthreed) {
-    // Axisymmetric (ntor=0): the lthreed-only spectral slots carry no physical
-    // contribution. The host keeps them null, so hold them (and their
-    // velocities) at zero on the device too; otherwise the geometry inverse
-    // picks up evolved garbage and the jacobian degrades.
+    // At ntor = 0 the lthreed-only slots stay zero on the device, as the host
+    // keeps them null.
     const size_t z_bytes =
         (size_t)S.n_config_max * (size_t)S.pts_x_size * sizeof(double);
     cuda_check(cudaMemsetAsync(S.d_pts_x_rss, 0, z_bytes, st), "zero 2d x_rss");
@@ -457,42 +397,17 @@ void PerformTimeStepCuda(
     cuda_check(cudaMemsetAsync(S.d_pts_v_lcs, 0, z_bytes, st), "zero 2d v_lcs");
   }
 
-  // Sync deferral (every-K backup cadence):
-  //   - per-iter D2H + sync of d_pts_x -> host m_decomposed_x ELIDED here.
-  //   - Three on-demand flush sites call FlushDecomposedXToHostCuda():
-  //       1. update() iter2<2 path before host decomposeInto (per stage)
-  //       2. updateRadialPreconditioner before computeForceNorms (every 25)
-  //       3. Vmec::Evolve end-of-run before ComputeOutputQuantities
-  //   - Host backup save/restore in Vmec::RestartIteration moved device-side
-  //     via BackupPtsXCuda / RestorePtsXFromBackupCuda (caller now gates the
-  //     save to every-K iters to avoid net-zero per-iter device-D2D cost).
+  // The device positions reach the host only at the explicit flush sites, and
+  // the restart backups are device-side.
   (void)m_dec_x_rcc; (void)m_dec_x_rss; (void)m_dec_x_zsc;
   (void)m_dec_x_zcs; (void)m_dec_x_lsc; (void)m_dec_x_lcs;
 }
 
-// =============================================================================
-// Per-config D2H entry points
-// =============================================================================
-// These expose the per-config arrays that the batched kernels write to
-// device-side buffers, as explicit synchronizing transfers.
-// Each function:
-//   - Locks S.mu (consistent with the kernel wrappers it follows).
-//   - cudaMemcpyAsync's the full n_cfg array to a pinned host stage.
-//   - cudaStreamSynchronize before returning (caller treats as a sync point).
-//   - Resizes + populates the caller's std::vector<double> out-arguments.
-//
-// They are intentionally separate from the single-cfg entries so the
-// production iter loop is unchanged; the iter loop's per-cfg control logic
-// consumes the per-cfg caches populated during its existing syncs instead,
-// and these explicit entry points remain for diagnostics and external
-// callers.
+// Per-configuration device-to-host transfers of the arrays the batched kernels
+// write, each synchronizing under S.mu.
 
-// H2D the host active_per_cfg vector to the device byte
-// buffer. Caller invokes once per iter (or whenever the mask changes); kernels
-// read d_active_per_cfg at blockIdx.z and early-return for inactive cfgs.
-// Skipped when n_cfg <= 1 (single-cfg has nothing to mask). Compares against
-// last-staged buffer and skips the H2D when unchanged (the mask only flips
-// when a cfg converges, which happens rarely).
+// Copies cfg's position slice into its converged-state snapshot when it goes
+// inactive.
 void SnapshotInactiveCfgCuda(int cfg) {
   auto& S = State();
   std::lock_guard<std::mutex> lk(S.mu);
@@ -527,6 +442,8 @@ void SnapshotInactiveCfgCuda(int cfg) {
   S.pts_x_final_taken[cfg] = 1;
 }
 
+// Copies the host active mask to the device for more than one configuration,
+// skipping an unchanged mask.
 void StagePhaseDActiveCuda(const std::vector<std::uint8_t>& active_per_cfg) {
   auto& S = State();
   std::lock_guard<std::mutex> lk(S.mu);
@@ -557,10 +474,8 @@ void StagePhaseDActiveCuda(const std::vector<std::uint8_t>& active_per_cfg) {
 int GetNConfigMaxCuda() { return g_n_config_run; }
 
 int CudaMaxRadialResolution() {
-  // ns <= 1024 uses the PCR solver (one thread per radial row, bounded by the
-  // 1024 threads-per-block limit); larger ns uses the block-Thomas solver,
-  // which holds the elimination ratios in dynamic shared memory sized to ns.
-  // The device's opt-in shared-memory capacity therefore sets the ceiling.
+  // PCR to ns = 1024, then block-Thomas with the elimination ratios in shared
+  // memory, whose opt-in capacity on the device sets the ceiling.
   int dev = 0;
   if (cudaGetDevice(&dev) != cudaSuccess) return 1024;
   int max_smem = 0;
@@ -576,11 +491,8 @@ int CudaMaxRadialResolution() {
 bool CudaVramBudgetCuda(long long n_cfg, long long ns, long long mpol,
                         long long ntor, long long nZeta, long long nThetaEff,
                         long long* needed_bytes, long long* free_bytes) {
-  // Upper estimate of the persistent device allocation for one run at the
-  // given shape and configuration count (CudaBudgetRawBytes), with an
-  // eighth-part margin and a flat cushion that absorb the small profile
-  // buffers, the pinned-host counterparts of lazy allocations, and
-  // context overhead.
+  // CudaBudgetRawBytes plus an eighth-part margin and a flat cushion for small
+  // buffers, pinned host memory and context overhead.
   long long needed = CudaBudgetRawBytes(n_cfg, ns, mpol, ntor, nZeta,
                                         nThetaEff);
   needed += needed / 8 + (256LL << 20);
@@ -599,10 +511,8 @@ bool CudaVramBudgetCuda(long long n_cfg, long long ns, long long mpol,
     if (free_bytes) *free_bytes = -1;
     return true;
   }
-  // Credit the memory the next Reshape frees before this run's
-  // allocations land: a prior run's persistent buffers are released when
-  // the shape or the configuration count changes, and stay (already
-  // counted inside the free query's deficit) when neither does.
+  // Credits the memory the next Reshape frees when the shape or configuration
+  // count changes.
   long long reclaimable = 0;
   {
     auto& S = State();
@@ -631,10 +541,8 @@ bool PtsXInitializedCuda() {
   return S.pts_x_initialized;
 }
 
-// True when the device-resident d_pts_x is initialized AND sized for the
-// given stage geometry. Distinguishes "post-upscale, authoritative for the
-// new stage" from "stale previous-stage buffer" at iteration 1 of a
-// multigrid stage.
+// Whether d_pts_x is loaded and sized for this stage, telling the upscaled
+// state at a stage's first iteration from a stale buffer.
 bool PtsXMatchesCuda(int ns_local, int mpol, int ntor) {
   auto& S = State();
   if (!S.stream) return false;

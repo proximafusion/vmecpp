@@ -280,9 +280,8 @@ int VacuumNtor(const vmecpp::VmecINDATA& indata) {
 }
 
 #ifdef VMECPP_USE_CUDA
-// Copies the device-resident decomposed position state, which the CUDA path
-// keeps authoritative between iterations, into the host containers that the
-// output and iteration-callback paths read.
+// Copies the device-resident position state into the host containers the output
+// and iteration-callback paths read.
 void FlushDecomposedXFromDevice(
     const vmecpp::Sizes& s,
     const std::vector<std::unique_ptr<vmecpp::RadialPartitioning>>& r,
@@ -298,9 +297,8 @@ void FlushDecomposedXFromDevice(
 }
 #endif  // VMECPP_USE_CUDA
 
-// Returns fn(). A CUDA error throws, and an exception must not leave a parallel
-// region, so on the CUDA build, whose parallel regions run one thread, the
-// exception becomes an internal error.
+// Returns fn(); on the CUDA build, whose parallel regions run one thread, a
+// CUDA exception becomes an internal error instead of leaving the region.
 template <typename Fn>
 auto CatchDeviceErrors(Fn&& fn) -> decltype(fn()) {
 #ifdef VMECPP_USE_CUDA
@@ -383,10 +381,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   }
 
 #ifdef VMECPP_USE_CUDA
-  // The CUDA iteration body covers stellarator-symmetric configurations,
-  // both axisymmetric (ntor = 0, nZeta = 1) and three-dimensional, on a
-  // single radial rank. Reject the unsupported inputs up front rather than
-  // failing mid-iteration.
+  // The CUDA iteration body covers stellarator-symmetric inputs, axisymmetric
+  // and 3D, on one radial rank; others are rejected before iterating.
   if (indata_.lasym) {
     return absl::UnimplementedError(
         "non-stellarator-symmetric (lasym) runs are not supported by the "
@@ -403,9 +399,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
                         "input has nThetaReduced = %d",
                         s_.nThetaReduced));
   }
-  // The reset sets this run's configuration count; it must precede the
-  // memory pre-flight below so the budget is computed against this run's
-  // count rather than the previous run's.
+  // The reset sets this run's configuration count, which the memory pre-flight
+  // below reads.
   vmecpp::ResetCudaStateForNewVmecRun(batch_size_, !batch_indata_.empty());
   vmecpp::SetFreeBoundaryRunCuda(indata_.lfreeb ? 1 : 0);
   if (indata_.lfreeb && vmecpp::GetNConfigMaxCuda() > 1 &&
@@ -424,10 +419,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
           "ratios in shared memory); this input requests ns = %d",
           ns_supported, ns_max));
     }
-    // Pre-flight the device memory budget for the finest multigrid stage
-    // at the requested configuration count, so an oversized batch is
-    // rejected with a diagnosis instead of failing at an allocation deep
-    // inside the iteration body.
+    // Rejects a batch whose finest stage exceeds the free device memory before
+    // allocating anything.
     long long needed_bytes = 0;
     long long free_bytes = 0;
     if (!vmecpp::CudaVramBudgetCuda(vmecpp::GetNConfigMaxCuda(), ns_max,
@@ -500,21 +493,11 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
   fc_.ns_old = 0;
   fc_.delt0r = indata_.delt;
 
-  // Allocate the per-configuration state vectors on the FlowControl
-  // instance for the batched CUDA execution mode, at the configuration
-  // count the reset above set. Under single-configuration execution the
-  // resized vectors degenerate to length one and the single-configuration
-  // scalar fields remain authoritative for the convergence test; under
-  // multi-configuration execution the vectors hold the per-configuration
-  // residuals and restart-state values consumed by the convergence gate
-  // further below.
+  // Per-configuration state of the batch at the count set above; length one for
+  // a single run, whose scalar fields decide convergence.
 #ifdef VMECPP_USE_CUDA
-  // The persistent device state was reset alongside the scope guards
-  // above. Without that reset, a second run in the same process finds
-  // pts_x still marked initialized: its first Reshape then snapshots the
-  // prior run's final state as if it were a previous multigrid stage,
-  // and the stage-transition upscale initializes this run from that
-  // state instead of from the staged inputs.
+  // The device state was reset above, so a second run in the process stages its
+  // own inputs instead of upscaling the previous run's final state.
   fc_.ResizeForBatch(vmecpp::GetNConfigMaxCuda());
   fc_.per_cfg_control = batch_indata_.size() > 1;
   std::fill(fc_.failed_per_cfg.begin(), fc_.failed_per_cfg.end(),
@@ -606,13 +589,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
                          s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb);
 
-      // Restore per-cfg activity for the current stage. Configurations
-      // that converged against the coarser stage's looser ftolv must
-      // re-iterate against the finer stage's tighter ftolv, so the
-      // active mask is rebuilt for every configuration that has not failed
-      // and the per-cfg iteration counts and restart control start over
-      // before the stage's iter loop begins. Under single-cfg execution the
-      // per-cfg vectors are empty and the reset is a no-op.
+      // Configurations that have not failed iterate again at this stage's
+      // tighter ftolv, with counts and restart control reset.
       fc_.ResetActivePerCfgForNextStage(indata_.delt);
       if (fc_.per_cfg_control &&
           std::none_of(fc_.active_per_cfg.begin(), fc_.active_per_cfg.end(),
@@ -637,9 +615,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         return true;
       }
 #ifdef VMECPP_USE_CUDA
-      // A distinct batch ran each configuration's first iteration alone
-      // (run_batched_gpu); its first stage continues from the ijacob each
-      // configuration's first iteration ended with.
+      // A distinct batch ran each configuration's first iteration alone; its
+      // first stage continues from the ijacob that iteration ended with.
       if (igrid == 0 && jacob_off_ == 0 && !batch_ijacob_.empty()) {
         fc_.ijacob = batch_ijacob_[0];
         if (batch_ijacob_.size() == fc_.ijacob_per_cfg.size()) {
@@ -747,25 +724,15 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     }
   }
 
-  // Consolidated end-of-iteration flush of device-resident fields read
-  // by the post-iteration output-derivation path. Each model invokes its
-  // FlushForOutputCuda once, after the iteration loop has terminated and
-  // before GatherDataFromThreads consumes the host buffers. The per-model
-  // dispatch is necessary under the multi-thread CPU path where each
-  // IdealMhdModel instance maintains an independent set of device shadow
-  // buffers; under the single-thread CUDA path the loop iterates a single
-  // model. The implementation is a no-op on builds without
-  // VMECPP_USE_CUDA, so the call site remains unconditional.
+  // Flushes each model's device fields to the host once, after the iteration
+  // loop and before GatherDataFromThreads reads them.
   for (auto& mhd : m_) {
     mhd->FlushForOutputCuda();
   }
 
 #ifdef VMECPP_USE_CUDA
-  // Final device-to-host transfer of the decomposed-position state.
-  // Mirrors the CUDA path's persistent device-resident d_pts_x buffer
-  // back into the host m_decomposed_x containers so that
-  // ComputeOutputQuantities and the downstream output-construction
-  // routines observe the converged state.
+  // Copies the converged device position state to the host for
+  // ComputeOutputQuantities.
   FlushDecomposedXFromDevice(s_, r_, decomposed_x_);
 #endif
 
@@ -819,8 +786,6 @@ void Vmec::SetupVacuumSolvers() {
   // The vacuum solve runs cooperatively in the persistent radial parallel
   // region (see IdealMhdModel::update), so its tangential partitioning is over
   // the radial team of num_threads_ threads, which the runtime has granted.
-  // The CUDA build runs one radial thread, so fb_vac_[0] covers the whole
-  // tangential grid.
   const int vac_num_threads = num_threads_;
   if (vac_num_threads == vac_num_threads_) {
     return;
@@ -871,14 +836,8 @@ void Vmec::SetupVacuumSolvers() {
   }  // vac_thread_id
 
 #ifdef VMECPP_USE_CUDA
-  // Batched free-boundary: one further NESTOR instance per configuration
-  // slot, each with its own persistent response matrix, right-hand side,
-  // LU decomposition and reduction slots. They share the external magnetic
-  // field and the HandoverStorage output spans; the vacuum loop in
-  // IdealMhdModel::update consumes each configuration's outputs before the
-  // next solver call overwrites them. Like fb_vac_, the instances persist
-  // across multigrid stages. All spans captured here are sized in the Vmec
-  // constructor (ns-independent).
+  // Batched free boundary: one more NESTOR instance per configuration slot,
+  // each with its own persistent state and shared field and output spans.
   const int n_cfg_fb = vmecpp::GetNConfigMaxCuda();
   if (n_cfg_fb > 1 &&
       indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
@@ -970,14 +929,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       old_r_.resize(num_threads_);
 
 #ifdef VMECPP_USE_CUDA
-      // Flush the device-resident d_pts_x to the host m_decomposed_x
-      // before old_xc_scaled_ derives from it. Under the per-iteration
-      // sync deferral the host copy can lag the device by up to K
-      // iterations; the host upscale and the device's own per-cfg
-      // multigrid upscale must operate on bit-identical
-      // configuration-zero state, or the divergence between them forces
-      // distinct-mode runs into BAD_JACOBIAN at iteration 2 of the new
-      // stage.
+      // Flush the device positions first, so the host upscale and the device's
+      // per-configuration upscale start from the same configuration-zero state.
       for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
         const int ns_old_local =
             r_[thread_id]->nsMaxF1 - r_[thread_id]->nsMinF1;
@@ -1009,11 +962,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     // the team the runtime grants, which OMP_THREAD_LIMIT or an enclosing
     // parallel region can make smaller than the request.
 #ifdef VMECPP_USE_CUDA
-    // The CUDA iteration body owns the full radial domain on a single rank;
-    // multi-threaded radial partitioning is not supported under the CUDA
-    // build. Clamping the input keeps the OpenMP runtime thread count
-    // (set inside vmec_adjust_num_threads) consistent with the per-thread
-    // array sizing below.
+    // The CUDA iteration body owns the whole radial domain on one thread, and
+    // the OpenMP thread count follows the clamp.
     num_threads_ = GrantedThreads(vmec_adjust_num_threads(
         /*max_threads=*/1, fc_.num_surfaces_to_distribute));
 #else
@@ -1066,11 +1016,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       p_[thread_id]->setupInputProfiles();
 
 #ifdef VMECPP_USE_CUDA
-      // Distinct-mode batch: build one RadialProfiles per configuration,
-      // mirroring p_, so the device stages each config's pressure/current/iota/
-      // flux profiles instead of broadcasting the seed's. evalRadialProfiles
-      // touches no HandoverStorage, so these safely share h_; the per-level
-      // eval below uses a throwaway VmecConstants to absorb the rmsPhiP sum.
+      // Distinct batch: one RadialProfiles per configuration, mirroring p_;
+      // they share h_, which evalRadialProfiles does not touch.
       if (thread_id == 0 && !batch_indata_.empty()) {
         p_percfg_.clear();
         p_percfg_.reserve(batch_indata_.size());
@@ -1164,10 +1111,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     }
 
 #ifdef VMECPP_USE_CUDA
-    // Distinct-mode batch: re-evaluate each config's profiles at this multigrid
-    // level and hand the flat per-config arrays to the device staging. A
-    // throwaway VmecConstants absorbs each config's rmsPhiP so the seed's
-    // lamscale (computed just below) is unaffected.
+    // Distinct batch: stage each configuration's profiles at this level; a
+    // throwaway VmecConstants leaves the seed's lamscale alone.
     if (!p_percfg_.empty()) {
       const RadialPartitioning& rp0 = *r_[0];
       const int ns_h = rp0.nsMaxH - rp0.nsMinH;
@@ -1494,8 +1439,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
     }
 
     // check for bad jacobian and bad initial guess for axis; a distinct batch
-    // ran each configuration's first iteration alone with this recovery
-    // (run_batched_gpu)
+    // ran this recovery in each configuration's first iteration
     if (batch_indata_.empty() && fc_.ijacob == 0 &&
         (status_ == VmecStatus::BAD_JACOBIAN ||
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
@@ -1528,11 +1472,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         fc_.restart_reason = RestartReason::BAD_JACOBIAN;
 
 #ifdef VMECPP_USE_CUDA
-        // The retry re-initializes the host state vector from the
-        // boundary and the recomputed axis; drop the device position,
-        // velocity, and backup state so the next stage preparation
-        // re-stages them from that fresh host state instead of replaying
-        // the failed attempt's device copy.
+        // The retry re-initializes the host state from the boundary and the new
+        // axis, so the device state is dropped and re-staged from it.
         vmecpp::InvalidatePtsXCuda();
 #endif
       }
@@ -1772,9 +1713,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         {
           if (interrupt_callback_ && interrupt_callback_()) {
             m_liter_flag = false;
-            // MSVC's default OpenMP (2.0) lacks `atomic write`; the write is a
-            // single-writer write-once bool here, so it stays correct without
-            // it. GCC/Clang keep the atomic for memory visibility.
+            // MSVC's OpenMP 2.0 lacks `atomic write`; this single-writer,
+            // write-once bool stays correct without it.
 #if defined(_OPENMP) && !defined(_MSC_VER)
 #pragma omp atomic write
 #endif
@@ -1849,14 +1789,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #pragma omp single
 #endif  // _OPENMP
   {
-    // Post-loop per-cfg salvage. When the iteration loop exits because
-    // force_iteration exceeded the shared niterv without the per-cfg
-    // convergence gate setting all_done true, the batch may still contain
-    // configurations that did converge earlier. Mark any cfgs that are
-    // still active as timed out, and if at least one cfg converged within
-    // the stage's niterv allotment, classify the run as SUCCESSFUL.
-    // Without this salvage the slowest cfg in a batch silently fails
-    // every other cfg even when those reached their tolerance.
+    // Post-loop salvage: configurations still active when the loop hit niterv
+    // time out, and the run succeeds when any configuration converged.
     const int n_cfg_post = static_cast<int>(fc_.active_per_cfg.size());
     if (n_cfg_post > 0 && status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
       int converged_count = 0;
@@ -1998,9 +1932,8 @@ void Vmec::ApplyPerConfigurationRestarts(int iter2) {
       vmecpp::SnapshotInactiveCfgCuda(c);
     }
   }
-  // A single run counts its vacuum cadence and refreshes its constraint
-  // origins from its latest restart; the batch counts them for every
-  // configuration from the latest restart of any.
+  // A single run counts its vacuum cadence and constraint origins from its
+  // latest restart; the batch from the latest restart of any configuration.
   if (any_held) {
     iter1_ = iter2 + 1;
   } else if (any_advanced) {
@@ -2025,11 +1958,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
     decomposed_v_[thread_id]->setZero();
 
 #ifdef VMECPP_USE_CUDA
-    // Device-side restore: at n_cfg=1, whole-batch RestorePtsXFromBackupCuda
-    // matches the legacy behavior. At n_cfg>1, derive a per-cfg restart mask
-    // from the per-cfg jacobian cache (minTau[c] * maxTau[c] < 0 or non-finite
-    // -> cfg c needs rollback) and route through the per-cfg variant, leaving
-    // cfgs that didn't trigger BAD_JACOBIAN at their current d_pts_x state.
+    // One configuration rewinds whole; several rewind only those whose Jacobian
+    // changed sign, from the per-configuration extrema of tau.
     {
       const int n_cfg_cuda = vmecpp::GetNConfigMaxCuda();
       const std::vector<std::uint8_t> mask =
@@ -2038,10 +1968,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
       if (std::find(mask.begin(), mask.end(), 1) != mask.end()) {
         vmecpp::RestorePtsXFromBackupPerCfgCuda(mask);
       } else {
-        // One configuration, or a restart without a per-configuration
-        // jacobian event (the free-boundary soft start forces BAD_JACOBIAN at
-        // vacuum activation): rewind every configuration, matching the
-        // single-configuration restore.
+        // One configuration, or a restart without a per-configuration Jacobian
+        // event (the soft start), rewinds every configuration.
         vmecpp::RestorePtsXFromBackupCuda();
       }
     }
@@ -2077,12 +2005,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
     decomposed_v_[thread_id]->setZero();
 
 #ifdef VMECPP_USE_CUDA
-    // Bad progress is detected from the shared residual trajectory, so
-    // there is no per-cfg culprit to isolate; restore the still-active
-    // cfgs to their backups and leave inactive cfgs frozen at their
-    // converged snapshots. With the backup refreshed at every improving
-    // iteration, healthy cfgs rewind at most the few iterations since
-    // their last store.
+    // Bad progress has no per-configuration culprit: the active configurations
+    // rewind to their backups, the inactive stay frozen.
     {
       const int n_cfg_cuda = vmecpp::GetNConfigMaxCuda();
       if (n_cfg_cuda > 1 &&
@@ -2115,17 +2039,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
     // save current state vector, e.g. restart_reason == NO_RESTART
 
 #ifdef VMECPP_USE_CUDA
-    // Device-side backup at the host store cadence: every improving
-    // iteration past the restart window refreshes the rollback target,
-    // so a BAD_JACOBIAN or BAD_PROGRESS restore rewinds the device
-    // state to the same snapshot the host path would restore. A coarser
-    // cadence leaves the backup pinned at an old state on restart-heavy
-    // inputs; each restore then discards all progress since that state
-    // and the run cannot advance past the first recurring bad-Jacobian
-    // event. The copy is one fused kernel launch, asynchronous on the
-    // iteration stream. Under sync elision this call participates at
-    // the same K-boundary cadence as the rest of the store and restart
-    // bookkeeping.
+    // Device backup at the host's store cadence, so a restore rewinds to the
+    // snapshot the host path restores; one fused asynchronous kernel.
     vmecpp::BackupPtsXCuda(backup_evaluated_state);
 #else
     // update backup
@@ -2165,10 +2080,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
 #pragma omp single
 #endif  // _OPENMP
     {
-      // Each configuration's restart reason from its own forward model: a
-      // Jacobian that changed sign, or huge forces in its first iteration. A
-      // bad Jacobian in the first iteration of a stage ends the
-      // configuration, as it ends its single run.
+      // Each configuration's restart reason from its own forward model; a bad
+      // Jacobian in a stage's first iteration ends it.
       const int n_cfg = static_cast<int>(fc_.active_per_cfg.size());
       const std::vector<std::uint8_t> bad_jacobian =
           vmecpp::BadJacobianPerCfgCuda(n_cfg);
@@ -2205,10 +2118,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   {
     // COMPUTE ABSOLUTE STOPPING CRITERION
     // A residual is either NaN or inf, guard for highly degenerate inputs
-    // Under per-configuration restart control the convergence gate below
-    // retires each configuration whose residuals are not finite.
     bool all_residuals_finite =
-        fc_.per_cfg_control ||
+        fc_.per_cfg_control ||  // the per-cfg gate retires non-finite ones
         (std::isfinite(fc_.fsqr) && std::isfinite(fc_.fsqz) &&
          std::isfinite(fc_.fsql));
     if ((iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) ||
@@ -2216,20 +2127,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       // first iteration and Jacobian was not computed correctly
       status_ = VmecStatus::BAD_JACOBIAN;
     } else {
-      // Per-configuration successful-termination gate. The CUDA execution
-      // path populates the per-configuration residual vectors fsqr_per_cfg,
-      // fsqz_per_cfg, and fsql_per_cfg in addition to the equivalent
-      // scalar quantities; the gate below examines the per-configuration
-      // values and signals SUCCESSFUL_TERMINATION only when every
-      // configuration has fallen below the multigrid tolerance and been
-      // marked inactive. Under single-configuration execution the
-      // per-configuration vectors degenerate to length one and the test
-      // reduces exactly to the legacy scalar comparison. Under
-      // multi-configuration execution with distinct boundaries each
-      // configuration evolves its residuals independently and may
-      // converge at different iterations; the conjunctive termination
-      // ensures that the iteration loop runs until every configuration
-      // has reached its own convergence threshold.
+      // The run succeeds once every configuration has met its tolerance; for
+      // one configuration this is the scalar test.
 #ifdef VMECPP_USE_CUDA
       const int n_cfg = static_cast<int>(fc_.active_per_cfg.size());
 #else
@@ -2238,11 +2137,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
       if (n_cfg > 0 && static_cast<int>(fc_.fsqr_per_cfg.size()) == n_cfg &&
           static_cast<int>(fc_.fsqz_per_cfg.size()) == n_cfg &&
           static_cast<int>(fc_.fsql_per_cfg.size()) == n_cfg) {
-        // Per-cfg gate. The device k_check_convergence flag decides each
-        // cfg's termination when its buffers exist (the normalized-residual
-        // arithmetic of evalFResInvar); the host comparison applies otherwise.
-        // Lazily size the per-cfg counters and outcomes if ResizeForBatch
-        // happened in a path that pre-dates these fields.
+        // The device convergence flag decides each configuration when its
+        // buffers exist, the host comparison otherwise.
         if (static_cast<int>(fc_.iter2_per_cfg.size()) != n_cfg) {
           fc_.iter2_per_cfg.assign(n_cfg, 0);
         }
@@ -2293,9 +2189,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
               fc_.converged_per_cfg[c] = 1;
               fc_.niter_per_cfg[c] = fc_.iter2_per_cfg[c] + 1;
 #ifdef VMECPP_USE_CUDA
-              // Freeze this cfg's state at the iteration it stopped; the
-              // live device slice keeps being modified while the rest of
-              // the batch iterates.
+              // Freezes this configuration's state at the iteration it stopped
+              // while the rest of the batch iterates.
               vmecpp::SnapshotInactiveCfgCuda(c);
 #endif
             } else {
@@ -2313,11 +2208,8 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
           status_ = VmecStatus::SUCCESSFUL_TERMINATION;
         }
       } else {
-        // Fallback single-cfg gate (n_cfg vectors not yet sized, e.g. CPU
-        // path or before ResizeForBatch is called).
-        //
-        // The device k_check_convergence flag decides termination when its
-        // buffers exist; the host comparison applies otherwise.
+        // Single-configuration gate: the device convergence flag decides when
+        // its buffers exist, the host comparison otherwise.
 #ifdef VMECPP_USE_CUDA
         const bool host_conv = (fc_.fsqr <= fc_.ftolv &&
                                 fc_.fsqz <= fc_.ftolv && fc_.fsql <= fc_.ftolv);
@@ -2579,11 +2471,8 @@ Eigen::VectorXd Vmec::EnclosedCurrent() const {
 
 void Vmec::Printout(double delt0r, int thread_id, int iter2) {
 #ifdef VMECPP_USE_CUDA
-  // Refresh the host decomposed spectra from the device, evaluate the
-  // per-surface spectral width (defined on the raw decomposed
-  // coefficients), and volume-average it over unique half-grid points
-  // with the device-resident differential-volume weights. Single-rank
-  // execution; the contribution is registered directly.
+  // Volume-averaged spectral width of the device spectra, weighted by the
+  // device-resident differential volume.
   {
     const int ns_local = r_[thread_id]->nsMaxF1 - r_[thread_id]->nsMinF1;
     vmecpp::FlushDecomposedXToHostCuda(0, ns_local, s_.mpol, s_.ntor,
@@ -2594,9 +2483,8 @@ void Vmec::Printout(double delt0r, int thread_id, int iter2) {
                                        decomposed_x_[thread_id]->zmncs.data(),
                                        decomposed_x_[thread_id]->lmnsc.data(),
                                        decomposed_x_[thread_id]->lmncs.data());
-    // The spectral width of the last accepted state, the device backup, as
-    // the CPU path takes it from physical_x_backup_; decomposed_x_ has
-    // already been advanced by the current time step.
+    // The spectral width of the last accepted state, the device backup, as the
+    // CPU takes it from physical_x_backup_.
     vmecpp::FlushBackupXToHostCuda(ns_local, s_.mpol, s_.ntor, s_.lthreed,
                                    physical_x_backup_[thread_id]->rmncc.data(),
                                    physical_x_backup_[thread_id]->rmnss.data(),
@@ -2828,20 +2716,11 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
   // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
   // BASED ON A METHOD GIVEN BY P. GARABEDIAN
 #ifdef VMECPP_USE_CUDA
-  // CUDA dispatch of the time-step update. The device-resident routine
-  // PerformTimeStepCuda reads the decomposed force buffers from device
-  // memory (already populated by the iteration body's force-evaluation
-  // path) and advances the device-resident velocity and
-  // decomposed-position buffers in place; the host m_decomposed_x arrays
-  // are refreshed at the controller's explicit flush sites. The host
-  // decomposed_f argument is unused on this path because the device
-  // routine reads its inputs directly from the device-resident shadow
-  // buffers; the explicit (void) cast suppresses an unused-parameter
-  // diagnostic.
+  // The device time step reads the device force buffers and advances the device
+  // velocity and positions in place; decomposed_f is unused here.
   (void)decomposed_f;
-  // The device time-step controller needs the host's preconditioned
-  // residual normalization (fNorm1 for R/Z, fc.deltaS for L) and the ring
-  // reset phase (iter2 == iter1 at stage starts and restarts).
+  // The device controller needs the host's residual normalization (fNorm1,
+  // deltaS) and the ring reset phase (iter2 == iter1 at starts and restarts).
   const int iter_phase_for_devstep = (iter2_ == iter1_) ? 0 : 1;
   vmecpp::PerformTimeStepCuda(
       r, s, fc, velocity_scale, conjugation_parameter, time_step, m_h_.fNorm1,
@@ -2852,9 +2731,8 @@ void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
       m_decomposed_x.rmnss.data(), m_decomposed_x.zmnsc.data(),
       m_decomposed_x.zmncs.data(), m_decomposed_x.lmnsc.data(),
       m_decomposed_x.lmncs.data());
-  // The multi-rank handover through m_h_ applies only when nsMinF1 > 0
-  // or nsMaxF1 < fc.ns; single-rank execution, the only mode under the
-  // CUDA build, satisfies neither.
+  // The multi-rank handover through m_h_ does not apply to the single radial
+  // rank of the CUDA build.
   (void)m_h_;
   return;
 #endif  // VMECPP_USE_CUDA

@@ -39,10 +39,8 @@
 #include "vmecpp/vmec/vmec_constants/vmec_constants.h"
 #ifdef VMECPP_USE_CUDA
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal_cuda.h"
-// Defined in fft_toroidal_cuda_state.cu. Declared here rather than in the
-// widely-included CUDA header so adding it does not trigger a full rebuild.
-// Writable per-config {fsqr,fsqz,fsql} snapshot cache that the batched-output
-// reconstruction reads to report per-configuration convergence.
+// The writable per-configuration {fsqr, fsqz, fsql} snapshot the batched
+// outputs read, defined in fft_toroidal_cuda_state.cu.
 namespace vmecpp {
 std::vector<double>& MutableFsqrPerCfgCache();
 }  // namespace vmecpp
@@ -448,16 +446,8 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
     m_fc_.fsql = m_fc_.fResInvar[2] * m_h_.fNormL;
 
 #ifdef VMECPP_USE_CUDA
-    // Populate the per-configuration invariant residual vectors from the
-    // host-side caches that ResidualsCuda, ComputeForceNormsCuda, and
-    // PressureAndEnergiesCuda fill as side effects of their existing
-    // per-iteration device-to-host transfers. The work performed in this
-    // branch is pure host arithmetic over arrays that have already been
-    // transferred; no additional device synchronization is required. The
-    // per-configuration values produced here are consumed by the
-    // per-configuration termination gate inside the iteration controller. A
-    // batch normalizes the R and Z residuals of each configuration with the
-    // fNormRZ of its latest force-norm update, as a single run does.
+    // Per-configuration invariant residuals from the host caches; R and Z use
+    // each configuration's fNormRZ of its latest update.
     const auto& res_cache = vmecpp::GetResidualsPerCfgCacheInvar();
     const auto& fnorm_cache = vmecpp::GetFnormScalarsPerCfgCache();
     const auto& pres_cache = vmecpp::GetPressureScalarsPerCfgCache();
@@ -496,14 +486,8 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
         m_fc_.fsqz_per_cfg[c] = fResZ_c * fNormRZ_c * r1scale;
         m_fc_.fsql_per_cfg[c] = fResL_c * fNormL_c;
       }
-      // Snapshot each ACTIVE configuration's normalized residuals so the
-      // batched-output reconstruction can report per-config convergence. A
-      // converged configuration is masked on a later iteration, which zeros
-      // its entries in the live residual caches above; copying only active
-      // configs here preserves the last value each one held while active (its
-      // converged residual). On the first iteration every configuration is
-      // active, so this fully overwrites any stale cache from a prior run with
-      // the same n_cfg.
+      // Snapshots the normalized residuals of the active configurations, so
+      // each keeps its converged value after the device masks it.
       std::vector<double>& fsqr_snapshot = vmecpp::MutableFsqrPerCfgCache();
       if (static_cast<int>(fsqr_snapshot.size()) != 3 * n_cfg) {
         fsqr_snapshot.assign(static_cast<size_t>(3) * n_cfg, 0.0);
@@ -515,13 +499,8 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
           fsqr_snapshot[3 * c + 2] = m_fc_.fsql_per_cfg[c];
         }
       }
-      // The scalar residuals above carry cfg 0's values. Once any cfg has
-      // gone inactive, and throughout a batch under per-configuration
-      // control, they carry the largest finite residuals of the active
-      // configurations instead, which the vacuum activation of a batch reads;
-      // the convergence gate retires a configuration whose residuals are not
-      // finite. Single-cfg and fully-active broadcast execution keep cfg 0's
-      // values.
+      // The scalar residuals carry configuration zero's, or the largest finite
+      // active ones under per-cfg control or once any is inactive.
       bool any_inactive = false;
       bool any_active = false;
       for (int c = 0; c < n_cfg; ++c) {
@@ -587,21 +566,15 @@ void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
     m_fc_.fsql1 = m_fc_.fResPrecd[2] * m_fc_.deltaS;
 
 #ifdef VMECPP_USE_CUDA
-    // Populate the per-configuration preconditioned residual vectors from
-    // the host-side cache filled by ResidualsCuda's preconditioned-mode
-    // device-to-host transfer, normalized per configuration with the
-    // fNorm1 values that k_rz_norm_per_cfg derives from each
-    // configuration's device-resident position state at the force-norm
-    // cadence.
+    // Per-configuration preconditioned residuals from the host cache,
+    // normalized with each configuration's latest fNorm1.
     const auto& res_cache = vmecpp::GetResidualsPerCfgCachePrecd();
     const int n_cfg = static_cast<int>(m_fc_.active_per_cfg.size());
     if (n_cfg > 0 && static_cast<int>(res_cache.size()) == 3 * n_cfg) {
       const double fNorm1 = m_h_.fNorm1;
       const double deltaS = m_fc_.deltaS;
-      // Per-configuration fNorm1 from the device rzNorm cache, refreshed
-      // at the force-norm cadence; configuration zero equals the shared
-      // host value bit for bit, and a zero (unfilled) slot falls back to
-      // the shared scalar.
+      // Each configuration's fNorm1 from the device rzNorm cache; an unfilled
+      // slot falls back to the shared scalar.
       const auto& fnorm1_cache = vmecpp::GetFnorm1PerCfgCache();
       const bool fnorm1_per_cfg_valid =
           static_cast<int>(fnorm1_cache.size()) == n_cfg;
@@ -620,9 +593,8 @@ void IdealMhdModel::evalFResPrecd(const Eigen::Vector3d& localFResPrecd) {
         m_fc_.fsqz1_per_cfg[c] = fResZ_c * fNorm1_c;
         m_fc_.fsql1_per_cfg[c] = fResL_c * deltaS;
       }
-      // Same tail-regime aggregation as evalFResInvar: the shared damping
-      // (invTau from fsq1) must track the worst ACTIVE cfg once any cfg
-      // has gone inactive.
+      // As in evalFResInvar, the shared damping follows the worst active
+      // configuration once any configuration is inactive.
       bool any_inactive = false;
       bool any_active = false;
       for (int c = 0; c < n_cfg; ++c) {
@@ -662,14 +634,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   ++force_evaluation_count_;
 
 #ifdef VMECPP_USE_CUDA
-  // Stage the per-configuration active mask to the device. The implementation
-  // is a no-op at single-configuration execution; under multi-configuration
-  // execution it transfers the host-side mask vector to the device-resident
-  // buffer that the per-configuration kernel-skip mechanism consults. The
-  // transfer is suppressed when the host-side mask is unchanged from the
-  // previous staging, which is the typical case between successive
-  // iterations and only changes at the small number of convergence events
-  // during the run.
+  // Stages the active mask to the device for the per-configuration kernel
+  // skips; unchanged masks and single runs transfer nothing.
   vmecpp::StagePhaseDActiveCuda(m_fc.active_per_cfg);
 #endif
   // An axis re-guess after a bad Jacobian can repopulate high geometry modes
@@ -682,31 +648,14 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }
   // preprocess Fourier coefficients of geometry
 #ifdef VMECPP_USE_CUDA
-  // From the second iteration onward the device-resident d_pts_x buffer
-  // is the authoritative representation of the decomposed-position state,
-  // having been updated by the prior iteration's PerformTimeStepCuda
-  // call. The RecomposeToPhysicalCuda routine consumes d_pts_x and writes
-  // the d_specs_block sections that CudaForward would otherwise populate
-  // by host-to-device transfer of the host m_physical_x. The fused
-  // device-side decomposeInto, m1Constraint, and extrapolateTowardsAxis
-  // operations performed by RecomposeToPhysicalCuda render the host
-  // triplet that follows obsolete in the fixed-boundary CUDA path, since
-  // CudaForward consumes d_specs_block directly and the only other
-  // consumer of m_physical_x (HandOverBoundaryGeometry) is invoked only
-  // in free-boundary mode. The host triplet is therefore skipped under
-  // this branch; the free-boundary path and the first iteration retain
-  // the host triplet because they require a fresh host m_physical_x.
+  // After the first iteration the device positions are current, so
+  // RecomposeToPhysicalCuda builds the specs and the host triplet is skipped.
   bool host_triplet_dead = false;
-  // Iteration 1 of multigrid stages 2+ routes through
-  // RecomposeToPhysicalCuda when the per-cfg device state matches the
-  // stage, keeping the specs per-cfg (the host triplet stages cfg 0's
-  // m_physical_x only). Multi-cfg execution only; at stage 1 iteration 1
-  // the device state is not yet initialized (the first
-  // PerformTimeStepCuda loads it) and the host path runs in all modes.
+  // A batch's first iteration of a later stage recomposes from the
+  // per-configuration device state; the first stage starts from the host.
   if (iter2 < 2 && vmecpp::GetNConfigMaxCuda() > 1) {
-    // Stage the device state for the new multigrid stage (Reshape with
-    // snapshots, scalxc staging, multigrid upscale or per-cfg dec_x
-    // load) ahead of iteration 1's geometry pipeline.
+    // Stages the device state for the new multigrid stage ahead of iteration
+    // 1's geometry.
     vmecpp::PrepareStagePtsXCuda(
         r_, s_, t_, m_fc_, m_p_.scalxc, m_decomposed_x.rmncc.data(),
         m_decomposed_x.rmnss.data(), m_decomposed_x.zmnsc.data(),
@@ -726,13 +675,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }
   if (!host_triplet_dead) {
 #ifdef VMECPP_USE_CUDA
-    // The host triplet below reads m_decomposed_x, whose per-iteration
-    // device-to-host refresh is elided, so the flush runs here: at
-    // iter2 < 2 of each multigrid stage, and on every free-boundary
-    // iteration so HandOverBoundaryGeometry reads a current
-    // m_physical_x. PtsXInitializedCuda is false before the first
-    // PerformTimeStepCuda call, and FlushDecomposedXToHostCuda guards
-    // the stage-transition size mismatch itself.
+    // The host triplet reads m_decomposed_x, so the device positions flush here
+    // at a stage's start and on every free-boundary iteration.
     if ((iter2 < 2 || m_fc_.lfreeb) && PtsXInitializedCuda()) {
       FlushDecomposedXToHostCuda(
           0, r_.nsMaxF1 - r_.nsMinF1, s_.mpol, s_.ntor, s_.lthreed,
@@ -785,12 +729,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }
 
 #ifdef VMECPP_USE_CUDA
-  // computeJacobian's tau-extrema synchronization also drains the
-  // asynchronous geometry-scalar transfer queued by
-  // FourierToReal3DSymmFastPoloidalCuda, so r1_e, r1_o, and z1_e are
-  // valid here and the deferred SetRadialExtent and SetGeometricOffset
-  // writes commit without a second per-iteration stream
-  // synchronization.
+  // computeJacobian's synchronization also completed the geometry-scalar
+  // transfer, so r1_e, r1_o and z1_e are current here.
   FlushFwdGeomScalarsToHost(r1_e.data(), r1_o.data(), z1_e.data());
   if (r_.nsMaxF1 == m_fc_.ns) {
     const int outer_index = (m_fc_.ns - 1 - r_.nsMinF1) * s_.nZnT + 0;
@@ -808,9 +748,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #endif
 
 #ifdef VMECPP_USE_CUDA
-  // Under per-configuration restart control a configuration whose Jacobian
-  // changed sign leaves the rest of this force evaluation, as its single run
-  // returns from it, and the device mask narrows to the others.
+  // A configuration whose Jacobian changed sign leaves the rest of this force
+  // evaluation, as its single run returns from it.
   if (m_fc_.per_cfg_control) {
     evaluated_per_cfg_ = m_fc_.active_per_cfg;
     const std::vector<std::uint8_t> bad = vmecpp::BadJacobianPerCfgCuda(
@@ -849,14 +788,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   // start of bcovar (ends in updateForces)
 
-  // Segment-two CUDA Graph: covers the range from computeMetricElements
-  // through radialForceBalance, all of which dispatch through kernel-only
-  // wrappers with no intervening host synchronization. When the segment
-  // graph is enabled (the default), the kernel sequence is captured on
-  // first invocation after Reshape and replayed thereafter via a single
-  // cudaGraphLaunch, eliminating the per-kernel host-driver overhead.
-  // computeInitialVolume (iter2 == 1, re-entered after restarts)
-  // synchronizes the stream, so no capture is begun on those iterations.
+  // Segment-two CUDA graph, computeMetricElements through radialForceBalance:
+  // captured once after Reshape and replayed; iter2 == 1 is not captured.
   bool seg2_replayed = false;
 #ifdef VMECPP_USE_CUDA
   seg2_replayed =
@@ -905,10 +838,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     }
 
 #ifdef VMECPP_USE_CUDA
-    // hybridLambdaForce is captured inside the segment-2 graph: it is the
-    // only per-iteration wrapper between radialForceBalance and the
-    // preconditioner block, and its CUDA path is purely device-side, so
-    // the replay covers it and its checkpoint.
+    // hybridLambdaForce runs purely on the device, so the segment-two graph
+    // captures it.
     hybridLambdaForce();
     if (checkpoint == VmecCheckpoint::HYBRID_LAMBDA_FORCE &&
         iter2 >= iterations_before_checkpointing) {
@@ -951,14 +882,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
                 signOfJacobian * 2.0 * M_PI;
   }
 #else
-  // Under the CUDA path the toroidal-current scalars rBtor, rBtor0, and
-  // cTor are evaluated where they are consumed: at end-of-run through
-  // FlushForOutputCuda for fixed-boundary runs, and inside the vacuum
-  // block ahead of the NESTOR call for free-boundary runs, where the
-  // consolidated flush has already synchronized the asynchronous
-  // bucoH/bvcoH transfers queued by radialForceBalance. Skipping the
-  // per-iteration evaluation here keeps this site free of host reads
-  // that would race those transfers.
+  // The CUDA path evaluates rBtor, rBtor0 and cTor where they are read: in the
+  // end-of-run flush and, at free boundary, in the vacuum block.
 #endif
 
 #ifndef VMECPP_USE_CUDA
@@ -975,11 +900,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   bool update_preconditioner = shouldUpdateRadialPreconditioner(iter1, iter2);
 #ifdef VMECPP_USE_CUDA
-  // Under per-configuration restart control each configuration updates its
-  // radial preconditioner, force norms, plasma volume and constraint-force
-  // multiplier on the cadence of its single run, counted from its own latest
-  // restart: the update runs with the active mask narrowed to the
-  // configurations that are due, and the others keep theirs.
+  // Each configuration updates its preconditioner, force norms and constraint
+  // multiplier on its single run's cadence.
   if (m_fc_.per_cfg_control) {
     const int n_cfg = static_cast<int>(m_fc_.active_per_cfg.size());
     precond_due_.assign(n_cfg, 0);
@@ -1017,9 +939,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     // need preconditioner matrix elements for constraint force multiplier
 
 #ifdef VMECPP_USE_CUDA
-    // Sync-deferral: computeForceNorms reads m_decomposed_x rzNorm on host.
-    // Per-iter D2H is elided; flush here (every 25 iters at the precond
-    // cadence).
+    // computeForceNorms reads rzNorm from m_decomposed_x, so the device
+    // positions flush here at the preconditioner cadence.
     if (vmecpp::PtsXInitializedCuda()) {
       vmecpp::FlushDecomposedXToHostCuda(
           0, r_.nsMaxF1 - r_.nsMinF1, s_.mpol, s_.ntor, s_.lthreed,
@@ -1112,14 +1033,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     if (m_vacuum_pressure_state_ != VacuumPressureState::kOff) {
       // IF INITIALLY ON, MUST TURN OFF rcon0, zcon0 SLOWLY
 #ifdef VMECPP_USE_CUDA
-      // The constraint-origin profiles live on the device; decay them
-      // there. The per-configuration loop below flushes each
-      // configuration's axis and LCFS geometry rows, refreshes the host
-      // triplet for the geometry handover, runs that configuration's
-      // vacuum solve, and stages its edge-pressure profile. The vacuum
-      // pressure state, the ivacskip cadence, and the soft-start restart
-      // are batch-wide decisions, so a broadcast batch replays the
-      // single-configuration sequence per slot.
+      // Decays the device constraint origins; the loop below solves each
+      // configuration's vacuum, on a batch-wide state and cadence.
       vmecpp::ScaleRZCon0Cuda(0.9);
       const int n_vac_cfg =
           fb_per_cfg_.empty() ? 1 : static_cast<int>(fb_per_cfg_.size());
@@ -1130,9 +1045,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
       // batch, the first configuration whose solve fails.
       m_h_.vacuum_status = absl::OkStatus();
       for (int vac_cfg = 0; vac_cfg < n_vac_cfg; ++vac_cfg) {
-        // Under the CUDA build the vacuum solve is not partitioned
-        // (vac_num_threads_ == 1; see Vmec::SetupVacuumSolvers), so
-        // (*m_fb_vac_)[0] is the full-tangential-grid solver.
+        // The CUDA build does not partition the vacuum solve, so
+        // (*m_fb_vac_)[0] covers the whole tangential grid.
         FreeBoundaryBase* fb_cfg =
             fb_per_cfg_.empty() ? (*m_fb_vac_)[0].get() : fb_per_cfg_[vac_cfg];
         vmecpp::FlushVacuumHostDataCuda(vac_cfg, r_, s_, r1_e, r1_o, z1_e,
@@ -1185,10 +1099,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
             signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
             &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
             iter2 >= iterations_before_checkpointing);
-        // A boundary may leave the vacuum grid transiently while the
-        // equilibrium is still moving; the first error is kept and
-        // Vmec::run turns a still-outside boundary into an error once the
-        // run has converged.
+        // A boundary may leave the vacuum grid while the equilibrium moves;
+        // Vmec::run reports the first error if it persists at convergence.
         if (!rc.ok()) {
           if (m_h_.vacuum_status.ok()) {
             m_h_.vacuum_status = rc.status();
@@ -1501,12 +1413,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // NOTE: if (iequi != 1) { ... continue with code below ...
   // -> iequi==1 computations for outputs are done in OutputQuantities
 
-  // Segment-three CUDA Graph: covers the range from
-  // effectiveConstraintForce through assembleTotalForces. The kernels in
-  // this range do not invoke cuFFT and contain no intervening host
-  // synchronization, which permits the segment to be captured into a
-  // single cudaGraph_t and replayed on subsequent iterations with one
-  // cudaGraphLaunch.
+  // Segment-three CUDA graph, effectiveConstraintForce through
+  // assembleTotalForces: no cuFFT or host synchronization.
   bool seg3_replayed = false;
 #ifdef VMECPP_USE_CUDA
   seg3_replayed = BeginUpdateSegment3GraphOrReplay();
@@ -1647,21 +1555,9 @@ absl::StatusOr<bool> IdealMhdModel::update(
   }
 
   // PERFORM PRECONDITIONING AND COMPUTE RESIDUES
-  //
-  // Segment-four CUDA Graph: covers the four preconditioner-apply
-  // wrappers below, which sit between the two ResidualsCuda calls and
-  // contain no intervening host synchronization. The segment is captured
-  // on the first non-warmup invocation after Reshape and replayed on
-  // subsequent iterations via a single cudaGraphLaunch. The jMax value
-  // computed below for the AssembleRZPreconditionerCuda call is the
-  // only iteration-varying argument to the captured kernels; a change in
-  // jMax (which occurs at vacuum-pressure-state transitions under
-  // free-boundary execution) triggers re-capture of the segment.
-  //
-  // Checkpoints (APPLY_M1_PRECONDITIONER, ASSEMBLE_RZ_PRECONDITIONER) are
-  // diagnostic; only fire when caller passes the matching enum AND
-  // iter2 >= iterations_before_checkpointing. The canonical convergence run
-  // never sets these mid-iter, so taking the graph path is safe.
+
+  // Segment-four CUDA graph over the four preconditioner-apply wrappers; a
+  // change of jMax at a vacuum-pressure transition re-captures it.
 #ifdef VMECPP_USE_CUDA
   int seg4_jMax = m_fc_.ns - 1;
   if (m_fc_.lfreeb &&
@@ -1750,9 +1646,8 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
-  // PerformTimeStepCuda consumes the decomposed forces from their device
-  // shadows, so the host m_decomposed_f arrays have no consumer inside
-  // the iteration body; they refresh at the end-of-run flush in Vmec::run.
+  // PerformTimeStepCuda reads the device forces, so the host m_decomposed_f
+  // refreshes only at the end-of-run flush.
 
   // --- end of residue()
 
@@ -1816,15 +1711,8 @@ void IdealMhdModel::geometryFromFourier(const FourierGeometry& physical_x) {
 #endif  // VMECPP_USE_CUDA
 
 #ifdef VMECPP_USE_CUDA
-  // Under the CUDA path, SetRadialExtent and SetGeometricOffset are
-  // performed in update() after computeJacobian, since the tau-extrema
-  // synchronization there also drains the asynchronous geometry-scalar
-  // transfer queued earlier. This coalescing avoids an additional
-  // per-iteration cudaStreamSynchronize that the in-place call site
-  // (formerly inside geometryFromFourier) would have required. The host
-  // geometry-scalar buffers consumed by those two routines are populated
-  // by the FlushFwdGeomScalarsToHost call dispatched from the post-
-  // computeJacobian site.
+  // The CUDA path sets the radial extent and geometric offset in update() after
+  // computeJacobian, whose synchronization brings the scalars to the host.
 #else
   if (r_.nsMaxF1 == m_fc_.ns) {
     // This thread has the boundary.
@@ -2853,9 +2741,8 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
                           m_h_.thermalEnergy, m_h_.plasmaVolume,
                           constants_.lamscale, forceNorm1_host, m_h_.fNormRZ,
                           m_h_.fNormL, m_h_.fNorm1);
-    // In a batch, each configuration's fNormRZ from the energy density of
-    // this update, which its residuals keep until the next one, as a single
-    // run's do.
+    // In a batch, each configuration's fNormRZ from this update's energy
+    // density, kept until the next update as in a single run.
     const auto& fnorm_cache = vmecpp::GetFnormScalarsPerCfgCache();
     const auto& pres_cache = vmecpp::GetPressureScalarsPerCfgCache();
     const auto& vol_cache = vmecpp::GetPlasmaVolumePerCfgCache();
@@ -3160,15 +3047,8 @@ void IdealMhdModel::computePreconditioningMatrix(
     const Eigen::VectorXd& trigmult, Eigen::VectorXd& m_eqfactor) {
 #ifdef VMECPP_USE_CUDA
   {
-    // The coordinate direction follows from the output buffer address:
-    // updateRadialPreconditioner invokes this routine twice per
-    // preconditioner-update interval, passing arm for the R side and azm
-    // for the Z side. The side index routes the wrapper's output
-    // snapshots into the matching persistent preconditioning-matrix
-    // buffers (the d_pmat_arm set for side zero, the d_pmat_azm set for
-    // side one). The lforbal force-balance weight (trigmult, m_eqfactor)
-    // is not computed on the device; Vmec::run rejects lforbal inputs
-    // under the CUDA build before the iteration starts.
+    // The output buffer selects the side: arm for R, azm for Z, into the
+    // matching device preconditioning matrices; lforbal is rejected under CUDA.
     (void)trigmult;
     (void)m_eqfactor;
     const int side = (&m_axm == &this->arm) ? 0 : 1;
@@ -4664,19 +4544,8 @@ void IdealMhdModel::applyM1Preconditioner(FourierForces& m_decomposed_f) {
 }
 
 void IdealMhdModel::assembleRZPreconditioner() {
-  // Under the CUDA path the tridiagonal RZ-preconditioner coefficients
-  // are assembled on the device by k_assemble_rz_preconditioner, which
-  // reads the persistent preconditioning-matrix buffers populated by the
-  // two ComputePreconditioningMatrixCuda invocations of the most recent
-  // preconditioner-update interval and writes the device-resident
-  // coefficient arrays d_rz_aR, d_rz_dR, d_rz_bR, d_rz_aZ, d_rz_dZ,
-  // d_rz_bZ, and the per-mode lower-bound array d_rz_jMin. This avoids
-  // the per-iteration host-side transpose loop and the six host-to-device
-  // transfers that the host-resident path would otherwise perform. The
-  // host-side jMin computation below remains for use by the lasym path
-  // and as a fallback for any host-resident code path that consumes the
-  // mode lower bounds; the device path is self-contained because the
-  // assembly kernel emits d_rz_jMin as one of its outputs.
+  // The CUDA path assembles the RZ preconditioner on the device from the latest
+  // preconditioning matrices; the host jMin below serves lasym.
 #ifdef VMECPP_USE_CUDA
   {
     // Compute jMax exactly as the original host code does, so the kernel
@@ -4846,10 +4715,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
 absl::Status IdealMhdModel::applyRZPreconditioner(
     FourierForces& m_decomposed_f) {
 #ifdef VMECPP_USE_CUDA
-  // Both the symmetric 2D (ntor=0, nZeta=1) and 3D cases run the device
-  // tridiagonal solve; AssembleRZPreconditionerCuda has already populated the
-  // device coefficient buffers and ApplyRZPreconditionerCuda selects
-  // num_basis = lthreed ? 2 : 1. Only lasym falls back to the host path.
+  // Symmetric 2D and 3D inputs run the device tridiagonal solve on the
+  // coefficients assembled above; lasym takes the host path.
   if (!s_.lasym) {
     int jMax = m_fc_.ns - 1;
     if (m_fc_.lfreeb &&
@@ -5164,9 +5031,8 @@ int IdealMhdModel::get_ivacskip() const { return ivacskip; }
 
 void IdealMhdModel::FlushForOutputCuda() {
 #ifdef VMECPP_USE_CUDA
-  // One-shot flush of all device-resident fields that ComputeOutputQuantities
-  // reads via GatherDataFromThreads. Replaces the per-iteration call that
-  // accounted for ~35% of update wall.
+  // One flush of every device field that ComputeOutputQuantities reads through
+  // GatherDataFromThreads.
   FlushForOutputQuantitiesCuda(
       r_, s_, m_fc_, gsqrt.data(), guu.data(), guv.data(), gvv.data(),
       bsubu.data(), bsubv.data(), bsupu.data(), bsupv.data(),

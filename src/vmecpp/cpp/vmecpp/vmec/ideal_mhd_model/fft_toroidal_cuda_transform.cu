@@ -2,9 +2,8 @@
 
 namespace vmecpp {
 
-// Length-1 toroidal transforms (axisymmetric ntor=0, nZeta=1) are the identity:
-// the inverse is the DC real part, the forward packs the real value as the DC
-// with zero imaginary part. cuFFT's length-1 plans are bypassed with these.
+// Length-1 toroidal transforms (ntor = 0) are the identity, so they bypass
+// cuFFT: the inverse takes the DC real part, the forward packs it.
 namespace {
 __global__ void k_z2d_identity_nzeta1(int n,
                                       const cufftDoubleComplex* __restrict__ X,
@@ -22,17 +21,8 @@ __global__ void k_d2z_identity_nzeta1(int n, const double* __restrict__ Y,
 }
 }  // namespace
 
-// Warp-packed variant of k_scatter_main_and_con (kernels.cu). That kernel
-// assigns one warp to one (config, jF_local, k) tuple and uses lane = l for the
-// poloidal axis, so 32 - nThetaReduced lanes are idle every cycle (16 of 32 on
-// W7-X, half the FP64 throughput wasted). This variant packs ks_per_warp =
-// blockDim.x / nThetaReduced zeta planes into each warp: lane splits into
-// kk = lane / nThetaReduced (which zeta plane) and l = lane % nThetaReduced
-// (poloidal point), so all 32 lanes do useful work. The shared Y tile is
-// replicated ks_per_warp times per warp (one tile per packed zeta plane).
-// Registers stay the occupancy limiter, so the extra shared memory is free.
-// Selected when 32 is an exact multiple of nThetaReduced. Per-(jF, k, l)
-// arithmetic is identical to k_scatter_main_and_con.
+// Warp-packed k_scatter_main_and_con: blockDim.x / nThetaReduced zeta planes
+// per warp, so lanes beyond nThetaReduced do not idle.
 __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con_packed(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced,
     int nThetaEff,
@@ -164,9 +154,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
     const FourierBasisFastPoloidal& fb,
     RealSpaceGeometry& m_geometry) {
   auto& S = State();
-  // Drop ToroidalFftPlans dependency: when VMECPP_USE_FFTX is off the type
-  // does not exist. The CUDA path only needs (nZeta, nfp, mpol) which Sizes
-  // already carries.
+  // The CUDA path takes nZeta, nfp and mpol from Sizes, so it needs no
+  // ToroidalFftPlans, which exist only with FFTX.
   S.OneTimeInit(s.nZeta, s.nfp, s.mpol);
 
   const int ns_local = r.nsMaxF1 - r.nsMinF1;
@@ -184,10 +173,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
     return;
   }
 
-  // Effective configuration count for this run, frozen at run start by
-  // ResetCudaStateForNewVmecRun. Default 1 keeps the single-config path
-  // bit-exact. At N>1, distinct inputs arrive through the run_batched_gpu
-  // staging; otherwise the same input is broadcast to all N slots.
+  // The run's configuration count, fixed by ResetCudaStateForNewVmecRun;
+  // distinct inputs come from the staging, otherwise one input fills all slots.
   const int n_cfg = GetNConfigMaxCuda();
 
   // (Re)allocate device buffers if shape changed.
@@ -210,38 +197,20 @@ void FourierToReal3DSymmFastPoloidalCuda(
 
   cudaStream_t st = S.stream;
 
-  // ----- Stage all specs + xmpq + sqrtSF into ONE pinned host buffer -----
-  // At N=1 the layout is exactly as before (bit-exact). At N>1
-  // each spectra block is N times bigger and we broadcast the same input to
-  // all N slots within the block.
+  // Stages the specs, xmpq and sqrtSF in one pinned buffer, the input repeated
+  // for each configuration slot.
   size_t one_spec_bytes = sizeof(double) * ns_local * mpol * (ntor + 1);
   size_t one_spec_doubles = one_spec_bytes / sizeof(double);
   size_t block_doubles = (size_t)n_cfg * one_spec_doubles;
   double* h = S.h_specs_pinned;
-  // The pinned host buffer h_specs_pinned holds six spectral-coefficient
-  // blocks laid out contiguously, each block carrying all n_cfg
-  // configurations end to end. When specs_populated_from_device is
-  // asserted (set by RecomposeToPhysicalCuda upstream), the spec
-  // sections of d_specs_block on the device have already been written
-  // from the device-resident d_pts_x state, so the host-to-device
-  // transfer of those sections that the conditional path below would
-  // otherwise issue is unnecessary, and the host memcpy that would
-  // populate the corresponding bytes of h_specs_pinned is similarly
-  // unnecessary because the destination region is never read. The
-  // host memcpy chain is therefore guarded by the negation of the
-  // flag, and is bypassed once RecomposeToPhysicalCuda is the
-  // authoritative producer of the spec sections, which is the case
-  // from the second multigrid-stage iteration onward under CUDA.
+  // When RecomposeToPhysicalCuda has written the device specs, only the xmpq
+  // and sqrtSF tail is staged.
   if (!S.specs_populated_from_device) {
     const double* src[6] = {physical_x.rmncc.data(), physical_x.rmnss.data(),
                             physical_x.zmnsc.data(), physical_x.zmncs.data(),
                             physical_x.lmnsc.data(), physical_x.lmncs.data()};
-    // Distinct batches: the per-configuration spectral inputs come from the
-    // run_batched_gpu staging block ([sp][cfg][spec] layout) instead of the
-    // seed's physical_x broadcast to every slot. The staging cache lives in
-    // the State so ResetForNewVmecRun rearms it; the consumed flag keeps it
-    // one-shot within a run (the iteration-1 retry after the axis recompute
-    // must see the host m_physical_x, not a reload of the pre-init staging).
+    // Distinct batches take each configuration's spectra from the staging block
+    // once per run, so the axis-recovery retry reads m_physical_x.
     if (S.batch_inputs_loaded < 0) {
       if (!g_batch_inputs_mem.empty() && g_batch_mem_shape[0] == n_cfg &&
           g_batch_mem_shape[1] == ns_local && g_batch_mem_shape[2] == mpol &&
@@ -275,9 +244,7 @@ void FourierToReal3DSymmFastPoloidalCuda(
       S.batch_inputs_consumed = true;
     } else {
       for (int sp = 0; sp < 6; ++sp) {
-        // rmnss/zmncs/lmncs (odd sp) are the lthreed-only modes; for an
-        // axisymmetric (ntor=0) run they are absent on the host, so stage
-        // zeros rather than reading past the empty source array.
+        // The odd spectra are absent at ntor = 0, so zeros are staged.
         const bool absent_2d = !s.lthreed && (sp == 1 || sp == 3 || sp == 5);
         for (int cfg = 0; cfg < n_cfg; ++cfg) {
           double* dst = h + sp * block_doubles + cfg * one_spec_doubles;
@@ -301,15 +268,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
       h_sqrtSF[cfg * ns_local + jF_local] = rp.sqrtSF[jF_local];
     }
   }
-  // When RecomposeToPhysicalCuda has populated the six spectral
-  // sections of d_specs_block directly from device-resident sources,
-  // the host-to-device transfer of those sections is unnecessary and
-  // is elided here; the xmpq and sqrtSF tail of the staging buffer
-  // is still transferred because RecomposeToPhysicalCuda does not
-  // touch those regions. The producer flag is cleared after the
-  // elision so that, should the next iteration not invoke
-  // RecomposeToPhysicalCuda, the host-side staging path resumes the
-  // full transfer defensively.
+  // With the device specs written by RecomposeToPhysicalCuda only the xmpq and
+  // sqrtSF tail is copied, and the flag is cleared.
   if (S.specs_populated_from_device) {
     // Skip spec sections (6 * one_spec_bytes * n_cfg) but H2D the tail.
     size_t spec_total = (size_t)6 * one_spec_bytes * (size_t)n_cfg;
@@ -330,9 +290,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
   // The scatter assigns every element of the output arrays, so they are not
   // cleared before it.
 
-  // Launch fill kernel on stream.
-  // Batched execution: z-dim is config * ns_local + jF_local. cuFFT batch dim
-  // already covers n_config_max via the batched plan setup.
+  // Fill kernel with z = config * ns_local + jF_local; the batched cuFFT plan
+  // covers n_config_max.
   const int FILL_TPB = 256;
   dim3 fill_blocks((kBatch * nhalf + FILL_TPB - 1) / FILL_TPB, mpol,
                    ns_local * S.n_config_max);
@@ -406,16 +365,8 @@ void FourierToReal3DSymmFastPoloidalCuda(
     }
   }
 
-  // Per-iteration D2H reduction: the previous 1.2 MB (at N=1) / 76 MB (at N=64) D2H +
-  // 1.2 MB host scatter is replaced with a tiny 6-double extract. The only
-  // live host consumers of r1_e/r1_o/z1_e under VMECPP_USE_CUDA are
-  // SetRadialExtent (r_outer, r_inner at the LCFS, theta=0 and theta=last)
-  // and SetGeometricOffset (r_00, z_00 at the axis). All other host reads
-  // of m_geometry.* are inside CPU-fallback #else branches (dead code under
-  // CUDA). The output phase reads device buffers via FlushForOutputCuda at
-  // end-of-run. Indices use config 0's layout: (ns_local-1)*nZnT for the
-  // LCFS surface base; +0 / +(nThetaReduced-1) for the two theta points; 0
-  // for the axis r1_e[0]/z1_e[0].
+  // Copies only the six geometry scalars that SetRadialExtent and
+  // SetGeometricOffset read, not the whole outputs block.
   k_extract_geom_scalars<<<1, 1, 0, st>>>(
       S.d_r1_e, S.d_r1_o, S.d_z1_e,
       outer_idx_pre, inner_idx_pre, S.d_geom_scalars);
@@ -425,31 +376,15 @@ void FourierToReal3DSymmFastPoloidalCuda(
                              cudaMemcpyDeviceToHost, st),
              "d2h geom_scalars");
 
-  // The cudaStreamSynchronize that would otherwise close the
-  // forward chain is omitted here; the asynchronous device-to-host
-  // transfer of S.h_geom_scalars remains queued on the stream and
-  // is drained by the next natural synchronization point, namely
-  // the tau-minmax synchronization that ComputeJacobianCuda
-  // performs. The corresponding host writes into the RealSpaceGeometry
-  // members r1_e, r1_o, and z1_e are emitted by
-  // FlushFwdGeomScalarsToHost, which the IdealMhdModel update body
-  // invokes after ComputeJacobianCuda has returned. The deferred
-  // commit retains only the integer indices required to identify
-  // the destination slots, since the RealSpaceGeometry container is
-  // a stack-local in the caller and saving its address would
-  // produce a dangling reference.
+  // No synchronization here: the scalar transfer drains at
+  // ComputeJacobianCuda's, after which FlushFwdGeomScalarsToHost writes them.
   S.fwd_geom_pending = true;
   S.fwd_geom_outer_idx = outer_idx_pre;
   S.fwd_geom_inner_idx = inner_idx_pre;
 }
 
-// ============================================================================
-// ForcesToFourier3DSymmFastPoloidalCuda: real-kernel inverse FFT port.
-// Reads device buffers populated by the device-resident chain (computeMHDForces,
-// assembleTotalForces, hybridLambdaForce). The spectral outputs remain in the
-// device shadow buffers for the device-resident preconditioner chain; host
-// copies are refreshed at the consolidated flush sites.
-// ============================================================================
+// ForcesToFourier3DSymmFastPoloidalCuda: real inverse FFT of the device forces
+// into the device shadow spectra the preconditioners read.
 void ForcesToFourier3DSymmFastPoloidalCuda(
     const RealSpaceForces& d, const Eigen::VectorXd& xmpq_host,
     const RadialPartitioning& rp, const FlowControl& fc, const Sizes& s,
@@ -476,9 +411,8 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
   cudaStream_t st = S.stream;
   int nsMinF_to_nsMinF1 = rp.nsMinF - rp.nsMinF1;
 
-  // Stage 1: k_inverse_fill populates Y[jF, m, q, k] from device force arrays
-  // with poloidal-i basis projection.
-  // Batched execution: z-dim = config * ns_local + jF_local.
+  // Stage 1: k_inverse_fill projects the device forces onto the poloidal basis
+  // into Y[jF, m, q, k], z = config * ns_local + jF_local.
   {
     const int TPB = 32;
     dim3 b((nZeta + TPB - 1) / TPB, mpol * kBatch,
@@ -499,9 +433,8 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
     cuda_check(cudaGetLastError(), "k_inverse_fill launch");
   }
 
-  // Stage 2: forward FFT (D2Z) on (ns_local x mpol x kBatch) batches of
-  // length nZeta=24, producing complex output X[jF, m, q, n] for n in [0,
-  // nhalf=13).
+  // Stage 2: D2Z FFT of the (ns_local x mpol x kBatch) batches of length nZeta
+  // into X[jF, m, q, n], n < nhalf.
   if (nZeta == 1) {
     // Length-1 toroidal transform: the identity (real value as the DC).
     int total_batches = S.n_config_max * ns_local * mpol * kBatch;
@@ -513,9 +446,8 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
     cufft_check(cufftExecD2Z(S.cufft_plan_r2c, S.d_Y, S.d_X), "cufftExecD2Z");
   }
 
-  // Stage 3: k_inverse_scatter populates spec arrays from X.
-  // jMaxRZ from CPU: min(rp.nsMaxF, fc.ns - 1), bumped to ns on lfreeb+active.
-  // jMinL is the lambda-write floor (constant = 1 in CPU code).
+  // Stage 3: k_inverse_scatter writes the spectra from X up to jMaxRZ =
+  // min(nsMaxF, ns - 1), ns once free-boundary forces are active; jMinL = 1.
   int jMaxRZ_global = std::min(rp.nsMaxF, fc.ns - 1);
   if (fc.lfreeb &&
       vacuum_pressure_state >= VacuumPressureState::kInitialized) {
@@ -544,11 +476,8 @@ void ForcesToFourier3DSymmFastPoloidalCuda(
   (void)m_physical_forces;
 }
 
-// ============================================================================
-// ComputeRuZuFullCuda: post-forward-FFT combine producing ruFull/zuFull on
-// device + D2H to host (so downstream CPU code that reads these stays correct).
-// Called once per geometryFromFourier after the forward FFT.
-// ============================================================================
+// ComputeRuZuFullCuda: ruFull and zuFull on the device after the forward FFT,
+// copied to the host for the CPU code that reads them.
 void ComputeRuZuFullCuda(const RadialPartitioning& r, const Sizes& s,
                           Eigen::VectorXd& ruFull, Eigen::VectorXd& zuFull) {
   auto& S = State();
@@ -575,13 +504,8 @@ void ComputeRuZuFullCuda(const RadialPartitioning& r, const Sizes& s,
   (void)ruFull; (void)zuFull;
 }
 
-// ============================================================================
-// MaskGeometryAboveCuda
-// FourierCoeffs::maskGeometryAbove(mpolGeometry, ntorGeometry) on the device
-// copy of either the decomposed forces (the surfaces decomposeInto covers) or
-// the decomposed position state, which is authoritative once the first time
-// step has staged it. A no-op without a geometry cap.
-// ============================================================================
+// MaskGeometryAboveCuda: maskGeometryAbove on the device forces or positions; a
+// no-op without a geometry cap.
 void MaskGeometryAboveCuda(const RadialPartitioning& r, const Sizes& s,
                            const FlowControl& fc, bool forces) {
   if (s.mpolGeometry >= s.mpol && s.ntorGeometry >= s.ntor) return;
@@ -617,19 +541,8 @@ void MaskGeometryAboveCuda(const RadialPartitioning& r, const Sizes& s,
   cuda_check(cudaGetLastError(), "k_mask_geometry_above launch");
 }
 
-// ============================================================================
-// DecomposeAndConstrainCuda
-// Bridges S.d_frcc/etc. (m_physical_f device shadow from the inverse FFT) into
-// the decomposed shadow S.d_decomposed_frcc/etc. (m_decomposed_f mirror) by
-// running the three CPU-only steps from update():
-//   m_physical_f.decomposeInto(m_decomposed_f, scalxc)
-//   m_decomposed_f.m1Constraint(scalingFactor=1/sqrt(2), signOfJacobian)
-//   if (always_fix_m1_gauge || fc.fsqz < 1e-6 || iter2 < 2)
-//     m_decomposed_f.zeroZForceForM1()
-// with the gate evaluated per configuration in a batch. The result stays in
-// the device shadow for the subsequent residuals call.
-// stellarator-symmetric (lasym=false) only.
-// ============================================================================
+// DecomposeAndConstrainCuda: decomposeInto, m1Constraint(1/sqrt(2)) and
+// zeroZForceForM1 from the inverse-FFT forces into the decomposed shadow.
 void DecomposeAndConstrainCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     int iter2, bool always_fix_m1_gauge,
@@ -680,12 +593,8 @@ void DecomposeAndConstrainCuda(
     cuda_check(cudaGetLastError(), "k_decompose_into launch");
   }
 
-  // Stage 2+3: m=1 constraint, then the Z force at m=1 zeroed where the CPU
-  // path zeroes it: under always_fix_m1_gauge, while the previous iteration's
-  // fsqz is below 1e-6, and for iter2 < 2 (v8.50, so that reset=<WOUT_FILE>
-  // works). A batch takes each configuration's own fsqz and, under
-  // per-configuration restart control, its own iteration count.
-  // Batched execution: z-dim covers n_config_max configs.
+  // Stage 2+3: the m = 1 constraint, then the m = 1 Z force zeroed where the
+  // CPU zeroes it, per configuration's fsqz and iteration count.
   if (s.lthreed && ns_force_local > 0) {
     const bool batched = S.n_config_max > 1;
     auto zeroes_m1_z_force = [&](int cfg) {
@@ -733,17 +642,13 @@ void DecomposeAndConstrainCuda(
     cuda_check(cudaGetLastError(), "k_m1_constraint_gated launch");
   }
 
-  // D2Hs deferred: device shadow S.d_decomposed_* is the source of truth
-  // until FlushDecomposedToHostCuda runs at the end of residue(). Stream
-  // ordering keeps subsequent wrappers (ApplyM1/Lambda/RZ on the same
-  // stream) consistent without an explicit sync.
+  // The decomposed shadow stays authoritative until FlushDecomposedToHostCuda;
+  // stream order keeps the following wrappers consistent.
   (void)dec_frcc_host; (void)dec_frss_host; (void)dec_fzsc_host;
   (void)dec_fzcs_host; (void)dec_flsc_host; (void)dec_flcs_host;
 }
 
-// ============================================================================
 // ApplyM1PreconditionerCuda
-// ============================================================================
 void ApplyM1PreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s,
     const Eigen::VectorXd& ard, const Eigen::VectorXd& brd,
@@ -757,19 +662,11 @@ void ApplyM1PreconditionerCuda(
   if (ns_force_local <= 0) return;
   std::lock_guard<std::mutex> lk(S.mu);
   cudaStream_t st = S.stream;
-  // The preconditioner matrix coefficients consumed by
-  // k_apply_m1_preconditioner are produced upstream by
-  // ComputePreconditioningMatrixCuda directly in the device buffers
-  // d_pmat_ard, d_pmat_brd, d_pmat_azd, and d_pmat_bzd. The host
-  // parameters ard, brd, azd, and bzd are retained in the function
-  // signature for the sake of callers on the CPU-only path; under
-  // CUDA they are read straight from device memory and the host
-  // copies remain unused, which eliminates the four host-to-device
-  // transfers that the prior path would have issued per iteration.
+  // ComputePreconditioningMatrixCuda fills the device coefficients read here;
+  // the host arguments are unused under CUDA.
   (void)ard; (void)brd; (void)azd; (void)bzd;
-  // frss/fzcs read/written directly on the DECOMPOSED shadow populated by
-  // DecomposeAndConstrainCuda on the same stream; no H2D round-trip.
-  // Batched execution: z-dim covers n_config_max configs.
+  // frss and fzcs are updated in place on the decomposed shadow; z covers the
+  // configurations.
   size_t spec_bytes = sizeof(double) * ns_force_local * mpol * (ntor + 1);
   const int TPB = 32;
   dim3 b((ntor + 1 + TPB - 1) / TPB, ns_force_local, S.n_config_max);
@@ -784,13 +681,8 @@ void ApplyM1PreconditionerCuda(
   (void)frss_host; (void)fzcs_host; (void)spec_bytes;
 }
 
-// Brings the device state into the new multigrid stage before iteration
-// 1's geometry pipeline: the lazy Reshape (previous-stage d_pts_x and
-// d_scalxc snapshots, stage-sized buffers including d_specs_block),
-// scalxc staging, and PerformTimeStepCuda's init section (multigrid
-// upscale / per-cfg dec_x load) without a time step. Idempotent: with
-// the shape cache current and pts_x_initialized set, every section is a
-// no-op.
+// Brings the device state into the new stage before iteration 1: Reshape
+// snapshots, scalxc staging and the initial positions; idempotent.
 void PrepareStagePtsXCuda(
     const RadialPartitioning& r, const Sizes& s,
     const FourierBasisFastPoloidal& fb, const FlowControl& fc,
@@ -807,10 +699,8 @@ void PrepareStagePtsXCuda(
   const int ntor = s.ntor;
   const int nhalf = s.nZeta / 2 + 1;
   {
-    // Same lazy-Reshape trigger as FourierToReal3DSymmFastPoloidalCuda;
-    // the stage's first CUDA touch must be the Reshape, which snapshots
-    // the previous stage's d_pts_x and d_scalxc and re-allocates the
-    // stage-sized buffers.
+    // The stage's first CUDA call must be the Reshape, which snapshots the
+    // previous stage and reallocates the stage-sized buffers.
     std::lock_guard<std::mutex> lk(S.mu);
     const int n_cfg = GetNConfigMaxCuda();
     if (S.ns_local_cached != ns_local ||
@@ -855,24 +745,8 @@ void PrepareStagePtsXCuda(
   g_pts_init_only = false;
 }
 
-// ============================================================================
-// RecomposeToPhysicalCuda
-//
-// Replaces the host triplet at the start of IdealMhdModel::update():
-//   m_decomposed_x.decomposeInto(m_physical_x, m_p_.scalxc);
-//   m_physical_x.m1Constraint(1.0, signOfJacobian);
-//   m_physical_x.extrapolateTowardsAxis();
-//
-// Reads d_pts_x_* (kept device-resident across iters by PerformTimeStepCuda),
-// writes d_specs_block sections (d_rmncc/d_rmnss/d_zmnsc/d_zmncs/d_lmnsc/
-// d_lmncs). After this call, d_specs_block is the device-side m_physical_x
-// and CudaForward's H2D specs_block can be skipped (specs_populated_from_device
-// flag).
-//
-// First-call init: H2D host m_decomposed_x -> d_pts_x. Subsequent calls read
-// the device-resident d_pts_x updated by PerformTimeStepCuda at end of last
-// iter. scalxc staging is shared with DecomposeAndConstrainCuda's stage flag.
-// ============================================================================
+// RecomposeToPhysicalCuda: the host decomposeInto, m1Constraint(1.0) and
+// extrapolateTowardsAxis on d_pts_x, writing the device specs.
 void RecomposeToPhysicalCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     int sign_of_jacobian,
@@ -881,14 +755,11 @@ void RecomposeToPhysicalCuda(
     const double* m_dec_x_zsc, const double* m_dec_x_zcs,
     const double* m_dec_x_lsc, const double* m_dec_x_lcs) {
   auto& S = State();
-  // Caller must gate on iter2 >= 2 so Reshape (which allocates d_specs_block
-  // and sets d_rmncc/etc.) has already run from a previous CudaForward call.
-  // Iter 1's CudaForward triggers Reshape; from iter 2 onward the spec
-  // pointers are valid for our writes here.
+  // Requires iter2 >= 2, when the first CudaForward's Reshape has allocated
+  // d_specs_block.
   if (!S.d_specs_block) {
-    // Defensive: caller violated gate. Fall through to nothing; the host
-    // triplet in IdealMhdModel::update will still have computed m_physical_x
-    // and CudaForward will do its full H2D.
+    // A caller outside the gate gets the host triplet's m_physical_x and
+    // CudaForward's full transfer.
     return;
   }
   const int ns_local = r.nsMaxF1 - r.nsMinF1;
@@ -915,11 +786,8 @@ void RecomposeToPhysicalCuda(
     S.scalxc_staged = true;
   }
 
-  // First-iter init: H2D host m_decomposed_x -> d_pts_x. Subsequent iters
-  // skip this; d_pts_x persists from PerformTimeStepCuda's update. Distinct
-  // batches load each configuration's decomposed position from the
-  // run_batched_gpu staging block ([sp][cfg][spec] layout) instead, as
-  // PerformTimeStepCuda's init does.
+  // First iteration: loads d_pts_x from the host, or from the staging block for
+  // a distinct batch; later iterations keep it.
   size_t x_bytes_one = sizeof(double) * ns_local * mpol * (ntor + 1);
   if (!S.pts_x_initialized) {
     size_t one_spec_doubles = (size_t)ns_local * mpol * (ntor + 1);
@@ -961,11 +829,8 @@ void RecomposeToPhysicalCuda(
     EnsurePTSBackupBuffers(S);
   }
 
-  // Stage 1: decomposeInto -> write d_specs_block sections from d_pts_x via
-  // multiplication by scalxc. Reuse k_decompose_into; the math is the same
-  // (dest = source * scal) regardless of geometry-vs-forces semantics. ns_dec
-  // for the geometry case is ns_local (loop range [nsMinF1, ns) which equals
-  // [0, ns_local) for single-rank).
+  // Stage 1: decomposeInto, writing the specs from d_pts_x scaled by scalxc
+  // through k_decompose_into over [0, ns_local).
   int nsMin_to_nsMinF1 = 0;  // for geometry: source is at full-grid index
   {
     const int TPB = 16;
@@ -980,9 +845,8 @@ void RecomposeToPhysicalCuda(
     cuda_check(cudaGetLastError(), "k_decompose_into (Recompose) launch");
   }
 
-  // Stage 2: m1Constraint(1.0, signOfJacobian), physical_x in-place at m=1,
-  // mixing rmnss/zmncs (and lasym rmnsc/zmncc pairs, which we skip). Reuse
-  // standalone k_m1_constraint with scalingFactor=1.0.
+  // Stage 2: m1Constraint(1.0, signOfJacobian) in place, mixing rmnss and zmncs
+  // at m = 1 through k_m1_constraint.
   if (s.lthreed) {
     const int TPB = 32;
     int ns_for_m1 = ns_local;  // geometry loop is [nsMin_, nsMax_); for
@@ -997,9 +861,8 @@ void RecomposeToPhysicalCuda(
     cuda_check(cudaGetLastError(), "k_m1_constraint (Recompose) launch");
   }
 
-  // Stage 3: extrapolateTowardsAxis; only the nsMinF1==0 thread runs this.
-  // For each n at m=1: copy from surface 1 to axis surface 0. Plus m=0 lmncs
-  // (lthreed). Launch grid: (ntor+1, 1, n_config_max).
+  // Stage 3: extrapolateTowardsAxis copies m = 1 and the m = 0 lmncs from
+  // surface 1 to the axis; grid (ntor + 1, 1, n_config_max).
   if (r.nsMinF1 == 0) {
     const int TPB = 16;
     dim3 b((ntor + 1 + TPB - 1) / TPB, 1, S.n_config_max);

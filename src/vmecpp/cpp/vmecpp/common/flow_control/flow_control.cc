@@ -68,18 +68,8 @@ FlowControl::FlowControl(bool lfreeb, double delt, int num_grids,
 
 int FlowControl::max_threads() const { return max_threads_; }
 
-// Allocates and initializes the per-configuration state vectors that
-// support the batched CUDA execution mode. The operation is idempotent
-// in the sense that a call whose argument matches the currently allocated
-// length returns immediately without disturbing the contents. A call with
-// n_cfg <= 0 is treated as a request to leave the vectors in their
-// current state.
-//
-// Initial values mirror the single-configuration initialization performed
-// in the constructor: the residual fields are set to unity to suppress
-// premature convergence, the restart disposition starts at NO_RESTART,
-// every configuration starts active, and the component residual vectors
-// are zeroed.
+// Sizes the per-configuration vectors to n_cfg, initialized as the constructor
+// initializes the scalars; n_cfg <= 0 or the current size is a no-op.
 void FlowControl::ResizeForBatch(int n_cfg) {
   if (n_cfg <= 0) return;
   if (static_cast<int>(active_per_cfg.size()) == n_cfg) return;
@@ -110,12 +100,8 @@ void FlowControl::ResizeForBatch(int n_cfg) {
   failed_per_cfg.assign(n_cfg, static_cast<std::uint8_t>(0));
 }
 
-// Re-activates every configuration that has not failed, clears
-// converged_per_cfg, and starts the iteration count and the restart control
-// of every configuration over. Called at the start of every multigrid stage.
-// Configurations that converged against the coarser-stage tolerance must
-// re-iterate at the finer stage's tighter tolerance, so the active mask is
-// rebuilt rather than carried forward.
+// Restarts each configuration that has not failed for the next multigrid stage:
+// active, unconverged, its iteration count and restart control reset.
 void FlowControl::ResetActivePerCfgForNextStage(double delt) {
   const int n_cfg = static_cast<int>(active_per_cfg.size());
   if (n_cfg <= 0) return;

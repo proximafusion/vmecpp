@@ -70,10 +70,8 @@ class IdealMhdModel {
                      double lambda_precondition_checkerboard_terms);
 
 #ifdef VMECPP_USE_CUDA
-  // Batched free-boundary: one vacuum solver per configuration slot
-  // (entry 0 is the full-grid solver fb_vac_[0] owned by Vmec). The vacuum
-  // block in update() loops the geometry handover, vacuum solve, and edge
-  // pressure over the configurations when this is populated.
+  // Batched free boundary: one vacuum solver per configuration slot, entry 0
+  // being Vmec's fb_vac_[0]; update() loops the vacuum block over them.
   void SetPerCfgFreeBoundary(std::vector<FreeBoundaryBase*> fbs) {
     fb_per_cfg_ = std::move(fbs);
   }
@@ -374,13 +372,8 @@ class IdealMhdModel {
   // partial update of the Nestor free boundary force contribution is computed.
   int get_ivacskip() const;
 
-  // Device-to-host flush of all device-resident fields consumed by the
-  // post-iteration output-derivation path (GatherDataFromThreads and the
-  // routines invoked from ComputeOutputQuantities). Invoked exactly once
-  // from Vmec::run after the iteration loop terminates, in place of the
-  // per-iteration partial flushes that the host triplet would otherwise
-  // require. On builds without VMECPP_USE_CUDA the implementation is a
-  // no-op, allowing call sites to remain unconditional.
+  // Flushes the device fields the output derivation reads to the host, once
+  // after the iteration loop; a no-op without VMECPP_USE_CUDA.
   void FlushForOutputCuda();
 
   /**********************************************/
@@ -519,10 +512,8 @@ class IdealMhdModel {
   // update, as HandoverStorage holds it for a single run
   std::vector<double> fnorm_rz_per_cfg_;
 
-  // Under per-configuration restart control: the configurations this force
-  // evaluation takes (the active ones whose Jacobian kept its sign), those due
-  // for a radial preconditioner update in this iteration, and those whose
-  // invariant residuals count the edge R and Z forces
+  // Per-configuration masks: evaluated in this force evaluation, due for a
+  // preconditioner update, and counting the edge R and Z forces
   std::vector<std::uint8_t> evaluated_per_cfg_;
   std::vector<std::uint8_t> precond_due_;
   std::vector<std::uint8_t> edge_per_cfg_;

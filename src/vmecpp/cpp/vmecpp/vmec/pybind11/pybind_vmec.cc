@@ -292,9 +292,8 @@ class VmecModel {
       const VmecINDATA &indata, int ns,
       const std::optional<vmecpp::HotRestartState> &initial_state) {
 #ifdef VMECPP_USE_CUDA
-    // The model evaluates the forward model state by state through the host
-    // arrays, while the CUDA build keeps the iteration state and the
-    // preconditioner on the device and sizes them once per Vmec::run.
+    // The model evaluates state by state through the host arrays, while the
+    // CUDA build keeps the iteration state on the device for a whole run.
     throw std::runtime_error(
         "VmecModel drives the host iteration and is not available in the "
         "CUDA build (VMECPP_USE_CUDA); use vmecpp.run or run_batched_gpu, or "
@@ -1026,10 +1025,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   m.attr("VMECPP_ENABLE_ENZYME") = false;
 #endif
 
-  // Compile-time build feature: whether the iteration body runs on the GPU
-  // (CMake option VMECPP_USE_CUDA). vmecpp.has_cuda() reads it; a CUDA build
-  // rejects lasym and lforbal inputs, so tests and callers can skip those
-  // ahead of a solve.
+  // Whether the iteration body runs on the GPU (VMECPP_USE_CUDA), read by
+  // vmecpp.has_cuda(); a CUDA build rejects lasym and lforbal inputs.
 #ifdef VMECPP_USE_CUDA
   m.attr("VMECPP_USE_CUDA") = true;
 #else
@@ -1939,53 +1936,22 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("verbose") = vmecpp::OutputMode::kProgress,
       py::arg("iteration_callback") = py::none());
 
-  // =========================================================================
-  // Batched-GPU entry point: solves N fixed-boundary equilibria in a single
-  // CUDA-resident iteration loop.
-  // =========================================================================
-  // The binding accepts a list of VmecINDATA inputs that share the shape
-  // parameters mpol, ntor, nfp, lasym, and ns_array[0], and drives the
-  // device-side iteration body at n_config_max = N. The shared-shape
-  // constraint is required because the persistent device buffers are
-  // dimensioned at first invocation of the iteration body and cannot be
-  // resized across calls.
-  //
-  // The distinct argument selects one of two execution modes:
-  //
-  // Broadcast mode (distinct = false): the first input's spectra are
-  // broadcast across all N configuration slots in d_specs_block, the
-  // batched kernel chain executes at full N, and the returned vector
-  // contains the first input's converged OutputQuantities.
-  //
-  // Distinct mode (distinct = true): a per-configuration
-  // pre-initialization stage runs each input's first iteration alone, with
-  // the magnetic-axis recovery of a single run, and extracts its initial
-  // spectra into staging blocks handed to the CUDA layer; every
-  // configuration then takes the time step and restart control of its own
-  // single run. The returned vector contains one
-  // converged OutputQuantities per input, each derived from the
-  // corresponding configuration's converged state after the
-  // device-resident output flush at end-of-run.
+  // Batched GPU entry: N equilibria of one shape in one device loop; broadcast
+  // mode returns the first input's output, distinct mode one per input.
   m.def(
       "run_batched_gpu",
       [](const std::vector<VmecINDATA> &indata_list,
          std::optional<int> max_threads, vmecpp::OutputMode verbose,
          bool return_spectra, bool distinct) -> py::object {
-        // Residual traces of the attempts at a configuration's first
-        // iteration that the distinct-mode pre-initialization runs alone and
-        // the batch does not repeat.
+        // Residual traces of the first-iteration attempts that the distinct
+        // pre-initialization runs alone and the batch does not repeat.
         struct TracePrefix {
           std::vector<double> r, z, lambda, energy, delbsq;
           std::vector<vmecpp::RestartReason> reasons;
         };
 #ifdef VMECPP_USE_CUDA
-        // Derives one OutputQuantities per configuration directly from the
-        // batched run's device state: the per-cfg fields flush in one
-        // pass, each configuration's VmecInternalResults assembles from
-        // the seed's gathered template plus the per-cfg slices, and
-        // DeriveOutputQuantities runs the standard host physics chain per
-        // configuration. No additional iterations run. Returns false when
-        // any precondition fails.
+        // Derives each configuration's OutputQuantities from the flushed device
+        // state; false when a precondition fails.
         auto derive_outputs_from_batched_flush =
             [](const std::vector<vmecpp::VmecINDATA> &indata_local, int n_cfg,
                std::optional<int> max_threads,
@@ -1993,14 +1959,8 @@ PYBIND11_MODULE(_vmecpp, m) {
                const vmecpp::FlowControl &batch_fc,
                const std::vector<TracePrefix> &trace_prefix,
                std::vector<vmecpp::OutputQuantities> &outs) -> bool {
-          // Capture the batched run's final per-configuration force-residual
-          // state before any further CUDA call (the deriver's setup run below
-          // resets the persistent device state). The wout reports the
-          // normalized invariant residuals fsqr/fsqz/fsql of each
-          // configuration's last active iteration, from the snapshot cache
-          // the iteration controller fills; the live residual caches are
-          // zeroed for masked (converged) configurations. Layout: 3*n_cfg as
-          // [fsqr_c, fsqz_c, fsql_c, ...].
+          // Reads each configuration's last fsqr, fsqz, fsql from the snapshot
+          // cache before the deriver's setup run resets the device.
           if (static_cast<int>(batch_fc.converged_per_cfg.size()) != n_cfg ||
               static_cast<int>(batch_fc.niter_per_cfg.size()) != n_cfg ||
               static_cast<int>(trace_prefix.size()) != n_cfg ||
@@ -2051,9 +2011,8 @@ PYBIND11_MODULE(_vmecpp, m) {
           auto f_presH = nv(prof1), f_dVdsH = nv(prof1), f_bvcoH = nv(prof1),
                f_bucoH = nv(prof1), f_chipH = nv(prof1), f_iotaH = nv(prof1);
           auto f_chipF = nv(profF1), f_iotaF = nv(profF1);
-          // Repair dVdsH for configs masked before the batch finished (else
-          // their betatot flushes as zero) before reading the per-config
-          // fields.
+          // Recomputes dVdsH of configurations masked before the batch ended,
+          // whose betatot would otherwise flush as zero.
           vmecpp::RecomputeZeroedDVdsHForOutputCuda(
               n_cfg, ns_h, nZnT, sizes.nThetaEff,
               vmecpp::Vmec::kSignOfJacobian);
@@ -2078,11 +2037,8 @@ PYBIND11_MODULE(_vmecpp, m) {
             return false;
           }
 
-          // Deriver instance: a setup-only run at the converged ns
-          // supplies the Sizes, FlowControl, basis tables, constants,
-          // profiles, and a HandoverStorage to patch per configuration.
-          // Its run resets the persistent CUDA state; the flush above
-          // has already consumed it.
+          // A setup-only run at the converged ns supplies the sizes, bases,
+          // constants, profiles and storage that each configuration patches.
           vmecpp::VmecINDATA ind_drv = ind0;
           ind_drv.ns_array = Eigen::VectorXi::Constant(1, ns);
           const int last_ftol = static_cast<int>(ind0.ftol_array.size()) - 1;
@@ -2174,9 +2130,8 @@ PYBIND11_MODULE(_vmecpp, m) {
             cpv(res.chipF, f_chipF, profF1);
             cpv(res.iotaF, f_iotaF, profF1);
 
-            // Converged spectra into the state vector, with the gather's
-            // index transpose, plus the per-surface spectral width on the
-            // raw decomposed coefficients (p = 4, q = 1, m = 1 unmixed).
+            // The converged spectra into the state vector, transposed as the
+            // gather does, and the per-surface spectral width (p = 4, q = 1).
             const size_t spec_base = static_cast<size_t>(c) * spec1;
             const auto sp_at = [&](int sp) -> const double * {
               return spectra.data() + static_cast<size_t>(sp) * n_cfg * spec1 +
@@ -2256,10 +2211,8 @@ PYBIND11_MODULE(_vmecpp, m) {
                  .r_inner = r1e[inner_index] + r1o[inner_index]});
             h_c.SetGeometricOffset({.r_00 = r1e[0], .z_00 = z1e[0]});
 
-            // This configuration's residuals, traces (after those of the
-            // attempts at its first iteration that the batch does not
-            // repeat), and iteration count in place of the deriver's
-            // single-iteration setup values.
+            // This configuration's residuals, traces and iteration count
+            // replace the deriver's setup values.
             vmecpp::FlowControl fc_c = deriver->fc_;
             const size_t s3 = static_cast<size_t>(3) * c;
             if (fsqr_snapshot_pc.size() >= s3 + 3) {
@@ -2312,12 +2265,8 @@ PYBIND11_MODULE(_vmecpp, m) {
         const int ns_first = seed.ns_array(0);
         const int mpol = seed.mpol;
         const int ntor = seed.ntor;
-        // The distinct-mode block below populates indata_local with a
-        // local copy of indata_list and patches each entry's
-        // magnetic-axis Fourier coefficients in place. When distinct
-        // mode is active, the seed-driven Vmec::run consumes
-        // indata_local[0]; in broadcast mode the original indata_list[0]
-        // reference suffices. The run_seed pointer is rebound below.
+        // A distinct batch's inputs with their recovered axes, which the seed
+        // run consumes; broadcast mode uses indata_list[0].
         std::vector<VmecINDATA> indata_local;
         const VmecINDATA *run_seed = &seed;
         // Validate shared shape across all inputs.
@@ -2343,12 +2292,8 @@ PYBIND11_MODULE(_vmecpp, m) {
               " configurations, but " + std::to_string(n_cfg) +
               " were given; split the batch");
         }
-        // Free-boundary batches share one coil field: a single mgrid is
-        // loaded for the run, so every input must carry the same mgrid
-        // file and external currents. In distinct mode the boundaries and
-        // magnetic axis may differ per configuration; the plasma profiles and
-        // all other inputs are taken from the first configuration (the device
-        // stages per-config geometry only).
+        // Free-boundary batches share one coil field: every input must carry
+        // the same mgrid file and external currents.
         if (seed.lfreeb) {
           for (int c = 1; c < n_cfg; ++c) {
             const VmecINDATA &v = indata_list[c];
@@ -2364,9 +2309,8 @@ PYBIND11_MODULE(_vmecpp, m) {
             }
           }
         }
-        // Distinct mode interpolates every configuration on the device at the
-        // multigrid transitions, which does not reset the m = 1 gauge from the
-        // boundary as always_fix_m1_gauge does on the host.
+        // Distinct mode interpolates on the device at multigrid transitions,
+        // which does not reset the m = 1 gauge as always_fix_m1_gauge does.
         if (distinct && seed.always_fix_m1_gauge && seed.ns_array.size() > 1) {
           throw std::runtime_error(
               "run_batched_gpu distinct mode supports always_fix_m1_gauge with "
@@ -2374,21 +2318,8 @@ PYBIND11_MODULE(_vmecpp, m) {
               "always_fix_m1_gauge through vmecpp.run");
         }
 
-        // run_batched_gpu stages only per-config boundary geometry and the
-        // magnetic axis to the device. In broadcast mode (distinct mode off)
-        // the seed -- configuration zero -- runs once and a single output is
-        // returned. Any additional configurations passed in broadcast mode
-        // share the seed's validated shape and are intentionally ignored; the
-        // single-output broadcast contract is enforced at the return below.
-        // Use distinct mode to solve every configuration.
-        // In distinct mode the device honors per-config boundary, magnetic
-        // axis, and plasma profiles (each built into its own RadialProfiles and
-        // staged per-config). Every other input -- the convergence controls
-        // (ns_array, ftol_array, niter_array), resolution (mpol/ntor), and
-        // free-boundary settings -- is still taken from the first
-        // configuration. Reject batches that differ in anything else, so they
-        // fail loudly instead of silently running with config 0's solver
-        // settings.
+        // Distinct batches may differ in boundary, axis and profiles only;
+        // anything else is rejected. Broadcast mode runs the seed alone.
         if (distinct) {
           const std::string seed_json = seed.ToJsonOrException();
           for (int c = 1; c < n_cfg; ++c) {
@@ -2421,10 +2352,8 @@ PYBIND11_MODULE(_vmecpp, m) {
             probe.ac_aux_s = seed.ac_aux_s;
             probe.ac_aux_f = seed.ac_aux_f;
             probe.curtor = seed.curtor;
-            // Compare via JSON rather than the defaulted operator==, which
-            // compares Eigen members coefficient-wise and is undefined for
-            // arrays of differing length (e.g. a longer am) -- exactly a
-            // difference we must report rather than crash on.
+            // Compared as JSON, since the defaulted operator== is undefined for
+            // Eigen arrays of different lengths.
             if (probe.ToJsonOrException() != seed_json) {
               throw std::runtime_error(
                   "run_batched_gpu distinct mode stages per-config boundary "
@@ -2446,18 +2375,15 @@ PYBIND11_MODULE(_vmecpp, m) {
         }
 
 #ifdef VMECPP_USE_CUDA
-        // Drop the per-config CUDA staging buffers when the call returns, so a
-        // later run (batched or single) cannot pick up this batch's per-config
-        // profiles. The per-config INDATA itself lives on the seed Vmec and is
-        // released with it.
+        // Drops the per-configuration staging buffers on return, so a later run
+        // cannot pick up this batch's profiles.
         struct BatchProfileRestore {
           ~BatchProfileRestore() { vmecpp::ClearBatchProfilesCuda(); }
         } batch_profile_restore;
 #endif
 
-        // Each configuration's first iteration, which the distinct-mode
-        // pre-initialization runs alone: the ijacob it ends with, and the
-        // traces of its attempts the batch does not repeat.
+        // Each configuration's first iteration, run alone: the ijacob it ends
+        // with and the traces of its attempts the batch does not repeat.
         std::vector<int> seed_ijacob;
         std::vector<TracePrefix> trace_prefix;
         if (distinct) {
@@ -2470,34 +2396,21 @@ PYBIND11_MODULE(_vmecpp, m) {
                                             static_cast<size_t>(n_cfg) *
                                             spec_len,
                                         0.0);
-          // Parallel buffer for per-cfg decomposed_x_[0]. The physical_x
-          // buffer above carries the post-decomposeInto + m1Constraint(1.0)
-          // + extrapolateTowardsAxis state that the device-side d_specs_block
-          // wants on iter 1. The decomposed_x buffer carries the pre-triplet
-          // basis (the rmncc/rmnss/etc. coefficients * (1/scalxc), without
-          // m=1 mixing or axis extrapolation) that the device-side
-          // d_pts_x_* per-cfg slots want on iter 1. Without this, the
-          // pts_x_initialized branches in PerformTimeStepCuda and
-          // RecomposeToPhysicalCuda broadcast the seed's host m_decomposed_x
-          // single-cfg state to all N cfg slots, overwriting the per-cfg
-          // distinct initialization that the rest of the pipeline preserves.
+          // Each configuration's decomposed_x_[0], before m = 1 mixing and axis
+          // extrapolation, for the device position slots at iteration 1.
           std::vector<double> dec_x_buf(static_cast<size_t>(n_specs) *
                                             static_cast<size_t>(n_cfg) *
                                             spec_len,
                                         0.0);
 
-          // Each configuration's first iteration runs alone below, with the
-          // axis recovery of its single run. indata_local holds the inputs
-          // with the recovered axes, which the pre-initialization and the
-          // seed run consume.
+          // Each configuration's first iteration runs alone below with its
+          // single run's axis recovery; indata_local holds the recovered axes.
           indata_local.assign(indata_list.begin(), indata_list.end());
           run_seed = &indata_local[0];
 
           for (int c = 0; c < n_cfg; ++c) {
-            // As in a single run, the first iteration recomputes the magnetic
-            // axis and starts over when the first force evaluation shows a
-            // bad Jacobian or huge forces; the batch starts this configuration
-            // from the axis that iteration ends with.
+            // The first iteration recomputes the axis and starts over on a bad
+            // Jacobian or huge forces, as in a single run.
             {
               auto probe_or = vmecpp::Vmec::FromIndata(
                   indata_local[c], /*magnetic_response_table=*/nullptr,
@@ -2581,9 +2494,8 @@ PYBIND11_MODULE(_vmecpp, m) {
                   "run_batched_gpu: null thread-vec after init for cfg " +
                   std::to_string(c));
             }
-            // Extract per-cfg decomposed_x_[0] BEFORE the decomposeInto call
-            // mutates physical_x_[0]; decomposed_x_[0] is the source and is
-            // preserved by the call (only physical_x_[0] is written).
+            // Reads decomposed_x_[0] before decomposeInto writes
+            // physical_x_[0].
             auto &dx = *vmec->decomposed_x_[0];
             if (static_cast<size_t>(dx.rmncc.size()) != spec_len) {
               throw std::runtime_error(
@@ -2602,10 +2514,8 @@ PYBIND11_MODULE(_vmecpp, m) {
                 static_cast<size_t>(dx.lmnsc.size()),
                 static_cast<size_t>(dx.lmncs.size())};
             for (int sp = 0; sp < n_specs; ++sp) {
-              // The rmnss/zmncs/lmncs (odd-parity) spectra are empty for
-              // axisymmetric (ntor = 0) inputs; leave their zero-initialized
-              // dec_x_buf slots untouched rather than memcpy from an empty
-              // span.
+              // The odd-parity spectra are empty at ntor = 0, so their slots
+              // stay zero.
               if (dec_sizes[sp] < spec_len) continue;
               std::memcpy(
                   &dec_x_buf[static_cast<size_t>(sp) * n_cfg * spec_len +
@@ -2650,13 +2560,8 @@ PYBIND11_MODULE(_vmecpp, m) {
 #endif
         }
 
-        // Invoke the seed-driven iteration body. In distinct mode the
-        // per-configuration initial spectra are loaded from the
-        // staging blocks at the first invocation of CudaForward; in
-        // broadcast mode the seed's spectra are broadcast across the
-        // configuration slots. Subsequent iterations evolve each
-        // configuration independently under the per-configuration
-        // residual gates and the per-configuration kernel-skip mask.
+        // Runs the iteration body: distinct mode loads each configuration's
+        // spectra at the first CudaForward, broadcast mode the seed's.
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
           if (was_interrupted) return true;
@@ -2673,10 +2578,8 @@ PYBIND11_MODULE(_vmecpp, m) {
         absl::StatusOr<vmecpp::OutputQuantities> ret_seed;
         {
           py::gil_scoped_release release;
-          // Run the seed configuration exactly as vmecpp::run would, but build
-          // the Vmec here so the per-config INDATA can be handed to it directly
-          // (distinct mode). Scoping it to this Vmec, instead of a global,
-          // keeps it from leaking into any later run.
+          // Runs the seed as vmecpp::run would, with the per-configuration
+          // INDATA handed to this Vmec so it cannot leak into a later run.
           auto seed_or = vmecpp::Vmec::FromIndata(
               *run_seed, /*magnetic_response_table=*/nullptr, max_threads,
               verbose, interrupt_check);
@@ -2713,9 +2616,8 @@ PYBIND11_MODULE(_vmecpp, m) {
               "run_batched_gpu: batched VMEC run failed: " +
               std::string(ret_seed.status().message()));
         }
-        // As in a single run, a configuration that misses the tolerance of the
-        // last multigrid stage is an error unless the inputs ask for
-        // best-effort outputs.
+        // As in a single run, a configuration that misses the last stage's
+        // tolerance is an error unless best-effort outputs are asked for.
         if (distinct && n_cfg > 1 &&
             !run_seed->return_outputs_even_if_not_converged) {
           const std::vector<std::uint8_t> &converged_per_cfg =
@@ -2737,9 +2639,8 @@ PYBIND11_MODULE(_vmecpp, m) {
           }
         }
 
-        // Distinct mode returns one OutputQuantities per input, derived from
-        // the batched run's device state; broadcast mode, and a distinct run
-        // of one input, return the seed's.
+        // Distinct mode returns one OutputQuantities per input from the device
+        // state; broadcast mode and a single input return the seed's.
         std::vector<vmecpp::OutputQuantities> outs;
         if (distinct && n_cfg > 1) {
 #ifdef VMECPP_USE_CUDA
@@ -2757,9 +2658,8 @@ PYBIND11_MODULE(_vmecpp, m) {
         }
 
         if (return_spectra) {
-          // Converged per-cfg spectra as a numpy array of shape
-          // [6][n_cfg][spec]; None when the run held a single configuration
-          // slot.
+          // The converged per-configuration spectra, shape [6][n_cfg][spec];
+          // None for a single configuration slot.
           py::object spectra_obj = py::none();
 #ifdef VMECPP_USE_CUDA
           std::vector<double> spectra;

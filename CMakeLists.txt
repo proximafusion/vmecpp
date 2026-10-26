@@ -11,16 +11,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(MSVC)
-  # cl.exe does not accept the GCC/Clang flags below. /bigobj is required:
-  # the CUDA translation units exceed the default object section limit.
-  # _USE_MATH_DEFINES exposes M_PI; NOMINMAX keeps windows.h from defining
-  # min/max macros that clobber std::min/std::max.
+  # MSVC: /bigobj for the large CUDA translation units, _USE_MATH_DEFINES for
+  # M_PI, NOMINMAX to keep the windows.h min/max macros out.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj")
   set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG")
   add_compile_definitions(_USE_MATH_DEFINES NOMINMAX)
-  # The vendored abscab dependency uses malloc/free without including
-  # <cstdlib>, relying on transitive inclusion that MSVC does not provide.
-  # Force-include it for C++ sources (CUDA host compilation is unaffected).
+  # abscab calls malloc and free without including <cstdlib>, which MSVC does
+  # not include transitively.
   add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/FIcstdlib>)
 else()
   set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
@@ -56,10 +53,8 @@ endif()
 find_package(OpenMP REQUIRED)
 
 if(MSVC)
-  # On Windows the HDF5 and netCDF-C libraries come from vcpkg
-  # (vcpkg install hdf5[cpp] netcdf-c zlib); the from-source build below
-  # names the Unix static archives and passes no toolchain to its
-  # sub-builds, so HDF5 would come up without zlib there.
+  # On Windows HDF5, netCDF-C and zlib come from vcpkg; the from-source build
+  # below is for Unix.
   find_package(ZLIB REQUIRED)
   find_package(hdf5 CONFIG REQUIRED)
   find_package(netCDF CONFIG REQUIRED)
@@ -241,11 +236,8 @@ set(abscab_sources "${abscab-cpp_SOURCE_DIR}/abscab/abscab.cc" "${abscab-cpp_SOU
 # Fix deprecation warning, abseil will change this default soon.
 set(ABSL_PROPAGATE_CXX_STD "ON")
 if(MSVC)
-  # indata2json is a Fortran tool that converts classic VMEC namelist inputs
-  # to JSON; it is invoked as a subprocess, not linked into any target. Its
-  # Fortran build needs a compiler compatible with the MSVC/Ninja generator,
-  # which is not present on this toolchain, so it is skipped on Windows. The
-  # JSON-input path (VmecInput.from_file) does not require it.
+  # indata2json is a Fortran namelist converter run as a subprocess; the MSVC
+  # toolchain has no compatible Fortran compiler, so Windows skips it.
   FetchContent_MakeAvailable(abseil-cpp)
 else()
   FetchContent_MakeAvailable(abseil-cpp indata2json)
@@ -266,18 +258,12 @@ if(VMECPP_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
   set(CMAKE_CUDA_STANDARD 20)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-  # The .cu objects link into vmecpp_core and then into the shared Python
-  # module. On a GCC/Clang host nvcc needs -fPIC; on the MSVC host -fPIC is
-  # not a valid flag, and the host compilation instead needs /bigobj (the
-  # CUDA units are large) and /EHsc passed through -Xcompiler.
+  # nvcc needs -fPIC on a GCC/Clang host, and /bigobj and /EHsc through
+  # -Xcompiler on an MSVC host.
   if(MSVC)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=/bigobj -Xcompiler=/EHsc")
-    # CMake injects a bare /utf-8 into the nvcc command line for MSVC, which
-    # nvcc misparses as a second input file; no CMake variable suppresses it.
-    # Route nvcc through a launcher that rewraps /utf-8 as -Xcompiler=/utf-8.
-    # Compiler launchers are honored by the Ninja and Makefile generators (use
-    # one of those on Windows, not the Visual Studio generator). find_program
-    # rather than find_package keeps this off pybind11's Python discovery.
+    # CMake passes MSVC's /utf-8 to nvcc as a bare argument, which nvcc reads as
+    # an input file; the launcher rewraps it as -Xcompiler=/utf-8.
     find_program(VMECPP_LAUNCHER_PYTHON NAMES python3 python py REQUIRED)
     set(CMAKE_CUDA_COMPILER_LAUNCHER
         "${VMECPP_LAUNCHER_PYTHON}"
@@ -359,11 +345,8 @@ endfunction()
 # The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
 # see that directory's README.md for what they cover and how to regenerate.
 # Pass -DVMECPP_USE_FFTX=OFF to fall back to the partial-DFT path.
-# The vendored FFTX codelets are machine-generated code that does not compile
-# under MSVC (over-long string literals, non-standard cast syntax), so the
-# option defaults off on Windows. The CUDA path uses cuFFT and the CPU
-# fallback is the partial-DFT transform, so neither build needs FFTX.
 if(MSVC)
+  # The machine-generated FFTX codelets do not compile under MSVC.
   option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" OFF)
 else()
   option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ON)

@@ -37,30 +37,16 @@ const std::vector<double>& GetPlasmaVolumePerCfgCache() {
 const std::vector<double>& GetFnorm1PerCfgCache() {
   return g_fnorm1_per_cfg_cache;
 }
-// Per-configuration normalized force residuals {fsqr, fsqz, fsql} from the last
-// iteration each configuration was active. Unlike the live residual caches,
-// masking a converged configuration does not zero its entry here, so the
-// batched-output reconstruction can report each config's own converged
-// residual instead of a post-mask zero. Layout: 3*n_cfg as
-// [fsqr_c, fsqz_c, fsql_c, ...]. The iteration controller writes it through the
-// mutable accessor at the per-cfg residual cadence.
+// Each configuration's normalized residuals {fsqr, fsqz, fsql} of its last
+// active iteration, kept when masking zeroes the live caches.
 const std::vector<double>& GetFsqrPerCfgCache() {
   return g_fsqr_per_cfg_cache;
 }
 std::vector<double>& MutableFsqrPerCfgCache() {
   return g_fsqr_per_cfg_cache;
 }
-// Raw upper estimate, in bytes, of the persistent device allocation at the
-// given shape and configuration count, without the safety margin or the
-// context cushion that the admission pre-flight adds on top. Shared by
-// CudaVramBudgetCuda and by the per-Reshape bookkeeping that credits a
-// follow-up run with the memory the next Reshape frees. The coefficient
-// families: spectral-coefficient blocks (specs, force spectra, decomposed
-// shadow, dealias intermediates, position/velocity/backup/final/prev
-// state, lambda preconditioner, RZ tridiagonal rows), full-grid real-space
-// arrays (outputs, forces, constraint terms, preconditioner inputs),
-// half-grid arrays (jacobian, metric, fields, pressure), and the cuFFT
-// scratch with its plan workspace.
+// Raw upper estimate in bytes of the persistent device allocation at this shape
+// and count, without the pre-flight's margins.
 long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
                              long long ntor, long long nZeta,
                              long long nThetaEff) {
@@ -76,18 +62,8 @@ long long CudaBudgetRawBytes(long long n_cfg, long long ns, long long mpol,
   return n_cfg * doubles_per_cfg * (long long)sizeof(double);
 }
 
-// thread_local State to unblock multi-stream concurrency within a
-// single process. Each thread gets its own CudaToroidalState (own stream,
-// own buffers, own mutex). A subprocess-per-task execution pattern is
-// unaffected (each subprocess has exactly one thread that ever calls into
-// CUDA, so it sees its own thread_local). A future single-process multi-
-// thread worker pattern would get true GPU concurrency for free.
-//
-// Caveat: there is no destructor on CudaToroidalState, so CUDA buffers
-// allocated by a short-lived thread leak when that thread exits. For our
-// long-lived worker patterns this is a non-issue (threads live until
-// process exit). For experiments that spawn-and-die many threads, add an
-// explicit cleanup or a dtor on Reshape's allocated buffers.
+// One CudaToroidalState per thread, with its own stream, buffers and mutex; it
+// has no destructor, so a thread's buffers outlive the thread.
 CudaToroidalState& State() {
   thread_local CudaToroidalState s;
   return s;
@@ -97,29 +73,22 @@ CudaToroidalState& State() {
 // block reads bucoH on the host every iteration.
 bool g_free_boundary_run = false;
 
-// Vacuum-edge force state for the current iteration. The segment-3
-// graph contains the edge kernel, so a captured graph is only valid
-// while this flag matches the value it was captured under.
+// Whether the vacuum edge force is active this iteration; a captured
+// segment-three graph is valid only under the value it was captured with.
 bool g_vacuum_edge_run = false;
 
 void SetVacuumEdgeCuda(int active) { g_vacuum_edge_run = (active != 0); }
 
-// Residuals K-partition count, run-scoped: the auto default derives from
-// the run's configuration count, and the partition count fixes the
-// summation order of the residual reduction. A process-lifetime latch
-// would carry the first run's partition geometry into later runs with a
-// different configuration count, changing their residual rounding and,
-// through the time-step damping, their trajectories.
+// Residual partition count of this run, which fixes the reduction's summation
+// order; run-scoped so a later run's count does not inherit it.
 int g_residuals_k_run = -1;
 
 void SetFreeBoundaryRunCuda(int enabled) {
   g_free_boundary_run = (enabled != 0);
 }
 
-// Resets the thread-local CudaToroidalState at the start of each Vmec::run so
-// persistent device buffers carry nothing between runs in one process, and
-// sets the run's configuration count and whether its configurations carry
-// their own inputs. Safe to invoke before the stream exists.
+// Resets the thread-local state at the start of each Vmec::run and sets the
+// configuration count and distinct flag; safe before the stream exists.
 void ResetCudaStateForNewVmecRun(int n_config, bool distinct) {
   g_n_config_run = std::max(1, n_config);
   g_batch_distinct_run = distinct;
@@ -128,16 +97,14 @@ void ResetCudaStateForNewVmecRun(int n_config, bool distinct) {
   State().ResetForNewVmecRun();
 }
 
-// In-memory batch staging blocks. pybind run_batched_gpu hands the per-cfg
-// spectral inputs and the per-cfg decomposed-position blocks here, both in
-// [sp][cfg][spec] layout.
+// Batch staging from run_batched_gpu: the per-configuration spectra and
+// decomposed positions, [sp][cfg][spec].
 std::vector<double> g_batch_inputs_mem;
 std::vector<double> g_batch_dec_x_mem;
 int g_batch_mem_shape[4] = {0, 0, 0, 0};  // n_cfg, ns, mpol, ntor
 
-// End-of-run converged spectra of a multi-configuration run in
-// [sp][cfg][spec] layout. Filled by the end-of-run flush; read back by
-// GetBatchOutputSpectraCuda.
+// Converged spectra of a multi-configuration run, [sp][cfg][spec], from the
+// end-of-run flush for GetBatchOutputSpectraCuda.
 std::vector<double> g_batch_outputs_mem;
 int g_batch_outputs_shape[4] = {0, 0, 0, 0};
 
@@ -152,10 +119,8 @@ bool GetBatchOutputSpectraCuda(std::vector<double>* out, int* n_cfg, int* ns,
   return true;
 }
 
-// Per-config evaluated input profiles for distinct-mode batches: one set per
-// configuration at the CURRENT multigrid level, flat [cfg][ns]. The host fills
-// these from per-config RadialProfiles every level; the BContra / massH staging
-// reads them to stage per-config instead of broadcasting the seed's profiles.
+// Each configuration's evaluated profiles at the current level, flat [cfg][ns],
+// which the BContra and massH staging read.
 std::vector<double> g_batch_phipF, g_batch_phipH, g_batch_currH, g_batch_iotaH,
     g_batch_massH;
 int g_batch_prof_ncfg = 0, g_batch_prof_nsh = 0, g_batch_prof_nsf = 0;
@@ -202,9 +167,8 @@ void SetBatchStagingCuda(const double* inputs, const double* dec_x,
 }
 
 void ClearBatchStagingCuda() {
-  // Drops the staged input blocks once the batched run that owns them
-  // has finished, so a later run with a matching shape cannot consume
-  // another batch's staging.
+  // Drops the staged inputs once their batched run has finished, so a later run
+  // of the same shape cannot consume them.
   g_batch_inputs_mem.clear();
   g_batch_inputs_mem.shrink_to_fit();
   g_batch_dec_x_mem.clear();
@@ -215,9 +179,8 @@ void ClearBatchStagingCuda() {
   g_batch_mem_shape[3] = 0;
 }
 
-// Segment-3 CUDA graph: launches the captured graph and returns true, or
-// returns false so the caller runs the wrappers, which are captured once the
-// warmup calls are done; EndUpdateSegment3GraphOrLaunch closes the capture.
+// Segment-three graph: replays and returns true, or returns false so the caller
+// runs the wrappers, captured after warmup.
 bool BeginUpdateSegment3GraphOrReplay() {
   auto& S0 = State();
   if (S0.seg3_graph_captured &&
@@ -245,9 +208,8 @@ bool BeginUpdateSegment3GraphOrReplay() {
                "seg3 graph launch (replay)");
     return true;
   }
-  // Warmup: skip capture on the first WARMUP_N calls so lazy cudaMalloc
-  // inside Ensure*Buffers wrappers fire normally (cudaMalloc is forbidden
-  // inside stream capture). After warmup, all buffers exist.
+  // Capture starts after WARMUP_N calls, once the lazy allocations, forbidden
+  // inside a capture, have run.
   constexpr int WARMUP_N = 2;
   if (S.seg3_warmup_calls < WARMUP_N) {
     S.seg3_warmup_calls += 1;
@@ -260,9 +222,7 @@ bool BeginUpdateSegment3GraphOrReplay() {
   return false;
 }
 
-// Called at end of segment 3. If we were capturing, end capture, instantiate,
-// and launch the just-captured graph. If we already replayed (Begin returned
-// true), this is a no-op.
+// Ends a capture, instantiates and launches the graph; a no-op after a replay.
 void EndUpdateSegment3GraphOrLaunch() {
   auto& S = State();
   if (!S.stream) return;
@@ -284,26 +244,8 @@ void EndUpdateSegment3GraphOrLaunch() {
   // else: replay already done in Begin.
 }
 
-// Segment-4 CUDA graph capture and replay coordinator.
-//
-// The captured chain consists of ApplyM1PreconditionerCuda,
-// AssembleRZPreconditionerCuda, ApplyRZPreconditionerCuda, and
-// ApplyLambdaPreconditionerCuda. Each of these wrappers issues
-// kernel launches only, performs no host synchronization or host
-// memory access, and triggers no device allocation once the warmup
-// pass has completed. The four wrappers execute consecutively
-// between the stream synchronization at the end of the first
-// ResidualsCuda invocation and the stream synchronization at the
-// start of the second, satisfying the conditions for CUDA graph
-// capture.
-//
-// The only kernel argument that varies across iterations is jMax,
-// whose value depends on the free-boundary flag lfreeb and on the
-// vacuum-pressure-state transitions. The most recent captured value
-// of jMax is retained, and a mismatch with the current call triggers
-// destruction and re-capture of the segment graph. In the canonical
-// fixed-boundary benchmark jMax remains constant throughout the run,
-// so a single captured graph services every iteration.
+// Segment-four graph of the four preconditioner wrappers between the
+// ResidualsCuda synchronizations, re-captured when jMax changes.
 bool BeginUpdateSegment4GraphOrReplay(int jMax) {
   auto& S = State();
   if (!S.stream) return false;
@@ -352,21 +294,8 @@ void EndUpdateSegment4GraphOrLaunch() {
   }
 }
 
-// Segment-2 CUDA graph capture and replay coordinator.
-//
-// The captured chain comprises six kernel-only wrappers:
-// ComputeMetricElementsCuda, UpdateDifferentialVolumeCuda,
-// ComputeBContraCuda, ComputeBCoCuda, PressureAndEnergiesCuda, and
-// RadialForceBalanceCuda. The chain executes between the stream
-// synchronization at the end of ComputeJacobianCuda and the entry
-// to the preconditioner-update block that precedes the segment-3
-// chain. No host synchronization or host memory access occurs in
-// this window once the iter-one initialization host-to-device
-// transfers have completed.
-//
-// defer_capture: the caller's segment body performs a host synchronization
-// on this iteration, which is illegal inside stream capture; run the
-// wrappers uncaptured. An already-captured graph still replays.
+// Segment-two graph of the six kernel-only wrappers between
+// ComputeJacobianCuda's synchronization and the preconditioner update.
 bool BeginUpdateSegment2GraphOrReplay(bool defer_capture) {
   auto& S = State();
   if (!S.stream) return false;

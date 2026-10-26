@@ -1,33 +1,10 @@
 #include "vmecpp/vmec/ideal_mhd_model/fft_toroidal_cuda_common.cuh"
 
 namespace vmecpp {
-// =========================================================================
 // CUDA kernels
-// =========================================================================
 
-// k_fill_spectra assigns one thread to each (jF_local, m, q, n) tuple
-// in the index ranges jF_local in [0, ns_local), m in [0, mpol),
-// q in [0, kBatch = 12), and n in [0, nhalf). Each thread populates
-// the corresponding complex entry of the cuFFT input buffer X from
-// the spectral coefficients rmncc, rmnss, zmnsc, zmncs, lmnsc, and
-// lmncs, multiplied by the toroidal mode-scaling vector nscale and
-// the per-mode poloidal multiplier xmpq as appropriate to the q
-// channel.
-//
-// The per-poloidal-mode jMin floor is enforced explicitly: for
-// m in {0, 1} the floor is zero, and for m >= 2 the floor is one,
-// so that the spectral entries with jF below the floor are emitted
-// as zero rather than read from the spectral arrays.
-//
-// The output buffer X is laid out contiguously over
-// (ns_local * mpol * kBatch * nhalf) complex doubles with
-// [jF_local][m][q][n] order, which is the layout the cuFFT batched
-// plan expects.
-//
-// The configuration axis is carried on blockIdx.z, encoded as
-// config * ns_local + jF_local; at n_config equal to one this
-// reduces to jF_local alone and the layout collapses to the pre-
-// batched single-configuration arrangement.
+// k_fill_spectra: one thread per (jF_local, m, q, n) fills the cuFFT input X
+// from the six spectra, scaled by nscale and xmpq per slot type.
 __global__ void k_fill_spectra(
     int n_config, int ns_local, int mpol, int ntor, int nhalf, int nfp,
     int nsMinF1_offset,
@@ -146,13 +123,8 @@ __global__ void k_fill_spectra(
   X[dst_idx].y = im;
 }
 
-// Fused main-and-constraint scatter with the Y values in shared memory.
-//
-// One warp handles one (config, jF_local, k) tuple, and the lanes within the
-// warp partition the poloidal output points. The Y values consumed during the
-// inner toroidal-mode loop are staged into a per-warp shared-memory tile of
-// mpol * kBatch doubles, which four lanes of each warp load cooperatively
-// before the toroidal-mode loop begins. Four warps per block.
+// Fused main and constraint scatter: one warp per (config, jF_local, k), lanes
+// over poloidal points, with Y staged in per-warp shared memory.
 __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con(
     int n_config, int ns_local, int mpol, int nZeta, int nThetaReduced, int nThetaEff,
     const double* __restrict__ Y, const double* __restrict__ cosmu,
@@ -182,9 +154,8 @@ __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con(
   size_t cfg_full = (size_t)config * (size_t)ns_local *
                     (size_t)nZeta * (size_t)nThetaEff;
 
-  // Shared memory: per-warp slot of 10*12 = 120 doubles. Allocated by
-  // launch as kBatch_runtime * mpol * blockDim.y per-block.
-  // Layout: s_Y[warp_id][m][q] = Y[cfg, jF_local, m, q, k] for this warp's k.
+  // Per-warp shared slot of mpol * kBatch doubles: s_Y[warp][m][q] = Y[cfg,
+  // jF_local, m, q, k] for the warp's k.
   extern __shared__ double s_Y_block[];  // [blockDim.y * mpol * kBatch]
   double* s_Y = s_Y_block + (size_t)warp_id * (size_t)mpol * (size_t)kBatch;
 
@@ -217,9 +188,8 @@ __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con(
 
   double sqrtSF_jF = sqrtSF[jF_local];
 
-  // mpol is 10 at the production callsite. Force unroll the m loop so the
-  // compiler constant-folds m_even and the xmpq[m]/sqrtSF_jF multiplications,
-  // and pipelines the per-m shared reads + FMAs.
+  // mpol is 10 at the production call site; unrolling the m loop folds m_even
+  // and the xmpq and sqrtSF products.
   #pragma unroll 10
   for (int m = 0; m < mpol; ++m) {
     // Read from shared memory (1 cycle latency vs L1's ~30 cycles).
@@ -278,20 +248,8 @@ __global__ __launch_bounds__(128, 5) void k_scatter_main_and_con(
   zCon[idx] = zcon_acc;
 }
 
-// Device implementation of FourierGeometry::extrapolateTowardsAxis.
-//
-// The kernel completes the axis-surface initialization that the host
-// triplet would otherwise perform. For each toroidal mode index n in
-// [0, ntor], the m = 1 spectral coefficients on the axis surface
-// (surface index zero) are set equal to those on the first off-axis
-// surface (surface index one). When the configuration is
-// three-dimensional, the m = 0 lambda coefficient lmncs is propagated
-// from the first off-axis surface to the axis surface in the same
-// manner. The kernel is launched with a three-dimensional grid of
-// shape (ntor + 1, 1, n_config), assigning one thread to each
-// (configuration, toroidal mode) pair, and is invoked only by the
-// rank whose nsMinF1 equals zero, that is, the rank that owns the
-// axis surface.
+// FourierGeometry::extrapolateTowardsAxis on the device: the axis takes the m =
+// 1 coefficients, and in 3D the m = 0 lmncs, of surface one.
 __global__ void k_extrapolate_towards_axis(
     int n_config, int ns_local, int mpol, int ntor, bool lthreed,
     double* __restrict__ rmncc, double* __restrict__ rmnss,
@@ -325,12 +283,8 @@ __global__ void k_extrapolate_towards_axis(
   (void)axis0;
 }
 
-// Pre-pass of the multigrid upscale: scale the previous-stage snapshot in
-// place by the previous stage's scalxc. This is the caller-side
-// decomposeInto pass of the host upscale (InterpolateToNextMultigridStep
-// receives X(COARSE) * SCALXC(COARSE)); the axis extrapolation and the
-// radial interpolation then operate on scaled values, matching the host
-// arithmetic. Grid: ((ntor+1)/TPB, mpol, ns_old * n_config).
+// Multigrid upscale pre-pass: scales the previous-stage snapshot by its scalxc
+// in place, as the host upscale receives X * SCALXC.
 __global__ void k_scale_prev_by_scalxc(
     int n_config, int ns_old, int mpol, int ntor,
     int scalxc_old_len_per_cfg,
@@ -358,15 +312,8 @@ __global__ void k_scale_prev_by_scalxc(
   prev_lcs[idx] = __dmul_rn(prev_lcs[idx], s);
 }
 
-// Per-cfg axis extrapolation for odd-m modes (pre-processing step for
-// the multigrid upscale). Mirrors the host upscale's axis pre-processing: for each odd m and
-// each n, overwrites the OLD axis (js=0) value with the extrapolation
-//   old[m_odd, js=0, n] = 2 * old[m_odd, js=1, n] - old[m_odd, js=2, n]
-// across all 6 spec components. Operates on the scalxc-scaled values
-// produced by k_scale_prev_by_scalxc, the same ordering as the host. The
-// radial interp downstream reads these modified axis values when
-// interpolating jNew=1.
-// Grid: ((ntor+1)/TPB, (mpol+1)/2, n_config). Each thread covers one (cfg, m_odd, n).
+// Upscale pre-pass: the odd-m axis value becomes 2 * old[js = 1] - old[js = 2]
+// on the scaled values, as in the host upscale.
 __global__ void k_axis_extrapolate_odd_m_prev(
     int n_config, int ns_old, int mpol, int ntor,
     double* prev_rcc, double* prev_rss,
@@ -396,21 +343,8 @@ __global__ void k_axis_extrapolate_odd_m_prev(
   prev_lcs[idx_js0] = 2.0 * prev_lcs[idx_js1] - prev_lcs[idx_js2];
 }
 
-// Per-cfg radial interpolation of d_pts_x at a multigrid stage boundary.
-// Replicates the host upscale in Vmec::InterpolateToNextMultigridStep, run
-// per configuration so distinct-mode batched runs preserve per-cfg state
-// across the ns_array stages. Inputs are the previous-stage values already
-// scaled by the previous stage's scalxc (k_scale_prev_by_scalxc) with the
-// odd-m axis extrapolated (k_axis_extrapolate_odd_m_prev); this kernel
-// applies the host's linear interpolation
-//
-//   new[jNew, m, n] = ((1 - xint) * old[js1, m, n] + xint * old[js2, m, n])
-//                       / scalxc[jNew, m_parity]
-//
-// and zeroes the odd-m axis rows, the host's final step. The explicit
-// round-to-nearest intrinsics pin the multiply/add/divide sequence to the
-// host's non-contracted arithmetic so the result is bit-identical to the
-// host upscale. Grid: (ntor+1)/TPB x mpol x (ns_new * n_config).
+// Per-configuration radial interpolation of d_pts_x at a stage boundary, the
+// host upscale of Vmec::InterpolateToNextMultigridStep.
 __global__ void k_radial_interpolate_pts_x(
     int n_config, int ns_old, int ns_new, int mpol, int ntor,
     int scalxc_len_per_cfg,
@@ -481,32 +415,8 @@ __global__ void k_radial_interpolate_pts_x(
                 __dmul_rn(w1, old_lcs[idx_js2])), scal_new);
 }
 
-// Device implementation of Vmec::performTimeStep.
-//
-// The kernel advances the conjugate-gradient time integrator that
-// updates the spectral coefficients of the configuration. The
-// velocity is first refreshed via
-//
-//   v_new = velocity_scale * (b1 * v_old + dt * f),
-//
-// and the spectral position is then advanced as x = x + dt * v_new.
-// The force tensor f is read from the device-resident
-// d_decomposed_f arrays that the preconditioner chain has populated;
-// the velocity tensor d_pts_v is read and written in place, and the
-// spectral position tensor d_pts_x is updated in place and persists
-// across iterations of the outer time loop.
-//
-// The block grid encodes the iteration range jF in
-// [nsMinF, nsMaxFIncludingLcfs), expressed in local indices as
-// jF_v_local in [0, ns_con_local), through blockIdx.z =
-// config * ns_con_local + jF_v_local. The velocity tensor is indexed
-// as (configuration, jF_v_local, m, n) and is sized for ns_con_local
-// surfaces along the radial axis.
-// x indexed by (cfg, jF_full_local, m, n) over ns_local surfaces, where
-// jF_full_local = jF_v_local + (nsMinF - nsMinF1).
-//
-// lasym=false, lthreed=true paths handled (our workload). lasym branches
-// from the CPU body are omitted.
+// Vmec::performTimeStep on the device: v = velocity_scale * (b1 * v + dt * f)
+// and x = x + dt * v from the device forces.
 __global__ void k_perform_time_step(
     int n_config, int ns_local, int ns_con_local,
     int mpol, int ntor, int nsMinF_to_nsMinF1, bool lthreed,
@@ -526,20 +436,15 @@ __global__ void k_perform_time_step(
   int config = blockIdx.z / ns_con_local;
   int jF_v_local = blockIdx.z - config * ns_con_local;
   if (config >= n_config) return;
-  // Inactive cfgs hold their (x, v) state: host-side shared quantities
-  // (the fNorm family, tcon) derive from cfg 0's live slot, so converged
-  // slots must stay frozen while the rest of the batch iterates.
+  // Inactive configurations hold their x and v, since shared host quantities
+  // derive from configuration zero's live slot.
   if (d_active_per_cfg && !d_active_per_cfg[config]) return;
   int m = blockIdx.y;
   int n = blockIdx.x * blockDim.x + threadIdx.x;
   if (jF_v_local >= ns_con_local || m >= mpol || n > ntor) return;
 
-  // Per-cfg (fac, b1) override: when d_fac_b1 is non-null, each cfg's
-  // velocity_scale + conjugation_parameter come from its own slot in the
-  // d_fac_b1 array (written by k_update_timestep). This lets each cfg's
-  // accelerator/damper respond to its own residual instead of the shared
-  // scalar tuned for cfg 0 only. Required for distinct-mode batched
-  // convergence when cfgs converge at different rates.
+  // With d_fac_b1, each configuration takes its own fac and b1 from
+  // k_update_timestep in place of the shared scalars.
   double fac_use = velocity_scale;
   double b1_use = conjugation_parameter;
   if (d_fac_b1 != nullptr) {
@@ -605,17 +510,8 @@ __global__ void k_perform_time_step(
   }
 }
 
-// k_extract_geom_scalars collects six geometry-derived scalar values
-// from configuration zero's slices of the device buffers d_r1_e,
-// d_r1_o, and d_z1_e and writes them into a contiguous six-double
-// output buffer. The values feed the host-side scalar accessors
-// SetRadialExtent, which consumes (r_outer, r_inner) as its first
-// two arguments, and SetGeometricOffset, which consumes (r_00, z_00)
-// as its second two; the remaining two doubles carry the additional
-// boundary samples used for diagnostic output. The kernel is
-// launched with a single thread because the work is the unconditional
-// emission of six element-wise reads from precomputed offsets and
-// admits no parallelism beyond that.
+// k_extract_geom_scalars: configuration zero's six geometry scalars for
+// SetRadialExtent and SetGeometricOffset into one buffer.
 __global__ void k_extract_geom_scalars(
     const double* __restrict__ d_r1_e,
     const double* __restrict__ d_r1_o,
@@ -629,22 +525,8 @@ __global__ void k_extract_geom_scalars(
   d_out[5] = d_z1_e[0];
 }
 
-// k_compute_metric_elements assigns one thread to each (jH_local, kl)
-// pair and computes the half-grid metric tensor elements gsqrt, guu,
-// guv (only under three-dimensional symmetry, lthreed), and gvv from
-// the full-grid even-odd geometry r1_e/o, ru_e/o, zu_e/o, rv_e/o, and
-// zv_e/o, together with the half-grid auxiliaries tau and r12 produced
-// by the preceding jacobian computation. The configuration axis is
-// carried on blockIdx.z, with each configuration occupying its own
-// strided slice of the full-grid inputs, the half-grid inputs tau and
-// r12, and the half-grid outputs gsqrt, guu, guv, and gvv. The radial-
-// coordinate auxiliaries sqrtSF and sqrtSH are invariant across
-// configurations under the assumption of a shared radial grid and are
-// consumed without per-configuration offsets. At n_config equal to
-// one the configuration axis collapses to blockIdx.z equal to zero
-// and the per-configuration offsets degenerate to the single-
-// configuration layout, preserving the pre-batched behaviour bit-for-
-// bit.
+// k_compute_metric_elements: one thread per (jH_local, kl) computes gsqrt, guu,
+// guv (3D) and gvv from the full-grid geometry, tau and r12.
 __global__ void k_compute_metric_elements(
     int n_config, int ns_local,
     int ns_h, int jF_in_offset, int nZnT, bool lthreed,
@@ -736,28 +618,8 @@ __global__ void k_compute_metric_elements(
   guv[iHalf] = guv_v;
 }
 
-// Fused jacobian and metric-element computation.
-//
-// The kernel combines what would otherwise be two consecutive kernels
-// (k_compute_jacobian and k_compute_metric_elements) into a single
-// launch, with each thread handling one (configuration, jH_local, kl)
-// tuple. Within the thread the work proceeds in two stages. The
-// jacobian stage computes r12, ru12, zu12, rs, zs, and tau and writes
-// these arrays to global memory, since downstream kernels in the
-// iteration body continue to consume them. The metric stage then
-// reuses the r12 and tau values already held in registers, together
-// with the ru, zu, and r1 inputs that the jacobian stage loaded from
-// global memory, to compute gsqrt, guu, guv, and gvv.
-//
-// Combining the two stages removes the global-memory round trip that
-// the separate-kernel arrangement would incur on r12, tau, the
-// even-parity and odd-parity components of ru and zu, the
-// corresponding components of r1, and the radial weight sqrtSF.
-//
-// The fusion preserves the floating-point operation order of the
-// separate kernels, so the result is bit-identical: only the storage
-// location of the shared intermediates changes from global memory to
-// registers.
+// Fused Jacobian and metric kernel, one thread per (configuration, jH_local,
+// kl), writing r12, ru12, zu12, rs, zs, tau and the metric.
 __global__ void k_jacobian_and_metric(
     int n_config, int ns_local,
     int ns_h, int jF_in_offset, int nZnT, bool lthreed,
@@ -885,31 +747,8 @@ __global__ void k_jacobian_and_metric(
   guv[iHalf] = guv_v;
 }
 
-// Fused jacobian, metric, and dVdsH reduction kernel with atomic
-// accumulation.
-//
-// The kernel shares its launch geometry with k_jacobian_and_metric
-// above: a thread block of TPB = 64, X-blocks of size
-// ceil(nZnT / TPB), and one block per (X, jH, configuration) tuple
-// in the three-dimensional grid. The per-thread body first writes
-// the jacobian and metric outputs in the same arrangement as the
-// fused jacobian-and-metric kernel, then accumulates the per-thread
-// contribution signOfJacobian * gsqrt * wInt into the differential
-// volume slot dVdsH[configuration, jH] via atomicAdd. This removes
-// the separate block-reduction kernel that would otherwise consume
-// gsqrt and wInt to produce dVdsH, and removes the corresponding
-// global-memory round trip on gsqrt that the separate kernel would
-// have incurred.
-//
-// The caller is responsible for zeroing the dVdsH slice with
-// cudaMemsetAsync before the launch, since the kernel accumulates
-// into the slot rather than overwriting it.
-//
-// Because the atomic accumulation ordering across blocks is not
-// deterministic, the resulting floating-point sum differs from the
-// equivalent tree-reduction sum by amounts on the order of a single
-// unit in the last place. This deviation is admitted by the drift
-// tolerance the iteration controller applies to dVdsH.
+// Fused Jacobian, metric and dVdsH kernel with atomic accumulation, on
+// k_jacobian_and_metric's launch geometry.
 __global__ void k_jacobian_metric_dvdsh_atomic(
     int n_config, int ns_local,
     int ns_h, int jF_in_offset, int nZnT, int nThetaEff, bool lthreed,
@@ -1033,16 +872,8 @@ __global__ void k_jacobian_metric_dvdsh_atomic(
   atomicAdd(&dVdsH[config * ns_h + jH_local], contrib);
 }
 
-// k_jacobian_metric_dvdsh_atomic_pair: half-grid pair coarsening of
-// the fused kernel above. Each block services two adjacent half-grid
-// surfaces (jH_lo = 2 * blockIdx.y, jH_hi = jH_lo + 1; threadIdx.y
-// selects the surface). The shared boundary surface
-// jF = jH_lo + 1 + jF_in_offset feeds both halves, so caching its
-// eight main full-grid fields in shared memory halves the main-field
-// global traffic (12 KB per block at nZnT = 192). The
-// differential-volume reduction keeps atomicAdd into dVdsH; the
-// summation-order non-determinism is admitted by the dVdsH drift
-// tolerance, and aspect_ratio stays bit-exact.
+// Half-grid pair coarsening of the fused kernel: a block serves two adjacent
+// surfaces and caches their shared full-grid surface.
 __global__ __launch_bounds__(128, 5) void k_jacobian_metric_dvdsh_atomic_pair(
     int n_config, int ns_local,
     int ns_h, int jF_in_offset, int nZnT, int nThetaEff, bool lthreed,
@@ -1079,10 +910,8 @@ __global__ __launch_bounds__(128, 5) void k_jacobian_metric_dvdsh_atomic_pair(
   // SHARED jF index: jH_lo's jF_out == jH_hi's jF_in == jH_lo + 1 + offset.
   int jF_shared = jH_pair * 2 + 1 + jF_in_offset;
 
-  // Shared layout: 8 fields, one slot per x-lane (blockDim.x), shared between
-  // the two jH y-lanes at the same kl. Field order: r1_e, r1_o, ru_e, ru_o,
-  // z1_e, z1_o, zu_e, zu_o. Sized to the block's x-extent rather than nZnT, so
-  // the requirement is independent of the poloidal resolution.
+  // Shared layout: eight full-grid fields per x-lane, shared by the two jH
+  // lanes at the same kl, sized to the block's x-extent.
   const int sj = threadIdx.x;
   const int sw = blockDim.x;
   extern __shared__ double s_jac_buf[];
@@ -1216,19 +1045,8 @@ __global__ __launch_bounds__(128, 5) void k_jacobian_metric_dvdsh_atomic_pair(
   atomicAdd(&dVdsH[config * ns_h + jH_local], contrib);
 }
 
-// k_update_dvdsh launches one block per half-grid radial index
-// jH_local and uses the threads within the block to cooperate on the
-// sum over the combined poloidal-toroidal index kl. The output for
-// each half-grid surface is the differential volume contribution
-//   dVdsH[jH_local] = signOfJacobian * sum_kl ( gsqrt[jH_local, kl]
-//                                                * wInt[kl % nThetaEff] ),
-// where wInt provides the per-theta integration weights and the
-// modulo extracts the theta index from the flattened (zeta, theta)
-// pair. The configuration axis is carried on blockIdx.z, with each
-// configuration consuming its own strided slice of gsqrt and writing
-// to its own slice of dVdsH. At n_config equal to one blockIdx.z is
-// zero and the per-configuration offsets degenerate to the single-
-// configuration layout.
+// k_update_dvdsh: one block per half-grid surface sums dVdsH = signOfJacobian *
+// sum_kl gsqrt * wInt over kl.
 __global__ void k_update_dvdsh(int n_config, int ns_h, int nZnT, int nThetaEff,
                                 double signOfJacobian,
                                 const double* __restrict__ gsqrt,
@@ -1249,9 +1067,8 @@ __global__ void k_update_dvdsh(int n_config, int ns_h, int nZnT, int nThetaEff,
   dVdsH[config * ns_h + jH_local] = signOfJacobian * acc;
 }
 
-// A config masked before the batch finishes has its dVdsH zeroed (gsqrt kept),
-// zeroing its betatot. Recompute only zeroed slots (surface 0 > 0 for any real
-// equilibrium) from gsqrt; one block per config, so the repair is race-free.
+// Recomputes from gsqrt the dVdsH a configuration masked before the batch ended
+// had zeroed; one block per configuration.
 __global__ void k_recompute_dvdsh_if_zeroed(
     int n_config, int ns_h, int nZnT, int nThetaEff, double signOfJacobian,
     const double* __restrict__ gsqrt, const double* __restrict__ wInt,
@@ -1270,19 +1087,8 @@ __global__ void k_recompute_dvdsh_if_zeroed(
   }
 }
 
-// k_buco_bvco produces the half-grid covariant magnetic-field
-// integrals bucoH and bvcoH by integrating bsubu and bsubv against
-// the per-theta integration weights wInt:
-//   bucoH[jH] = sum over kl of bsubu[jH, kl] * wInt[kl mod nThetaEff],
-//   bvcoH[jH] = sum over kl of bsubv[jH, kl] * wInt[kl mod nThetaEff].
-// Each block reduces a single half-grid surface jH_local with its
-// threads cooperating over the flattened (zeta, theta) index kl,
-// where the modulo extracts the theta index for the weight lookup.
-// The configuration axis is carried on blockIdx.z; bsubu, bsubv,
-// bucoH, and bvcoH are addressed per configuration on the half-grid
-// or per-configuration radial profile respectively, and wInt is
-// shared across configurations because the poloidal grid is
-// invariant.
+// k_buco_bvco: bucoH and bvcoH as sums of bsubu and bsubv against wInt, one
+// block per half-grid surface.
 __global__ void k_buco_bvco(int n_config, int ns_h, int nZnT, int nThetaEff,
                               const double* __restrict__ bsubu,
                               const double* __restrict__ bsubv,
@@ -1308,17 +1114,8 @@ __global__ void k_buco_bvco(int n_config, int ns_h, int nZnT, int nThetaEff,
   bvcoH[cfg_prof + jH_local] = accv;
 }
 
-// k_radial_interior emits the radial derivatives of bucoH, bvcoH,
-// and presH, the half-to-full interpolation of dVdsH, and the
-// associated force-balance residual equiF at every interior full-
-// grid radial index jFi_local. The inputs bucoH, bvcoH, presH, and
-// dVdsH are radial profiles indexed on the half grid with stride
-// ns_h, and chipF and phipF are radial profiles indexed on the full
-// grid with stride ns_local; the outputs jcurvF, jcuruF, presgradF,
-// dVdsF, and equiF are indexed on the interior full grid with
-// stride nsi. The configuration axis is carried on blockIdx.y, and
-// each input and output buffer is addressed at the corresponding
-// per-configuration offset under the batched layout.
+// k_radial_interior: radial derivatives of bucoH, bvcoH and presH, the
+// full-grid dVds and the residual equiF on interior surfaces.
 __global__ void k_radial_interior(int n_config, int ns_h, int ns_local,
                                     int nsi, int nsMinFi_to_nsMinH_offset,
                                     int nsMinFi_to_nsMinF1_offset,
@@ -1357,20 +1154,8 @@ __global__ void k_radial_interior(int n_config, int ns_h, int ns_local,
   equiF[cfg_i + jFi_local] = (cp * jcv - pp * jcu) / dV + pg;
 }
 
-// k_pm_half_reductions populates the preconditioner-matrix scratch
-// arrays ax_scratch, bx_scratch, and cx_scratch from per-cell terms
-// weighted by the integration kernel pTau, performing a half-grid
-// reduction over the flattened (zeta, theta) index kl. Each block
-// processes a single half-grid surface jH with its threads
-// cooperating across kl; the per-thread partial sums then reduce
-// through shared memory to yield the four entries of ax_scratch
-// (ax0..ax3), the three entries of bx_scratch (bx0..bx2), and the
-// single entry of cx_scratch for that surface. The configuration
-// axis is carried on blockIdx.z, with both the half-grid inputs
-// (r12, totalPressure, tau, xu12, xs, sqrtSH, bsupv, gsqrt) and
-// the full-grid inputs (xu_e, xu_o, x1_o) accessed at their per-
-// configuration offsets, and with the ax_scratch, bx_scratch, and
-// cx_scratch outputs also per-configuration.
+// k_pm_half_reductions: half-grid reductions over kl of the
+// preconditioner-matrix scratch ax, bx and cx, weighted by pTau.
 __global__ void k_pm_half_reductions(int n_config, int ns_local, int ns_h,
                                        int nZnT, int nThetaEff,
                                        double pFactor, double deltaS,
@@ -1486,17 +1271,8 @@ __global__ void k_pm_assemble_half(int n_config, int ns_h,
   m_bxm[cfg_m + jH * 2 + kOdd]  = bx[cfg_bx + jH * 3 + 0] * sm[cfg_sm + jH] * sp[cfg_sm + jH];
 }
 
-// k_pm_assemble_full produces the full-grid preconditioner-matrix
-// coefficients m_axd, m_bxd, and m_cxd from the half-grid scratch
-// arrays ax_scratch, bx_scratch, and cx_scratch by combining the
-// inner and outer half-grid contributions at every full-grid
-// surface jF in the local range. The combination respects the
-// boundary conditions through the i_valid and o_valid guards that
-// suppress the inner half-grid term at jF equal to zero and the
-// outer half-grid term at the last-closed-flux-surface row when
-// jF equals ns_total minus one. The configuration axis is carried
-// on blockIdx.y, and every input and output buffer is addressed
-// at its per-configuration offset under the batched layout.
+// k_pm_assemble_full: full-grid axd, bxd and cxd from the inner and outer
+// half-grid scratch, without the out-of-range halves.
 __global__ void k_pm_assemble_full(int n_config, int ns_h, int ns_force_local,
                                      int ns_total,
                                      int kEven, int kOdd, int nsMinF, int nsMinH,
@@ -1543,20 +1319,8 @@ __global__ void k_pm_assemble_full(int n_config, int ns_h, int ns_force_local,
   m_cxd[cfg_cxd + jF_local] = cxd_v;
 }
 
-// k_ulp_half_reductions emits the half-grid contributions to the
-// lambda-preconditioner radial profiles bLambda, dLambda, and
-// cLambda by integrating metric ratios against the per-theta
-// weights wInt. One block reduces a single half-grid surface jH,
-// writing its output at the radial index jH + 1; the unit offset
-// mirrors the host-side convention that reserves the first slot of
-// each profile for the magnetic axis. The configuration axis is
-// carried on blockIdx.z, and the half-grid inputs guu, guv, gvv,
-// and gsqrt are addressed at their per-configuration offsets. The
-// output profiles bLambda, dLambda, and cLambda are sized to
-// lambda_stride per configuration, which equals ns_con_local + 1
-// so that the indexing convention used by the host-side
-// initialisation through Eigen's setZero on ranges of length
-// nsMaxF1 - nsMinF1 + 1 is preserved.
+// k_ulp_half_reductions: half-grid contributions to bLambda, dLambda and
+// cLambda, written at jH + 1 with slot 0 for the axis.
 __global__ void k_ulp_half_reductions(int n_config, int ns_h, int lambda_stride,
                                        int nZnT, int nThetaEff,
                                        bool lthreed,
@@ -1610,19 +1374,8 @@ __global__ void k_ulp_half_reductions(int n_config, int ns_h, int lambda_stride,
   }
 }
 
-// k_ulp_axis_extrap populates the magnetic-axis slot of each lambda-
-// preconditioner radial profile with the value carried at the
-// adjacent half-grid surface. For every configuration, the kernel
-// assigns
-//   bLambda[0] = bLambda[1],
-//   dLambda[0] = dLambda[1],
-//   cLambda[0] = cLambda[1].
-// The launch carries n_config_max blocks with one thread each; the
-// configuration axis is on blockIdx.x. The axis_present guard
-// suppresses the assignment for partitions whose local range does
-// not include the magnetic axis, preserving correctness under a
-// multi-rank partitioning of the radial domain even though the
-// device-side production code runs single-rank.
+// k_ulp_axis_extrap: the axis slot of each lambda profile takes the adjacent
+// half-grid value, where the partition holds the axis.
 __global__ void k_ulp_axis_extrap(int n_config, int lambda_stride, int axis_present,
                                     double* __restrict__ bLambda,
                                     double* __restrict__ dLambda,
@@ -1637,31 +1390,8 @@ __global__ void k_ulp_axis_extrap(int n_config, int lambda_stride, int axis_pres
   cLambda[cfg_prof + 0] = cLambda[cfg_prof + 1];
 }
 
-// k_ulp_full_grid_average averages the offset-by-one half-grid
-// lambda-preconditioner radial profiles to the full grid. For every
-// surface jF in the range [jMin, ns_con_local) the kernel computes
-//   bLambda_full[jF - nsMinF] = 0.5 *
-//       ( bLambda_half[jF + 1 - nsMinH]
-//       + bLambda_half[jF - nsMinH] ),
-// and analogous expressions for dLambda and cLambda. The buffer
-// layout reserves slot zero of each half-grid profile for the
-// magnetic-axis extrapolation produced by k_ulp_axis_extrap, with
-// slots one through ns_h carrying the half-grid values, so the two
-// addresses read for the average correspond to the half-grid
-// indices jF - nsMinH and jF - nsMinH + 1.
-//
-// Because the read addresses straddle the write address whenever
-// nsMinH equals nsMinF, an in-place update of the same buffer
-// would induce a write-before-read hazard between threads
-// processing adjacent radial indices. The kernel therefore reads
-// from the bLambda_in, dLambda_in, and cLambda_in buffers and
-// writes to disjoint bLambda_out, dLambda_out, and cLambda_out
-// buffers.
-//
-// The configuration axis is carried on blockIdx.y, and every input
-// and output buffer is sized to lambda_stride per configuration,
-// which equals ns_con_local + 1 to provide the headroom slot
-// required by the indexing convention at the highest jF.
+// k_ulp_full_grid_average: averages the offset-by-one half-grid lambda profiles
+// to the full grid on [jMin, ns_con_local).
 __global__ void k_ulp_full_grid_average(int n_config, int lambda_stride,
                                           int ns_con_local, int jMin,
                                           int nsMinH_offset,  // nsMinF - nsMinH
@@ -1678,11 +1408,8 @@ __global__ void k_ulp_full_grid_average(int n_config, int lambda_stride,
   if (jF_local < jMin) return;
   size_t cfg_in  = (size_t)config * (size_t)lambda_stride;
   size_t cfg_out = (size_t)config * (size_t)lambda_stride;
-  // Half-grid indices for inputs (offset-by-1 layout).
-  // CPU: bLambda[jF+1 - nsMinH] and bLambda[jF - nsMinH]; in our buffer
-  // jH+1 maps to index (jH - nsMinH) + 1 = jH - nsMinH + 1 in the offset
-  // layout. So bLambda[jF+1 - nsMinH] in CPU == bLambda_in[(jF - nsMinH)+1]
-  // == bLambda_in[(jF_local + nsMinH_offset) + 1].
+  // Offset-by-one input indices: the CPU's bLambda[jF + 1 - nsMinH] is
+  // bLambda_in[jF_local + nsMinH_offset + 1].
   int jH_in_off = jF_local + nsMinH_offset;
   bLambda_out[cfg_out + jF_local] = 0.5 * (bLambda_in[cfg_in + jH_in_off + 1] +
                                   bLambda_in[cfg_in + jH_in_off]);
@@ -1692,20 +1419,8 @@ __global__ void k_ulp_full_grid_average(int n_config, int lambda_stride,
                                   cLambda_in[cfg_in + jH_in_off]);
 }
 
-// k_ulp_assemble computes the spectral lambda preconditioner buffer
-// lambdaPreconditioner from the radial profiles bLambda, dLambda,
-// and cLambda produced by the half-grid and full-grid averaging
-// kernels. One thread is dispatched for every
-// (configuration, jF_local, n, m) tuple in the spectral domain;
-// the configuration axis is carried on blockIdx.z encoded as
-// config * ns_con_local + jF_local. Each configuration writes to
-// its own slice of lambdaPreconditioner under the batched layout,
-// and the consumer kernel k_apply_lambda_preconditioner reads from
-// the matching slice. The per-configuration write and read pairing
-// is required for correctness under non-identical per-configuration
-// inputs; under a broadcast workload in which every configuration
-// receives the same input the per-configuration slices carry
-// identical values and the arrangement remains correct.
+// k_ulp_assemble: the spectral lambdaPreconditioner from bLambda, dLambda and
+// cLambda, one thread per (configuration, jF_local, n, m).
 __global__ void k_ulp_assemble(int n_config, int ns_con_local, int lambda_stride,
                                 int jMin,
                                 int mpol, int ntor,
@@ -1752,24 +1467,8 @@ __global__ void k_ulp_assemble(int n_config, int ns_con_local, int lambda_stride
   lambdaPreconditioner[cfg_lp + idx_mn] = pFactor / faclam * pow(sFjF, pwr);
 }
 
-// k_compute_mhd_forces is the device-side counterpart of
-// IdealMhdModel::computeMHDForces. One thread is assigned to each
-// (jF_local_force, kl) pair, where jF_local_force ranges over the
-// force grid [0, ns_force_local) with ns_force_local equal to
-// nsMaxF - nsMinF, and the global radial index satisfies
-// jF_global = jF_local_force + nsMinF. Threads whose jF_global
-// reaches or exceeds jMaxRZ emit explicit zeros into their output
-// slots in lieu of evaluating the force expressions, so the upper
-// boundary remains correct under the radial-force cutoff. The
-// configuration axis is carried on blockIdx.z, and the full-grid,
-// half-grid, and force-grid inputs are addressed at their per-
-// configuration offsets under the batched layout. The radial-
-// coordinate auxiliaries sqrtSF and sqrtSH are invariant across
-// configurations under the assumption of a shared radial grid and
-// are consumed without per-configuration offsets. The single-
-// configuration arrangement at n_config equal to one collapses the
-// configuration axis to zero and recovers the pre-batched layout
-// bit-for-bit.
+// k_compute_mhd_forces: IdealMhdModel::computeMHDForces per (jF_local_force,
+// kl); surfaces from jMaxRZ on write zeros.
 __global__ __launch_bounds__(64, 12) void k_compute_mhd_forces(
     int n_config, int ns_local, int ns_force_local, int nZnT, bool lthreed,
     int nsMinF, int nsMinF1, int nsMinH, int nsMaxH, int jMaxRZ,
@@ -1949,41 +1648,8 @@ __global__ __launch_bounds__(64, 12) void k_compute_mhd_forces(
   bzmn_e[f_idx] = bzmn_e_v; bzmn_o[f_idx] = bzmn_o_v;
 }
 
-// k_compute_mhd_forces_pair is a force-grid coarsening variant of
-// the baseline k_compute_mhd_forces kernel. Each block services a
-// pair of adjacent force-grid surfaces, with the lower index
-// jF_lo computed as 2 * blockIdx.y and the upper index jF_hi as
-// jF_lo + 1; the second thread-axis dimension threadIdx.y in
-// {0, 1} selects which surface of the pair the thread processes.
-// The shared half-grid surface at jH = jF_lo serves a dual role:
-// it is the outer half-grid neighbour of jF_lo, on which the
-// y == 0 threads depend, and the inner half-grid neighbour of
-// jF_hi, on which the y == 1 threads depend.
-//
-// The y == 0 threads cooperatively load the ten half-grid fields
-// at jH = jF_lo into a per-block shared-memory tile. After the
-// subsequent __syncthreads the y == 1 threads read their inner
-// half-grid neighbour from shared memory, avoiding the second
-// global load they would otherwise issue. The half-grid global
-// memory traffic per pair-block per kl thus reduces from four
-// per-jH reads to three, yielding a one-quarter reduction in
-// global traffic on the half-grid path.
-//
-// The block geometry is dim3 tpb(TPB = 64, 2, 1) for a total of
-// one hundred twenty-eight threads, and the launch grid is
-// dim3 blocks((nZnT + TPB - 1) / TPB, ns_force_local / 2,
-//             n_config_max).
-// The integer division of ns_force_local by two requires
-// ns_force_local to be even; the host dispatcher falls back to
-// the baseline k_compute_mhd_forces when this condition does not
-// hold.
-//
-// The dynamic shared-memory allocation reserves storage for the
-// ten cached half-grid fields, each of nZnT doubles, for a per-
-// block footprint of approximately fifteen kilobytes at the
-// production nZnT of one hundred ninety-two. The shared region is
-// declared as a single extern __shared__ array, with the
-// individual field slices addressed by precomputed offsets.
+// Force-grid pair coarsening of k_compute_mhd_forces: a block serves two
+// adjacent surfaces sharing the half-grid surface between them.
 __global__ __launch_bounds__(128, 6) void k_compute_mhd_forces_pair(
     int n_config, int ns_local, int ns_force_local, int nZnT, bool lthreed,
     int nsMinF, int nsMinF1, int nsMinH, int nsMaxH, int jMaxRZ,
@@ -2030,10 +1696,8 @@ __global__ __launch_bounds__(128, 6) void k_compute_mhd_forces_pair(
   int jH_shared_local = jF_lo_global - nsMinH;
   bool shared_valid = (jH_shared_local >= 0 && jH_shared_local < ns_h_total);
 
-  // Shared memory layout: 10 fields, one slot per x-lane (blockDim.x), shared
-  // between the two jF y-lanes at the same kl. Field order: totalPressure, r12,
-  // ru12, zu12, rs, zs, tau, gsqrt, bsupu, bsupv. Sized to the block's x-extent
-  // rather than nZnT, so it is independent of the poloidal resolution.
+  // Shared layout: ten half-grid fields per x-lane, shared by the two jF lanes
+  // at the same kl, sized to the block's x-extent.
   const int sj = threadIdx.x;
   const int sw = blockDim.x;
   extern __shared__ double s_pair_buf[];
@@ -2048,9 +1712,8 @@ __global__ __launch_bounds__(128, 6) void k_compute_mhd_forces_pair(
   double* s_bsupu = s_pair_buf + 8 * sw;
   double* s_bsupv = s_pair_buf + 9 * sw;
 
-  // Cooperative load: only the y=0 thread populates shared. Its jH_out_local
-  // equals jH_shared_local by construction. It will also use these values
-  // immediately below for its own jH_out computation.
+  // The y = 0 thread loads the shared surface, which is also its own outer
+  // half-grid surface.
   if (my_jF_offset == 0 && shared_valid) {
     size_t i_shared = cfg_half + (size_t)jH_shared_local * (size_t)nZnT + (size_t)kl;
     s_tp[sj]    = totalPressure[i_shared];
@@ -2249,22 +1912,11 @@ __global__ __launch_bounds__(128, 6) void k_compute_mhd_forces_pair(
   bzmn_e[f_idx] = bzmn_e_v; bzmn_o[f_idx] = bzmn_o_v;
 }
 
-// ComputeMHDForces is deliberately not fused with assembleTotalForces: the
-// latter's brcon comes from gCon, produced by DealiasInv, which runs after
-// ComputeMHDForces, and the brmn/bzmn round-trip through global memory is
-// served from L2 (about 0.3% of wall on Ada), so the fusion is not worth a
-// graph-level restructure.
+// ComputeMHDForces stays separate from assembleTotalForces, whose brcon depends
+// on DealiasInv, which runs between them.
 
-// k_force_norm_partials: per surface jH, SINGLE THREAD serial kl-loop
-// matching CPU's accumulation order exactly. The prior parallel-strided
-// tree-reduce changed kl ordering vs CPU and compounded ULP rounding into
-// the drift family. At nZnT = 24*14 = 336 the serial sum is cheap relative
-// to the launch overhead, and the parallel-reduce gain was already swamped
-// by the cross-config block schedule.
-//   partial_RZ[jH] = (unique ? sum_kl guu*r12*r12*wInt[l] : 0)
-//   partial_L[jH]  = (unique ? sum_kl (bsubu^2 + bsubv^2)*wInt[l] : 0)
-// Batched execution: configuration axis on blockIdx.z. half-grid inputs per-config,
-// partial outputs per-config profile.
+// k_force_norm_partials: one thread per surface sums over kl in the CPU's
+// order, giving partial_RZ and partial_L bit for bit.
 __global__ void k_force_norm_partials(int n_config, int ns_h, int nZnT, int nThetaEff,
                                         int nsMinH, int nsMaxH_minus_1,
                                         int ns_minus_2,
@@ -2302,16 +1954,8 @@ __global__ void k_force_norm_partials(int n_config, int ns_h, int nZnT, int nThe
   partial_L[cfg_prof + jH] = acc_l;
 }
 
-// k_hybrid_lambda_force: per (jF_local_con, kl).
-// jF_local_con is 0..ns_con_local (= nsMaxFIncludingLcfs - nsMinF).
-// Reads inside half-grid (jF-1) and outside half-grid (jF) bsubu, bsubv, gvv,
-// gsqrt, guv, bsupu. Edge cases:
-//   jF == 0: no inside contribution (bsubv_i = 0, gvv_gsqrt_i = 0, etc.).
-//   jF >= nsMaxH: no outside contribution.
-// Output writes blmn_e/o and (lthreed) clmn_e/o at [jF_local_con * nZnT + kl].
-// Batched execution: configuration axis on blockIdx.z. Half-grid inputs per-config; lu_e/o
-// per-config full-grid; blmn/clmn per-config con-grid (matches d_blmn/d_clmn
-// allocation in EnsureMHDForceBuffers). sqrtSF/sqrtSH/radialBlending shared.
+// k_hybrid_lambda_force per (jF_local_con, kl) from the inside (jF - 1) and
+// outside (jF) half-grid fields, without either beyond the range.
 __global__ void k_hybrid_lambda_force(
     int n_config, int ns_local, int ns_h, int ns_con_local,
     int nZnT, bool lthreed,
@@ -2411,10 +2055,7 @@ __global__ void k_hybrid_lambda_force(
   }
 }
 
-// k_pres_compute_and_thermal: fusion of k_pres_compute + k_pres_thermal_partial.
-// Computes presH AND thermal_partial in one launch, reusing the presH value
-// in-register instead of round-tripping through global memory.
-// Saves 1 kernel launch + 1 global-memory read of presH per iter per config.
+// k_pres_compute_and_thermal: presH and the thermal partial in one launch.
 __global__ void k_pres_compute_and_thermal(int n_config, int ns_h, double gamma,
                                             int nsMinH, int nsMaxH_minus_1,
                                             int ns_minus_2,
@@ -2435,10 +2076,8 @@ __global__ void k_pres_compute_and_thermal(int n_config, int ns_h, double gamma,
   thermal_partial[cfg + jH] = unique ? (pres * dV) : 0.0;
 }
 
-// k_pres_magnetic_partial_inline: same reduction as above, but computes
-// totalPressure inline from (bsupu*bsubu + bsupv*bsubv) instead of reading a
-// precomputed buffer. Lets us defer the totalPressure write to a single fused
-// kernel that combines magnetic + presH, dropping one kernel launch per iter.
+// k_pres_magnetic_partial_inline: the magnetic partial with totalPressure
+// computed inline from bsupu * bsubu + bsupv * bsubv.
 __global__ void k_pres_magnetic_partial_inline(int n_config, int ns_h, int nZnT,
                                                 int nThetaEff, int nsMinH,
                                                 int nsMaxH_minus_1, int ns_minus_2,
@@ -2473,9 +2112,8 @@ __global__ void k_pres_magnetic_partial_inline(int n_config, int ns_h, int nZnT,
   magnetic_partial[cfg_prof + jH] = acc;
 }
 
-// k_pres_totalpres_init_with_presH: fused replacement for
-// k_pres_totalpres_init + k_pres_add_presH. Writes the final totalPressure
-// (magnetic + thermal) in one pass, no intermediate write of magnetic-only.
+// k_pres_totalpres_init_with_presH: the final totalPressure, magnetic plus
+// thermal, in one pass.
 __global__ void k_pres_totalpres_init_with_presH(int n_config, int ns_h, int nZnT,
                                                    const double* __restrict__ bsupu,
                                                    const double* __restrict__ bsubu,
@@ -2497,20 +2135,8 @@ __global__ void k_pres_totalpres_init_with_presH(int n_config, int ns_h, int nZn
                      + presH[cfg_prof + jH];
 }
 
-// k_volume_reduce produces a single output scalar per configuration
-// by summing the half-grid differential-volume profile dVdsH against
-// a caller-supplied multiplier. The reduction is restricted to the
-// indices satisfying the single-rank uniqueness condition
-//   jH < nsMaxH - 1  or  jH == ns - 2,
-// which in the single-rank execution mode used here is satisfied for
-// every jH in the range; the conditional is expressed through a mask
-// helper to keep the kernel applicable to the multi-rank arrangement
-// without modification. The configuration axis is carried on
-// blockIdx.x, with one block reducing the profile of a single
-// configuration. The input dVdsH is a per-configuration profile and
-// the output out_scalar is a per-configuration scalar; the
-// out_scalar buffer is sized n_config_max in the batched layout. At
-// n_config equal to one the launch grid collapses to (1, 1, 1).
+// k_volume_reduce: one scalar per configuration, the sum of dVdsH over the
+// unique half-grid surfaces times multiplier.
 __global__ void k_volume_reduce(int n_config, int ns_h, double multiplier,
                                   int nsMaxH_minus_1, int ns_minus_2,
                                   int nsMinH,
@@ -2532,16 +2158,8 @@ __global__ void k_volume_reduce(int n_config, int ns_h, double multiplier,
   out_scalar[config] = acc * multiplier;
 }
 
-// k_bcontra_mutate_lambda: per (jF_local in [jF_first, jF_last_excl), kl).
-//   lu_e[idx] = lu_e[idx]*lamscale + phipF[jF - nsMinH_off]
-//   lu_o[idx] *= lamscale
-//   lv_e[idx] *= lamscale (lthreed)
-//   lv_o[idx] *= lamscale (lthreed)
-// The phipF indexing in CPU is phipF[jF - nsMinH] (note: nsMinH, not nsMinF1).
-// In single-rank nsMinH == nsMinF1 == 0 so phipF[jF_local] is correct;
-// for multi-rank we pass an explicit offset.
-// Batched execution: configuration axis on blockIdx.z. lu_e/o/lv_e/o per-config full-grid;
-// phipF per-config full-grid profile.
+// k_bcontra_mutate_lambda: lu and lv scaled by lamscale, with phipF added to
+// lu_e, indexed jF - nsMinH as on the CPU.
 __global__ void k_bcontra_mutate_lambda(
     int n_config, int ns_local,
     int jF_first, int jF_last_excl, int nZnT, int phipF_jOff,
@@ -2569,14 +2187,8 @@ __global__ void k_bcontra_mutate_lambda(
   }
 }
 
-// k_bcontra_bsupuv: per (jH_local, kl).
-//   inside surface: jF_in = jH_local + jF_in_offset
-//   outside surface: jF_out = jF_in + 1
-// Reads lu_e/o, lv_e/o (already mutated by lamscale + phipF), sqrtSH, gsqrt.
-// Writes bsupu (=0 for 2D, else lambda derivative average / gsqrt) and bsupv.
-// Bsupu later gets chip/gsqrt added in k_bcontra_bsupu_add_chip.
-// Batched execution: configuration axis on blockIdx.z. lu_e/o/lv_e/o per-config full-grid;
-// sqrtSH/gsqrt half-grid; bsupu/bsupv per-config half-grid. sqrtSH shared.
+// k_bcontra_bsupuv per (jH_local, kl): bsupu from the averaged lambda
+// derivatives over gsqrt (zero in 2D) and bsupv; chip is added later.
 __global__ void k_bcontra_bsupuv(
     int n_config, int ns_local, int ns_h,
     int jF_in_offset, int nZnT, bool lthreed,
@@ -2600,9 +2212,8 @@ __global__ void k_bcontra_bsupuv(
   double sH = sqrtSH[jH_local];
   double inv_g = 1.0 / gsqrt[iHalf];
 
-  // Hoist the per-thread (cfg, jF, kl) -> linear index. nvcc's CSE through
-  // chained subscript expressions is conservative; explicit hoist saves the
-  // redundant integer add/mul each repeat.
+  // Explicit linear indices, which nvcc does not hoist through the chained
+  // subscripts.
   size_t i_in  = cfg_full + (size_t)jF_in  * (size_t)nZnT + (size_t)kl;
   size_t i_out = cfg_full + (size_t)jF_out * (size_t)nZnT + (size_t)kl;
 
@@ -2624,12 +2235,8 @@ __global__ void k_bcontra_bsupuv(
   bsupv[iHalf] = bsupv_v;
 }
 
-// k_bcontra_jvplasma_reduce (ncurr==1): per surface jH, reduce
-//   jvPlasma[jH]      = sum_kl (guu*bsupu + guv*bsupv) * wInt[l]   (3D)
-//                     = sum_kl (guu*bsupu)             * wInt[l]   (2D)
-//   avg_guu_gsqrt[jH] = sum_kl (guu / gsqrt)           * wInt[l]
-// Batched execution: configuration axis on blockIdx.z. half-grid inputs per-config;
-// jvPlasma/avg_guu_gsqrt per-config profile.
+// k_bcontra_jvplasma_reduce (ncurr = 1): per surface jvPlasma = sum (guu bsupu
+// + guv bsupv) wInt and avg_guu_gsqrt = sum guu / gsqrt wInt.
 __global__ void k_bcontra_jvplasma_reduce(
     int n_config, int ns_h, int nZnT, int nThetaEff, bool lthreed,
     const double* __restrict__ guu, const double* __restrict__ guv,
@@ -2675,11 +2282,8 @@ __global__ void k_bcontra_jvplasma_reduce(
   }
 }
 
-// k_bcontra_chipH_iotaH: per surface jH, update chipH (and iotaH if ncurr==1).
-//   ncurr==1: chipH = (currH - jvPlasma) / avg_guu_gsqrt (if denom != 0);
-//             iotaH = chipH / phipH (if phipH != 0).
-//   ncurr==0: chipH = iotaH_in * phipH.
-// Batched execution: configuration axis on blockIdx.y. All profiles per-config (ns_h).
+// k_bcontra_chipH_iotaH: chipH = (currH - jvPlasma) / avg_guu_gsqrt and iotaH =
+// chipH / phipH for ncurr = 1, else chipH = iotaH * phipH.
 __global__ void k_bcontra_chipH_iotaH(
     int n_config, int ns_h, int ncurr,
     const double* __restrict__ phipH, const double* __restrict__ currH,
@@ -2712,17 +2316,8 @@ __global__ void k_bcontra_chipH_iotaH(
   }
 }
 
-// k_bcontra_chipF_iotaF: per surface jF_local in [0, ns_local).
-//   Interior (jF in [nsMinFi, nsMaxFi)): midpoint average of chipH/iotaH.
-//   Axis (jF == 0 when nsMinF1 == 0) and LCFS (jF == ns-1 when nsMaxF1 == ns):
-//   the linear extrapolation of the half-grid array, the same rule for both
-//   profiles as in IdealMhdModel::computeBContra:
-//     chipF[0]    = 1.5*chipH[0] - 0.5*chipH[1]
-//     iotaF[0]    = 1.5*iotaH[0] - 0.5*iotaH[1]
-//     chipF[ns-1] = 1.5*chipH[ns_h-1] - 0.5*chipH[ns_h-2]
-//     iotaF[ns-1] = 1.5*iotaH[ns_h-1] - 0.5*iotaH[ns_h-2]
-// Batched execution: configuration axis on blockIdx.y. chipH/iotaH per-config ns_h profile;
-// chipF/iotaF per-config ns_local profile.
+// k_bcontra_chipF_iotaF: midpoint averages inside, linear extrapolation 1.5
+// h[0] - 0.5 h[1] at the axis and LCFS, as computeBContra does.
 __global__ void k_bcontra_chipF_iotaF(
     int n_config, int ns_h, int ns_local, int nsMinFi_off, int nsMaxFi_off,
     int axis_present, int lcfs_present, int last_jF_local,
@@ -2756,9 +2351,7 @@ __global__ void k_bcontra_chipF_iotaF(
   }
 }
 
-// k_bcontra_bsupu_add_chip: per (jH, kl), bsupu[iHalf] += chipH[jH] / gsqrt[iHalf].
-// Batched execution: configuration axis on blockIdx.z. chipH per-config profile; gsqrt/bsupu
-// per-config half-grid.
+// k_bcontra_bsupu_add_chip: bsupu += chipH / gsqrt per (jH, kl).
 __global__ void k_bcontra_bsupu_add_chip(
     int n_config, int ns_h, int nZnT,
     const double* __restrict__ chipH, const double* __restrict__ gsqrt,
@@ -2775,11 +2368,8 @@ __global__ void k_bcontra_bsupu_add_chip(
   bsupu[iHalf] += chipH[cfg_prof + jH_local] / gsqrt[iHalf];
 }
 
-// k_rzcon_into_volume: per (jF_con_local, kl) thread, copies rCon/zCon at the
-// LCFS local index (passed in as lcfs_con_local) multiplied by sFull = sqrtSF^2
-// for jF in [jMin_con, ns_con_local). Threads at jF < jMin_con are no-ops.
-// Batched execution: configuration axis on blockIdx.z. rCon/zCon/rCon0/zCon0 per-config
-// con-grid. sqrtSF shared.
+// k_rzcon_into_volume: rCon and zCon at the LCFS times sFull = sqrtSF^2 on
+// [jMin_con, ns_con_local).
 __global__ void k_rzcon_into_volume(
     int n_config, int ns_con_local, int nZnT, int jMin_con, int lcfs_con_local,
     int nsMinF_minus_nsMinF1,
@@ -2803,22 +2393,11 @@ __global__ void k_rzcon_into_volume(
   zCon0[idx] = zCon[lcfs_idx] * sFull;
 }
 
-// ============================================================================
-// Inverse FFT (ForcesToFourier) kernels.
-// Mirror of the forward fill+cuFFT+scatter pipeline, in the opposite direction:
-//   1. k_inverse_fill: per (jF_local, m, q, k), Y[idx] = sum_l (force * basis_i),
-//      where basis_i is the integration-weighted poloidal basis (cosmui/sinmui/
-//      cosmumi/sinmumi). 12 slot types matching the forward kRmkcc..kLmkcsN.
-//   2. cuFFT R2C: nZeta-length real-to-complex over (jF, m, q) batches -> X.
-//   3. k_inverse_scatter: per (jF_local, m, n), populate spec arrays (frcc, frss,
-//      fzsc, fzcs, flsc, flcs) from X with the inverse of the forward scaling.
-// ============================================================================
+// Inverse FFT kernels: k_inverse_fill, cuFFT R2C and k_inverse_scatter, the
+// forward pipeline in reverse.
 
-// k_inverse_fill: real-space force arrays -> Y[jF, m, q, k] (real, length nZeta).
-// Batched execution: configuration axis on blockIdx.z = config * ns_local + jF_local.
-// Per-config: force arrays (ns_force_local * nZnT), con arrays (ns_con_local *
-// nZnT), Y (ns_local * mpol * kBatch * nZeta). xmpq, cosmui/sinmui/cosmumi/
-// sinmumi shared.
+// k_inverse_fill: real-space forces into Y[jF, m, q, k] of length nZeta, z =
+// config * ns_local + jF_local.
 __global__ void k_inverse_fill(
     int n_config, int ns_local, int mpol, int nZeta,
     int nThetaReduced, int nThetaEff,
@@ -2979,14 +2558,8 @@ __global__ void k_inverse_fill(
   Y[y_idx] = acc;
 }
 
-// k_inverse_scatter: cuFFT R2C output -> spec arrays.
-// Honors the CPU's range split: RZ forces (frcc/frss/fzsc/fzcs) written for
-// jF in [nsMinF, jMaxRZ); lambda forces (flsc/flcs) written for jF in
-// [max(nsMinF,jMinL), nsMaxFIncludingLcfs). Outside those, write 0 to match
-// FourierForces.setZero() that CPU does upfront.
-// Batched execution: configuration axis on blockIdx.z = config * ns_local + jF_local.
-// X per-config (n_config * ns_local * mpol * kBatch * nhalf); fxxx per-config
-// (n_config * ns_local * mpol * (ntor+1)). nscale shared.
+// k_inverse_scatter: R2C output into the spectra over the CPU's RZ and lambda
+// ranges, zero elsewhere as FourierForces.setZero().
 __global__ void k_inverse_scatter(
     int n_config, int ns_local, int mpol, int ntor, int nhalf, int nfp, int nZeta,
     bool lthreed, int nsMinF1_offset,
@@ -3028,13 +2601,8 @@ __global__ void k_inverse_scatter(
   const double nfp_n = (double)(n * nfp);
   size_t x_base = cfg_X + (size_t)((jF_local * mpol + m) * kBatch * nhalf + n);
 
-  // Mirror of CPU FFTX accumulate (with cuFFT-vs-FFTX nscale[n] multiply):
-  //   frcc =  ns_n * (X_rcc.re   + nfp_n * X_rccN.im)
-  //   frss =  ns_n * (-X_rss.im  + nfp_n * X_rssN.re)
-  //   fzsc =  ns_n * (X_zsc.re   + nfp_n * X_zscN.im)
-  //   fzcs =  ns_n * (-X_zcs.im  + nfp_n * X_zcsN.re)
-  //   flsc =  ns_n * (X_lsc.re   + nfp_n * X_lscN.im)
-  //   flcs =  ns_n * (-X_lcs.im  + nfp_n * X_lcsN.re)
+  // The CPU's FFTX accumulation with cuFFT's nscale[n], e.g. frcc = ns_n *
+  // (X_rcc.re + nfp_n * X_rccN.im).
   if (write_rz) {
     cufftDoubleComplex x_rcc  = X[x_base + (size_t)kRmkcc  * nhalf];
     cufftDoubleComplex x_zsc  = X[x_base + (size_t)kZmksc  * nhalf];
@@ -3064,12 +2632,8 @@ __global__ void k_inverse_scatter(
   (void)nZeta; (void)nsMinF1_offset;
 }
 
-// k_compute_ru_zu_full: post-forward-FFT combine producing ruFull, zuFull at
-// each (jF_con, kl) where jF_con ranges over [nsMinF .. nsMaxFIncludingLcfs).
-// ruFull[idx] = ru_e[jF_local_full * nZnT + kl] + sqrtSF[jF_local_full] * ru_o[...]
-// Stores into d_ruFull, d_zuFull which are ns_con_local x nZnT.
-// Batched execution: configuration axis on blockIdx.z. ru_e/o/zu_e/o per-config full-grid;
-// ruFull/zuFull per-config con-grid; sqrtSF shared.
+// k_compute_ru_zu_full: ruFull = ru_e + sqrtSF * ru_o and zuFull alike per
+// (jF_con, kl) on [nsMinF, nsMaxFIncludingLcfs).
 __global__ void k_compute_ru_zu_full(int n_config, int ns_local,
                                       int ns_con_local, int nZnT,
                                       int nsMinF_to_nsMinF1,
@@ -3096,11 +2660,8 @@ __global__ void k_compute_ru_zu_full(int n_config, int ns_local,
   zuFull[dst] = zu_e[src] + s * zu_o[src];
 }
 
-// k_constraint_force_multiplier: per surface jF (one block, threads reduce kl).
-// Reduces (ruFull^2 * wInt) and (zuFull^2 * wInt) over kl, computes tcon[jF].
-// Caller does the LCFS halving on host.
-// Batched execution: configuration axis on blockIdx.z. ruFull/zuFull per-config con-grid;
-// tcon per-config profile; ard/azd/wInt shared.
+// k_constraint_force_multiplier: per surface reduces ruFull^2 wInt and zuFull^2
+// wInt over kl into tcon.
 __global__ void k_constraint_force_multiplier(int n_config,
                                                 int ns_con_local,
                                                 int ns_force_local, int nZnT,
@@ -3158,9 +2719,8 @@ __global__ void k_constraint_force_multiplier(int n_config,
   }
 }
 
-// k_halve_tcon_lcfs: one thread per config, halves d_tcon[last] on the LCFS-
-// owning rank. Replaces the host-side halving that was D2H'd but never H2D'd back.
-// Batched execution: launch n_config_max blocks, each writes its own slot.
+// k_halve_tcon_lcfs: halves each configuration's last tcon on the rank owning
+// the LCFS.
 __global__ void k_halve_tcon_lcfs(int n_config, int tcon_stride,
                                     int last_idx,
                                     double* __restrict__ tcon,
@@ -3173,10 +2733,8 @@ __global__ void k_halve_tcon_lcfs(int n_config, int tcon_stride,
   tcon[cfg + last_idx] = 0.5 * tcon[cfg + last_idx - 1];
 }
 
-// k_effective_constraint_force: per (jF_local_con, kl).
-//   gConEff[idx] = (rCon - rCon0) * ruFull + (zCon - zCon0) * zuFull
-// Threads at jF_local_con < jMin are no-ops.
-// Batched execution: configuration axis on blockIdx.z. All buffers per-config con-grid.
+// k_effective_constraint_force: gConEff = (rCon - rCon0) * ruFull + (zCon -
+// zCon0) * zuFull from jMin on.
 __global__ void k_effective_constraint_force(int n_config, int ns_con_local,
                                               int nZnT, int jMin,
                                               const double* __restrict__ rCon,
@@ -3199,13 +2757,8 @@ __global__ void k_effective_constraint_force(int n_config, int ns_con_local,
                  (zCon[idx] - zCon0[idx]) * zuFull[idx];
 }
 
-// k_assemble_total_forces: per (jF_local_force, kl). Adds constraint force into
-// brmn_e/o, bzmn_e/o, and writes frcon_e/o, fzcon_e/o.
-// Free-boundary edge contribution (lfreeb && r.nsMaxF1 == fc.ns) is handled in
-// host code before launch via separate small kernel; here we just do the bulk.
-// Batched execution: configuration axis on blockIdx.z. rCon/rCon0/zCon/zCon0/gCon/ruFull/
-// zuFull are per-config con-grid. brmn/bzmn/frcon/fzcon are per-config
-// force-grid. sqrtSF shared.
+// k_assemble_total_forces: adds the constraint force to brmn and bzmn and
+// writes frcon and fzcon; the free-boundary edge term is separate.
 __global__ void k_assemble_total_forces(int n_config,
                                           int ns_con_local, int ns_force_local,
                                           int nZnT,
@@ -3257,9 +2810,8 @@ __global__ void k_assemble_total_forces(int n_config,
   fzcon_o[idx_force] = fzce * sF;
 }
 
-// k_compute_bco: per (jH_local, kl) thread, computes bsubu = guu*bsupu + guv*bsupv,
-// bsubv = guv*bsupu + gvv*bsupv (3D) or bsubu=guu*bsupu, bsubv=gvv*bsupv (2D).
-// Batched execution: configuration axis on blockIdx.z. All half-grid buffers per-config.
+// k_compute_bco: bsubu = guu bsupu + guv bsupv and bsubv = guv bsupu + gvv
+// bsupv in 3D, without the guv terms in 2D.
 __global__ void k_compute_bco(int n_config, int ns_h, int nZnT, bool lthreed,
                                const double* __restrict__ guu,
                                const double* __restrict__ guv,
@@ -3287,9 +2839,8 @@ __global__ void k_compute_bco(int n_config, int ns_h, int nZnT, bool lthreed,
   }
 }
 
-// k_apply_m1_preconditioner: per (jF_local, n), m=1 only. Scale frss/fzcs by
-// forceScaleR/Z derived from (ard+brd) / (ard+brd+azd+bzd).
-// Batched execution: configuration axis on blockIdx.z. frss/fzcs per-config spectra.
+// k_apply_m1_preconditioner: scales the m = 1 frss and fzcs by the force ratios
+// from (ard + brd) / (ard + brd + azd + bzd).
 __global__ void k_apply_m1_preconditioner(
     int n_config, int ns_local,
     int ns_force_local, int mpol, int ntor,
@@ -3321,10 +2872,8 @@ __global__ void k_apply_m1_preconditioner(
   fzcs[idx_mn] *= fsZ;
 }
 
-// k_apply_lambda_preconditioner: per (jF_local, m, n), scale flsc/flcs by
-// lambdaPreconditioner[idx_mn].
-// Batched execution: configuration axis on blockIdx.z = config * ns_con_local + jF_local.
-// flsc/flcs per-config spectra. lambdaPreconditioner is shared (radial-grid).
+// k_apply_lambda_preconditioner: scales flsc and flcs by lambdaPreconditioner
+// per (jF_local, m, n).
 __global__ void k_apply_lambda_preconditioner(
     int n_config, int ns_local,
     int ns_con_local, int mpol, int ntor, bool lthreed,
@@ -3354,10 +2903,8 @@ __global__ void k_apply_lambda_preconditioner(
 // (k_apply_rz_thomas removed: superseded by k_apply_rz_pcr; the serial Thomas
 //  was single-thread-per-block which was the largest GPU bottleneck.)
 
-// k_rz_transpose_in: spec (jF_local, m, n) -> Thomas (mn, basis, jF_global).
-// jF_global = jF_local + nsMinF; rows outside the force range are zero-padded.
-// Batched execution: configuration axis on blockIdx.z. Spectra per-config (ns_local *
-// mnsize). Thomas buffer cR/cZ per-config (mnsize * num_basis * ns_total).
+// k_rz_transpose_in: spectra (jF_local, m, n) into the Thomas layout (mn,
+// basis, jF_global), zero outside the force range.
 __global__ void k_rz_transpose_in(int n_config, int ns_local,
                                     int ns_force_local, int mpol, int ntor,
                                     int ns_total, int num_basis, int nsMinF,
@@ -3401,9 +2948,8 @@ __global__ void k_rz_transpose_in(int n_config, int ns_local,
   }
 }
 
-// k_rz_transpose_out: Thomas (mn, basis, jF_global) -> spec (jF_local, m, n).
-// Batched execution: configuration axis on blockIdx.z. Spectra per-config (ns_local *
-// mnsize). cR/cZ per-config (mnsize * num_basis * ns_total).
+// k_rz_transpose_out: the Thomas layout (mn, basis, jF_global) back into the
+// spectra (jF_local, m, n).
 __global__ void k_rz_transpose_out(int n_config, int ns_local,
                                      int ns_force_local, int mpol, int ntor,
                                      int ns_total, int num_basis, int nsMinF,
@@ -3435,14 +2981,8 @@ __global__ void k_rz_transpose_out(int n_config, int ns_local,
   }
 }
 
-// k_dealias_fwd: per (jF_local, m, n), compute gsc/gcs intermediates.
-//   gsc[jF, m, n] = tcon[jF] * sum_{k, l} gConEff[jF, k, l] * sinmui[m, l] * cosnv[k, n]
-//   gcs[jF, m, n] = tcon[jF] * sum_{k, l} gConEff[jF, k, l] * cosmui[m, l] * sinnv[k, n]
-// m in [1, mpol-1); for m=0 and m=mpol-1 outputs are not used. Zeros m=0/last.
-// Batched execution: configuration axis on blockIdx.z = config * ns_force_local + jF.
-// gConEff per-config con-grid (ns_con_local * nZnT). tcon per-config con-profile
-// (ns_con_local). gsc/gcs per-config force spectra (ns_force_local * mpol *
-// (ntor+1)).
+// k_dealias_fwd: gsc and gcs = tcon * sum gConEff * sinmui cosnv (cosmui sinnv)
+// for 1 <= m < mpol - 1, zero at the ends.
 __global__ void k_dealias_fwd(
     int n_config, int ns_force_local, int ns_con_local,
     int mpol, int ntor, int nZeta, int nThetaReduced,
@@ -3488,13 +3028,8 @@ __global__ void k_dealias_fwd(
   gcs[idx_mn] = acc_cs * t;
 }
 
-// k_dealias_inv: per (jF, k, l), accumulate m_gCon contributions across (m, n).
-//   m_gCon[jF, k, l] = sum_{m=1..mpol-1} faccon[m] *
-//                       sum_{n=0..ntor} (gsc[jF, m, n] * cosnv[k, n] * sinmu[m, l] +
-//                                        gcs[jF, m, n] * sinnv[k, n] * cosmu[m, l])
-// Batched execution: configuration axis on blockIdx.z = config * ns_force_local + jF.
-// gsc/gcs per-config force spectra; m_gCon per-config force-grid.
-// sinmu/cosmu/cosnv/sinnv/faccon shared.
+// k_dealias_inv: gCon = sum over m of faccon * sum over n of gsc cosnv sinmu +
+// gcs sinnv cosmu, per (jF, k, l).
 __global__ void k_dealias_inv(
     int n_config, int ns_force_local, int ns_con_local,
     int mpol, int ntor, int nZeta, int nThetaReduced,
@@ -3515,13 +3050,8 @@ __global__ void k_dealias_inv(
   size_t cfg_grid = (size_t)config * (size_t)ns_con_local *
                     (size_t)nZeta * (size_t)nThetaEff;
   double acc = 0.0;
-  // The outer loop over the poloidal mode index has a runtime iteration
-  // count of mpol - 2 but contains an early-skip branch on fac == 0
-  // that prevents the compiler from unrolling the loop on its own.
-  // Annotating the loop with an explicit unroll directive allows the
-  // compiler to overlap the cosnv and sinnv loads of the inner
-  // toroidal-mode loop across the unrolled outer iterations, reducing
-  // the number of dynamic instructions issued per warp.
+  // Explicit unrolling, which the fac == 0 skip otherwise prevents, overlaps
+  // the inner loop's cosnv and sinnv loads.
   #pragma unroll
   for (int m = 1; m < mpol - 1; ++m) {
     double fac = faccon[m];
@@ -3541,13 +3071,8 @@ __global__ void k_dealias_inv(
   m_gCon[dst] = acc;
 }
 
-// k_decompose_into: per (jF_dec, m, n), scale physical -> decomposed.
-// Mirrors FourierCoeffs::decomposeInto for stellarator-symmetric (lasym=false).
-// jF range is [nsMin, jMaxIncludingBoundary). All RZ entries are written
-// (jMaxRZ == jMaxIncludingBoundary in the CPU code for our use case).
-// Batched execution: configuration axis on blockIdx.z = config * ns_dec_local + jF_dec.
-// phys/dec spectra per-config (ns_local * mpol * (ntor+1)). scalxc shared
-// (radial grid factor, same for all configs).
+// k_decompose_into: FourierCoeffs::decomposeInto (lasym = false), physical
+// times scalxc into decomposed on [nsMin, jMaxIncludingBoundary).
 __global__ void k_decompose_into(int n_config,
                                   int ns_dec_local, int ns_local,
                                   int mpol, int ntor,
@@ -3586,14 +3111,8 @@ __global__ void k_decompose_into(int n_config,
   }
 }
 
-// k_m1_constraint: per (jF_dec, n) at m=1 only. lthreed only (mirrors CPU
-// FourierCoeffs::m1Constraint; lasym branch omitted).
-//   old_rss = dec_frss[idx]
-//   dec_frss[idx] = (old_rss + sigma * dec_fzcs[idx]) * scalingFactor
-//   dec_fzcs[idx] = (sigma * old_rss - dec_fzcs[idx]) * scalingFactor
-// with sigma = -sign_of_jacobian, so the map is its own inverse up to the
-// scaling factor for either Jacobian sign.
-// Batched execution: configuration axis on blockIdx.z. dec_frss/dec_fzcs per-config spectra.
+// k_m1_constraint: FourierCoeffs::m1Constraint at m = 1 in 3D, mixing frss and
+// fzcs with sigma = -sign_of_jacobian.
 __global__ void k_m1_constraint(int n_config, int ns_local,
                                   int ns_force_local, int mpol, int ntor,
                                   double scalingFactor, double sigma,
@@ -3613,14 +3132,8 @@ __global__ void k_m1_constraint(int n_config, int ns_local,
   dec_fzcs[idx] = (sigma * old_rss - old_zcs) * scalingFactor;
 }
 
-// k_m1_constraint_gated: k_m1_constraint followed by k_zero_z_force_for_m1 on
-// the configurations whose entry of zero_flags is set, or on every
-// configuration when zero_flags is null and zero_all is set:
-//   dec_frss := (dec_frss + sigma * dec_fzcs) * sf
-//   dec_fzcs := zeroed ? 0 : (sigma * dec_frss_orig - dec_fzcs) * sf
-// with sigma = -sign_of_jacobian. The CPU path zeroes the m = 1 Z force only
-// under always_fix_m1_gauge, while the previous iteration's fsqz is below
-// 1e-6, or for iter2 < 2, so until then the m = 1 gauge moves under its force.
+// k_m1_constraint_gated: k_m1_constraint, then the m = 1 Z force zeroed on the
+// flagged configurations, or all when zero_all is set.
 __global__ void k_m1_constraint_gated(int n_config, int ns_local,
                                       int ns_force_local, int mpol, int ntor,
                                       double scalingFactor, double sigma,
@@ -3644,10 +3157,8 @@ __global__ void k_m1_constraint_gated(int n_config, int ns_local,
   dec_fzcs[idx] = zeroed ? 0.0 : (sigma * old_rss - old_zcs) * scalingFactor;
 }
 
-// k_mask_geometry_above: FourierCoeffs::maskGeometryAbove on the device.
-// Zeroes R and Z of every configuration at the modes m >= mpol_geometry or
-// n > ntor_geometry, on the first ns_count surfaces of buffers whose
-// configurations lie cfg_stride apart; lambda is left untouched.
+// k_mask_geometry_above: zeroes R and Z at m >= mpol_geometry or n >
+// ntor_geometry on the first ns_count surfaces; lambda is untouched.
 __global__ void k_mask_geometry_above(int n_config, size_t cfg_stride,
                                       int ns_count, int mpol, int ntor,
                                       int mpol_geometry, int ntor_geometry,
@@ -3674,11 +3185,8 @@ __global__ void k_mask_geometry_above(int n_config, size_t cfg_stride,
   }
 }
 
-// k_pres_final_reduce: one block per config, threads cooperate to sum
-// thermal_partial and magnetic_partial across all ns_h surfaces, write 3 scalars
-// [thermal, magnetic, mhd] to scalars_out on device. Eliminates the host-side
-// accumulation + stream sync in PressureAndEnergiesCuda.
-// Batched execution: n_config via blockIdx.x. scalars_out sized n_config*3.
+// k_pres_final_reduce: one block per configuration sums the thermal and
+// magnetic partials into [thermal, magnetic, mhd].
 __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
                                      double adiabaticIndex,
                                      const double* __restrict__ thermal_partial,
@@ -3714,13 +3222,8 @@ __global__ void k_pres_final_reduce(int n_config, int ns_h, double deltaS,
   }
 }
 
-// k_force_norm_final_reduce: one block per config, threads cooperate to sum
-// Per-cfg rzNorm for the device time-step controller: one serial thread
-// per cfg accumulates the squared R/Z position coefficients over the force
-// extent in the same coefficient order as FourierCoeffs::rzNorm
-// (include_offset=false; lasym excluded by the build's scope guard), so
-// cfg 0 matches the host scalar bit-for-bit. Writes the reciprocal
-// (fNorm1) directly into d_fnorm1.
+// k_rz_norm_per_cfg: one serial thread per configuration sums the squared R and
+// Z coefficients as rzNorm does and writes fNorm1.
 __global__ void k_rz_norm_per_cfg(
     int n_config, int ns_local, int j_begin, int j_count, int mpol, int ntor,
     bool lthreed,
@@ -3753,10 +3256,8 @@ __global__ void k_rz_norm_per_cfg(
   d_fnorm1[cfg] = 1.0 / norm2;
 }
 
-// the per-jH forceNormRZ_partial and forceNormL_partial arrays into 2 scalars
-// on device. Replaces the ns_h-D2H + host accumulator loop in
-// ComputeForceNormsCuda.
-// Batched execution: n_config via blockIdx.x. scalars_out sized n_config*2.
+// k_force_norm_final_reduce: one block per configuration sums the per-surface
+// force-norm partials into [sum_rz, sum_l].
 __global__ void k_force_norm_final_reduce(
     int n_config, int ns_h,
     const double* __restrict__ rz_partial,
@@ -3789,35 +3290,8 @@ __global__ void k_force_norm_final_reduce(
   }
 }
 
-// k_residuals_par: parallel FP64 reduction matching k_residuals output
-// for VMEC's stop gate. Same math as the serial path but each block
-// (one per config) splits the (jLocal, m, n) cell list across 256
-// threads. Each thread accumulates its strided subset; shared-memory
-// tree reduce produces the final per-config (acc_R, acc_Z, acc_L).
-//
-// The reduction order differs from a serial sum by a few ULPs per call.
-
-// k_check_convergence: device-side per-cfg convergence check on NORMALIZED
-// residuals, mirroring the per-cfg arithmetic of
-// IdealMhdModel::evalFResInvar:
-//   energyDensity_c = max(magnetic_c, thermal_c) / plasmaVolume_c
-//   fNormRZ_c = 1 / (sum_rz_c * energyDensity_c^2)
-//   fNormL_c  = 1 / (sum_l_c * lamscale^2)
-//   fsqr_c = fResR_c * fNormRZ_c * r1scale     (r1scale = 0.25)
-//   fsqz_c = fResZ_c * fNormRZ_c * r1scale
-//   fsql_c = fResL_c * fNormL_c
-// and comparing all three normalized values against ftolv. The inputs are
-// the same persistent device buffers whose D2H copies feed the host gate:
-// raw residual triples (scalars_out), force-norm sums (fnorm_scalars,
-// refreshed every preconditioner-update interval), energy scalars
-// (pressure_scalars, per-iteration), and per-cfg plasma volumes (volumes,
-// per-iteration). The staleness profile therefore matches the host gate
-// exactly: interval-stale sums combined with current-iteration energies
-// and volumes. When any normalization input is unavailable (null pointer
-// or non-positive lamscale) the comparison falls back to the raw
-// residuals, preserving the kernel's previous behavior.
-//
-// Launch: 1 block per cfg, 1 thread per block.
+// k_check_convergence: each configuration's residuals normalized as
+// evalFResInvar does, all three compared with ftolv.
 __global__ void k_check_convergence(
     int n_config,
     const double* __restrict__ scalars_out,
@@ -3857,6 +3331,8 @@ __global__ void k_check_convergence(
   conv_flag[config] = (r <= ftolv && z <= ftolv && l <= ftolv) ? 1 : 0;
 }
 
+// k_residuals_par: one block of 256 threads per configuration reduces the
+// residual sums with a shared-memory tree.
 __global__ void k_residuals_par(
     int n_config, int ns_local,
     int jLocal_max_rz, int jLocal_max_boundary,
@@ -3926,23 +3402,8 @@ __global__ void k_residuals_par(
   }
 }
 
-// Multi-block parallel residuals: K sub-blocks per cfg each reduce one slice
-// of the (jLocal, m, n) index space. Output to partials_out[K * n_config * 3]
-// in layout [cfg * K * 3 + partition * 3 + comp]. A subsequent finalize
-// kernel reduces across the K axis.
-//
-// Rationale: k_residuals_par launches 1 block per cfg = 1/142 SM at N=1.
-// Splitting into K=16 sub-blocks puts 16 SMs to work per cfg at N=1.
-// Each block sweeps (1/K)-th of the total elements, so per-block work is
-// 1/K of single-block path; with K blocks running concurrently the wall
-// time drops to ~1/K modulo finalize overhead.
-//
-// Bit-exact: deterministic partition order (partition_idx is contiguous slice
-// of the flattened (jLocal, m, n) index), and the finalize kernel sums in
-// fixed order [partition=0..K-1]. Same arithmetic as the single-block sweep
-// would do, with the same operands in (slightly) different summation order;
-// final sum differs from k_residuals_par by accumulation-order rounding
-// only, which lands within the existing drift family.
+// Multi-block residuals: K sub-blocks per configuration each reduce a slice
+// into partials_out[cfg * K * 3 + k * 3 + comp].
 __global__ void k_residuals_par_K(
     int n_config, int ns_local,
     int jLocal_max_rz, int jLocal_max_boundary,
@@ -4028,9 +3489,8 @@ __global__ void k_residuals_par_K(
   }
 }
 
-// k_residuals_finalize_K: collapse K partials per cfg into one triple.
-// Grid: (n_config), TPB=K (must be <= 32; we use kResidualsKPartitions=16).
-// Single warp tree-reduces the K partials into scalars_out[cfg*3..cfg*3+2].
+// k_residuals_finalize_K: one warp per configuration reduces its K <= 32
+// partials into one triple.
 __global__ void k_residuals_finalize_K(
     int n_config, int n_partitions,
     const double* __restrict__ partials_in,
@@ -4049,10 +3509,7 @@ __global__ void k_residuals_finalize_K(
     v_Z = partials_in[base + 1];
     v_L = partials_in[base + 2];
   }
-  // Warp-level tree reduce (assumes blockDim.x <= 32, single warp).
-  // Use shfl_xor_sync for the butterfly. The reduction order is
-  // deterministic (always the same butterfly pattern), so multi-run
-  // bit-exact.
+  // Warp butterfly reduction in a fixed order, so runs repeat bit for bit.
   for (int delta = 16; delta > 0; delta >>= 1) {
     v_R += __shfl_xor_sync(0xffffffff, v_R, delta);
     v_Z += __shfl_xor_sync(0xffffffff, v_Z, delta);
@@ -4065,32 +3522,8 @@ __global__ void k_residuals_finalize_K(
   }
 }
 
-// k_update_timestep: on-device time-step damping computation.
-//
-// Mirrors the host-side damping block in Vmec::Evolve:
-//   fsq1 = fsqr1 + fsqz1 + fsql1                      (precd residual sum)
-//   if iter2 == iter1:                                 (start of damped segment)
-//       invTau.setConstant(0.15 / time_step)
-//   shift invTau left by 1 (drop oldest sample)
-//   if iter2 > iter1:                                  (have a previous fsq to compare)
-//       invtau_num = min(|log(fsq1 / prev_fsq)|, 0.15)
-//       invTau[N-1] = invtau_num / time_step
-//   prev_fsq = fsq1
-//   otav = sum(invTau) / kNDamp
-//   dtau = time_step * otav / 2
-//   b1 = 1 - dtau
-//   fac = 1 / (1 + dtau)
-//
-// One CUDA block per cfg, kTimestepNDamp threads (=10). Each thread holds one
-// entry of the ring buffer in a register; the shift-and-update is done via
-// shared memory between threads. Final reduction uses warp shfl_xor (10
-// elements fits trivially in one warp).
-//
-// iter_phase encoding:
-//   0  : iter2 == iter1 (start of a damped segment; reset invTau, prev_fsq)
-//   1  : iter2 > iter1  (normal update with log of fsq ratio)
-//
-// d_residuals_partial layout: [cfg*3 + comp] where comp = 0..2 is R/Z/L.
+// k_update_timestep: the host damping of Vmec::Evolve on the device, from the
+// preconditioned residual sum and the 1/tau ring.
 __global__ void k_update_timestep(
     int n_config,
     int iter_phase,
@@ -4119,10 +3552,8 @@ __global__ void k_update_timestep(
   const int phase =
       d_phase_per_cfg != nullptr ? d_phase_per_cfg[cfg] : iter_phase;
   constexpr int kND = 10;  // matches host kNDamp
-  // fsq1 = fsqr1 + fsqz1 + fsql1 with the host normalization from
-  // evalFResPrecd (fNorm1 on the R and Z raw sums, deltaS on the L raw
-  // sum), in the host association order: each component normalized
-  // first, then summed left to right.
+  // fsq1 with evalFResPrecd's normalization, fNorm1 on R and Z and deltaS on L,
+  // normalized then summed left to right as the host does.
   double fsq1 = 0.0;
   if (tid == 0) {
     const double* res = d_residuals_partial + (size_t)cfg * 3;
@@ -4162,11 +3593,8 @@ __global__ void k_update_timestep(
   // Write back to ring buffer
   if (tid < kND) inv_tau_cfg[tid] = entry;
   __syncwarp();
-  // Reduction must match host Eigen's left-to-right sequential sum to keep
-  // the bit-exact contract on fac / b1. Eigen VectorXd::sum() is a left-to-
-  // right reduction over the contiguous storage. Warp-shfl reduction adds
-  // in a different operand order, producing ~1e-5 ULP drift vs host. Use
-  // single-thread sequential sum on tid==0; kND=10 makes this trivial.
+  // A single thread sums left to right as Eigen's sum() does, keeping fac and
+  // b1 bit-identical to the host.
   if (tid == 0) {
     double sum = 0.0;
     #pragma unroll
@@ -4184,11 +3612,8 @@ __global__ void k_update_timestep(
   }
 }
 
-// k_tau_minmax: one block per config; threads cooperate to find min and max of
-// tau across the per-config half-grid tau array, write 2 scalars [min, max]
-// to out2[config*2:] on device. Replaces the host-side min/max scan after tau D2H.
-// Batched execution: n_config via blockIdx.x. Per-config tau stride is `total`
-// doubles (ns_h * nZnT).
+// k_tau_minmax: one block per configuration finds the min and max of its
+// half-grid tau.
 __global__ void k_tau_minmax(int n_config, int total,
                               const double* __restrict__ tau,
                               double* __restrict__ out2,
@@ -4224,17 +3649,8 @@ __global__ void k_tau_minmax(int n_config, int total,
   }
 }
 
-// k_apply_rz_pcr: parallel cyclic reduction for tridiagonal solve. Replaces
-// k_apply_rz_thomas (one thread per (mn) block, serial sweep). Each block:
-//   - Loads N = jMax - jMin[mn] rows into shared memory (a, d, b, c[0..num_basis-1])
-//   - log2(N) PCR passes: each row at distance k from both sides is eliminated
-//     in parallel; new (a, d, b, c) coefficients fall back to distance 2k
-//   - Final: x_i = c_i / d_i; write back to global c_inout
-// System convention: b_i*x_{i-1} + d_i*x_i + a_i*x_{i+1} = c_i (a=super, b=sub).
-// a/d/b are READ-ONLY (Thomas mutated them in-place; PCR doesn't, which makes
-// the kernel safe for future persistent-precond-input use).
-// Batched execution: configuration axis on blockIdx.y. a_in/d_in/b_in per-config
-// (mnsize*ns_total). c_inout per-config (mnsize*num_basis*ns_total). jMin shared.
+// k_apply_rz_pcr: parallel cyclic reduction of each (mn) tridiagonal system in
+// shared memory, log2(N) passes and x = c / d.
 __global__ void k_apply_rz_pcr(int n_config, int mnsize, int ns_total, int num_basis,
                                  const int* __restrict__ jMin, int jMax,
                                  const double* __restrict__ a_in,
@@ -4316,14 +3732,8 @@ __global__ void k_apply_rz_pcr(int n_config, int mnsize, int ns_total, int num_b
   }
 }
 
-// k_apply_rz_thomas_block: same serial Thomas elimination as
-// k_apply_rz_thomas_serial, but one block per (config, mn) row with the
-// elimination ratios in dynamic shared memory instead of a fixed local
-// array. This removes the ns_total <= 1024 ceiling that the PCR solver
-// inherits from the 1024 threads-per-block limit: the radial recurrence is
-// sequential, so a single thread walks it while the block's other threads
-// only cooperate on the load. The dynamic shared array is sized to jMax by
-// the launch. Used for ns_total > 1024.
+// k_apply_rz_thomas_block: serial Thomas elimination with one block per
+// (config, mn) row and the ratios in dynamic shared memory.
 __global__ void k_apply_rz_thomas_block(
     int n_config, int mnsize, int ns_total, int num_basis,
     const int* __restrict__ jMin, int jMax,
@@ -4375,25 +3785,8 @@ __global__ void k_apply_rz_thomas_block(
   }
 }
 
-// k_assemble_rz_preconditioner: device-side port of IdealMhdModel::
-// assembleRZPreconditioner. Reads per-side persistent precond-matrix outputs
-// (arm/brm/ard/brd half/full-grid for R, similarly for Z, plus shared cxd) and
-// writes the tri-diagonal coefficients ar/dr/br (R) and az/dz/bz (Z) directly
-// in the (mn, jF_global) transposed layout that k_apply_rz_pcr consumes.
-//
-// Thread mapping: blockIdx.x = mn, blockIdx.y * blockDim.x + threadIdx.x = jF.
-// jMin[mn] is written once per mn by the jF==0 thread.
-//
-// Outside the active force range [nsMinF, min(nsMaxF, jMax)) the outputs are
-// zeroed (the PCR solver reads the full ns_total range but only loads
-// [jMin[mn], jMax)). Edge pedestal + ZC_00(NS) stabilization at jF == ns_total-1
-// fire only when lcfs_owning AND that jF is in range (i.e., free-boundary with
-// vacuum active; in fixed-boundary jF = ns-1 is out of range and the multiplied
-// values would be zero anyway, matching CPU).
-// Batched execution: configuration axis on blockIdx.z. arm/brm/azm/bzm per-config half-grid
-// 2D (ns_h*2). ard/brd/azd/bzd per-config force-grid 2D (ns_force_local*2).
-// cxd per-config (ns_force_local). aR/dR/bR/aZ/dZ/bZ per-config matrices
-// (mnsize*ns_total). d_jMin is shared (per-mn). Pass ns_h explicitly.
+// k_assemble_rz_preconditioner: IdealMhdModel::assembleRZPreconditioner on the
+// device, writing (mn, jF_global) as k_apply_rz_pcr reads.
 __global__ void k_assemble_rz_preconditioner(
     int n_config, int ns_h,
     int mpol, int ntor, int nfp,
@@ -4456,10 +3849,8 @@ __global__ void k_assemble_rz_preconditioner(
             d_bzm[cfg_half_prof + jH_o * 2 + m_parity] * m * m);
   }
 
-  // diagonal: jF-th forces full-grid pos. Match CPU FP-evaluation order
-  // exactly (left-to-right: cxd * n * nfp * n * nfp = ((((cxd*n)*nfp)*n)*nfp)
-  // i.e. four double*int multiplications, NOT cxd * (n*nfp)^2 which would be
-  // two double*int multiplications with different rounding).
+  // The diagonal in the CPU's evaluation order, ((((cxd * n) * nfp) * n) *
+  // nfp), for identical rounding.
   double d_R = -(d_ard[cfg_force_prof + jF_local * 2 + m_parity]
                  + d_brd[cfg_force_prof + jF_local * 2 + m_parity] * m * m
                  + d_cxd[cfg_cxd + jF_local] * n * nfp * n * nfp);
@@ -4483,12 +3874,8 @@ __global__ void k_assemble_rz_preconditioner(
     d_Z += b_Z;
   }
 
-  // Edge pedestal + ZC_00 stabilization at the LCFS row (jF == ns_total - 1).
-  // CPU applies this regardless of lfreeb, but in fixed-boundary the main loop
-  // doesn't reach jF = ns - 1 (jMax = ns - 1, loop is exclusive), so the
-  // multiplied values are zero \times pedestal = zero. Our in_range check excludes
-  // jF = ns-1 in fixed-boundary (jF_upper = ns - 1), so we never reach here for
-  // that case, with the same result.
+  // Edge pedestal and ZC_00 stabilization at the LCFS row, which fixed boundary
+  // never reaches, as on the CPU.
   if (lcfs_owning && jF == ns_total - 1) {
     double pedestal_mult = (m <= 1) ? (1.0 + edge_pedestal) : (1.0 + 2.0 * edge_pedestal);
     d_R *= pedestal_mult;

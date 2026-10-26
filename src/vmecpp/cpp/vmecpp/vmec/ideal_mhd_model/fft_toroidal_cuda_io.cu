@@ -22,15 +22,8 @@ void FlushDVdsHToHostCuda(int ns_h, double* dVdsH_host) {
   }
 }
 
-// ============================================================================
-// FlushForOutputQuantitiesCuda
-//
-// Flush the device-resident half-grid scalar fields back to their host-side
-// IdealMhdModel members so ComputeOutputQuantities -> GatherDataFromThreads
-// reads correct data. wout.bmnc and friends are filled from these arrays;
-// without the flush they get the host buffers' uninitialized / denormal-noise
-// content and the Boozer transform downstream sees ~0.
-// ============================================================================
+// FlushForOutputQuantitiesCuda: copies the device half-grid fields to the
+// IdealMhdModel members that GatherDataFromThreads reads.
 void FlushForOutputQuantitiesCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     double* gsqrt_host, double* guu_host, double* guv_host, double* gvv_host,
@@ -125,10 +118,8 @@ void FlushForOutputQuantitiesCuda(
   d2h(chipF_host,          S.d_chipF,          chipFull_bytes, "flush chipF");
   d2h(iotaF_host,          S.d_iotaF,          chipFull_bytes, "flush iotaF");
 
-  // radial interior (nsi = nsMaxFi - nsMinFi). d_jcurvF/d_jcuruF/d_presgradF/
-  // d_dVdsF/d_equiF are allocated this size by EnsureRadialForceBalanceBuffers;
-  // host m_p_.jcurvF is indexed by (jFi - nsMinFi), so destination base aligns
-  // 1:1 with device base.
+  // Radial interior nsi = nsMaxFi - nsMinFi, indexed alike on the device and
+  // the host.
   if (nsi > 0) {
     d2h(jcurvF_host,       S.d_jcurvF,         nsi_bytes, "flush jcurvF");
     d2h(jcuruF_host,       S.d_jcuruF,         nsi_bytes, "flush jcuruF");
@@ -140,11 +131,8 @@ void FlushForOutputQuantitiesCuda(
   // (Per-config batched flush is provided by FlushAllConfigsForOutputCuda;
   //  see below.)
 
-  // A multi-configuration run keeps the final per-configuration decomposed
-  // spectra (rmncc, rmnss, zmnsc, zmncs, lmnsc and lmncs, from d_pts_x_* or
-  // from the converged-state snapshot of a configuration that went
-  // inactive) in g_batch_outputs_mem in [sp][cfg][spec] order, where
-  // GetBatchOutputSpectraCuda reads them.
+  // A multi-configuration run keeps each configuration's final spectra,
+  // [sp][cfg][spec], for GetBatchOutputSpectraCuda.
   if (S.n_config_max > 1 && S.pts_x_initialized) {
     int N_out = S.n_config_max;
     int ns_out = S.ns_local_cached;
@@ -155,10 +143,8 @@ void FlushForOutputQuantitiesCuda(
     double* h_buf = nullptr;
     cuda_check(cudaMallocHost(&h_buf, sizeof(double) * total_doubles),
                "alloc batch_outputs_pinned");
-    // D2H each spec array for all N cfgs. A cfg that went inactive during
-    // the batch has a converged-state snapshot (d_pts_x_final_*); its live
-    // slice kept being modified by mask-agnostic kernels afterward, so the
-    // snapshot is the trustworthy source for that cfg.
+    // Each spectrum of all configurations, from the converged-state snapshot of
+    // a configuration that went inactive.
     double* d_specs[6] = {S.d_pts_x_rcc, S.d_pts_x_rss,
                           S.d_pts_x_zsc, S.d_pts_x_zcs,
                           S.d_pts_x_lsc, S.d_pts_x_lcs};
@@ -192,28 +178,8 @@ void FlushForOutputQuantitiesCuda(
   cuda_check(cudaStreamSynchronize(st), "flush output_quantities sync");
 }
 
-// ============================================================================
-// FlushAllConfigsForOutputCuda
-//
-// The per-configuration variant of FlushForOutputQuantitiesCuda. The
-// host-side destinations carry the same set of arrays, but each one is
-// sized for all configurations in the batch and laid out in
-// configuration-major order (the entries for configuration 0 followed
-// by those for configuration 1, and so on). The corresponding device
-// buffers are already strided per configuration through the
-// batched-buffer layout, so each device-to-host transfer copies
-// n_config_max times the single-configuration byte count in one
-// operation. The routine is the device-side counterpart of the
-// batched-output dump file, and together they enable Python-side
-// post-processing of all converged equilibria emerging from a single
-// batched VMEC run, completing the file-based batched-input/output
-// pipeline that delivers per-configuration throughput to the
-// Python batch driver.
-//
-// The caller pre-sizes every host buffer to n_cfg times the
-// per-configuration byte count of the current Reshape; raw pointers
-// carry no extent, so no size validation happens here.
-// ============================================================================
+// FlushAllConfigsForOutputCuda: FlushForOutputQuantitiesCuda for all
+// configurations, each host array configuration-major.
 void FlushAllConfigsForOutputCudaNs(
     int ns, const Sizes& s, int n_cfg,
     double* gsqrt_host, double* guu_host, double* guv_host, double* gvv_host,
@@ -234,9 +200,7 @@ void FlushAllConfigsForOutputCudaNs(
     double* pts_x_rcc_host, double* pts_x_rss_host,
     double* pts_x_zsc_host, double* pts_x_zcs_host,
     double* pts_x_lsc_host, double* pts_x_lcs_host) {
-  // Single-rank extents derived from ns; forwards to the partition-based
-  // variant via a minimal RadialPartitioning-free path. The interior
-  // full-grid arrays (jcurvF and friends) are not flushed here.
+  // Single-rank extents from ns, without the interior full-grid arrays.
   RadialPartitioning r;
   r.adjustRadialPartitioning(/*num_threads=*/1, /*thread_id=*/0, ns,
                              /*lfreeb=*/false, /*printout=*/false);
@@ -383,21 +347,13 @@ void FlushAllConfigsForOutputCuda(
   cuda_check(cudaStreamSynchronize(st), "flush all configs sync");
 }
 
-// ============================================================================
-// Device-side physical_x_backup mirror + device rzNorm. Together these let
-// PerformTimeStepCuda drop its per-iter D2H of d_pts_x -> host m_decomposed_x
-// plus the trailing cudaStreamSynchronize. The host backup mechanism (in
-// Vmec::RestartIteration) is replaced by device-to-device copies that keep
-// the rollback semantics under CUDA. Bit-exact match to CPU rzNorm is
-// preserved by per-jF partial accumulation in CPU's nested-loop order.
-// ============================================================================
+// Device backup of the positions and device rzNorm, so the time step needs no
+// per-iteration host copy; rzNorm matches the CPU bit for bit.
 
 // (anonymous namespace hoisted across the split translation units)
 
-// Lazy alloc of d_pts_x_backup_* (one-time per shape). Initializes the
-// backup mirror to the current d_pts_x contents so the first NO_RESTART
-// save is a no-op (mirrors the host pattern where physical_x_backup is
-// implicitly synced to decomposed_x at multi-grid step transitions).
+// Allocates the backup once per shape, initialized to the current positions as
+// the host backup is synced at stage transitions.
 void EnsurePTSBackupBuffers(CudaToroidalState& S) {
   if (S.pts_x_backup_initialized) return;
   if (!S.d_pts_x_rcc || S.pts_x_size <= 0) return;
@@ -476,9 +432,8 @@ __global__ void k_zero_pts_v_per_cfg(
   v_lcs[off] = 0.0;
 }
 
-// Fused backup copy: all six spectral components of every configuration
-// slot in one launch, so the per-improving-iteration backup costs one
-// kernel dispatch instead of six memcpy enqueues.
+// Fused backup copy of the six components of every configuration slot in one
+// launch.
 __global__ void k_backup_pts_x(
     int total,
     const double* __restrict__ x_rcc, const double* __restrict__ x_rss,
@@ -601,11 +556,7 @@ void BackupPtsXCuda(bool from_evaluated) {
   auto& S = State();
   if (!S.stream || !S.d_pts_x_rcc) return;
   std::lock_guard<std::mutex> lk(S.mu);
-  // Nothing to back up until PerformTimeStepCuda has done its first init H2D.
-  // RestartIteration is called from InitializeRadial and from the
-  // SolveEqLoop BAD_JACOBIAN block BEFORE the first
-  // PerformTimeStepCuda call, when d_pts_x still holds cudaMalloc zeros.
-  // Skipping here keeps the backup buffer authoritative ("last good state").
+  // Nothing to back up before the first PerformTimeStepCuda loads d_pts_x.
   if (!S.pts_x_initialized) return;
   EnsurePTSBackupBuffers(S);
   // backup_evaluated_state: the state of the latest force evaluation, which
@@ -665,11 +616,8 @@ void RestorePtsXFromBackupCuda() {
   }
 }
 
-// Per-cfg variant of RestorePtsXFromBackupCuda. The mask is a host
-// std::vector<uint8_t> of size n_config_max; cfg c is restored iff mask[c]!=0.
-// Used by vmec.cc::RestartIteration to avoid rolling back cfgs whose
-// fc_.restart_reason_per_cfg is NO_RESTART. Whole-batch behavior is
-// recovered by passing a mask of all 1's.
+// Restores the configurations whose mask byte is nonzero; a mask of ones
+// restores the whole batch.
 void RestorePtsXFromBackupPerCfgCuda(const std::vector<std::uint8_t>& mask) {
   auto& S = State();
   if (!S.stream || !S.d_pts_x_rcc) return;
@@ -705,15 +653,8 @@ void RestorePtsXFromBackupPerCfgCuda(const std::vector<std::uint8_t>& mask) {
   }
 }
 
-// Invalidates the device-resident decomposed-position state so the next
-// stage-preparation or time-step call re-stages it from the host
-// m_decomposed_x. The iteration-1 recovery path re-interpolates the host
-// state from the boundary and the recomputed magnetic axis; every
-// device-side initialization is gated on pts_x_initialized, which the
-// failed attempt left set, so without this call the retry replays the
-// failed attempt's device copy. The velocity state and the restart
-// backup are invalidated along with the position so the retry rebuilds
-// all three from the fresh host state.
+// Invalidates the device positions so the next call re-stages them from the
+// host, as the axis-recovery retry needs.
 void InvalidatePtsXCuda() {
   auto& S = State();
   if (!S.stream) return;
@@ -731,17 +672,13 @@ void FlushDecomposedXToHostCuda(
   auto& S = State();
   if (!S.stream || !S.d_pts_x_rcc) return;
   std::lock_guard<std::mutex> lk(S.mu);
-  // Until this run's first time step stages the host state, d_pts_x holds
-  // whatever an earlier run left there, and the host copy is authoritative: a
-  // hot restart that converges on its first evaluation never stages it.
+  // Before this run's first time step the host copy is authoritative, as for a
+  // hot restart that converges at its first evaluation.
   if (!S.pts_x_initialized) return;
   size_t x_bytes_one = sizeof(double) * (size_t)ns_local * (size_t)mpol *
                         (size_t)(ntor + 1);
-  // Multigrid stage transition guard: when ns_local changes between stages
-  // EnsurePTSBuffers has not yet been called for the new stage; S.pts_x_size
-  // is still the OLD stage's per-config element count. Skip rather than risk
-  // an out-of-bounds D2H. Host m_decomposed_x is freshly populated by
-  // interpFromBoundaryAndAxis at that point anyway.
+  // At a stage transition before EnsurePTSBuffers, pts_x_size is the old
+  // stage's, so the copy is skipped; the host is fresh then.
   if ((size_t)ns_local * (size_t)mpol * (size_t)(ntor + 1)
       != (size_t)S.pts_x_size) {
     return;

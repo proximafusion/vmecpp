@@ -2,14 +2,8 @@
 
 namespace vmecpp {
 
-// ============================================================================
-// ComputeJacobianCuda: CUDA port of IdealMhdModel::computeJacobian.
-//
-// Reads d_r1_e/o, d_ru_e/o, d_z1_e/o, d_zu_e/o (already on GPU after the
-// forward FFT call) plus sqrtSH (one H2D per call), writes r12/ru12/zu12/rs/
-// zs/tau on the half-grid, and returns bad_jacobian = (minTau*maxTau<0 || NaN)
-// computed on host after a single D2H of all 6 jacobian arrays.
-// ============================================================================
+// ComputeJacobianCuda: computeJacobian on the device, with bad_jacobian from
+// the device min and max of tau.
 void ComputeJacobianCuda(
     const RadialPartitioning& r, const Sizes& s,
     const Eigen::VectorXd& sqrtSH, double deltaS, double dSHalfDsInterp,
@@ -30,9 +24,7 @@ void ComputeJacobianCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   S.EnsureJacobianBuffers(ns_h, nZnT);
 
-  // H2D sqrtSH once per Reshape (invariant under iteration). Subsequent calls
-  // skip the H2D. EnsureJacobianBuffers above clears the flag if the buffer
-  // was reallocated due to ns_h change.
+  // sqrtSH is staged once per Reshape.
   if (!S.sqrtSH_staged) {
     cuda_check(cudaMemcpyAsync(S.d_sqrtSH, sqrtSH.data(),
                                 sizeof(double) * ns_h,
@@ -40,10 +32,8 @@ void ComputeJacobianCuda(
     S.sqrtSH_staged = true;
   }
 
-  // Launch the jacobian computation. The configuration axis is
-  // carried on the third grid dimension, so for n_config_max == 1
-  // the launch reduces to (nZnT / TPB, ns_h, 1), matching the
-  // single-configuration baseline.
+  // The configuration axis is the third grid dimension, so one configuration
+  // launches (nZnT / TPB, ns_h, 1).
   const bool use_dvdsh_fuse = wInt != nullptr && signOfJacobian != 0;
 
   if (use_dvdsh_fuse) {
@@ -124,17 +114,8 @@ void ComputeJacobianCuda(
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_tau_minmax launch");
 
-  // Per-iter D2Hs of ru12/zu12/rs/zs eliminated. Downstream CUDA consumers
-  // (ComputePreconditioningMatrixCuda) read device pointers directly; the
-  // end-of-run FlushForOutputCuda handles the output-phase host needs. Only
-  // the 2 tau min/max scalars stay (host reads them immediately for
-  // bad_jacobian).
-  //
-  // Per-cfg cache: replace the 2-double D2H with 2*n_cfg
-  // D2H into a static cache. Single-cfg behavior preserved (minTau = cache[0],
-  // maxTau = cache[1]); per-cfg cache populated for free during the SAME
-  // sync. Per-cfg consumers read via GetJacMinmaxPerCfgCache() to build
-  // per-cfg bad_jacobian without an extra D2H+sync.
+  // Only the min and max of tau come to the host, for every configuration into
+  // the cache, configuration zero's as the scalars.
   int n_cfg = S.n_config_max;
   if ((int)g_jac_minmax_cache.size() != 2 * n_cfg) {
     g_jac_minmax_cache.assign(2 * n_cfg, 0.0);
@@ -163,13 +144,8 @@ std::vector<std::uint8_t> BadJacobianPerCfgCuda(int n_cfg) {
   return bad;
 }
 
-// ============================================================================
-// ComputeMetricElementsCuda: CUDA port of IdealMhdModel::computeMetricElements.
-// Reads d_r1_e/o, d_ru_e/o, d_zu_e/o, d_rv_e/o, d_zv_e/o (from forward FFT) plus
-// d_sqrtSF (already on device from forward) and d_tau, d_r12 (from jacobian).
-// Stages d_sqrtSH per call. Writes d_gsqrt, d_guu, d_guv, d_gvv on device and
-// D2Hs into the gsqrt/guu/guv/gvv Eigen::VectorXd's.
-// ============================================================================
+// ComputeMetricElementsCuda: computeMetricElements on the device, gsqrt, guu,
+// guv and gvv staying in device buffers.
 void ComputeMetricElementsCuda(
     const RadialPartitioning& r, const Sizes& s,
     const Eigen::VectorXd& sqrtSF_unused, const Eigen::VectorXd& sqrtSH,
@@ -185,9 +161,7 @@ void ComputeMetricElementsCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   S.EnsureMetricBuffers(ns_h, nZnT);
 
-  // sqrtSH already staged in ComputeJacobianCuda above (same iter). The cache
-  // flag (S.sqrtSH_staged) means we can skip this H2D - it's a redundant
-  // copy of the same data.
+  // sqrtSH was staged by ComputeJacobianCuda.
   if (!S.sqrtSH_staged) {
     cuda_check(cudaMemcpyAsync(S.d_sqrtSH, sqrtSH.data(),
                                 sizeof(double) * ns_h,
@@ -195,13 +169,8 @@ void ComputeMetricElementsCuda(
     S.sqrtSH_staged = true;
   }
 
-  // When ComputeJacobianCuda has already dispatched the fused
-  // jacobian-and-metric kernel during the present iteration, the
-  // metric outputs gsqrt, guu, guv, and gvv are already populated
-  // in the corresponding device buffers; the kernel launch that
-  // would otherwise occur here is therefore redundant. The
-  // handoff flag is cleared so that subsequent iterations resume
-  // the independent metric launch when fusion is not in effect.
+  // The fused Jacobian kernel produced the metric this iteration, so the launch
+  // is skipped and the flag cleared.
   if (S.jac_metric_fused_this_iter) {
     S.jac_metric_fused_this_iter = false;
     (void)gsqrt; (void)guu; (void)guv; (void)gvv;
@@ -222,17 +191,12 @@ void ComputeMetricElementsCuda(
       S.d_gsqrt, S.d_guu, S.d_guv, S.d_gvv);
   cuda_check(cudaGetLastError(), "k_compute_metric_elements launch");
 
-  // Persistent on-device: gsqrt/guu/guv/gvv stay in S.d_* for downstream
-  // CUDA wrappers (BContra, BCo, Pressure, HybridLambdaForce, MHDForces,
-  // ForceNorms, UpdateLambdaPrecond). No D2H needed.
+  // gsqrt, guu, guv and gvv stay on the device for the wrappers downstream.
   (void)gsqrt; (void)guu; (void)guv; (void)gvv;
 }
 
-// ============================================================================
-// UpdateDifferentialVolumeCuda: CUDA port of IdealMhdModel::updateDifferentialVolume.
-// Reads d_gsqrt (from metric_elements). Stages wInt once. Writes dVdsH array
-// (size ns_h) by per-surface sum of gsqrt * wInt[l], multiplied by signOfJacobian.
-// ============================================================================
+// UpdateDifferentialVolumeCuda: dVdsH = signOfJacobian * sum of gsqrt * wInt
+// per half-grid surface on the device.
 void UpdateDifferentialVolumeCuda(
     const RadialPartitioning& r, const Sizes& s, double signOfJacobian,
     const Eigen::VectorXd& wInt, Eigen::VectorXd& dVdsH) {
@@ -243,9 +207,8 @@ void UpdateDifferentialVolumeCuda(
   if (ns_h <= 0) return;
 
   std::lock_guard<std::mutex> lk(S.mu);
-  // 3-way fusion path: if ComputeJacobianCuda already ran the jacobian +
-  // metric + dvdsh fused kernel this iter, the dvdsh outputs are populated
-  // in S.d_dVdsH. Skip the redundant launch and consume the flag.
+  // The fused Jacobian kernel produced dVdsH this iteration, so the launch is
+  // skipped and the flag consumed.
   if (S.dvdsh_fused_this_iter) {
     S.dvdsh_fused_this_iter = false;
     (void)wInt; (void)dVdsH; (void)signOfJacobian;
@@ -255,9 +218,8 @@ void UpdateDifferentialVolumeCuda(
   S.EnsureDVdsHBuffer(ns_h);
 
   const int TPB = 32;
-  // Batched execution: launch grid covers n_config_max configs in z dim.
-  // At n_config_max=1 this collapses to (ns_h, 1, 1), the
-  // single-configuration launch.
+  // The z dimension covers the configurations; one configuration launches
+  // (ns_h, 1, 1).
   dim3 blocks(ns_h, 1, S.n_config_max);
   dim3 tpb(TPB, 1, 1);
   k_update_dvdsh<<<blocks, tpb, 0, S.stream>>>(
@@ -285,11 +247,7 @@ void RecomputeZeroedDVdsHForOutputCuda(int n_cfg, int ns_h, int nZnT,
   cuda_check(cudaGetLastError(), "k_recompute_dvdsh_if_zeroed launch");
 }
 
-// ============================================================================
-// ComputeBCoCuda: CUDA port of IdealMhdModel::computeBCo.
-// Currently bsupu, bsupv come from CPU (computeBContra not yet ported), so we
-// H2D them per call. Once BContra is ported they'll already be on device.
-// ============================================================================
+// ComputeBCoCuda: computeBCo on the device from the device bsupu and bsupv.
 void ComputeBCoCuda(
     const RadialPartitioning& r, const Sizes& s,
     const Eigen::VectorXd& guu_unused, const Eigen::VectorXd& guv_unused,
@@ -321,13 +279,8 @@ void ComputeBCoCuda(
   (void)bsubu; (void)bsubv;
 }
 
-// ============================================================================
-// RadialForceBalanceCuda: CUDA port of IdealMhdModel::radialForceBalance.
-// Reads d_bsubu, d_bsubv (from BCo), d_dVdsH (from updateDifferentialVolume),
-// d_wInt (staged). H2Ds presH, chipF, phipF per call.
-// Outputs bucoH, bvcoH (radial half-grid scalars) and interior full-grid
-// arrays jcurvF, jcuruF, presgradF, dVdsF, equiF (size nsi = nsMaxFi - nsMinFi).
-// ============================================================================
+// RadialForceBalanceCuda: bucoH, bvcoH and the interior jcurvF, jcuruF,
+// presgradF, dVdsF and equiF on the device.
 void RadialForceBalanceCuda(
     const RadialPartitioning& r, const Sizes& s, double signOfJacobian,
     double deltaS, const Eigen::VectorXd& wInt,
@@ -380,13 +333,8 @@ void RadialForceBalanceCuda(
       S.d_jcurvF, S.d_jcuruF, S.d_presgradF, S.d_dVdsF, S.d_equiF);
   cuda_check(cudaGetLastError(), "k_radial_interior launch");
 
-  // bvcoH is read on the host by the rBtor scalar evaluation; async D2H
-  // here, with the stream synchronized inside the update body before the
-  // host read. The interior arrays (jcurvF/jcuruF/presgradF/dVdsF/equiF)
-  // have no mid-chain host consumer and stay on device. bucoH joins the
-  // flush on free-boundary runs, where the cTor evaluation feeds NESTOR
-  // the net toroidal current every vacuum iteration; fixed-boundary runs
-  // consume it only at end-of-run through FlushForOutputCuda.
+  // bvcoH, and at free boundary bucoH, go to the host asynchronously for the
+  // toroidal-current scalars; the interior arrays stay on the device.
   cuda_check(cudaMemcpyAsync(bvcoH.data(), S.d_bvcoH, sizeof(double) * ns_h,
                               cudaMemcpyDeviceToHost, S.stream), "d2h bvcoH");
   if (g_free_boundary_run) {
@@ -400,14 +348,8 @@ void RadialForceBalanceCuda(
   (void)jcurvF; (void)jcuruF; (void)presgradF; (void)dVdsF; (void)equiF;
 }
 
-// ============================================================================
-// RzConIntoVolumeCuda: CUDA port of IdealMhdModel::rzConIntoVolume.
-// Reads d_rCon, d_zCon (already on device after forward FFT), d_sqrtSF (also
-// already on device), writes d_rCon0, d_zCon0. The CPU equivalent extracts
-// rCon/zCon at the LCFS surface and propagates them inward weighted by sFull =
-// sqrtSF[jF]^2. Only the LCFS-owning rank (r.nsMaxF1 == fc.ns) does this; for
-// single-rank that's always true.
-// ============================================================================
+// RzConIntoVolumeCuda: rCon0 and zCon0 from rCon and zCon at the LCFS weighted
+// by sFull = sqrtSF^2, on the rank owning the LCFS.
 void RzConIntoVolumeCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     Eigen::VectorXd& rCon0, Eigen::VectorXd& zCon0) {
@@ -449,15 +391,8 @@ void InvalidateStagedCurrHCuda() {
   S.currH_staged = false;
 }
 
-// ============================================================================
-// ComputeBContraCuda: CUDA port of IdealMhdModel::computeBContra.
-// Inputs already on device: lu_e/o, lv_e/o (from forward FFT), gsqrt, guu, guv
-// (from metric elements), sqrtSH (from jacobian).
-// Per-call H2D: phipF, phipH, currH, iotaH (input when ncurr==0).
-// In-place mutation: lu_e/o, lv_e/o multiplied by lamscale; lu_e += phipF.
-// Outputs: bsupu, bsupv (persistent device buffers + D2H), chipH, iotaH (D2H to
-// RadialProfiles), chipF, iotaF (D2H to RadialProfiles).
-// ============================================================================
+// ComputeBContraCuda: computeBContra on the device; lu and lv are scaled by
+// lamscale in place, and bsupu and bsupv stay on the device.
 void ComputeBContraCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     int ncurr, double lamscale,
@@ -476,15 +411,10 @@ void ComputeBContraCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   S.EnsureBContraBuffers(ns_h, nZnT, ns_local);
 
-  // H2D radial inputs. phipF/phipH/currH are invariant under iteration
-  // (toroidal flux profile + prescribed current; fixed for a given multigrid
-  // level), so cache them. iotaH IS updated each iter under ncurr==1 (kernel
-  // writes new chipH/iotaH and host D2Hs it back to m_p_.iotaH which becomes
-  // the input for next iter), so do not cache it.
+  // phipF, phipH and currH are fixed at a multigrid level and staged once;
+  // iotaH changes each iteration under ncurr = 1.
   if (!S.phipF_staged) {
-    // Broadcast: device buffer is sized n_config_max * ns_local; kernel indexes
-    // with cfg_prof offset (cfg * ns_local). Fill ALL N config slots with the
-    // same radial profile so reads at any cfg return real data.
+    // Fills every configuration slot with the radial profile.
     for (int cfg = 0; cfg < S.n_config_max; ++cfg) {
       const double* src = phipF.data();
       if (g_batch_prof_ncfg > 0 && cfg < g_batch_prof_ncfg)
@@ -521,11 +451,7 @@ void ComputeBContraCuda(
       }
       S.currH_staged = true;
     }
-    // Seed iotaH on device with the initial value, ONCE per Reshape. After
-    // that, k_bcontra_chipH_iotaH updates d_iotaH on device each iter and the
-    // device value is the input for the next iter's fallback path; the
-    // host m_p_.iotaH is just a stale D2H copy of d_iotaH, so re-H2D'ing it
-    // contributes nothing.
+    // iotaH is seeded once per Reshape; the device updates it afterwards.
     if (!S.iotaH_seeded) {
       for (int cfg = 0; cfg < S.n_config_max; ++cfg) {
         const double* src = iotaH_in.data();
@@ -554,17 +480,11 @@ void ComputeBContraCuda(
     }
   }
 
-  // Stage 1: mutate lu_e/o, lv_e/o by lamscale + add phipF to lu_e.
-  // Range: jF in [nsMinH .. nsMaxH+1), in local index [nsMinH - nsMinF1 ..
-  // nsMaxH + 1 - nsMinF1).
+  // Stage 1: scales lu and lv by lamscale and adds phipF to lu_e on [nsMinH,
+  // nsMaxH + 1).
   int jF_first = r.nsMinH - r.nsMinF1;
   int jF_last_excl = r.nsMaxH + 1 - r.nsMinF1;
-  // CPU indexes phipF as phipF[jF - nsMinH]; we pass nsMinH - nsMinF1 = jF_first
-  // so phipF[(jF_local) - jF_first] in kernel = phipF[jF - nsMinH] in CPU
-  // (single-rank: jF_first == 0, so phipF[jF_local]).
-  // BUT we loaded d_phipF with phipF.data() which is jF_local indexed by jF -
-  // nsMinF1. So phipF[jF_local - jF_first] where jF_first = nsMinH - nsMinF1
-  // gives phipF[jF - nsMinH], matching CPU.
+  // phipF[jF_local - (nsMinH - nsMinF1)] is the CPU's phipF[jF - nsMinH].
   int phipF_jOff = r.nsMinH - r.nsMinF1;
   // Batched execution: all bcontra kernels gain n_config dim.
   {
@@ -649,23 +569,14 @@ void ComputeBContraCuda(
     cuda_check(cudaGetLastError(), "k_bcontra_bsupu_add_chip launch");
   }
 
-  // bsupu/bsupv stay on device (consumed by ComputeBCo, PressureAndEnergies,
-  // ComputeMHDForces). The radial profiles chipH, iotaH, chipF, and iotaF have
-  // no per-iteration host reader under CUDA (RadialForceBalanceCuda reads
-  // S.d_chipF and S.d_phipF); FlushForOutputQuantitiesCuda brings them to the
-  // host for the output computation.
+  // bsupu and bsupv stay on the device; the chip and iota profiles reach the
+  // host only in the output flush.
   (void)bsupu; (void)bsupv;
   (void)chipH_out; (void)iotaH_out; (void)chipF_out; (void)iotaF_out;
 }
 
-// ============================================================================
-// ComputePreconditioningMatrixCuda: CUDA port of IdealMhdModel::
-// computePreconditioningMatrix. Called by updateRadialPreconditioner once for
-// R-side (xs=zs, etc.) and once for Z-side (xs=rs, etc.). Inputs are passed as
-// CPU Eigen::VectorXd& and H2D'd; outputs are produced on device and D2H'd.
-// ============================================================================
-// Copies the per-configuration slices of length per_cfg from src into dst for
-// the active configurations; the others keep theirs.
+// k_copy_active_cfg: copies the per-configuration slices of length per_cfg from
+// src to dst for the active configurations.
 __global__ void k_copy_active_cfg(int n_config, size_t per_cfg,
                                   const double* __restrict__ src,
                                   double* __restrict__ dst,
@@ -678,6 +589,8 @@ __global__ void k_copy_active_cfg(int n_config, size_t per_cfg,
   dst[off] = src[off];
 }
 
+// ComputePreconditioningMatrixCuda: computePreconditioningMatrix on the
+// device, once for the R side and once for the Z side.
 void ComputePreconditioningMatrixCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     double deltaS, int kEvenParity, int kOddParity,
@@ -698,12 +611,8 @@ void ComputePreconditioningMatrixCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   S.EnsurePrecondMatrixBuffers(ns_h, ns_force_local, ns_local, nZnT);
 
-  // Device-resident path: xs/xu12/xu_e/xu_o/x1_o were already computed on
-  // device by ComputeJacobian (xs=rs/zs, xu12, etc.) and the forward FFT
-  // (xu_e/xu_o = ru_e/zu_e and ru_o/zu_o; x1_o = r1_o/z1_o). The host Eigen
-  // vectors xs/xu12/xu_e/xu_o/x1_o are stale D2H copies; skip the H2D and
-  // read directly from the device buffers. The R-side call (side==0) wants
-  // the Z-derivatives; the Z-side call (side==1) wants the R-derivatives.
+  // xs, xu12, xu_e, xu_o and x1_o are read from the device buffers of the
+  // Jacobian and forward FFT: Z derivatives for side 0, R for side 1.
   (void)xs; (void)xu12; (void)xu_e; (void)xu_o; (void)x1_o;
   const double* d_xs   = (side == 0) ? S.d_zs   : S.d_rs;
   const double* d_xu12 = (side == 0) ? S.d_zu12 : S.d_ru12;
@@ -769,15 +678,8 @@ void ComputePreconditioningMatrixCuda(
     cuda_check(cudaGetLastError(), "k_pm_assemble_full launch");
   }
 
-  // Snapshot the scratch outputs into the per-side persistent buffers so
-  // that the second ComputePreconditioningMatrixCuda invocation, which
-  // overwrites the shared scratch arrays d_pm_axm, d_pm_axd, d_pm_bxm,
-  // d_pm_bxd, and d_pm_cxd, does not destroy the values that
-  // AssembleRZPreconditionerCuda must read for the side processed
-  // first. In a batch the snapshot takes the active configurations: every
-  // configuration is active at the first update of a stage, and a
-  // configuration that is not due for an update under per-configuration
-  // restart control keeps the matrices of its latest update.
+  // Snapshots the scratch into the per-side buffers, which the second call
+  // would overwrite; a configuration not due keeps its latest matrices.
   double* dst_axm = (side == 0) ? S.d_pmat_arm : S.d_pmat_azm;
   double* dst_axd = (side == 0) ? S.d_pmat_ard : S.d_pmat_azd;
   double* dst_bxm = (side == 0) ? S.d_pmat_brm : S.d_pmat_bzm;
@@ -802,10 +704,7 @@ void ComputePreconditioningMatrixCuda(
   snapshot(dst_bxd, S.d_pm_bxd, (size_t)ns_force_local * 2, "d2d pmat bxd");
   snapshot(S.d_pmat_cxd, S.d_pm_cxd, (size_t)ns_force_local, "d2d pmat cxd");
 
-  // Keep host D2H too: ApplyM1PreconditionerCuda and ConstraintForceMultiplierCuda
-  // still H2D ard/brd/azd/bzd from host. We could remove their H2Ds and read
-  // d_pmat_* directly, but that expands scope; for now keep the host arrays
-  // consistent. Cost: ~20us/precond-update.
+  // The matrices are also copied to the host arrays.
   cuda_check(cudaMemcpyAsync(m_axm.data(), S.d_pm_axm,
                               sizeof(double) * ns_h * 2,
                               cudaMemcpyDeviceToHost, S.stream), "d2h pm axm");
@@ -821,20 +720,12 @@ void ComputePreconditioningMatrixCuda(
   cuda_check(cudaMemcpyAsync(m_cxd.data(), S.d_pm_cxd,
                               sizeof(double) * ns_force_local,
                               cudaMemcpyDeviceToHost, S.stream), "d2h pm cxd");
-  // The stream synchronisation that would otherwise be required to
-  // commit the device-to-host transfers above is deferred to the
-  // nearest downstream wrapper that performs a host read. Both
-  // UpdateVolumeCuda and ComputeForceNormsCuda already issue their
-  // own cudaStreamSynchronize before consuming host data, so the
-  // ordering of the cudaMemcpyAsync calls placed on S.stream is
-  // sufficient to guarantee that those reads observe the correct
-  // values.
+  // The host reads of these transfers follow the synchronizations in
+  // UpdateVolumeCuda and ComputeForceNormsCuda.
 }
 
-// Copies the half-grid bLambda (slots 1 .. ns_h) of every active
-// configuration into the profile of the tridiagonal m = 0 lambda
-// preconditioner, with the axis slot and the slots past the last half-grid
-// point zero.
+// Copies each active configuration's half-grid bLambda into the m = 0 lambda
+// preconditioner's profile, zero at the axis and beyond.
 __global__ void k_lambda_b_half_snapshot(int n_config, int ns_h,
                                          int lambda_stride,
                                          const double* __restrict__ bLambda,
@@ -848,11 +739,8 @@ __global__ void k_lambda_b_half_snapshot(int n_config, int ns_h,
   b_half[i] = (k >= 1 && k <= ns_h) ? bLambda[i] : 0.0;
 }
 
-// ============================================================================
-// UpdateLambdaPreconditionerCuda: CUDA port of IdealMhdModel::
-// updateLambdaPreconditioner. Two stages: half-grid reductions, axis extrap,
-// full-grid average, then per-(jF, n, m) assembly.
-// ============================================================================
+// UpdateLambdaPreconditionerCuda: half-grid reductions, axis extrapolation,
+// full-grid average and the per-(jF, n, m) assembly.
 void UpdateLambdaPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s,
     double lambdaPreconditionerScale, double lamscale,
@@ -899,22 +787,8 @@ void UpdateLambdaPreconditionerCuda(
       S.d_bLambda, S.d_dLambda, S.d_cLambda);
   cuda_check(cudaGetLastError(), "k_ulp_axis_extrap launch");
 
-  // Stage 3: full-grid average into a separate output region. The CPU code
-  // overwrites bLambda[jF - nsMinF] in-place; we use the same buffer with the
-  // understanding that the read indices (jH-nsMinH and jH-nsMinH+1) are above
-  // the write index (jF-nsMinF) when nsMinH == nsMinF. To be safe in
-  // multi-rank, we'd need a scratch; for single-rank this works because each
-  // thread reads [jF, jF+1] but writes to [jF] and stride/order avoids hazards
-  // at thread level (each thread reads ahead, writes back). We accept the
-  // potential single-rank-only correctness here.
-  // Batched execution: y-dim covers n_config_max configs.
-  // Note: in-place read/write of bLambda/dLambda/cLambda - bLambda_out is
-  // sized ns_con_local per config while bLambda_in is (ns_h+1) per config.
-  // The kernel writes to bLambda_out[config*ns_con_local + jF_local], reads
-  // from bLambda_in[config*(ns_h+1) + jH_in_off (+1)]. These are separate
-  // logical ranges so in-place is OK at N=1 (input and output overlap in
-  // memory only past where we never read; for N=1 ns_con_local == ns_h+1
-  // and the in-place hazard is the same as before).
+  // Stage 3: full-grid average in place, which reads [jF, jF + 1] and writes
+  // [jF], safe on a single rank.
   {
     int jMin = (r.nsMinF == 0) ? 1 : 0;
     int nsMinH_off = r.nsMinF - r.nsMinH;  // CPU uses (jF - nsMinH) for jH index
@@ -945,19 +819,15 @@ void UpdateLambdaPreconditionerCuda(
     cuda_check(cudaGetLastError(), "k_ulp_assemble launch");
   }
 
-  // lambdaPreconditioner, bLambda, dLambda, and cLambda stay on the device:
-  // their host readers in ideal_mhd_model.cc are CPU-only, and
-  // ApplyLambdaPreconditionerCuda reads d_lambdaPreconditioner.
+  // lambdaPreconditioner and the bLambda, dLambda, cLambda profiles stay on the
+  // device.
   (void)lambdaPreconditioner_host;
   (void)bLambda_out;
   (void)dLambda_out;
   (void)cLambda_out;
 }
 
-// ============================================================================
-// ComputeMHDForcesCuda: CUDA port of IdealMhdModel::computeMHDForces.
-// All inputs already on device. D2H 8 (2D) or 12 (3D) force arrays.
-// ============================================================================
+// ComputeMHDForcesCuda: computeMHDForces on the device inputs.
 void ComputeMHDForcesCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     bool lfreeb, double deltaS,
@@ -977,9 +847,8 @@ void ComputeMHDForcesCuda(
   int jMaxRZ = std::min(r.nsMaxF, fc.ns - 1);
   if (lfreeb) jMaxRZ = std::min(r.nsMaxF, fc.ns);
 
-  // Batched execution: z-dim covers n_config_max configs.
-  // The pair kernel shares one half-grid slab between two force surfaces;
-  // it needs an even force-grid extent.
+  // z covers the configurations; the pair kernel shares a half-grid slab
+  // between two force surfaces and needs an even extent.
   const int TPB = 64;
   if (ns_force_local % 2 == 0) {
     dim3 blocks_p((nZnT + TPB - 1) / TPB, ns_force_local / 2, S.n_config_max);
@@ -1025,11 +894,8 @@ void ComputeMHDForcesCuda(
   (void)crmn_e; (void)crmn_o; (void)czmn_e; (void)czmn_o;
 }
 
-// ============================================================================
-// ComputeForceNormsCuda: CUDA port of IdealMhdModel::computeForceNorms.
-// Half-grid reductions for fNormRZ and fNormL are GPU; the FourierGeometry
-// rzNorm for fNorm1 is host-side (decomposed_x lives on host).
-// ============================================================================
+// ComputeForceNormsCuda: the half-grid reductions of fNormRZ and fNormL on the
+// device.
 void ComputeForceNormsCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     double magneticEnergy, double thermalEnergy, double plasmaVolume,
@@ -1046,9 +912,7 @@ void ComputeForceNormsCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   S.EnsureForceNormBuffers(ns_h);
 
-  // Cache lamscale for the device-side normalized convergence check
-  // (k_check_convergence). It is a per-run constant whose only prior
-  // consumers received it by argument.
+  // lamscale is cached for k_check_convergence.
   S.lamscale_cached = lamscale;
 
   // Batched execution: z-dim covers n_config_max configs.
@@ -1063,13 +927,8 @@ void ComputeForceNormsCuda(
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_force_norm_partials launch");
 
-  // The per-half-surface partial sums produced above are reduced on
-  // device by k_force_norm_final_reduce, eliminating the host-side
-  // reduction that the CPU implementation performs over jH. Each
-  // launched block reduces the partial sums of one configuration and
-  // writes its two output scalars (sum_rz and sum_l) into
-  // d_fnorm_scalars at offset config * 2, so a single device-to-host
-  // transfer of two doubles per configuration suffices.
+  // k_force_norm_final_reduce sums each configuration's partials into [sum_rz,
+  // sum_l], two doubles per configuration to copy.
   S.EnsureFnormScalarsBuffer();
   k_force_norm_final_reduce<<<S.n_config_max, 256, 0, S.stream>>>(
       S.n_config_max, ns_h, S.d_forceNormRZ_partial, S.d_forceNormL_partial,
@@ -1077,11 +936,8 @@ void ComputeForceNormsCuda(
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_force_norm_final_reduce launch");
 
-  // Per-cfg cache: replace the 2-double D2H with 2*n_cfg
-  // D2H into a static cache. Single-cfg behavior preserved (sum_rz =
-  // cache[0]); per-cfg cache populated for free during the SAME sync.
-  // Per-cfg consumers read via GetFnormScalarsPerCfgCache() to build per-cfg
-  // fNormRZ/fNormL without an extra D2H+sync.
+  // The copy covers 2 * n_cfg doubles into the cache under the same
+  // synchronization; configuration zero's are the scalars.
   int n_cfg = S.n_config_max;
   if ((int)g_fnorm_scalars_cache.size() != 2 * n_cfg) {
     g_fnorm_scalars_cache.assign(2 * n_cfg, 0.0);
@@ -1099,14 +955,8 @@ void ComputeForceNormsCuda(
   fNormL_out  = 1.0 / (sum_l  * lamscale * lamscale);
   fNorm1_out  = 1.0 / forceNorm1_host;
 
-  // Per-cfg fNorm1 for the device time-step controller: each cfg's
-  // reciprocal rzNorm over its own device-resident position state, at the
-  // same cadence as the force norms above. cfg 0 equals fNorm1_out
-  // bit-for-bit (same data, same accumulation order), so single-cfg and
-  // broadcast trajectories are unchanged; distinct-mode cfgs stop sharing
-  // cfg 0's normalization. Skipped until the position state exists (the
-  // first force-norm update precedes it); StageFnorm1 broadcasts the host
-  // value until the first fill.
+  // Each configuration's fNorm1 from its own device positions at this cadence,
+  // configuration zero bit-identical to fNorm1_out.
   if (S.pts_x_initialized && S.d_pts_x_rcc) {
     S.EnsureFnorm1Buffer();
     const int ns_local_x = r.nsMaxF1 - r.nsMinF1;
@@ -1117,10 +967,8 @@ void ComputeForceNormsCuda(
         S.d_fnorm1, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_rz_norm_per_cfg launch");
     S.fnorm1_device_filled = true;
-    // Per-cfg fNorm1 cache for the host-side per-cfg preconditioned
-    // residual normalization in evalFResPrecd. Becomes valid at the next
-    // stream synchronization, the same boundary as the other per-cfg
-    // caches at this cadence.
+    // The per-configuration fNorm1 cache for evalFResPrecd, valid at the next
+    // synchronization.
     if (static_cast<int>(g_fnorm1_per_cfg_cache.size()) != S.n_config_max) {
       g_fnorm1_per_cfg_cache.assign(S.n_config_max, 0.0);
     }
@@ -1131,12 +979,8 @@ void ComputeForceNormsCuda(
   }
 }
 
-// ============================================================================
-// HybridLambdaForceCuda: CUDA port of IdealMhdModel::hybridLambdaForce.
-// Inputs on device: bsubu/v (BCo), gvv/gsqrt/guv (metric), bsupu (BContra),
-// lu_e/o (post-mutation by BContra), sqrtSF/sqrtSH. Per-call H2D: radialBlending.
-// Outputs: blmn_e/o, clmn_e/o (D2H to IdealMhdModel members).
-// ============================================================================
+// HybridLambdaForceCuda: hybridLambdaForce on the device, writing blmn and
+// clmn.
 void HybridLambdaForceCuda(
     const RadialPartitioning& r, const Sizes& s, double lamscale,
     const Eigen::VectorXd& radialBlending,
@@ -1182,14 +1026,8 @@ void HybridLambdaForceCuda(
   (void)blmn_e; (void)blmn_o; (void)clmn_e; (void)clmn_o;
 }
 
-// ============================================================================
-// PressureAndEnergiesCuda: CUDA port of IdealMhdModel::pressureAndEnergies.
-// Inputs already on device: bsupu, bsupv (from BContra), bsubu, bsubv (from
-// BCo), gsqrt, dVdsH, wInt. Per-call H2D: massH.
-// Outputs: presH (radial), totalPressure (full half-grid array), both
-// persisted on device for downstream; thermalEnergy, magneticEnergy, mhdEnergy
-// scalars returned via out-params.
-// ============================================================================
+// PressureAndEnergiesCuda: presH and totalPressure on the device and the
+// thermal, magnetic and MHD energies through the out-parameters.
 void PressureAndEnergiesCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     double deltaS, double adiabaticIndex,
@@ -1265,11 +1103,8 @@ void PressureAndEnergiesCuda(
   // The old k_pres_add_presH stage is folded into
   // k_pres_totalpres_init_with_presH above.
 
-  // presH and totalPressure stay on device. Reduction partials get reduced
-  // on-device to 3 scalars; async D2H (no sync). Caller's next sync drains
-  // the queue. The host-side scalars (m_h_.thermalEnergy etc.) are stale
-  // until that next sync, but their only consumer (ComputeForceNormsCuda)
-  // syncs the stream when it runs.
+  // presH and totalPressure stay on the device; the energies reach the host
+  // asynchronously, valid at ComputeForceNormsCuda's synchronization.
   (void)presH_out; (void)totalPressure_out;
   S.EnsurePressureScalarsBuffer();
   // Batched execution: launch n_config_max_max blocks. Each block reduces one config's
@@ -1279,9 +1114,8 @@ void PressureAndEnergiesCuda(
       S.d_thermal_partial, S.d_magnetic_partial, S.d_pressure_scalars,
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_pres_final_reduce launch");
-  // Single-cfg D2Hs preserved (writes to caller's out-references; these
-  // values become valid after the caller's downstream stream sync; the
-  // established single-cfg pattern, unchanged).
+  // Configuration zero's energies into the out-parameters, valid after the
+  // caller's next synchronization.
   cuda_check(cudaMemcpyAsync(&thermalEnergy_out, &S.d_pressure_scalars[0],
                               sizeof(double), cudaMemcpyDeviceToHost, S.stream),
              "d2h pressure thermal");
@@ -1291,12 +1125,7 @@ void PressureAndEnergiesCuda(
   cuda_check(cudaMemcpyAsync(&mhdEnergy_out, &S.d_pressure_scalars[2],
                               sizeof(double), cudaMemcpyDeviceToHost, S.stream),
              "d2h pressure mhd");
-  // Per-cfg cache: additional async D2H of all 3*n_cfg
-  // scalars to a static cache. Becomes valid after the same sync that
-  // validates the three single-cfg writes above. Layout
-  // [thermalEnergy_0, magneticEnergy_0, mhdEnergy_0, thermalEnergy_1, ...].
-  // Per-cfg consumers read via GetPressureScalarsPerCfgCache(); cache holds
-  // the SAME 3 values at slots 0,1,2 that the single-cfg writes hold.
+  // All 3 * n_cfg energies into the cache under the same synchronization.
   {
     int n_cfg = S.n_config_max;
     if ((int)g_pressure_scalars_cache.size() != 3 * n_cfg) {
@@ -1310,10 +1139,7 @@ void PressureAndEnergiesCuda(
   }
 }
 
-// ============================================================================
-// ComputeInitialVolumeCuda: reduce dVdsH into m_h_.voli scalar.
-// voli += local_sum * (2*pi)^2 * deltaS.
-// ============================================================================
+// ComputeInitialVolumeCuda: voli += sum of dVdsH * (2 pi)^2 * deltaS.
 void ComputeInitialVolumeCuda(
     const RadialPartitioning& r, const FlowControl& fc, double deltaS,
     double& voli_out) {
@@ -1341,10 +1167,7 @@ void ComputeInitialVolumeCuda(
   cuda_check(cudaStreamSynchronize(S.stream), "voli stream sync");
 }
 
-// ============================================================================
-// UpdateVolumeCuda: reduce dVdsH into m_h_.plasmaVolume scalar.
-// plasmaVolume += local_sum * deltaS (no 4*pi^2 factor).
-// ============================================================================
+// UpdateVolumeCuda: plasmaVolume += sum of dVdsH * deltaS.
 void UpdateVolumeCuda(
     const RadialPartitioning& r, const FlowControl& fc, double deltaS,
     double& plasmaVolume_out) {
@@ -1361,10 +1184,8 @@ void UpdateVolumeCuda(
       S.n_config_max, ns_h, deltaS, r.nsMaxH - 1, fc.ns - 2, r.nsMinH,
       S.d_dVdsH, S.d_scalar, S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_volume_reduce launch (plasmaVolume)");
-  // Per-cfg D2H of all n_config_max slots into the host cache for per-cfg
-  // consumers (evalFResInvar uses per-cfg plasmaVolume for energyDensity).
-  // Single-cfg plasmaVolume_out is taken from cfg 0's slot post-sync,
-  // preserving the existing single-cfg semantics.
+  // Every configuration's volume into the cache; configuration zero's is
+  // plasmaVolume_out.
   const int n_cfg_v = S.n_config_max;
   if (static_cast<int>(g_plasma_volume_cache.size()) != n_cfg_v) {
     g_plasma_volume_cache.assign(n_cfg_v, 0.0);
@@ -1377,12 +1198,8 @@ void UpdateVolumeCuda(
   plasmaVolume_out = g_plasma_volume_cache[0];
 }
 
-// ============================================================================
-// ConstraintForceMultiplierCuda: CUDA port of IdealMhdModel::constraintForceMultiplier.
-// Inputs (device): d_ruFull, d_zuFull (from ComputeRuZuFullCuda), d_wInt.
-// Inputs (per-call H2D): ard, azd (each ns_force_local x 2 doubles).
-// Output: tcon (device + D2H). LCFS halving done host-side after D2H.
-// ============================================================================
+// ConstraintForceMultiplierCuda: tcon on the device from ruFull, zuFull and the
+// device ard and azd.
 void ConstraintForceMultiplierCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     double tcon0, const Eigen::VectorXd& ard, const Eigen::VectorXd& azd,
@@ -1403,10 +1220,8 @@ void ConstraintForceMultiplierCuda(
   // Final factor includes (32*deltaS)^2 as in the CPU code.
   double tcon_factor = tcon_multiplier * (32.0 * fc.deltaS) * (32.0 * fc.deltaS);
 
-  // Device-resident: ard/azd were just written on device by
-  // ComputePreconditioningMatrixCuda's two calls and snapshotted into
-  // d_pmat_ard / d_pmat_azd. The host Eigen vectors ard/azd are stale D2H
-  // copies; skip the H2Ds and read from d_pmat_* directly.
+  // ard and azd come from the device snapshots of
+  // ComputePreconditioningMatrixCuda; the host arguments are unused.
   (void)ard; (void)azd;
 
   int jMin = (r.nsMinF == 0) ? 1 : 0;
@@ -1420,14 +1235,8 @@ void ConstraintForceMultiplierCuda(
       S.d_active_per_cfg);
   cuda_check(cudaGetLastError(), "k_constraint_force_multiplier launch");
 
-  // LCFS halving on device, so that DeAliasConstraintForceCuda reads the
-  // halved value from d_tcon.
-  // The halved entry is the LCFS row of the con-sized profile
-  // (nsMaxF1 - 1 - nsMinF), matching the host indexing; on fixed-boundary
-  // runs that row sits one past the force rows the dealiasing reads, so
-  // the halving must not land on the outermost force row instead.
-  // Batched execution: launch n_config_max blocks; d_tcon's per-config stride is
-  // ns_con_local (allocated as n_config_max * ns_con_local).
+  // Halves each configuration's LCFS row of tcon on the device, at the host's
+  // index, before DeAliasConstraintForceCuda reads it.
   if (r.nsMaxF1 == fc.ns && ns_con_local >= 2) {
     int last = (r.nsMaxF1 - 1) - r.nsMinF;
     k_halve_tcon_lcfs<<<S.n_config_max, 1, 0, S.stream>>>(
@@ -1442,12 +1251,8 @@ void ConstraintForceMultiplierCuda(
                               cudaMemcpyDeviceToHost, S.stream), "d2h tcon");
 }
 
-// ============================================================================
-// EffectiveConstraintForceCuda: CUDA port of IdealMhdModel::effectiveConstraintForce.
-// Inputs (all device): rCon, rCon0, zCon, zCon0 (from RzConIntoVolume / forward),
-// ruFull, zuFull (from ComputeRuZuFull).
-// Output: gConEff (device + D2H since deAliasConstraintForce stays on CPU).
-// ============================================================================
+// EffectiveConstraintForceCuda: gConEff on the device from rCon, rCon0, zCon,
+// zCon0, ruFull and zuFull.
 void EffectiveConstraintForceCuda(
     const RadialPartitioning& r, const Sizes& s,
     Eigen::VectorXd& gConEff_out) {
@@ -1457,9 +1262,8 @@ void EffectiveConstraintForceCuda(
   if (ns_con_local <= 0) return;
   std::lock_guard<std::mutex> lk(S.mu);
   S.EnsureConstraintMultiplierBuffers(r.nsMaxF - r.nsMinF, ns_con_local, nZnT);
-  // The constraint-origin buffers normally exist from rzConIntoVolume at
-  // stage start; a free-boundary stage entered with the vacuum pressure
-  // active skips that call and consumes the zero-initialized buffers.
+  // A free-boundary stage entered with the vacuum pressure active skips
+  // rzConIntoVolume and uses the zeroed origins.
   S.EnsureRzCon0Buffers(ns_con_local, nZnT);
 
   int jMin = (r.nsMinF == 0) ? 1 : 0;
@@ -1477,11 +1281,8 @@ void EffectiveConstraintForceCuda(
   (void)gConEff_out;
 }
 
-// ============================================================================
-// Free-boundary bridges. The NESTOR vacuum solve stays on the host; these
-// wrappers carry the per-iteration traffic between the device-resident
-// iteration state and the host-side vacuum block in IdealMhdModel::update.
-// ============================================================================
+// Free-boundary bridges between the device state and the host NESTOR solve in
+// IdealMhdModel::update.
 
 // Scales the device rCon0/zCon0 volume profiles in place (the gradual
 // turn-off applied on every vacuum iteration).
@@ -1507,15 +1308,8 @@ void ScaleRZCon0Cuda(double factor) {
   cuda_check(cudaGetLastError(), "k_scale_rzcon0 launch");
 }
 
-// One D2H flush per vacuum iteration and configuration: the axis row of
-// r1_e/z1_e, the LCFS row of r1_e/r1_o, the outermost two totalPressure
-// rows, the presH profile (the edge-pressure extrapolation reads its
-// outermost entry on the host; without the flush that array is never
-// written under CUDA), and the bucoH/bvcoH profiles consumed by the
-// toroidal-current scalars. The host destinations are the
-// single-configuration arrays: the batched vacuum loop flushes, hands
-// over, and solves one configuration at a time. The single synchronize
-// drains every queued copy.
+// One flush per vacuum iteration and configuration: the axis and LCFS rows,
+// outer totalPressure rows and the presH, bucoH, bvcoH profiles.
 void FlushVacuumHostDataCuda(int cfg, const RadialPartitioning& r,
                              const Sizes& s,
                              Eigen::VectorXd& m_r1_e,
@@ -1581,10 +1375,8 @@ void FlushVacuumHostDataCuda(int cfg, const RadialPartitioning& r,
   cuda_check(cudaStreamSynchronize(S.stream), "vacuum host-data sync");
 }
 
-// H2D stage of the host-computed rBSq profile for one configuration;
-// AssembleTotalForcesCuda applies it to each configuration's LCFS force
-// row while it is staged. The buffer carries one nZnT profile per
-// configuration slot.
+// Stages one configuration's host rBSq profile, which AssembleTotalForcesCuda
+// applies to its LCFS force row.
 void StageRbsqCuda(int cfg, const Eigen::VectorXd& rBSq) {
   auto& S = State();
   if (!S.stream) return;
@@ -1607,11 +1399,8 @@ void StageRbsqCuda(int cfg, const Eigen::VectorXd& rBSq) {
   S.rbsq_staged = true;
 }
 
-// Applies the vacuum edge pressure to each configuration's LCFS force
-// row:
-//   armn_{e,o} += zuFull * rBSq,  azmn_{e,o} -= ruFull * rBSq.
-// Batched execution: configuration axis on blockIdx.y; rbsq carries one
-// nZnT profile per configuration.
+// Vacuum edge pressure on each configuration's LCFS row: armn += zuFull * rBSq,
+// azmn -= ruFull * rBSq.
 __global__ void k_apply_rbsq_edge(int n_config, int nZnT, int row_off,
                                   int con_stride, int force_stride,
                                   const double* __restrict__ rbsq,
@@ -1638,14 +1427,8 @@ __global__ void k_apply_rbsq_edge(int n_config, int nZnT, int row_off,
   azmn_o[idx_force] -= az;
 }
 
-// ============================================================================
-// AssembleTotalForcesCuda: CUDA port of IdealMhdModel::assembleTotalForces.
-// Inputs (device): rCon, rCon0, zCon, zCon0 (from forward), ruFull, zuFull,
-// sqrtSF (from forward staging). Per-call H2D: gCon (from CPU deAlias).
-// In-place mutation of d_brmn_e/o, d_bzmn_e/o on device. Writes d_frcon_e/o,
-// d_fzcon_e/o on device. D2H frcon/fzcon and updated brmn/bzmn so CPU forward-
-// inverse-FFT path can read them (until inverse FFT real-port lands).
-// ============================================================================
+// AssembleTotalForcesCuda: assembleTotalForces on the device, adding the
+// constraint force into brmn and bzmn and writing frcon and fzcon.
 void AssembleTotalForcesCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     const Eigen::VectorXd& gCon,
@@ -1670,9 +1453,8 @@ void AssembleTotalForcesCuda(
   (void)gCon;
 
   int nsMinF_to_nsMinF1 = r.nsMinF - r.nsMinF1;
-  // Free-boundary: apply the staged vacuum edge pressure to the LCFS
-  // force row before the constraint assembly, mirroring the host edge
-  // block at the top of assembleTotalForces.
+  // Free boundary: the staged vacuum edge pressure goes on the LCFS row before
+  // the constraint assembly, as in assembleTotalForces.
   if (vacuum_edge && S.d_rbsq && S.rbsq_staged) {
     const int ETPB = 128;
     const int edge_row_off = (ns_force_local - 1) * nZnT;
@@ -1703,9 +1485,8 @@ void AssembleTotalForcesCuda(
   (void)frcon_e_out; (void)frcon_o_out; (void)fzcon_e_out; (void)fzcon_o_out;
 }
 
-// Copies the m = 0, n >= 1 lambda forces of every configuration, before the
-// diagonal preconditioner scales them, into the right-hand sides of the
-// tridiagonal m = 0 block: row (cfg, n), global radial index jF.
+// Copies the m = 0, n >= 1 lambda forces, before the diagonal scaling, into the
+// right-hand sides of the tridiagonal m = 0 block.
 __global__ void k_lambda_m0_gather(
     int n_config, int ns_local, int ns_con_local, int mpol, int ntor,
     int nsMinF, int ns_total, const double* __restrict__ flcs,
@@ -1725,12 +1506,8 @@ __global__ void k_lambda_m0_gather(
            (size_t)n];
 }
 
-// The tridiagonal radial block of the m = 0 lambda force for one (cfg, n),
-// n >= 1: the matrix of IdealMhdModel::applyLambdaPreconditioner, eliminated
-// as TridiagonalSolveSerial does with jMin = 1, jMax = ns, in the same
-// operation order and with round-to-nearest intrinsics, so no multiply-add is
-// contracted. step_scale times the solution replaces the m = 0 forces of the
-// surfaces jF >= max(1, nsMinF).
+// The m = 0 lambda block of one (cfg, n) eliminated as TridiagonalSolveSerial
+// does, uncontracted; step_scale times it replaces the forces.
 __global__ void k_lambda_m0_solve(
     int n_config, int ns_local, int mpol, int ntor, int nfp, int nsMinF,
     int ns_total, int lambda_stride, double checkerboard_terms,
@@ -1789,9 +1566,7 @@ __global__ void k_lambda_m0_solve(
   }
 }
 
-// ============================================================================
 // ApplyLambdaPreconditionerCuda
-// ============================================================================
 void ApplyLambdaPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s,
     const Eigen::VectorXd& lambdaPreconditioner, double checkerboard_terms,
@@ -1819,15 +1594,11 @@ void ApplyLambdaPreconditionerCuda(
         ns_total, S.d_decomposed_flcs, S.d_lambda_m0_c, S.d_active_per_cfg);
     cuda_check(cudaGetLastError(), "k_lambda_m0_gather launch");
   }
-  // Device-resident path: d_lambdaPreconditioner was just written on
-  // device by k_ulp_assemble inside updateLambdaPreconditioner; it's identical
-  // to the host m_p_.lambdaPreconditioner that the caller passes. Skip the
-  // H2D round-trip and read from d_lambdaPreconditioner directly. The host
-  // parameter `lambdaPreconditioner` is unused here.
+  // d_lambdaPreconditioner from k_ulp_assemble equals the host argument, which
+  // is unused here.
   (void)lambdaPreconditioner;
-  // flsc/flcs read/written directly on the DECOMPOSED shadow populated by
-  // DecomposeAndConstrainCuda on the same stream; no H2D round-trip.
-  // Batched execution: z-dim = config * ns_con_local + jF_local.
+  // flsc and flcs are scaled in place on the decomposed shadow; z = config *
+  // ns_con_local + jF_local.
   const int TPB = 16;
   dim3 b((ntor + 1 + TPB - 1) / TPB, mpol, ns_con_local * S.n_config_max);
   dim3 t(TPB, 1, 1);
@@ -1851,30 +1622,8 @@ void ApplyLambdaPreconditionerCuda(
   (void)flsc_host; (void)flcs_host; (void)spec_bytes;
 }
 
-// ============================================================================
-// AssembleRZPreconditionerCuda
-//
-// The device-side port of IdealMhdModel::assembleRZPreconditioner. The
-// routine consumes the per-side preconditioner-matrix snapshots
-// populated by the two ComputePreconditioningMatrixCuda invocations
-// performed during updateRadialPreconditioner -- d_pmat_arm,
-// d_pmat_brm, d_pmat_ard, and d_pmat_brd for the R side;
-// d_pmat_azm, d_pmat_bzm, d_pmat_azd, and d_pmat_bzd for the Z side;
-// together with the shared d_pmat_cxd -- and writes the tri-diagonal
-// coefficients ar, dr, br for R, and az, dz, bz for Z, directly into
-// d_rz_aR, d_rz_dR, d_rz_bR, d_rz_aZ, d_rz_dZ, and d_rz_bZ in the
-// (mn, jF_global) layout required by the parallel cyclic reduction
-// solver invoked downstream by ApplyRZPreconditionerCuda. The
-// per-(mn, jF_global) minimum-row index buffer d_rz_jMin is also
-// populated here.
-//
-// The kernel-based assembly subsumes both the per-iteration CPU loop
-// of the original assembleRZPreconditioner and the six host-to-device
-// transposes plus host-to-device transfers that
-// ApplyRZPreconditionerCuda performed on a cache miss against the
-// host-side matrix in the prior arrangement, so neither the
-// transposes nor the transfers occur on the present path.
-// ============================================================================
+// AssembleRZPreconditionerCuda: assembleRZPreconditioner on the device into
+// d_rz_* and d_rz_jMin in the (mn, jF_global) layout.
 void AssembleRZPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     int jMax) {
@@ -1923,23 +1672,8 @@ void AssembleRZPreconditionerCuda(
   cuda_check(cudaGetLastError(), "k_assemble_rz_preconditioner launch");
 }
 
-// ============================================================================
-// ApplyRZPreconditionerCuda
-//
-// The CPU implementation of applyRZPreconditioner invokes
-// TridiagonalSolveSerial once per Fourier index pair (mn) over the
-// num_basis right-hand-side spectra, namely frcc and fzsc, with frss
-// and fzcs added under three-dimensional symmetry (lthreed) and the
-// corresponding lasym variants added under non-stellarator symmetry.
-// On the device the tri-diagonal matrix coefficients ar, dr, br for
-// R and az, dz, bz for Z are produced directly in the device buffers
-// d_rz_aR, d_rz_dR, d_rz_bR, d_rz_aZ, d_rz_dZ, and d_rz_bZ by
-// AssembleRZPreconditionerCuda, and the parallel cyclic reduction
-// solver consumes them in place. The host arguments ar, dr, br_in,
-// az, dz, bz_in, jMin_arr, and jMin_size therefore become unused
-// under CUDA and are retained only to preserve the call-site
-// signature shared with the CPU-only path.
-// ============================================================================
+// ApplyRZPreconditionerCuda: the tridiagonal solves on the device coefficients;
+// the host coefficient arguments are unused.
 int ApplyRZPreconditionerCuda(
     const RadialPartitioning& r, const Sizes& s, const FlowControl& fc,
     const Eigen::VectorXd& ar, const Eigen::VectorXd& dr,
@@ -1958,20 +1692,8 @@ int ApplyRZPreconditionerCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   cudaStream_t st = S.stream;
 
-  // By the time control reaches this point, the upstream
-  // AssembleRZPreconditionerCuda has already dispatched
-  // k_assemble_rz_preconditioner, leaving the six tri-diagonal
-  // coefficient buffers d_rz_aR, d_rz_dR, d_rz_bR, d_rz_aZ, d_rz_dZ,
-  // and d_rz_bZ populated together with the per-(mn, jF_global)
-  // minimum-row index buffer d_rz_jMin, each in the layout consumed
-  // by the parallel cyclic reduction solver launched below. The
-  // host-side transpose loop, the six host-to-device transfers of
-  // the matrix coefficients, the additional host-to-device transfer
-  // of jMin, and the stream synchronisation required by the previous
-  // host-side rollback path are therefore unnecessary on the present
-  // path, and the host parameters ar, dr, br_in, az, dz, bz_in,
-  // jMin_arr, and jMin_size are consumed as no-ops through the void
-  // casts below.
+  // AssembleRZPreconditionerCuda has filled the coefficient buffers and
+  // d_rz_jMin, so the host arguments go unused.
   S.EnsureRZBuffers(mnsize, ns_total, num_basis);
   double *d_cR = S.d_rz_cR;
   double *d_cZ = S.d_rz_cZ;
@@ -1995,11 +1717,8 @@ int ApplyRZPreconditionerCuda(
     cuda_check(cudaGetLastError(), "k_rz_transpose_in launch");
   }
 
-  // PCR: replaces single-thread-per-(mn) Thomas. Block size = next power-of-2
-  // >= jMaxRZ (worst-case N when jMin=0). Shared memory holds the entire system
-  // for one (mn) so PCR can iterate log2(N) parallel reduction passes.
-  // Batched execution: y-dim covers n_config_max configs (each block solves one
-  // (config, mn) tridiagonal).
+  // PCR: one block per (config, mn), the next power of two at least jMaxRZ
+  // threads, the whole system in shared memory.
   int pcr_threads = 32;
   while (pcr_threads < jMaxRZ) pcr_threads <<= 1;
   if (pcr_threads > 1024) pcr_threads = 1024;
@@ -2007,11 +1726,8 @@ int ApplyRZPreconditionerCuda(
   dim3 pcr_grid(mnsize, S.n_config_max, 1);
 
   if (jMaxRZ > 1024) {
-    // The PCR solver needs one thread per radial point and so cannot exceed
-    // 1024 (CUDA threads-per-block). For larger radial grids, solve each
-    // (config, mn) tridiagonal with one block running serial Thomas, holding
-    // the elimination ratios in dynamic shared memory sized to jMax. This is
-    // sequential per row but parallel across the n_config * mnsize rows.
+    // Above 1024 radial points each (config, mn) row takes a serial Thomas
+    // block with the ratios in dynamic shared memory.
     const int TPB_BLK = 128;
     size_t blk_smem = (size_t)jMaxRZ * sizeof(double);
     static int blk_max_smem = -1;
@@ -2071,26 +1787,15 @@ int ApplyRZPreconditionerCuda(
     cuda_check(cudaGetLastError(), "k_rz_transpose_out launch");
   }
 
-  // D2H + sync deferred to end-of-residue() FlushDecomposedToHostCuda.
-  // RZ mutates the [nsMinF, nsMinF+ns_force_local) rows of the shadow
-  // S.d_decomposed_frcc/frss/fzsc/fzcs; the flush at residue() exit picks
-  // them up. Stream ordering keeps the subsequent ResidualsCuda kernel on
-  // the same stream consistent without an explicit sync here.
+  // The decomposed shadow reaches the host in residue()'s final flush; stream
+  // order keeps ResidualsCuda consistent.
   (void)frcc_host; (void)frss_host; (void)fzsc_host; (void)fzcs_host;
   // Buffers are persistent in CudaToroidalState; do NOT free here.
   return 0;
 }
 
-// k_dealias_inv_packed: warp-packed variant of k_dealias_inv (kernels.cu).
-// The default kernel maps l in [0, nThetaReduced) onto a 32-lane warp, leaving
-// 32 - nThetaReduced lanes idle every cycle (nThetaReduced = 16 on W7-X, so
-// half the warp is wasted and the FP64 pipe is correspondingly half-fed).
-// This variant packs ks_per_warp = blockDim.x / nThetaReduced zeta planes into
-// one warp so all 32 lanes do useful FP64 work. blockIdx.y indexes the zeta
-// GROUP; the per-lane zeta is blockIdx.y * ks_per_warp + threadIdx.x /
-// nThetaReduced. The per-(jF, k, l) arithmetic is identical to k_dealias_inv.
-// Selected when 32 is an exact multiple of nThetaReduced (no lane straddles
-// two zeta planes).
+// Warp-packed k_dealias_inv: blockDim.x / nThetaReduced zeta planes per warp,
+// so all 32 lanes work.
 __global__ void k_dealias_inv_packed(
     int n_config, int ns_force_local, int ns_con_local,
     int mpol, int ntor, int nZeta, int nThetaReduced,
@@ -2135,13 +1840,8 @@ __global__ void k_dealias_inv_packed(
   m_gCon[dst] = acc;
 }
 
-// ============================================================================
-// DeAliasConstraintForceCuda
-// gConEff is on device (from EffectiveConstraintForceCuda); tcon is on device
-// (from ConstraintForceMultiplierCuda). faccon, cosnv, sinnv are staged per call.
-// Writes the d_gCon device buffer, which AssembleTotalForcesCuda consumes in
-// place on the same stream; the host m_gCon argument is unused under CUDA.
-// ============================================================================
+// DeAliasConstraintForceCuda: gCon on the device from gConEff and tcon, which
+// AssembleTotalForcesCuda reads; m_gCon is unused.
 void DeAliasConstraintForceCuda(
     const RadialPartitioning& r, const FourierBasisFastPoloidal& fb,
     const Sizes& s, const Eigen::VectorXd& faccon,
@@ -2159,26 +1859,12 @@ void DeAliasConstraintForceCuda(
   std::lock_guard<std::mutex> lk(S.mu);
   cudaStream_t st = S.stream;
 
-  // The intermediate buffers consumed by the constraint-force
-  // dealiasing pipeline -- gsc, gcs, and the faccon weight vector --
-  // are allocated once per Reshape through EnsureDealiasBuffers and
-  // retained for the remainder of the run. The toroidal basis tables
-  // cosnv and sinnv are likewise staged once at Reshape time through
-  // StageToroidalBasis, removing them from the per-iteration H2D
-  // path; the dealias kernels below index the staged tables through
-  // the geometric dimensions nZeta and nnyq2_plus_1 directly.
+  // gsc, gcs and faccon are allocated once per Reshape, and cosnv and sinnv
+  // staged once.
   S.EnsureDealiasBuffers(mpol, ntor, ns_force_local);
 
-  // The dealiasing factor faccon, defined as the vector of values
-  //   -0.25 * signOfJacobian / xmpq[m]^2
-  // for poloidal mode m, is initialised in the IdealMhdModel constructor
-  // and treated as immutable for the remainder of the run; it depends
-  // solely on the boundary's poloidal mode multipliers and is therefore
-  // invariant across configurations under the batched layout. The
-  // host-to-device transfer is consequently issued at most once per
-  // Reshape, with subsequent invocations short-circuited through the
-  // dealias_faccon_staged flag. The kernel reads from the same device
-  // buffer for every configuration without a per-cfg offset.
+  // faccon = -0.25 * signOfJacobian / xmpq[m]^2 is fixed by the IdealMhdModel
+  // constructor, so it is staged once per Reshape.
   if (!S.dealias_faccon_staged) {
     cuda_check(cudaMemcpyAsync(S.d_dealias_faccon, faccon.data(),
                                 sizeof(double) * mpol,
@@ -2186,12 +1872,8 @@ void DeAliasConstraintForceCuda(
     S.dealias_faccon_staged = true;
   }
 
-  // Stage 1: forward poloidal+toroidal -> gsc/gcs.
-  // Batched execution: z-dim = config * ns_force_local + jF.
-  // TPB=16 keeps lane util at 11/16=69pct (ntor+1=11 active threads). TPB=32
-  // was tested and regressed -0.8pct throughput at N=64 (120.0s vs 119.1s
-  // baseline) -- the 21 idle threads per warp outweigh the doubled warp
-  // residency. Stay at TPB=16.
+  // Stage 1: forward poloidal and toroidal sums into gsc and gcs, z = config *
+  // ns_force_local + jF; 16 threads per block.
   {
     const int TPB = 16;
     dim3 b((ntor + 1 + TPB - 1) / TPB, mpol,
@@ -2206,11 +1888,8 @@ void DeAliasConstraintForceCuda(
     cuda_check(cudaGetLastError(), "k_dealias_fwd launch");
   }
 
-  // Stage 2: inverse poloidal+toroidal -> m_gCon.
-  // Batched execution: k_dealias_inv uses `m_gCon[dst] = acc` (not +=) and
-  // covers every (cfg, jF, k, l) cell at lasym=false / nThetaEff==nThetaReduced.
-  // Pre-zero memset is therefore redundant. (Re-enable if lasym support is
-  // added with nThetaEff > nThetaReduced.)
+  // Stage 2: inverse sums into gCon, which assigns every cell at lasym = false,
+  // so no zero fill.
   {
     const int TPB = 32;
     dim3 b((nThetaReduced + TPB - 1) / TPB, nZeta,
@@ -2252,14 +1931,8 @@ void DeAliasConstraintForceCuda(
     }
   }
 
-  // The dealiased constraint-force buffer d_gCon remains resident on
-  // device and is consumed in place by the downstream
-  // AssembleTotalForcesCuda. Both wrappers issue their kernels on
-  // S.stream, and stream ordering on a CUDA stream guarantees that
-  // the consumer kernel observes the producer's writes without an
-  // explicit synchronisation. The host pointer m_gCon_host is
-  // therefore unused under CUDA and is consumed as a no-op through
-  // the void cast.
+  // d_gCon stays on the device for AssembleTotalForcesCuda on the same stream;
+  // m_gCon_host is unused.
   (void)m_gCon_host;
 }
 

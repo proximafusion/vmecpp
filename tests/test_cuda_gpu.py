@@ -193,9 +193,8 @@ def test_single_cma_canonical(cma_input):
 
 
 def test_three_dimensional_trajectory_follows_the_cpu(cth_like_input):
-    # The CUDA path gates the m = 1 Z force and backs up the evaluated state as
-    # the CPU path does, so a three-dimensional run takes the CPU's iterations;
-    # the first residuals differ only by the summation order of the transforms.
+    # The CUDA path gates the m = 1 Z force and backs up the state as the CPU does, so
+    # it takes the CPU's iterations; first residuals differ by summation order.
     out = vmecpp.run(cth_like_input, max_threads=1, verbose=False)
     assert out.wout.itfsq == CTH_LIKE_ITERATIONS
     np.testing.assert_allclose(
@@ -284,10 +283,8 @@ def test_repeated_run_bit_identical(cma_input):
 
 
 def test_broadcast_returns_single_output(cma_input):
-    # Broadcast mode solves one boundary in every slot and returns the
-    # single converged result. This path also exercises the iteration-1
-    # magnetic-axis recovery, whose re-staged device state must reach
-    # every configuration slot.
+    # Broadcast mode solves one boundary in every slot and returns one result; the
+    # first-iteration axis recovery must reach every slot.
     vi = cma_input
     outs = _vmecpp.run_batched_gpu(
         [vi._to_cpp_vmecindata()] * 4, max_threads=1, verbose=_vmecpp.OutputMode.SILENT
@@ -297,9 +294,8 @@ def test_broadcast_returns_single_output(cma_input):
 
 
 def test_two_call_distinct_identical(distinct_pair):
-    # Two consecutive distinct-mode calls in one process must return
-    # bitwise-identical converged spectra: the second call restages its
-    # inputs from clean device state.
+    # Two consecutive distinct calls return bitwise-identical spectra: the second
+    # restages its inputs from clean device state.
     outs1, sp1 = _vmecpp.run_batched_gpu(
         distinct_pair,
         max_threads=1,
@@ -399,9 +395,8 @@ def _assert_same_equilibrium(actual, expected, rel: float) -> None:
 
 
 def test_distinct_batch_outputs_follow_their_single_runs(cma_input):
-    # Of cma and cma with a stronger m = 1 mode, only cma restarts in its first
-    # iteration; in one distinct batch each takes the iterations and restarts
-    # of its single run and reaches its equilibrium.
+    # Of cma and cma with a stronger m = 1 mode only cma restarts at once; in one
+    # distinct batch each takes its single run's iterations and restarts.
     vi = cma_input
     inputs = [vi, vi.model_copy(deep=True)]
     inputs[1].rbc[1, vi.ntor] *= 1.05
@@ -419,9 +414,8 @@ def test_distinct_batch_outputs_follow_their_single_runs(cma_input):
 
 
 def test_distinct_batch_traces_follow_their_single_runs(cth_like_input):
-    # Three scaled cth_like boundaries take different iteration counts; in one
-    # distinct batch each takes those of its single run, with its residual
-    # trace and its equilibrium.
+    # Three scaled cth_like boundaries take different iteration counts; in one distinct
+    # batch each follows its single run's trace and equilibrium.
     vi = cth_like_input
     inputs = [
         vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
@@ -439,9 +433,8 @@ def test_distinct_batch_traces_follow_their_single_runs(cth_like_input):
 
 
 def test_mixed_configuration_counts_one_process(cma_input, distinct_pair):
-    # distinct N=2, broadcast N=4, distinct N=2, single: the
-    # per-configuration buffers reallocate across the count changes and
-    # every run returns its fresh-process result.
+    # distinct N=2, broadcast N=4, distinct N=2, single: the per-configuration buffers
+    # reallocate and every run returns its fresh-process result.
     outs = _vmecpp.run_batched_gpu(
         distinct_pair,
         max_threads=1,
@@ -487,9 +480,8 @@ def test_scope_guards_and_memory_preflight(cma_input, solovev_input):
     with pytest.raises(Exception, match="radial resolution"):
         vmecpp.run(vi_ns, max_threads=1, verbose=False)
 
-    # The memory pre-flight rejects a batch whose device allocation exceeds the
-    # free memory before allocating: 13000 slots at ns = 5 on a 200 x 100
-    # angular grid need several hundred gigabytes.
+    # The memory pre-flight rejects a batch that exceeds the free memory: 13000 slots at
+    # ns = 5 on a 200 x 100 grid need hundreds of gigabytes.
     vi_big = vi.model_copy(
         update={
             "ntheta": 200,
@@ -524,10 +516,8 @@ def test_scope_guards_and_memory_preflight(cma_input, solovev_input):
 
 
 def test_free_boundary_multigrid_stage_transition():
-    # The multigrid stage transition with the vacuum pressure already
-    # active reallocates the device buffers mid-run; the constraint
-    # origins enter the new stage zero-initialized because
-    # rzConIntoVolume does not run there.
+    # A stage transition with the vacuum pressure active reallocates the device buffers
+    # mid-run; the constraint origins enter the new stage zeroed.
     out = vmecpp.run(
         _free_boundary_input("cth_like_free_bdy_multigrid"),
         max_threads=1,
@@ -542,9 +532,8 @@ def test_free_boundary_cth_like(free_boundary_input):
 
 
 def test_free_boundary_wout_fields_match_reference(free_boundary_input):
-    # Converged free-boundary wout against the committed reference file, at
-    # the tolerance the CPU build is held to (tests/test_init.py); like the
-    # reference, the run restarts from the advanced state.
+    # The free-boundary wout against the reference at the CPU build's tolerance
+    # (tests/test_init.py), restarting from the advanced state like the reference.
     vi = free_boundary_input
     vi.backup_evaluated_state = False
     out = vmecpp.run(vi, max_threads=1, verbose=False)
@@ -580,9 +569,8 @@ def test_free_boundary_wout_fields_match_reference(free_boundary_input):
 
 
 def test_free_boundary_broadcast_matches_single(free_boundary_input):
-    # Free-boundary broadcast: per-configuration vacuum solves under a
-    # batch-wide activation gate and ivacskip cadence. Configuration
-    # zero's result agrees with the single run.
+    # Free-boundary broadcast with per-configuration vacuum solves under a batch-wide
+    # activation and cadence; configuration zero matches the single run.
     vi = free_boundary_input
     single = vmecpp.run(vi, max_threads=1, verbose=False)
     outs = _vmecpp.run_batched_gpu(
@@ -594,8 +582,7 @@ def test_free_boundary_broadcast_matches_single(free_boundary_input):
 
 
 def test_free_boundary_distinct_two_boundaries(free_boundary_input):
-    # Distinct free-boundary batch: two boundaries against one coil set
-    # converge to their own equilibria in one batched run. The batch
+    # Two free boundaries against one coil set converge in one distinct batch, which
     # shares the vacuum activation iteration and the NESTOR cadence.
     a = free_boundary_input
     b = a.model_copy(deep=True)
@@ -613,10 +600,8 @@ def test_free_boundary_distinct_two_boundaries(free_boundary_input):
 
 
 def test_fixed_then_free_boundary_one_process(cma_input, free_boundary_input):
-    # A fixed-boundary run followed by a free-boundary run in the same
-    # process: the vacuum block's host-side consumers (the edge-pressure
-    # extrapolation reads presH) must see flushed device values, not
-    # whatever the reallocated host arrays inherited from the prior run.
+    # A free-boundary run after a fixed-boundary run in one process: the host's
+    # edge-pressure extrapolation reads flushed device values, not stale ones.
     vmecpp.run(cma_input, max_threads=1, verbose=False)
     out = vmecpp.run(free_boundary_input, max_threads=1, verbose=False)
     _assert_reference(out.wout, CTH_LIKE_FREE)
@@ -645,9 +630,8 @@ def test_hot_restart_reproduces_converged_state(cma_input):
 
 @pytest.mark.slow
 def test_w7x_distinct_batch_converges(w7x_input):
-    # Three scaled W7-X boundaries, whose single runs restart mid-run at
-    # different iterations, converge in one distinct batch in the iterations
-    # of their single runs, to their equilibria.
+    # Three scaled W7-X boundaries that restart at different iterations converge in one
+    # distinct batch in their single runs' iterations, to their equilibria.
     vi = w7x_input
     inputs = [
         vi.model_copy(update={"rbc": vi.rbc * f, "zbs": vi.zbs * f})
@@ -670,12 +654,8 @@ def test_w7x_bad_jacobian_recovery_converges(w7x_input):
     _assert_reference(out.wout, W7X)
 
 
-# ---------------------------------------------------------------------------
-# Axisymmetric (ntor = 0) coverage. The 2D path runs nZeta = 1 through the
-# 3D-symmetric device kernels and bypasses cuFFT; it agrees with the CPU
-# build to 1e-14 across the single-grid, multigrid (solovev ns_array =
-# [5, 11, 55]), and batched modes.
-# ---------------------------------------------------------------------------
+# Axisymmetric (ntor = 0) cases: nZeta = 1 through the 3D device kernels without cuFFT,
+# agreeing with the CPU build to 1e-14 single-grid, multigrid and batched.
 SOLOVEV = {
     "wb": 0.0645507521742048,
     "raxis_cc0": 3.989401072835298,
