@@ -1113,41 +1113,36 @@ absl::StatusOr<bool> IdealMhdModel::update(
         }
 
         if (m_h_.rBtor * m_h_.bSubVVac < 0.0) {
-          return absl::InternalError(
+          return absl::FailedPreconditionError(
               "IdealMHDModel::update: rbtor and bsubvvac must have the same "
               "sign - maybe flip the sign of phiedge or the sign of the coil "
               "currents");
         } else if (fabs((m_h_.cTor - m_h_.bSubUVac) / m_h_.rBtor) > 0.01) {
-          return absl::InternalError(
+          return absl::FailedPreconditionError(
               "IdealMHDModel::update: VAC-VMEC I_TOR MISMATCH : BOUNDARY MAY "
               "ENCLOSE EXT. COIL");
         }
 
         if (r_.nsMaxF1 == m_fc_.ns) {
-          // MUST NOT BREAK TRI-DIAGONAL RADIAL COUPLING: OFFENDS
-          // PRECONDITIONER!
-          double edgePressure =
-              m_p_.evalMassProfile((m_fc_.ns - 1.5) / (m_fc_.ns - 1.0));
-          if (edgePressure != 0.0) {
-            edgePressure = m_p_.evalMassProfile(1.0) / edgePressure *
-                           m_p_.presH[r_.nsMaxH - 1 - r_.nsMinH];
-          }
-
           for (int kl = 0; kl < s_.nZnT; ++kl) {
-            // extrapolate total pressure (from inside) to LCFS
+            // extrapolate total pressure (from inside) to LCFS; this is
+            // bsqsav(:,3) in Fortran VMEC
             insideTotalPressure[kl] =
                 1.5 *
                     totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl] -
                 0.5 * totalPressure[(r_.nsMaxH - 2 - r_.nsMinH) * s_.nZnT + kl];
 
-            // net pressure from outside on LCFS
-            // NOTE: here is the interface between the fast-toroidal setup
-            // in Nestor and fast-poloidal setup in VMEC
+            // total pressure from outside on LCFS: the vacuum carries no
+            // kinetic pressure, so the boundary settles where B_vac^2/2 = p +
+            // B^2/2
+            // FIXME(eguiraud) slow loop over Nestor output
+            // NOTE: here is the interface between the fast-toroidal setup in
+            // Nestor and fast-poloidal setup in VMEC
             const int k = kl / s_.nThetaEff;
             const int l = kl % s_.nThetaEff;
             const int idx_lk = l * s_.nZeta + k;
-            double outsideEdgePressure =
-                m_h_.vacuum_magnetic_pressure[idx_lk] + edgePressure;
+            const double outsideEdgePressure =
+                m_h_.vacuum_magnetic_pressure[idx_lk];
 
             // term to enter MHD forces
             int idx_kl = (r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.nZnT + kl;
@@ -1157,6 +1152,25 @@ absl::StatusOr<bool> IdealMhdModel::update(
             // for printout: global mismatch between inside and outside
             // pressure
             delBSq[kl] = fabs(outsideEdgePressure - insideTotalPressure[kl]);
+
+            // bsqsav(:,3): the extrapolated edge pressure, reported by
+            // freeb_data for configuration zero
+            if (vac_cfg == 0) {
+              m_h_.edge_total_pressure[kl] = insideTotalPressure[kl];
+            }
+          }
+
+          // bsqsav(:,1) and bsqsav(:,2) at the iteration the vacuum solution
+          // is established, which sets kInitialized after this loop
+          if (vac_cfg == 0 &&
+              (m_vacuum_pressure_state_ == VacuumPressureState::kInitializing ||
+               m_vacuum_pressure_state_ == VacuumPressureState::kInitialized)) {
+            for (int kl = 0; kl < s_.nZnT; ++kl) {
+              m_h_.initial_plasma_pressure_at_boundary[kl] =
+                  totalPressure[(r_.nsMaxH - 1 - r_.nsMinH) * s_.nZnT + kl];
+              m_h_.initial_vacuum_pressure_at_boundary[kl] =
+                  m_h_.vacuum_magnetic_pressure[kl];
+            }  // kl
           }
           delbsq_per_cfg_[vac_cfg] = get_delbsq();
           vmecpp::StageRbsqCuda(vac_cfg, rBSq);
