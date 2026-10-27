@@ -28,14 +28,14 @@ from __future__ import annotations
 import collections
 import itertools
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy.linalg
 
-from vmecpp import autodiff_wout, geometry
+from vmecpp import _util, autodiff_wout, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 _GEOMETRY_COEFFICIENTS = (
@@ -621,6 +621,13 @@ def _implicit_vjp(
     return boundary_bars[0], profile_bars[0]
 
 
+class SolveResult(NamedTuple):
+    """Solved geometry and traced success flag."""
+
+    geometry: geometry.Geometry
+    success: jax.Array
+
+
 @dataclass(frozen=True)
 class DifferentiableVmec:
     """A callable JAX view of one fixed-boundary VMEC++ input.
@@ -631,6 +638,7 @@ class DifferentiableVmec:
     """
 
     vmec_input: Any
+    raise_on_failure: bool = True
     _solver_id: int = field(
         default_factory=lambda: next(_SOLVER_IDS),
         init=False,
@@ -756,12 +764,15 @@ class DifferentiableVmec:
         )
         return boundary_bars, profile_bars
 
-    def __call__(self, boundary, profiles=None) -> geometry.Geometry:
-        """The geometry for ``boundary`` and optional ``profiles`` values."""
-        return self._solve(boundary, profiles)[0]
+    def __call__(self, boundary, profiles=None) -> geometry.Geometry | SolveResult:
+        """Return geometry, or a :class:`SolveResult` if not raising on failure."""
+        solved, _, success = self._solve(boundary, profiles)
+        return solved if self.raise_on_failure else SolveResult(solved, success)
 
-    def _solve(self, boundary, profiles=None) -> tuple[geometry.Geometry, jax.Array]:
-        """The geometry and the non-differentiated outputs of :attr:`extra_size`."""
+    def _solve(
+        self, boundary, profiles=None
+    ) -> tuple[geometry.Geometry, jax.Array, jax.Array]:
+        """The geometry, non-differentiated extra outputs and success flag."""
         boundary = jnp.asarray(boundary, dtype=jnp.float64)
         if boundary.shape != self.parameter_shape:
             error_message = (
@@ -774,7 +785,10 @@ class DifferentiableVmec:
         # half-grid profiles, from which JAX differentiates the coefficients
         values = jax.lax.stop_gradient(profiles)
         half = autodiff_wout.half_grid_profiles(self.vmec_input, ns, profiles)
-        output_spec = jax.ShapeDtypeStruct(self.output_shape, boundary.dtype)
+        output_spec = (
+            jax.ShapeDtypeStruct(self.output_shape, boundary.dtype),
+            jax.ShapeDtypeStruct((), jnp.bool_),
+        )
         cotangent_spec = (
             jax.ShapeDtypeStruct(boundary.shape, boundary.dtype),
             jax.ShapeDtypeStruct(half.shape, boundary.dtype),
@@ -784,10 +798,21 @@ class DifferentiableVmec:
             return {name: np.asarray(value) for name, value in values.items()}
 
         def forward_callback(value, values):
-            flat = self._forward_callback(np.asarray(value), concrete(values))
-            return flat.astype(np.asarray(value).dtype, copy=False)
+            boundary = np.asarray(value)
+            profiles = concrete(values)
+            try:
+                flat = self._forward_callback(boundary, profiles)
+            except RuntimeError:
+                if self.raise_on_failure:
+                    raise
+                return np.full(
+                    self.output_shape, np.nan, np.asarray(value).dtype
+                ), np.bool_(False)
+            solve = self._cached(boundary, profiles) or {}
+            success = solve.get("success", True)
+            return flat.astype(boundary.dtype, copy=False), np.bool_(success)
 
-        def backward_callback(value, values, cotangent):
+        def backward_callback(value, values, cotangent, success):
             # Batch axes lead every argument, with size one where unbatched.
             # Cotangents at one parameter point share one factorization.
             value = np.asarray(value)
@@ -801,14 +826,35 @@ class DifferentiableVmec:
             geometry_bars = np.broadcast_to(
                 cotangent[..., : self.geometry_size], (*batch, self.geometry_size)
             ).reshape(-1, self.geometry_size)
-            if all(size == 1 for shape in parameter_batches for size in shape):
-                bars = self._backward_callback(
+            successes = np.broadcast_to(np.asarray(success), batch).reshape(-1)
+
+            def backward_at(point, bars, point_values, succeeded):
+                if not succeeded:
+                    # Preserve zero cotangents from unused branches.
+                    fill = np.where(np.any(bars != 0, axis=-1), np.nan, 0.0)
+                    return (
+                        np.broadcast_to(
+                            fill.reshape(-1, 1, 1, 1),
+                            (len(bars), *self.parameter_shape),
+                        ).copy(),
+                        np.broadcast_to(
+                            fill.reshape((-1,) + (1,) * half.ndim),
+                            (len(bars), *half.shape),
+                        ).copy(),
+                    )
+                return self._backward_callback(point, bars, point_values)
+
+            if all(
+                size == 1 for shape in parameter_batches for size in shape
+            ) and np.all(successes == successes[0]):
+                bars = backward_at(
                     value.reshape(value.shape[lead:]),
                     geometry_bars,
                     {
                         name: array.reshape(array.shape[lead:])
                         for name, array in values.items()
                     },
+                    successes[0],
                 )
             else:
                 points = np.broadcast_to(value, (*batch, *value.shape[lead:])).reshape(
@@ -821,10 +867,11 @@ class DifferentiableVmec:
                     for name, array in values.items()
                 }
                 per_point = [
-                    self._backward_callback(
+                    backward_at(
                         points[k],
                         geometry_bars[k : k + 1],
                         {name: array[k] for name, array in point_values.items()},
+                        successes[k],
                     )
                     for k in range(points.shape[0])
                 ]
@@ -847,22 +894,24 @@ class DifferentiableVmec:
 
         def solve_fwd(value, half, values):
             del half
-            return forward(value, values), (value, values)
+            output = forward(value, values)
+            return output, (value, values, output[1])
 
         def solve_bwd(residuals, cotangent):
-            value, values = residuals
+            value, values, success = residuals
             bars = jax.pure_callback(
                 backward_callback,
                 cotangent_spec,
                 value,
                 values,
-                cotangent,
+                cotangent[0],
+                success,
                 vmap_method="expand_dims",
             )
             return (*bars, jax.tree.map(jnp.zeros_like, values))
 
         solve_flat.defvjp(solve_fwd, solve_bwd)
-        flat = solve_flat(boundary, half, values)
+        flat, success = solve_flat(boundary, half, values)
         mpol = self.vmec_input.mpol
         ntor = self.vmec_input.ntor
         modes = ns * mpol * (ntor + 1)
@@ -871,10 +920,14 @@ class DifferentiableVmec:
         for _ in _GEOMETRY_COEFFICIENTS:
             arrays.append(flat[offset : offset + modes].reshape(ns, mpol, ntor + 1))
             offset += modes
-        return geometry.Geometry(*arrays, nfp=self.vmec_input.nfp), flat[offset:]
+        return (
+            geometry.Geometry(*arrays, nfp=self.vmec_input.nfp),
+            flat[offset:],
+            success,
+        )
 
 
-def make_solver(vmec_input) -> DifferentiableVmec:
+def make_solver(vmec_input, *, raise_on_failure: bool = True) -> DifferentiableVmec:
     """Return a JAX-compatible callable that runs VMEC++ for vmec_input.
 
     Example:
@@ -890,6 +943,11 @@ def make_solver(vmec_input) -> DifferentiableVmec:
     Forward execution and the VJP both invoke VMEC++ in memory. The VJP is
     available only in an Enzyme-enabled build, because it requires the exact
     transpose of the force residual. No finite-difference derivative is used.
+
+    ``raise_on_failure=False`` returns ``SolveResult(geometry, success)``.
+    Failed solves have NaN geometry and derivatives, except zero cotangents
+    from unused branches. Branch on ``success`` with ``jax.lax.cond``.
+    Input-validation errors still raise.
     """
     if not _vmecpp.VMECPP_ENABLE_ENZYME:
         error_message = (
@@ -898,7 +956,7 @@ def make_solver(vmec_input) -> DifferentiableVmec:
             "No finite-difference derivative is used."
         )
         raise RuntimeError(error_message)
-    return DifferentiableVmec(vmec_input)
+    return DifferentiableVmec(vmec_input, raise_on_failure=raise_on_failure)
 
 
 @dataclass(frozen=True)
@@ -928,6 +986,11 @@ class _RunSolver(DifferentiableVmec):
             max_threads=self.max_threads,
             verbose=_vmecpp.OutputMode(self.verbose),
         )
+        if not self.raise_on_failure and not _util.wout_converged(output.wout):
+            error_message = (
+                f"VMEC++ did not converge: ier_flag = {output.wout.ier_flag}"
+            )
+            raise RuntimeError(error_message)
         initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
         model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)
         flip = -1.0 if model.have_to_flip_theta else 1.0
@@ -958,6 +1021,7 @@ class _RunSolver(DifferentiableVmec):
             profiles,
             {
                 "state": state,
+                "success": _util.wout_converged(output.wout),
                 "wout_fields": dict(wout.__dict__),
                 "tables": vmecpp._output_tables_from_cpp(output),
                 "output": flat,
@@ -976,4 +1040,4 @@ class _RunSolver(DifferentiableVmec):
         return None
 
 
-__all__ = ["DifferentiableVmec", "make_solver"]
+__all__ = ["DifferentiableVmec", "SolveResult", "make_solver"]

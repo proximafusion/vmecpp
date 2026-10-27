@@ -75,6 +75,36 @@ print(f"Iterations completed: {output.wout.itfsq}")
 
 ---
 
+### Handling Differentiable Failures Under JIT
+
+`raise_on_failure=False` reports solver failures through traced `output.success`,
+with all other traced leaves set to NaN. Branch with `jax.lax.cond`:
+
+```python
+import jax
+
+jax.config.update("jax_enable_x64", True)
+
+@jax.jit
+def objective(boundary):
+    candidate = vmec_input.model_copy(
+        update={"rbc": boundary[0], "zbs": boundary[1]}
+    )
+    output = vmecpp.run(candidate, raise_on_failure=False, verbose=False)
+    return jax.lax.cond(
+        output.success,
+        lambda: output.wout.aspect,
+        lambda: 1.0e6,
+    )
+```
+
+This uses the differentiable fixed-boundary solver; C++ tables and diagnostics
+are unavailable. Input-validation errors still raise.
+
+`autodiff.make_solver(vmec_input, raise_on_failure=False)` similarly returns
+`SolveResult(geometry, success)`. Failed-solve derivatives are NaN unless the
+failed solve is unused, as in the constant fallback above.
+
 ## 2. Free-Boundary Divergence on Shaped Boundaries
 
 ### Symptom

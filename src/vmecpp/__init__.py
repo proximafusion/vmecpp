@@ -2720,6 +2720,9 @@ class JxBOut(BaseModelWithNumpy):
 class VmecOutput(BaseModelWithNumpy):
     """Container for the full output of a VMEC run."""
 
+    success: bool = True
+    """Convergence flag; traced for differentiable runs."""
+
     input: VmecInput
     """The input to the VMEC run that produced this output."""
 
@@ -2861,6 +2864,7 @@ def _run_traced(
     max_threads: int | None,
     verbose: bool | int | OutputMode,
     restart_from: VmecOutput | None,
+    raise_on_failure: bool,
 ) -> VmecOutput:
     """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
 
@@ -2909,7 +2913,10 @@ def _run_traced(
         update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
     )
     solver = autodiff._RunSolver(
-        template, max_threads=max_threads, verbose=_output_mode(verbose).value
+        template,
+        raise_on_failure=raise_on_failure,
+        max_threads=max_threads,
+        verbose=_output_mode(verbose).value,
     )
     with enable_x64(True):
         boundary = jax.numpy.stack(
@@ -2918,7 +2925,7 @@ def _run_traced(
                 jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
             ]
         )
-        geometry, extra = solver._solve(boundary, profiles)
+        geometry, extra, success = solver._solve(boundary, profiles)
         extra = jax.lax.stop_gradient(extra)
         mass_half, iotas, buco = jax.numpy.split(extra[:-1], 3)
         # the solver's profiles, with the derivative of their parameterization
@@ -2926,7 +2933,7 @@ def _run_traced(
         half = half - jax.lax.stop_gradient(half)
         mass_half, iotas, buco = (
             mass_half + half[0],
-            iotas + extra[-1] * half[1],
+            iotas + jax.numpy.where(success, extra[-1], 1.0) * half[1],
             buco + half[2],
         )
         # With ncurr = 1, iota follows from the geometry through the current
@@ -2937,7 +2944,7 @@ def _run_traced(
             profile = {"iota_half": iotas}
         # The forward callback has run unless this is a jax.jit trace.
         jax.effects_barrier()
-        forward = solver.forward_outputs()
+        forward = solver.forward_outputs() if raise_on_failure else None
         if forward is None:
             fields = {
                 **autodiff_wout.static_fields(vmec_input),
@@ -2963,11 +2970,35 @@ def _run_traced(
             }
             fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
-        quantities = autodiff_wout.wout_quantities(
-            geometry, template, mass_half=mass_half, **profile
-        )
+
+        def quantities_for(geometry, mass_half, profile):
+            return autodiff_wout.wout_quantities(
+                geometry, template, mass_half=mass_half, **profile
+            )
+
+        if raise_on_failure:
+            quantities = quantities_for(geometry, mass_half, profile)
+        else:
+            shapes = jax.eval_shape(quantities_for, geometry, mass_half, profile)
+            quantities = jax.lax.cond(
+                success,
+                lambda args: quantities_for(*args),
+                lambda _: jax.tree.map(
+                    lambda shape: jax.numpy.full(
+                        shape.shape, jax.numpy.nan, shape.dtype
+                    ),
+                    shapes,
+                ),
+                (geometry, mass_half, profile),
+            )
+            vmec_input = jax.tree.map(
+                lambda value: jax.numpy.where(success, value, jax.numpy.nan),
+                vmec_input,
+            )
     wout = VmecWOut.model_construct(**{**fields, **quantities})
-    return VmecOutput.model_construct(input=vmec_input, wout=wout, **others)
+    return VmecOutput.model_construct(
+        input=vmec_input, wout=wout, success=success, **others
+    )
 
 
 _progress_tip_shown = False
@@ -3142,6 +3173,7 @@ def run(
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
     restart_from: VmecOutput | None = None,
     iteration_callback: typing.Callable[[SolverState], bool | None] | None = None,
+    raise_on_failure: bool = True,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
     and free-boundary calculations.
@@ -3173,6 +3205,10 @@ def run(
             value that does not convert to a bool stops the run with a ``TypeError``. With
             ``ncurr = 1`` the callback may change the values of ``state.curr_h``, the
             enclosed current the following force evaluations prescribe.
+        raise_on_failure: ``False`` uses the differentiable fixed-boundary solver
+            and reports failures via traced ``output.success``, with other traced
+            leaves set to NaN. C++ tables and diagnostics are unavailable.
+            Input-validation errors still raise.
 
     If `input.mpol` and/or `input.ntor` is a sequence rather than a plain int, `run` performs
     continuation in Fourier resolution: each entry pairs with the corresponding `input.ns_array`
@@ -3191,13 +3227,22 @@ def run(
     input = VmecInput.model_validate(input)
 
     traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
-    if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
+    if not raise_on_failure or any(
+        isinstance(getattr(input, name), jax.core.Tracer) for name in traceable
+    ):
+        if iteration_callback is not None:
+            msg = "run() with a traced boundary does not support iteration_callback"
+            raise NotImplementedError(msg)
+        if max_threads is not None and max_threads <= 0:
+            msg = "The number of threads must be >=1; pass None to use all available threads"
+            raise ValueError(msg)
         return _run_traced(
             input,
             magnetic_field,
             max_threads=max_threads,
             verbose=verbose,
             restart_from=restart_from,
+            raise_on_failure=raise_on_failure,
         )
 
     if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
@@ -3280,7 +3325,10 @@ def run(
 
     wout = VmecWOut._from_cpp_wout(cpp_output_quantities.wout)
     return VmecOutput(
-        input=input, wout=wout, **_output_tables_from_cpp(cpp_output_quantities)
+        input=input,
+        wout=wout,
+        success=_util.wout_converged(wout),
+        **_output_tables_from_cpp(cpp_output_quantities),
     )
 
 
