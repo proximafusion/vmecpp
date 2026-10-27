@@ -351,7 +351,21 @@ class VmecInput(BaseModelWithNumpy):
     ftol_array: jt.Float[np.ndarray, "num_grids"] = pydantic.Field(
         default_factory=lambda: np.array([1.0e-10])
     )
-    """Requested force tolerance for convergence per multigrid step."""
+    """Requested force tolerance for convergence per multigrid step.
+
+    In free-boundary runs the R/Z residuals normally exclude the LCFS, so this
+    tolerance does not bound the boundary position. See ``ftol_edge``.
+    """
+
+    ftol_edge: float = pydantic.Field(default=0.0, ge=0.0, allow_inf_nan=False)
+    """Additional tolerance for the LCFS-only R/Z force residuals at every stage.
+
+    Zero (default) disables this criterion, preserving the legacy stopping rule.
+    Positive values require both ``fsqr_edge`` and ``fsqz_edge`` to meet this
+    tolerance, with vacuum pressure active, as well as the usual ``ftol_array``
+    criterion. Ignored in fixed-boundary runs. This is a normalized squared-force
+    tolerance, not a bound on geometric displacement in metres.
+    """
 
     niter_array: jt.Int[np.ndarray, "num_grids"] = pydantic.Field(
         default_factory=lambda: np.array([100], dtype=np.int64)
@@ -1214,6 +1228,21 @@ class VmecWOut(BaseModelWithNumpy):
     fsql: FloatOrJax
     """Invariant force residual of the force on ``lambda`` at end of the run."""
 
+    fsqr_edge: FloatOrJax = np.nan
+    """LCFS-only squared R force residual, normalized like ``fsqr``.
+
+    Zero for fixed-boundary runs; NaN when absent from an older file.
+    """
+
+    fsqz_edge: FloatOrJax = np.nan
+    """LCFS-only squared Z force residual, normalized like ``fsqz``.
+
+    Zero for fixed-boundary runs; NaN when absent from an older file.
+    """
+
+    ftol_edge: FloatOrJax = 0.0
+    """Additional LCFS force tolerance; zero disables the boundary stopping test."""
+
     ftolv: FloatOrJax
     """Force tolerance value used to determine convergence."""
 
@@ -1261,6 +1290,16 @@ class VmecWOut(BaseModelWithNumpy):
         default_factory=lambda: np.array([])
     )
     """Evolution of the lambda force residual along the run."""
+
+    force_residual_r_edge: jt.Float[NpOrJax, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """LCFS-only R force residual history, sampled like ``force_residual_r``."""
+
+    force_residual_z_edge: jt.Float[NpOrJax, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """LCFS-only Z force residual history, sampled like ``force_residual_z``."""
 
     delbsq: jt.Float[NpOrJax, "time"] = pydantic.Field(
         default_factory=lambda: np.array([])
@@ -3079,8 +3118,17 @@ class SolverState:
     fsql: float
     """Invariant force residual of lambda."""
 
+    fsqr_edge: float
+    """LCFS-only invariant R force residual; zero for fixed-boundary runs."""
+
+    fsqz_edge: float
+    """LCFS-only invariant Z force residual; zero for fixed-boundary runs."""
+
     ftol: float
     """Tolerance the three residuals are tested against."""
+
+    ftol_edge: float
+    """Additional LCFS force tolerance; zero disables the boundary stopping test."""
 
     delt: float
     """Current time step."""
@@ -3122,7 +3170,10 @@ class SolverState:
             fsqr=cpp_state.fsqr,
             fsqz=cpp_state.fsqz,
             fsql=cpp_state.fsql,
+            fsqr_edge=cpp_state.fsqr_edge,
+            fsqz_edge=cpp_state.fsqz_edge,
             ftol=cpp_state.ftol,
+            ftol_edge=cpp_state.ftol_edge,
             delt=cpp_state.delt,
             restart_reason=cpp_state.restart_reason,
             jacobian_resets=cpp_state.jacobian_resets,

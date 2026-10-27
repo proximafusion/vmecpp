@@ -115,7 +115,11 @@ struct SolverState {
   double fsqr;
   double fsqz;
   double fsql;
+  // LCFS-only invariant residuals, zero for fixed-boundary runs.
+  double fsqr_edge;
+  double fsqz_edge;
   double ftol;
+  double ftol_edge;
   // current time step
   double delt;
   // RestartReason of this iteration; NO_RESTART unless the state was reverted
@@ -245,6 +249,8 @@ class Vmec {
   // magnetic_field_ has been set. The solvers are ns-independent and persist
   // across multigrid steps.
   void SetupVacuumSolvers();
+  // Whether the last evaluated forces meet all enabled convergence criteria.
+  bool HasConverged() const;
 
   // is_checkpoint_step says whether the multi-grid step being initialized is
   // the one the caller asked to checkpoint in.

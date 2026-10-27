@@ -434,6 +434,8 @@ void IdealMhdModel::evalFResInvar(const Eigen::Vector3d& localFResInvar) {
     m_fc_.fsqr = m_fc_.fResInvar[0] * m_h_.fNormRZ * r1scale;
     m_fc_.fsqz = m_fc_.fResInvar[1] * m_h_.fNormRZ * r1scale;
     m_fc_.fsql = m_fc_.fResInvar[2] * m_h_.fNormL;
+    m_fc_.fsqr_edge *= m_h_.fNormRZ * r1scale;
+    m_fc_.fsqz_edge *= m_h_.fNormRZ * r1scale;
   }
 }
 
@@ -972,6 +974,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
   localFResInvar.setZero();
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);
 
+  if (r_.nsMaxF1 == m_fc.ns) {
+    const Eigen::Vector2d edge_residuals = m_decomposed_f.EdgeResiduals();
+    m_fc.fsqr_edge = edge_residuals[0];
+    m_fc.fsqz_edge = edge_residuals[1];
+  }
   evalFResInvar(localFResInvar);
 
   if (checkpoint == VmecCheckpoint::INVARIANT_RESIDUALS &&

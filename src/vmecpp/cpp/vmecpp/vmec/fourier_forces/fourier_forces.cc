@@ -158,4 +158,33 @@ void FourierForces::residuals(Eigen::Vector3d& fRes,
   fRes[2] = local_fResL;
 }
 
+Eigen::Vector2d FourierForces::EdgeResiduals() const {
+  Eigen::Vector2d residuals = Eigen::Vector2d::Zero();
+  if (nsMax_ != ns) {
+    return residuals;
+  }
+  const int num_modes = s_.mpol * (s_.ntor + 1);
+  const int offset = (ns - 1 - nsMin_) * num_modes;
+  const auto squared_norm = [offset,
+                             num_modes](std::span<const double> forces) {
+    return Eigen::Map<const Eigen::VectorXd>(forces.data() + offset, num_modes)
+        .squaredNorm();
+  };
+  residuals[0] = squared_norm(frcc);
+  residuals[1] = squared_norm(fzsc);
+  if (s_.lthreed) {
+    residuals[0] += squared_norm(frss);
+    residuals[1] += squared_norm(fzcs);
+  }
+  if (s_.lasym) {
+    residuals[0] += squared_norm(frsc);
+    residuals[1] += squared_norm(fzcc);
+    if (s_.lthreed) {
+      residuals[0] += squared_norm(frcs);
+      residuals[1] += squared_norm(fzss);
+    }
+  }
+  return residuals;
+}
+
 }  // namespace vmecpp

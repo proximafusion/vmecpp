@@ -174,5 +174,44 @@ TEST_F(FourierForcesMoveTest, CopyAssignmentCreatesIndependentCopy) {
   EXPECT_DOUBLE_EQ(source->frcc[0], 11.0);
 }
 
+TEST(FourierForcesTest, EdgeResiduals) {
+  constexpr int kNs = 9;
+  for (bool lasym : {false, true}) {
+    for (int ntor : {0, 2}) {
+      const Sizes sizes(lasym, 5, 4, ntor, 0, 10);
+      for (bool lfreeb : {false, true}) {
+        for (int thread_id = 0; thread_id < 2; ++thread_id) {
+          RadialPartitioning partitioning;
+          partitioning.adjustRadialPartitioning(2, thread_id, kNs, lfreeb,
+                                                false);
+          FourierForces forces(&sizes, &partitioning, kNs);
+          for (auto coefficients :
+               {forces.frcc, forces.frss, forces.frsc, forces.frcs, forces.fzsc,
+                forces.fzcs, forces.fzcc, forces.fzss}) {
+            for (double& coefficient : coefficients) coefficient = 1.0;
+          }
+          Eigen::Vector2d expected = Eigen::Vector2d::Zero();
+          if (lfreeb && thread_id == 1) {
+            const int num_components = (lasym ? 2 : 1) * (ntor > 0 ? 2 : 1);
+            expected.setConstant(sizes.mpol * (ntor + 1) * num_components);
+            // Interior forces must not contribute to the edge diagnostic.
+            forces.frcc[0] = 100.0;
+            forces.fzsc[0] = 200.0;
+          }
+          EXPECT_EQ(forces.EdgeResiduals(), expected);
+
+          Eigen::Vector3d interior, including_edge;
+          forces.residuals(interior, false);
+          forces.residuals(including_edge, true);
+          if (lfreeb) {
+            EXPECT_EQ(including_edge.head<2>() - interior.head<2>(), expected);
+          }
+          EXPECT_EQ(including_edge[2], interior[2]);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace vmecpp

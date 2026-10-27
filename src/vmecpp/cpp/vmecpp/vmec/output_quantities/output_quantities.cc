@@ -990,6 +990,11 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(fsqr);
   WRITEMEMBER(fsqz);
   WRITEMEMBER(fsql);
+  WRITEMEMBER(fsqr_edge);
+  WRITEMEMBER(fsqz_edge);
+  WRITEMEMBER(ftol_edge);
+  WRITEMEMBER(force_residual_r_edge);
+  WRITEMEMBER(force_residual_z_edge);
   WRITEMEMBER(iotaf);
   WRITEMEMBER(q_factor);
   WRITEMEMBER(presf);
@@ -1127,6 +1132,11 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(fsqr);
   READMEMBER(fsqz);
   READMEMBER(fsql);
+  READMEMBER_OPTIONAL(fsqr_edge);
+  READMEMBER_OPTIONAL(fsqz_edge);
+  READMEMBER_OPTIONAL(ftol_edge);
+  READMEMBER_OPTIONAL(force_residual_r_edge);
+  READMEMBER_OPTIONAL(force_residual_z_edge);
   READMEMBER_COMPAT(iotaf, "iota_full");
   READMEMBER_COMPAT(q_factor, "safety_factor");
   READMEMBER_COMPAT(presf, "pressure_full");
@@ -4891,6 +4901,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
   wout.ns = fc.ns;
   wout.ftolv = fc.ftolv;
+  wout.ftol_edge = indata.ftol_edge;
 
   // niter is an output rather than an input echo. It stays in this group
   // because the wout layout is fixed by what Fortran VMEC writes.
@@ -4948,10 +4959,14 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.fsqr = fc.fsqr;
   wout.fsqz = fc.fsqz;
   wout.fsql = fc.fsql;
+  wout.fsqr_edge = fc.fsqr_edge;
+  wout.fsqz_edge = fc.fsqz_edge;
 
   wout.force_residual_r = ToEigenVector(fc.force_residual_r);
   wout.force_residual_z = ToEigenVector(fc.force_residual_z);
   wout.force_residual_lambda = ToEigenVector(fc.force_residual_lambda);
+  wout.force_residual_r_edge = ToEigenVector(fc.force_residual_r_edge);
+  wout.force_residual_z_edge = ToEigenVector(fc.force_residual_z_edge);
   wout.fsqt = wout.force_residual_r + wout.force_residual_z +
               wout.force_residual_lambda;
   wout.delbsq = ToEigenVector(fc.delbsq);
