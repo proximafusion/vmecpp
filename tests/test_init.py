@@ -324,6 +324,8 @@ _MISSING_FORTRAN_VARIABLES = [
 """The complete list of variables that can be found in Fortran VMEC wout files but not
 in wout files produced by VMEC++."""
 
+_EXTRA_VMEC_VARIABLES = {"lcfs_force"}
+
 
 def _to_8_52_reference(varname, actual, desired, xm_nyq):
     """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
@@ -370,7 +372,9 @@ def test_vmecwout_io():
     expected_variables = set(expected_dataset.variables.keys()) - set(
         _MISSING_FORTRAN_VARIABLES
     )
-    assert expected_variables == set(test_dataset.variables.keys())
+    assert expected_variables | _EXTRA_VMEC_VARIABLES == set(
+        test_dataset.variables.keys()
+    )
 
     for varname, expected_value in expected_dataset.variables.items():
         if varname in _MISSING_FORTRAN_VARIABLES:
