@@ -14,17 +14,24 @@ Landreman and Tracey, "Analytic non-axisymmetric 3D MHD equilibria without stell
 symmetry" (arXiv:2610.07304), add to each family a parameter that breaks stellarator
 symmetry, tau0 to the first (their section 2) and tau1 to the second (their section
 3), Landreman's families being those at zero; members with a nonzero one run with
-lasym.
+lasym. Sengupta et al., "Exact Nonsymmetric Vacuum Magnetic Fields with Nested Toroidal
+Surfaces" (arXiv:2610.28466), give vacuum fields B = grad Phi with nested surfaces and
+no continuous symmetry, Phi and the surface label psi being Jacobi elliptic functions
+of confocal ellipsoidal coordinates (u, v, zeta) of the Cartesian position; a member of
+their ellipsoidal family (appendix A) runs with zero pressure and zero toroidal current,
+inside a given boundary and in free boundary, its field then being the external field.
 
-This file writes VMEC++ inputs for members of both families from the formulas, runs
-VMEC++ over sequences of radial and angular resolutions, and measures, at VMEC++'s own
-points, quantities that do not depend on its poloidal angle:
+This file writes VMEC++ inputs for these members from the formulas, runs VMEC++ over
+sequences of radial and angular resolutions, and measures, at VMEC++'s own points,
+quantities that do not depend on its poloidal angle:
 
 - psi on each full-grid surface against the surface's flux label,
 - the magnetic axis,
 - the field vector at the half-grid points,
 - the toroidal current enclosed by each half-grid surface (buco), and its radial
   derivative on the full grid (jcurv),
+- for the vacuum members, whose enclosed current is zero, iota on the full grid and psi
+  on the boundary,
 
 with their observed orders of convergence, and plots them. Each run starts from the
 coarser grids of MULTIGRID below its ns and takes every grid to the residual ftol_for
@@ -43,27 +50,35 @@ The members are:
   cent, and rbs up to 15 per cent of the largest m = 1 rbc; the tests use it too;
 - "sheared-near-3.5" (eps = 1, S = 1.75, lambda = 2.65, k_b = 0.2): iota from 3.43
   to 3.44, 0.06 below the resonance at 7/2 of m = 4, n = 14, and beta 1.8 per cent;
-- "sheared-A", the configuration A of the paper's supplement (eps = 1.08, S = 3,
+- "sheared-A", the configuration A of Landreman's supplement (eps = 1.08, S = 3,
   lambda = 3.5, k_b = 0.7): iota from 5.69 to 6.22, which crosses 6, and beta 20 per
   cent;
 - "iota2" (eps = 0.25, delta = 1/64): every surface rational;
 - "iota2-asym", "iota2" with tau0 = 0.5, whose axis, centred at Z = -1/3, has no
-  stellarator symmetry.
+  stellarator symmetry;
+- "vacuum", a member of the ellipsoidal family of Sengupta et al. (k = m_g = 1/5, u0 =
+  v0 = 2 F(pi/4 | 1/5), delta = 0) inside the surface psi = psi_0 + 0.1, psi_0 = 4
+  being the label on the axis: two field periods, stellarator symmetry and iota from
+  -0.1437 on the axis to -0.1368 at the boundary;
+- "vacuum-free", "vacuum" in free boundary, starting from the surface psi_0 + 0.05: the
+  run has to find the boundary.
 
 The demo suite runs "sheared" at two radial resolutions; the quick suite runs every
-member but "iota2-asym" up to ns = 100, with an angular scan of "sheared" at ns = 100;
-the full suite runs every member up to ns = 1000, with an angular scan at ns = 400.
-With --out the results go to DIR as JSON, markdown tables and plots of the deviations
-against h and mpol and of the enclosed current over s. The summary ends with checks on
-the scans of "sheared": convergence in ns at O(h) and in mpol and ntor, the magnetic
-axis, B against its derivative jcurv, and the enclosed current at O(h^2) with its
-limit at the axis; with --check a failed check fails the run. With --reference DIR, a
-checkout of the repository at REFERENCE_COMMIT, a further check compares the formulas
-here with the repository's own functions.
+member but "iota2-asym" up to ns = 100, "vacuum-free" at ns = 25 and 50, with an
+angular scan of "sheared" at ns = 100; the full suite runs every member up to ns =
+1000, "vacuum-free" up to ns = 400, with an angular scan at ns = 400. With --out the
+results go to DIR as JSON, markdown tables and plots of the deviations against h and
+mpol and of the enclosed current, or iota, over s. The summary ends with checks on the
+convergence in ns of the vacuum members and on the scans of "sheared": convergence in
+ns at O(h) and in mpol and ntor, the magnetic axis, B against its derivative jcurv, and
+the enclosed current at O(h^2) with its limit at the axis; with --check a failed check
+fails the run. With --reference DIR, a checkout of the repository at REFERENCE_COMMIT,
+a further check compares the formulas here with the repository's own functions.
 
-The paper's units have mu0 = 1: B is in tesla and lengths in metres, so the pressure
-is p / mu0 in pascals. The paper's poloidal angles turn clockwise in an (R, Z)
-section, the opposite of VMEC's theta, so VMEC's iota is minus the paper's.
+The papers' units have mu0 = 1: B is in tesla and lengths in metres, so the pressure
+is p / mu0 in pascals. The poloidal angles of Landreman and of Issan et al. turn
+clockwise in an (R, Z) section, the opposite of VMEC's theta, so VMEC's iota is minus
+theirs.
 """
 
 from __future__ import annotations
@@ -82,6 +97,7 @@ from typing import Any
 
 import numpy as np
 from numpy.polynomial import Chebyshev, Polynomial
+from scipy.special import ellipj, ellipk, ellipkinc
 
 import vmecpp
 
@@ -469,17 +485,354 @@ class Iota2:
         )
 
 
+def _sn(re, im, m):
+    """Jacobi's sn(re + i im | m) for real re, im (Abramowitz and Stegun 16.21.2)."""
+    s, c, d, _ = ellipj(re, m)
+    s1, c1, d1, _ = ellipj(im, 1.0 - m)
+    return (s * d1 + 1j * c * d * s1 * c1) / (c1 * c1 + m * s * s * s1 * s1)
+
+
+@dataclasses.dataclass(frozen=True)
+class Vacuum:
+    """A vacuum field of the ellipsoidal family of Sengupta et al. with one repetition
+    of the profiles, the axis at u = v = u0 and the phase delta = 0, inside the surface
+    psi = psi_0 + dpsi.
+
+    Its parameters are the modulus k of the profiles, the shape parameter m_g of the
+    confocal ellipsoids, u0 and dpsi, psi_0 = 1/k - 1 being the label on the axis; the
+    scale kappa = K(1 - k^2) / (2 K(1 - m_g)) makes the field single valued. A
+    free-boundary member takes its field as the external field and starts from the
+    surface psi_0 + dpsi / 2.
+    """
+
+    name: str
+    k: float
+    m_g: float
+    u0: float
+    dpsi: float
+    free_boundary: bool = False
+
+    @property
+    def _psi0(self):
+        return 1.0 / self.k - 1.0
+
+    @property
+    def _kappa(self):
+        return ellipk(1.0 - self.k**2) / (2.0 * ellipk(1.0 - self.m_g))
+
+    def _position(self, u, v, zeta):
+        """X(u, v, zeta), its derivatives in u, v and zeta, and P and E of the metric
+        (Sengupta et al.'s equations A1 and A4)."""
+        m_t = 1.0 - self.m_g
+        sr, cr, dr, _ = ellipj((u + v) / 4.0, self.m_g)
+        ss, cs, ds, _ = ellipj((u - v) / 4.0, self.m_g)
+        st, ct, dt, _ = ellipj((zeta + ellipk(m_t)) / 2.0, m_t)
+        x = np.stack([cr * st * ds, dr * ct * cs, dt * ss]) / sr
+        # derivatives in the arguments (u + v) / 4, (u - v) / 4 and tau_g
+        d_r = -np.stack([dr * st * ds, cr * ct * cs, cr * dr * dt * ss]) / sr**2
+        d_s = (
+            np.stack([-self.m_g * cr * st * ss * cs, -dr * ct * ss * ds, dt * cs * ds])
+            / sr
+        )
+        d_t = (
+            np.stack([cr * ds * ct * dt, -dr * cs * st * dt, -m_t * st * ct * ss]) / sr
+        )
+        lam, nu, mu = sr**-2, self.m_g * ss**2, 1.0 - m_t * st**2
+        return (
+            x,
+            (d_r + d_s) / 4.0,
+            (d_r - d_s) / 4.0,
+            d_t / 2.0,
+            (lam - nu) / 4.0,
+            (lam + nu - 2.0 * mu) / 4.0,
+        )
+
+    def _covariant(self, u, v, zeta):
+        """B_u, B_v and B_zeta, the derivatives of the potential of Sengupta et al.'s
+        equation 1: the imaginary parts of sn(z_1) and sn(z_2) and the real part of
+        their sum."""
+        m, kappa = self.k**2, self._kappa
+        tau = kappa * zeta
+        p1 = _sn(ellipk(m) + kappa * (u - self.u0), tau, m)
+        p2 = _sn(ellipk(m) + kappa * (v - self.u0), ellipk(1.0 - m) + tau, m)
+        return p1.imag, p2.imag, (p1 + p2).real
+
+    def _label(self, u, v, zeta):
+        """The label psi of Sengupta et al.'s equation 2."""
+        m, kappa = self.k**2, self._kappa
+        _, cx, dx, _ = ellipj(kappa * (u - self.u0), m)
+        _, cy, dy, _ = ellipj(kappa * (v - self.u0), m)
+        U, V = cx / dx, dy / (self.k * cy)
+        s, c, d, _ = ellipj(kappa * zeta, 1.0 - m)
+        return (
+            d
+            * (V - U)
+            / np.sqrt((c * c + m * (U * s) ** 2) * (c * c + m * (V * s) ** 2))
+        )
+
+    def _field(self, u, v, zeta):
+        """The Cartesian field at X(u, v, zeta), Sengupta et al.'s equation A2."""
+        _, xu, xv, xz, p, e = self._position(u, v, zeta)
+        bu, bv, bz = self._covariant(u, v, zeta)
+        h = e / p
+        return ((bu - h * bv) * xu + (bv - h * bu) * xv + bz * xz) / (p * p - e * e)
+
+    @property
+    def _semiaxes(self):
+        """The semiaxes in X and Y of the axis, an ellipse in the plane Z = 0."""
+        s, c, d, _ = ellipj(self.u0 / 2.0, self.m_g)
+        return c / s, d / s
+
+    def axis(self, phi):
+        a, b = self._semiaxes
+        return a * b / np.hypot(b * np.cos(phi), a * np.sin(phi)), 0.0 * phi
+
+    def _axis_zeta(self, phi):
+        """The zeta of the axis point in the plane phi."""
+        a, b = self._semiaxes
+        m_t = 1.0 - self.m_g
+        amplitude = np.arctan2(np.cos(phi) / a, np.sin(phi) / b)
+        return 2.0 * ellipkinc(amplitude, m_t) - ellipk(m_t)
+
+    def _coordinates(self, x, y, z):
+        """(u, v, zeta) at Cartesian points, by Newton's method from the axis point in
+        the same plane phi."""
+        target = np.stack(np.broadcast_arrays(x, y, z)).astype(float)
+        zeta = self._axis_zeta(np.arctan2(target[1], target[0]))
+        q = np.stack([np.full_like(zeta, self.u0), np.full_like(zeta, self.u0), zeta])
+        for _ in range(30):
+            position, xu, xv, xz, _, _ = self._position(*q)
+            jacobian = np.moveaxis(np.stack([xu, xv, xz], axis=-1), 0, -2)
+            residual = np.moveaxis(position - target, 0, -1)[..., None]
+            step = np.moveaxis(np.linalg.solve(jacobian, residual)[..., 0], -1, 0)
+            q -= step
+            if np.abs(step).max() < 1e-13:
+                break
+        return q
+
+    def field(self, x, y, z):
+        """The Cartesian field and psi - psi_0."""
+        q = self._coordinates(x, y, z)
+        return (*self._field(*q), self._label(*q) - self._psi0)
+
+    def magnetic_field(self, r, phi, z):
+        """The cylindrical components of the field, the external field when the boundary
+        is free."""
+        bx, by, bz = self._field(
+            *self._coordinates(r * np.cos(phi), r * np.sin(phi), z)
+        )
+        return (
+            bx * np.cos(phi) + by * np.sin(phi),
+            by * np.cos(phi) - bx * np.sin(phi),
+            bz,
+        )
+
+    @property
+    def _rho_max(self):
+        """The radius of the largest disc about the axis within the regular domain.
+
+        In the (u, v) plane the domain is where |kappa (u - u0)| and |kappa (v - u0)|
+        are below K(k^2), 0 < u + v < 4 K(m_g) and |u - v| < 4 K(m_g).
+        """
+        k_g = ellipk(self.m_g)
+        return min(
+            ellipk(self.k**2) / self._kappa,
+            math.sqrt(2.0) * self.u0,
+            math.sqrt(2.0) * (2.0 * k_g - self.u0),
+            2.0 * math.sqrt(2.0) * k_g,
+        )
+
+    def _rho(self, psi, du, dv, zeta):
+        """The distance from the axis along (du, dv) in the (u, v) plane at which the
+        label, which increases along every such ray, reaches psi, by bisection."""
+        lo = np.zeros(np.broadcast(psi, du, dv, zeta).shape)
+        hi = np.full(lo.shape, 0.95 * self._rho_max)
+        for _ in range(52):
+            mid = (lo + hi) / 2.0
+            inside = self._label(self.u0 + mid * du, self.u0 + mid * dv, zeta) < psi
+            lo, hi = np.where(inside, mid, lo), np.where(inside, hi, mid)
+        return (lo + hi) / 2.0
+
+    def _label_at(self, r, phi, z):
+        """The label above psi_0 at cylindrical points, infinite at points that Newton's
+        method does not reach from the axis inside the disc of _rho_max."""
+        x, y = r * np.cos(phi), r * np.sin(phi)
+        q = self._coordinates(x, y, z)
+        miss = ~(
+            np.linalg.norm(self._position(*q)[0] - np.stack([x, y, z]), axis=0) < 1e-9
+        )
+        miss |= ~(np.hypot(q[0] - self.u0, q[1] - self.u0) < self._rho_max)
+        return np.where(miss, np.inf, self._label(*q) - self._psi0)
+
+    def section(self, psi, theta, phi):
+        """R and Z of the surface psi in the plane phi at the angle theta about the axis
+        in the coordinates that make the surfaces near the axis circles.
+
+        These coordinates are H^(1/2) times the offset from the axis in (R, Z), H being
+        the Hessian of psi at the axis from second differences, so the point lies on the
+        ray from the axis along H^(-1/2) (cos theta, sin theta); bisection finds it,
+        from twice the distance at which the quadratic form of H reaches psi.
+        """
+        theta, phi = np.broadcast_arrays(
+            np.asarray(theta, float), np.asarray(phi, float)
+        )
+        r0, z0 = self.axis(phi)
+
+        def label(dr, dz):
+            return self._label_at(r0 + dr, phi, z0 + dz)
+
+        h, centre = 1e-3, label(0.0, 0.0)
+        h_rr = (label(h, 0.0) - 2.0 * centre + label(-h, 0.0)) / h**2
+        h_zz = (label(0.0, h) - 2.0 * centre + label(0.0, -h)) / h**2
+        h_rz = (label(h, h) - label(h, -h) - label(-h, h) + label(-h, -h)) / (4 * h * h)
+        hessian = np.moveaxis(np.array([[h_rr, h_rz], [h_rz, h_zz]]), (0, 1), (-2, -1))
+        w, v = np.linalg.eigh(hessian)
+        ray = v @ (w[..., None] ** -0.5 * np.swapaxes(v, -1, -2))
+        dr = ray[..., 0, 0] * np.cos(theta) + ray[..., 0, 1] * np.sin(theta)
+        dz = ray[..., 1, 0] * np.cos(theta) + ray[..., 1, 1] * np.sin(theta)
+        target = psi - self._psi0
+        lo = np.zeros(theta.shape)
+        hi = np.full(theta.shape, 2.0 * np.sqrt(2.0 * target))
+        for _ in range(4):
+            hi = np.where(label(hi * dr, hi * dz) < target, 1.5 * hi, hi)
+        for _ in range(52):
+            mid = (lo + hi) / 2.0
+            inside = label(mid * dr, mid * dz) < target
+            lo, hi = np.where(inside, mid, lo), np.where(inside, hi, mid)
+        rho = (lo + hi) / 2.0
+        return r0 + rho * dr, z0 + rho * dz
+
+    def boundary(self, theta, phi):
+        return self.section(self._psi0 + self.dpsi, theta, phi)
+
+    def _rates(self, psi, n=256):
+        """I' and J', the toroidal and poloidal fluxes over 2 pi differentiated in psi.
+
+        I is the flux inside the surface psi, integrated around it in the section zeta
+        = 0, where psi = V - U and the flux density in u and v is P (U + V); J is the
+        flux through the ribbon v = u0 from the axis to the surface, integrated along
+        its edge on the ribbon, where B_v = 0 (Sengupta et al.'s appendix A).
+        """
+        psi = np.atleast_1d(np.asarray(psi, float))[:, None]
+        m, kappa = self.k**2, self._kappa
+        du, dv = (
+            np.cos(2.0 * np.pi * np.arange(n) / n),
+            np.sin(2.0 * np.pi * np.arange(n) / n),
+        )
+        rho = self._rho(psi, du, dv, 0.0)
+        sx, cx, dx, _ = ellipj(kappa * rho * du, m)
+        sy, cy, dy, _ = ellipj(kappa * rho * dv, m)
+        p = self._position(self.u0 + rho * du, self.u0 + rho * dv, 0.0 * rho)[4]
+        # d psi / d rho, U = cd(x | m) and V = 1 / (k cd(y | m)) having derivatives
+        # -(1 - m) sn / dn^2 and (1 - m) sn / (k cn^2)
+        d_psi = kappa * (1.0 - m) * (du * sx / dx**2 + dv * sy / (self.k * cy**2))
+        i_rate = np.mean(p * (cx / dx + dy / (self.k * cy)) * rho / d_psi, axis=1)
+        k_t = ellipk(1.0 - self.m_g)
+        zeta = 8.0 * k_t * np.arange(n) / n
+        rho = self._rho(psi, 1.0, 0.0, zeta)
+        u, v = self.u0 + rho, np.full(rho.shape, self.u0)
+        sx, cx, dx, _ = ellipj(kappa * rho, m)
+        s, c, d, _ = ellipj(kappa * zeta, 1.0 - m)
+        # d psi / d u at v = u0, where V = 1 / k
+        U, V = cx / dx, 1.0 / self.k
+        qu, qv = c * c + m * (U * s) ** 2, c * c + m * (V * s) ** 2
+        d_psi = d / np.sqrt(qu * qv) * (1.0 + (V - U) * m * U * s * s / qu)
+        d_psi *= kappa * (1.0 - m) * sx / dx**2
+        e = self._position(u, v, zeta)[5]
+        j_rate = (
+            -4.0
+            * k_t
+            / np.pi
+            * np.mean(e * self._covariant(u, v, zeta)[0] / d_psi, axis=1)
+        )
+        return i_rate, j_rate
+
+    @functools.cached_property
+    def profiles(self):
+        """The toroidal flux through the boundary, and psi and VMEC's iota in s.
+
+        psi - psi_0 and iota are power series in the normalized toroidal flux s, from I'
+        and J' at Chebyshev points in psi. Along a turn of zeta a field line turns J'/I'
+        times about the axis in the sense from u towards v, which is VMEC's theta, while
+        phi falls by 2 pi, so VMEC's iota is -J'/I'.
+        """
+        nodes, degree = 32, 12
+        domain = [self._psi0, self._psi0 + self.dpsi]
+        t = np.cos((np.arange(nodes) + 0.5) * np.pi / nodes)
+        psi = self._psi0 + self.dpsi * (1.0 - t) / 2.0
+        i_rate, j_rate = self._rates(psi)
+        flux = Chebyshev.fit(psi, i_rate, nodes - 1, domain=domain).integ(
+            lbnd=domain[0]
+        )
+        iota = Chebyshev.fit(psi, -j_rate / i_rate, nodes - 1, domain=domain)
+        psi = (
+            self._psi0
+            + self.dpsi * (1.0 - np.cos(np.linspace(0.0, np.pi, 4 * nodes))) / 2.0
+        )
+        phi_edge = 2.0 * np.pi * float(flux(domain[1]))
+        s = 2.0 * np.pi * flux(psi) / phi_edge
+        return {
+            "phi_edge": phi_edge,
+            "psi": Polynomial.fit(s, psi - self._psi0, degree).convert(),
+            "iota": Polynomial.fit(s, iota(psi), degree).convert(),
+        }
+
+    def psi_of_s(self, s):
+        return self.profiles["psi"](s)
+
+    def iota_of_s(self, s):
+        return self.profiles["iota"](s)
+
+    def vmec_input(self, ns, mpol, ntor):
+        start = self._psi0 + self.dpsi / (2.0 if self.free_boundary else 1.0)
+        fields = _geometry(
+            functools.partial(self.section, start), self.axis, mpol, ntor, False
+        )
+        if self.free_boundary:
+            fields |= {"lfreeb": True, "nzeta": 2 * ntor + 4, "nvacskip": 6}
+        return vmecpp.VmecInput(
+            nfp=NFP,
+            mpol=mpol,
+            ntor=ntor,
+            ns_array=np.array([ns], dtype=np.int64),
+            # phi falls along the field
+            phiedge=-self.profiles["phi_edge"],
+            pmass_type="power_series",
+            am=np.zeros(1),
+            ncurr=1,
+            pcurr_type="power_series",
+            ac=np.zeros(1),
+            **fields,
+        )
+
+
 # The member the tests use; one near the resonance at iota = 7/2; configuration A of
-# the paper's supplement; the iota = 2 member of the supplement's DESC script; and the
-# first and the last with the parameter of Issan et al. that breaks stellarator symmetry.
+# Landreman's supplement; the iota = 2 member of the supplement's DESC script; the first
+# and the last with the parameter of Issan et al. that breaks stellarator symmetry; and
+# an ellipsoidal member of Sengupta et al., inside a given boundary and in free
+# boundary.
 SHEARED = Sheared("sheared", eps=0.6, S=2.2, lam=2.97, k_b=0.2)
 SHEARED_72 = Sheared("sheared-near-3.5", eps=1.0, S=1.75, lam=2.65, k_b=0.2)
 SHEARED_A = Sheared("sheared-A", eps=1.08, S=3.0, lam=3.5, k_b=0.7)
 IOTA2 = Iota2("iota2", eps=0.25, delta=1.0 / 64.0)
 SHEARED_ASYM = Sheared("sheared-asym", eps=0.6, S=2.2, lam=2.97, k_b=0.2, tau1=0.15)
 IOTA2_ASYM = Iota2("iota2-asym", eps=0.25, delta=1.0 / 64.0, tau0=0.5)
+VACUUM = Vacuum(
+    "vacuum", k=0.2, m_g=0.2, u0=2.0 * ellipkinc(math.pi / 4.0, 0.2), dpsi=0.1
+)
+VACUUM_FREE = dataclasses.replace(VACUUM, name="vacuum-free", free_boundary=True)
 MEMBERS = {
-    m.name: m for m in (SHEARED, SHEARED_ASYM, SHEARED_72, SHEARED_A, IOTA2, IOTA2_ASYM)
+    m.name: m
+    for m in (
+        SHEARED,
+        SHEARED_ASYM,
+        SHEARED_72,
+        SHEARED_A,
+        IOTA2,
+        IOTA2_ASYM,
+        VACUUM,
+        VACUUM_FREE,
+    )
 }
 
 REFERENCE_COMMIT = "c97fbcdd879206e0cfee6ad6e885ae0b13e215e8"
@@ -586,8 +939,9 @@ def ftol_for(ns):
 
 def run(member, ns, mpol, ntor, niter=20000, delt=0.9, max_threads=1, grids=()):
     """VMEC++ on a member at one resolution, after the coarser radial grids given, if
-    any, each grid run to ftol_for its ns; the output is returned whether or not the
-    residual reached it."""
+    any, each grid run to ftol_for its ns, a free-boundary member in its own field and
+    on one thread, since the vacuum threads would queue for that Python function; the
+    output is returned whether or not the residual reached it."""
     ns_array = [*grids, ns]
     vmec_input = member.vmec_input(ns, mpol, ntor).model_copy(
         update={
@@ -598,6 +952,10 @@ def run(member, ns, mpol, ntor, niter=20000, delt=0.9, max_threads=1, grids=()):
             "return_outputs_even_if_not_converged": True,
         }
     )
+    if vmec_input.lfreeb:
+        return vmecpp.run(
+            vmec_input, member.magnetic_field, max_threads=1, verbose=False
+        ).wout
     return vmecpp.run(vmec_input, max_threads=max_threads, verbose=False).wout
 
 
@@ -637,16 +995,16 @@ def angle_grid(nth=24, nph=24):
     return np.meshgrid(theta, phi, indexing="ij")
 
 
-def surface_error(member, wout, grid=None):
-    """Largest |psi - psi(s)| at the points of each full-grid surface, relative to the
-    boundary psi."""
+def surface_error(member, wout, grid=None, boundary_only=False):
+    """Largest |psi - psi(s)| at the points of each full-grid surface, or of the
+    boundary alone, relative to the boundary psi."""
     th, ph = grid if grid is not None else angle_grid()
     xm, xn = np.asarray(wout.xm, float), np.asarray(wout.xn, float)
     rr = _cos_sin(wout, "rmnc", "rmns", len(xm))
     zz = _cos_sin(wout, "zmnc", "zmns", len(xm))
     s = np.linspace(0.0, 1.0, wout.ns)
     worst = 0.0
-    for j in range(1, wout.ns):
+    for j in [wout.ns - 1] if boundary_only else range(1, wout.ns):
         r = _both([c[:, j] for c in rr], xm, xn, th, ph)
         z = _both([c[:, j] for c in zz], xm, xn, th, ph)
         psi = member.field(r * np.cos(ph), r * np.sin(ph), z)[3]
@@ -744,6 +1102,15 @@ def current_near_axis(member, wout):
     return abs(run_slope - exact_slope) / abs(exact_slope)
 
 
+def iota_error(member, wout, s_min=0.0):
+    """Largest |iota - iota_exact| on the full grid with s >= s_min, relative to the
+    largest |iota_exact|."""
+    s = np.linspace(0.0, 1.0, wout.ns)
+    exact = member.iota_of_s(s)
+    error = np.abs(np.asarray(wout.iotaf) - exact)[s >= s_min]
+    return float(error.max() / np.abs(exact).max())
+
+
 MEASURES = {
     "psi": surface_error,
     "axis": axis_error,
@@ -755,10 +1122,29 @@ MEASURES = {
     "jcurv, s >= 1/4": functools.partial(current_derivative_error, s_min=0.25),
     "current near axis": current_near_axis,
 }
+# The vacuum members prescribe the enclosed current, zero, and predict iota, and in free
+# boundary the boundary.
+VACUUM_MEASURES = {
+    "psi": surface_error,
+    "axis": axis_error,
+    "B": field_error,
+    "B, s >= 1/4": functools.partial(field_error, s_min=0.25),
+    "iota": iota_error,
+    "iota, s >= 1/4": functools.partial(iota_error, s_min=0.25),
+}
+FREE_BOUNDARY_MEASURES = VACUUM_MEASURES | {
+    "boundary": functools.partial(surface_error, boundary_only=True)
+}
+
+
+def measures_of(member):
+    if isinstance(member, Vacuum):
+        return FREE_BOUNDARY_MEASURES if member.free_boundary else VACUUM_MEASURES
+    return MEASURES
 
 
 def measure(member, wout):
-    out = {name: fn(member, wout) for name, fn in MEASURES.items()}
+    out = {name: fn(member, wout) for name, fn in measures_of(member).items()}
     out["fsq"] = float(wout.fsqr + wout.fsqz + wout.fsql)
     return out
 
@@ -777,10 +1163,35 @@ def fitted_order(ns_list, values):
     return float(np.polyfit(np.log(h), np.log(np.asarray(values, float)), 1)[0])
 
 
+def _vacuum_checks(results):
+    """The convergence in ns of the vacuum members' surfaces, axis, field and iota, and
+    of the free boundary."""
+    out = []
+    for name in ("vacuum", "vacuum-free"):
+        entry = results.get(name)
+        if entry is None or len(entry["radial"]) < 2:
+            continue
+        ns = [r["ns"] for r in entry["radial"]]
+        keys = [key for key, _, _ in headline_of(MEMBERS[name])]
+        fit = {k: fitted_order(ns, [r[k] for r in entry["radial"]]) for k in keys}
+        out.append(
+            (
+                f"{name}: ns convergence at O(h)",
+                "psi, the axis, B and iota for s >= 1/4"
+                + (" and psi on the boundary" if "boundary" in keys else "")
+                + " converge at fitted order >= 0.8",
+                ", ".join(f"{k} {fit[k]:.2f}" for k in keys),
+                all(fit[k] >= 0.8 for k in keys),
+            )
+        )
+    return out
+
+
 def checks(results, reference=None):
     """The checks, as (check, criterion, measured, passed): the agreement with the
-    reference implementation when its deviations are given, and those on the scans of
-    "sheared", which need a radial and an angular scan of it."""
+    reference implementation when its deviations are given, the radial convergence of
+    the vacuum members, and those on the scans of "sheared", which need a radial and an
+    angular scan of it."""
     out = []
     if reference is not None:
         out.append(
@@ -792,6 +1203,7 @@ def checks(results, reference=None):
                 all(v < REFERENCE_TOLERANCE for v in reference.values()),
             )
         )
+    out += _vacuum_checks(results)
     entry = results.get("sheared")
     if entry is None or not entry["angular"]:
         return out
@@ -901,6 +1313,8 @@ SUITES = {
         Scan("sheared-near-3.5", QUICK, 12, 10, niter=20000, multigrid=False),
         Scan("sheared-A", QUICK, 12, 10, niter=20000, multigrid=False),
         Scan("iota2", QUICK, 10, 8, niter=20000, multigrid=False),
+        Scan("vacuum", QUICK, 12, 10),
+        Scan("vacuum-free", QUICK[1:-1], 12, 10),
     ),
     "full": (
         Scan("sheared", FULL, 12, 10, angular_ns=400, angular_modes=MODES),
@@ -909,6 +1323,8 @@ SUITES = {
         Scan("sheared-A", FULL, 12, 10, niter=20000, multigrid=False),
         Scan("iota2", FULL, 10, 8, niter=20000, multigrid=False),
         Scan("iota2-asym", FULL, 10, 8, niter=20000, multigrid=False),
+        Scan("vacuum", FULL, 12, 10),
+        Scan("vacuum-free", FULL[:-1], 12, 10),
     ),
 }
 
@@ -921,13 +1337,19 @@ def _row(member, scan, ns, mpol, ntor, max_threads):
     )
     row = {"ns": ns, "mpol": mpol, "ntor": ntor, **measure(member, wout)}
     row["seconds"] = time.time() - t0
-    row["current profile"] = {
-        "s": list(0.5 * (np.linspace(0, 1, ns)[1:] + np.linspace(0, 1, ns)[:-1])),
-        "buco": list(np.asarray(wout.buco)[1:]),
-    }
+    if isinstance(member, Vacuum):
+        row["iota profile"] = {
+            "s": list(np.linspace(0, 1, ns)),
+            "iota": list(np.asarray(wout.iotaf)),
+        }
+    else:
+        row["current profile"] = {
+            "s": list(0.5 * (np.linspace(0, 1, ns)[1:] + np.linspace(0, 1, ns)[:-1])),
+            "buco": list(np.asarray(wout.buco)[1:]),
+        }
     print(
         f"{member.name} ns {ns} mpol {mpol} ntor {ntor}: "
-        + ", ".join(f"{k} {row[k]:.2e}" for k in (*MEASURES, "fsq"))
+        + ", ".join(f"{k} {row[k]:.2e}" for k in (*measures_of(member), "fsq"))
         + f", {row['seconds']:.0f} s",
         flush=True,
     )
@@ -956,7 +1378,7 @@ def run_suite(suite, members=None, out_dir=None, max_threads=None, reference=Non
             key: orders(
                 [r["ns"] for r in entry["radial"]], [r[key] for r in entry["radial"]]
             )
-            for key in MEASURES
+            for key in measures_of(member)
         }
         results[scan.member] = entry
     if out_dir is not None:
@@ -977,6 +1399,19 @@ HEADLINE = (
     ("current, s >= 1/4", r"$I_{tor}$, $s\geq 1/4$", 2),
     ("jcurv, s >= 1/4", r"$dI/ds$, $s\geq 1/4$", 2),
 )
+VACUUM_HEADLINE = (
+    ("psi", r"$\psi$ (surfaces)", 1),
+    ("axis", "axis [m]", 1),
+    ("B, s >= 1/4", r"$B$, $s\geq 1/4$", 1),
+    ("iota, s >= 1/4", r"$\iota$, $s\geq 1/4$", 1),
+)
+FREE_BOUNDARY_HEADLINE = (*VACUUM_HEADLINE, ("boundary", r"$\psi$ (boundary)", 1))
+
+
+def headline_of(member):
+    if isinstance(member, Vacuum):
+        return FREE_BOUNDARY_HEADLINE if member.free_boundary else VACUUM_HEADLINE
+    return HEADLINE
 
 
 def local_orders(ns_list, values):
@@ -989,8 +1424,8 @@ def _converged(row):
     return row["fsq"] <= 3.0 * ftol_for(row["ns"])
 
 
-def _full_table(rows, first, first_of):
-    keys = [*MEASURES, "fsq"]
+def _full_table(rows, measures, first, first_of):
+    keys = [*measures, "fsq"]
     lines = [
         f"| {first} | " + " | ".join(keys) + " |",
         "|---" * (len(keys) + 1) + "|",
@@ -1018,7 +1453,7 @@ def summary(results, suite, reference=None):
             f"| quantity | error at ns {ns[-1]} | order, last pair | expected |",
             "|---|---|---|---|",
         ]
-        for key, _, expected in HEADLINE:
+        for key, _, expected in headline_of(MEMBERS[name]):
             last = entry["orders"][key][-1]
             flag = "" if last >= expected - 0.3 else " ⚠"
             lines.append(
@@ -1035,19 +1470,23 @@ def summary(results, suite, reference=None):
         lines.append("")
     lines += ["<details><summary>All deviations and criteria</summary>", ""]
     for name, entry in results.items():
+        measures = measures_of(MEMBERS[name])
         lines += [f"### {name}", ""]
-        lines += _full_table(entry["radial"], "ns", lambda r: r["ns"])
+        lines += _full_table(entry["radial"], measures, "ns", lambda r: r["ns"])
         lines += [
             "| order | "
             + " | ".join(
-                ", ".join(f"{o:.2f}" for o in entry["orders"][k]) for k in MEASURES
+                ", ".join(f"{o:.2f}" for o in entry["orders"][k]) for k in measures
             )
             + " | |",
             "",
         ]
         if entry["angular"]:
             lines += _full_table(
-                entry["angular"], "mpol, ntor", lambda r: f"{r['mpol']}, {r['ntor']}"
+                entry["angular"],
+                measures,
+                "mpol, ntor",
+                lambda r: f"{r['mpol']}, {r['ntor']}",
             )
             lines.append("")
     lines += [f"- **{name}**: {criterion}" for name, criterion, _, _ in found]
@@ -1058,13 +1497,15 @@ def summary(results, suite, reference=None):
 def plot(results, out_dir, suite):
     """One figure per member: (a) the headline errors against h with their expected
     orders, (b) the observed order between consecutive ns, (c) the error in the
-    enclosed current over s, and (d) the errors against mpol with the radial floor
-    at that ns. Runs that did not reach ftol are drawn hollow."""
+    enclosed current over s, for the vacuum members in iota, and (d) the errors against
+    mpol with the radial floor at that ns. Runs that did not reach ftol are drawn
+    hollow."""
     import matplotlib.pyplot as plt  # noqa: PLC0415
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     for name, entry in results.items():
         member = MEMBERS[name]
+        headline = headline_of(member)
         rad, ang = entry["radial"], entry["angular"]
         ns = np.array([r["ns"] for r in rad])
         h = 1.0 / (ns - 1.0)
@@ -1073,7 +1514,7 @@ def plot(results, out_dir, suite):
         axs = axs.ravel()
 
         ax = axs[0]
-        for (key, label, p), c in zip(HEADLINE, colors, strict=False):
+        for (key, label, p), c in zip(headline, colors, strict=False):
             e = np.array([r[key] for r in rad])
             ax.loglog(h[conv], e[conv], "o-", color=c, label=label)
             ax.loglog(h[~conv], e[~conv], "o", mfc="none", color=c)
@@ -1084,7 +1525,7 @@ def plot(results, out_dir, suite):
         ax.legend(fontsize=7, loc="lower left")
 
         ax = axs[1]
-        for (key, _, _), c in zip(HEADLINE, colors, strict=False):
+        for (key, _, _), c in zip(headline, colors, strict=False):
             hm, o = local_orders(ns, [r[key] for r in rad])
             ax.semilogx(hm, o, "o-", color=c)
         for p in (1, 2):
@@ -1102,27 +1543,34 @@ def plot(results, out_dir, suite):
         ax.set_title("(b) observed order between consecutive ns")
 
         ax = axs[2]
+        vacuum = isinstance(member, Vacuum)
         for r in rad:
-            s = np.asarray(r["current profile"]["s"])
-            exact = member.buco_of_s(s)
-            error = np.abs(np.asarray(r["current profile"]["buco"]) - exact)
+            if vacuum:
+                s = np.asarray(r["iota profile"]["s"])
+                exact = member.iota_of_s(s)
+                value = np.asarray(r["iota profile"]["iota"])
+            else:
+                s = np.asarray(r["current profile"]["s"])
+                exact = member.buco_of_s(s)
+                value = np.asarray(r["current profile"]["buco"])
             ax.semilogy(
                 s,
-                error / np.abs(exact).max(),
+                np.abs(value - exact) / np.abs(exact).max(),
                 ".-",
                 ms=2,
                 lw=0.8,
                 label=f"ns {r['ns']}",
             )
         ax.axvline(0.25, color="k", lw=0.5, ls="--")
-        ax.set(xlabel="s", ylabel="relative error in the enclosed current")
-        ax.set_title("(c) enclosed current over s")
+        quantity = "iota" if vacuum else "the enclosed current"
+        ax.set(xlabel="s", ylabel=f"relative error in {quantity}")
+        ax.set_title(f"(c) {'iota' if vacuum else 'enclosed current'} over s")
         ax.legend(fontsize=7)
 
         ax = axs[3]
         if ang:
             mpol = np.array([r["mpol"] for r in ang])
-            for (key, label, _), c in zip(HEADLINE[:3], colors, strict=False):
+            for (key, label, _), c in zip(headline[:3], colors, strict=False):
                 e = np.array([r[key] for r in ang])
                 ax.semilogy(mpol, e, "o-", color=c, label=label)
                 ax.axhline(e[-1], color=c, lw=0.6, ls="--")
