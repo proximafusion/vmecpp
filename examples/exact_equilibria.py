@@ -66,15 +66,15 @@ The members are:
 The demo suite runs "sheared" at two radial resolutions; the quick suite runs every
 member but "iota2-asym" up to ns = 100, "vacuum-free" at ns = 25 and 50, with an
 angular scan of "sheared" at ns = 100; the full suite runs every member up to ns =
-1000, the vacuum members up to ns = 200, with an angular scan at ns = 400. With --out
-the results go to DIR as JSON, markdown tables and plots of the deviations against h
-and mpol and of the enclosed current, or iota, over s. The summary ends with checks on
-the convergence in ns of the vacuum members and on the scans of "sheared": convergence
-in ns at O(h) and in mpol and ntor, the magnetic axis, B against its derivative jcurv,
-and the enclosed current at O(h^2) with its limit at the axis; with --check a failed
-check fails the run. With --reference DIR, a checkout of the repository at
-REFERENCE_COMMIT, a further check compares the formulas here with the repository's own
-functions.
+1000, the vacuum members up to ns = 200 and 100, with an angular scan at ns = 400.
+With --out the results go to DIR as JSON, markdown tables and plots of the deviations
+against h and mpol and of the enclosed current, or iota, over s. The summary ends with
+checks on the convergence in ns of the vacuum members and on the scans of "sheared":
+convergence in ns at O(h) and in mpol and ntor, the magnetic axis, B against its
+derivative jcurv, and the enclosed current at O(h^2) with its limit at the axis; with
+--check a failed check fails the run. With --reference DIR, a checkout of the
+repository at REFERENCE_COMMIT, a further check compares the formulas here with the
+repository's own functions.
 
 The papers' units have mu0 = 1: B is in tesla and lengths in metres, so the pressure
 is p / mu0 in pascals. The poloidal angles of Landreman and of Issan et al. turn
@@ -1325,7 +1325,7 @@ SUITES = {
         Scan("iota2", FULL, 10, 8, niter=20000, multigrid=False),
         Scan("iota2-asym", FULL, 10, 8, niter=20000, multigrid=False),
         Scan("vacuum", FULL[:-2], 12, 10),
-        Scan("vacuum-free", FULL[:-2], 12, 10),
+        Scan("vacuum-free", FULL[:-3], 12, 10),
     ),
 }
 
