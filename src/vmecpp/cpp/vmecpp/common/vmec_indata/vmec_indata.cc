@@ -51,8 +51,9 @@ std::string ProfileTypeName(vmecpp::ProfileType profile_type) {
 // solver as a zero profile, which converges to a silently wrong equilibrium.
 //
 // The polynomial coefficient arrays are zero-padded on read, so an empty
-// array is a valid way to specify a zero power series; the closed forms that
-// raise to a coefficient or divide by one need their full set.
+// array is a valid way to specify a zero power series, and two_power reads a
+// missing exponent as zero; the closed forms that divide by a coefficient
+// need their full set.
 absl::Status CheckProfile(const std::string& type_key,
                           const std::string& type_name,
                           vmecpp::ProfileType profile_type,
@@ -334,8 +335,10 @@ VmecINDATA::VmecINDATA() {
   lforbal = false;
   return_vacuum_field = false;
   lambda_preconditioner_scale = 0.5;
+  lambda_precondition_checkerboard_terms = 1e-3;
   lbsubs = false;
   backup_evaluated_state = true;
+  always_fix_m1_gauge = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
@@ -469,9 +472,12 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(return_vacuum_field, "/indata/return_vacuum_field", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
+  WriteH5Dataset(lambda_precondition_checkerboard_terms,
+                 "/indata/lambda_precondition_checkerboard_terms", file);
   WriteH5Dataset(lbsubs, "/indata/lbsubs", file);
   WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
                  file);
+  WriteH5Dataset(always_fix_m1_gauge, "/indata/always_fix_m1_gauge", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
@@ -598,6 +604,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   } else {
     m_indata.lambda_preconditioner_scale = 0.5;
   }
+  if (H5Lexists(from_file.getId(),
+                "/indata/lambda_precondition_checkerboard_terms", 0) == 1) {
+    ReadH5Dataset(m_indata.lambda_precondition_checkerboard_terms,
+                  "/indata/lambda_precondition_checkerboard_terms", from_file);
+  } else {
+    m_indata.lambda_precondition_checkerboard_terms = 1e-3;
+  }
 
   // Legacy way of checking for dataset existence
   // Older HDF5 files predate this field; fall back to the default if absent.
@@ -612,6 +625,13 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/backup_evaluated_state", from_file);
   } else {
     m_indata.backup_evaluated_state = true;
+  }
+
+  if (H5Lexists(from_file.getId(), "/indata/always_fix_m1_gauge", 0) == 1) {
+    ReadH5Dataset(m_indata.always_fix_m1_gauge, "/indata/always_fix_m1_gauge",
+                  from_file);
+  } else {
+    m_indata.always_fix_m1_gauge = false;
   }
 
   // Legacy way of checking for dataset existence
@@ -1139,6 +1159,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         maybe_lambda_preconditioner_scale->value();
   }
 
+  auto maybe_lambda_precondition_checkerboard_terms =
+      JsonReadDouble(j, "lambda_precondition_checkerboard_terms");
+  if (!maybe_lambda_precondition_checkerboard_terms.ok()) {
+    return maybe_lambda_precondition_checkerboard_terms.status();
+  }
+  if (maybe_lambda_precondition_checkerboard_terms->has_value()) {
+    vmec_indata.lambda_precondition_checkerboard_terms =
+        maybe_lambda_precondition_checkerboard_terms->value();
+  }
+
   auto maybe_lbsubs = JsonReadBool(j, "lbsubs");
   if (!maybe_lbsubs.ok()) {
     return maybe_lbsubs.status();
@@ -1153,6 +1183,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_backup_evaluated_state->has_value()) {
     vmec_indata.backup_evaluated_state = maybe_backup_evaluated_state->value();
+  }
+
+  auto maybe_always_fix_m1_gauge = JsonReadBool(j, "always_fix_m1_gauge");
+  if (!maybe_always_fix_m1_gauge.ok()) {
+    return maybe_always_fix_m1_gauge.status();
+  }
+  if (maybe_always_fix_m1_gauge->has_value()) {
+    vmec_indata.always_fix_m1_gauge = maybe_always_fix_m1_gauge->value();
   }
 
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
@@ -1503,8 +1541,11 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["lforbal"] = lforbal;
   output["return_vacuum_field"] = return_vacuum_field;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
+  output["lambda_precondition_checkerboard_terms"] =
+      lambda_precondition_checkerboard_terms;
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
+  output["always_fix_m1_gauge"] = always_fix_m1_gauge;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;
@@ -1884,6 +1925,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         "input variable 'lambda_preconditioner_scale' has to be positive and "
         "finite, but is %g\n",
         vmec_indata.lambda_preconditioner_scale));
+  }
+
+  if (!std::isfinite(vmec_indata.lambda_precondition_checkerboard_terms)) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'lambda_precondition_checkerboard_terms' has to be "
+        "finite, but "
+        "is %g\n",
+        vmec_indata.lambda_precondition_checkerboard_terms));
   }
 
   // lforbal

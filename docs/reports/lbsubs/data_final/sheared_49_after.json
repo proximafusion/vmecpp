@@ -1,0 +1,16 @@
+{
+  "case": "sheared",
+  "ns": 49,
+  "stage": "after",
+  "seconds": 30.613427798001794,
+  "fsq": 9.864256383519006e-17,
+  "beta": 0.01912785252048714,
+  "max_error_A_m2": 414.6987996529788,
+  "rms_error_A_m2": 41.45583856061654,
+  "first_surface_max_error_A_m2": 414.6987996529788,
+  "bulk_max_error_A_m2": 43.960682888748124,
+  "reference_max_A_m2": 1712441.707814962,
+  "DMerc_first": -743369.8932735977,
+  "wout_jxbout_max_difference": 2.105480234604329e-10,
+  "reference_kind": "analytical_curl"
+}

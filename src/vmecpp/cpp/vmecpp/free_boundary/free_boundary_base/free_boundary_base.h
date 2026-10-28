@@ -13,7 +13,6 @@
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
-#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
 
 namespace vmecpp {
@@ -23,7 +22,8 @@ class FreeBoundaryBase {
   virtual ~FreeBoundaryBase() = default;
 
   FreeBoundaryBase(const Sizes* s, const TangentialPartitioning* tp,
-                   const MGridProvider* mgrid, std::span<double> bSqVacShare,
+                   const MagneticFieldFunction* magnetic_field,
+                   std::span<double> bSqVacShare,
                    std::span<double> vacuum_b_r_share,
                    std::span<double> vacuum_b_phi_share,
                    std::span<double> vacuum_b_z_share)
@@ -31,7 +31,7 @@ class FreeBoundaryBase {
         fb_(&s_),
         tp_(*tp),
         sg_(s, &fb_, tp),
-        ef_(s, tp, &sg_, mgrid),
+        ef_(s, tp, &sg_, magnetic_field),
         bSqVacShare(bSqVacShare),
         vacuum_b_r_share_(vacuum_b_r_share),
         vacuum_b_phi_share_(vacuum_b_phi_share),

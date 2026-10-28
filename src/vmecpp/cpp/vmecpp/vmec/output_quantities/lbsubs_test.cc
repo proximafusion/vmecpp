@@ -3,22 +3,7 @@
 //
 // SPDX-License-Identifier: MIT
 //
-// Tests for the lbsubs path of ComputeOutputQuantities: the radial-force-
-// balance recompute of the full-grid covariant B_s that mirrors Fortran
-// VMEC's jxbforce + getbsubs when lbsubs == true.
-//
-// lasym = false: run solovev with lbsubs both off and on. Three assertions
-// cover (1) the half->full interpolation invariant when off, (2) a measurable
-// change in bsubs_full when on, (3) the radial-force-balance residual on
-// every interior surface when on.
-//
-// lasym = true: parse up_down_asym.json and construct the Vmec instance,
-// then skip. RecomputeBSubSFromRadialForceBalance does not implement the
-// non-stellarator-symmetric branch, and the equilibrium iteration does not
-// handle lasym = true.
-//
-// JSON wiring: a one-line round-trip on lbsubs = true. Default-value parsing
-// is covered in vmec_indata_test.
+// Full-grid B_s from radial force balance and regularized Ampere currents.
 
 #include <algorithm>
 #include <cmath>
@@ -68,6 +53,10 @@ ForceBalanceRhs RebuildForceBalanceRhs(
   r.brho.assign(s.nZnT, 0.0);
 
   std::vector<double> sqrtg_full(s.nZnT, 0.0);
+  const RowMatrixXd bsubus = ComputeCovariantBRadialDerivative(
+      s, fc, vmec_internal_results, vmec_internal_results.bsubu);
+  const RowMatrixXd bsubvs = ComputeCovariantBRadialDerivative(
+      s, fc, vmec_internal_results, vmec_internal_results.bsubv);
 
   for (int kl = 0; kl < s.nZnT; ++kl) {
     const int idx_o = jHo * s.nZnT + kl;
@@ -79,12 +68,8 @@ ForceBalanceRhs RebuildForceBalanceRhs(
                               vmec_internal_results.bsupu(idx_i) * g_i);
     r.bsupv_full[kl] = 0.5 * (vmec_internal_results.bsupv(idx_o) * g_o +
                               vmec_internal_results.bsupv(idx_i) * g_i);
-    const double dbsubu =
-        vmec_internal_results.bsubu(idx_o) - vmec_internal_results.bsubu(idx_i);
-    const double dbsubv =
-        vmec_internal_results.bsubv(idx_o) - vmec_internal_results.bsubv(idx_i);
     r.brho[kl] =
-        ohs * (r.bsupu_full[kl] * dbsubu + r.bsupv_full[kl] * dbsubv) +
+        r.bsupu_full[kl] * bsubus(jF, kl) + r.bsupv_full[kl] * bsubvs(jF, kl) +
         (vmec_internal_results.presH[jHo] - vmec_internal_results.presH[jHi]) *
             ohs * sqrtg_full[kl];
   }
@@ -266,32 +251,107 @@ TEST_F(LbsubsSolovevTest, TrueSatisfiesRadialForceBalanceResidual) {
                         << tol << " (rhs_scale=" << rhs_scale << ")";
 }
 
-// -------------------------------------------------------------------------
-// lasym = true: parse up_down_asym.json and construct the Vmec instance to
-// exercise input validation, then skip. RecomputeBSubSFromRadialForceBalance
-// does not implement the non-stellarator-symmetric branch, and the
-// equilibrium iteration does not handle lasym = true.
-// -------------------------------------------------------------------------
+TEST(LbsubsLasymTest, UpDownAsymSatisfiesForceBalance) {
+  const auto json = ReadFile("vmecpp/test_data/up_down_asym.json");
+  ASSERT_TRUE(json.ok());
+  auto indata = VmecINDATA::FromJson(*json);
+  ASSERT_TRUE(indata.ok());
+  indata->lbsubs = true;
+  indata->ns_array = Eigen::VectorXi::Constant(1, 9);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1e-13);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 10000);
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  ASSERT_TRUE(vmec.run().ok());
+  for (int jF = 1; jF < vmec.fc_.ns - 1; ++jF) {
+    EXPECT_LT(
+        InteriorForceBalanceResidualMax(
+            vmec.s_, vmec.fc_, vmec.output_quantities_.vmec_internal_results,
+            vmec.output_quantities_.covariant_b_derivatives, jF),
+        1e-8);
+  }
+}
 
-TEST(LbsubsLasymTest, UpDownAsymPathIsDeferred) {
-  const absl::StatusOr<std::string> indata_json =
-      ReadFile("vmecpp/test_data/up_down_asym.json");
-  ASSERT_TRUE(indata_json.ok());
-  absl::StatusOr<VmecINDATA> parsed = VmecINDATA::FromJson(*indata_json);
-  ASSERT_TRUE(parsed.ok());
-  VmecINDATA indata = *parsed;
-  ASSERT_TRUE(indata.lasym);
-  indata.lbsubs = true;
-  EXPECT_TRUE(indata.lbsubs);
-  EXPECT_TRUE(indata.lasym);
-
-  // No run() here; the equilibrium iteration does not handle lasym = true.
-  const auto maybe_vmec = Vmec::FromIndata(indata);
-  ASSERT_TRUE(maybe_vmec.ok())
-      << "lasym Vmec::FromIndata failed: " << maybe_vmec.status().message();
-
-  GTEST_SKIP() << "lbsubs lasym = true path is gated off; "
-                  "see RecomputeBSubSFromRadialForceBalance.";
+// A gradient field has zero curl, including the cancellation of its singular
+// m = 1 terms. The smooth remainder is affine in s, so the radial operator
+// is exact on every interior surface at every resolution.
+TEST(LbsubsTest, ManufacturedCurlFreeField) {
+  for (const bool lasym : {false, true}) {
+    for (const int nzeta : {1, 8, 9}) {
+      const Sizes s(lasym, 2, 3, nzeta == 1 ? 0 : 1, 12, nzeta);
+      const FourierBasisFastPoloidal t(&s);
+      for (const int ns : {5, 17, 65}) {
+        FlowControl fc(false, 0.9, 1, 1);
+        fc.ns = ns;
+        fc.deltaS = 1.0 / (ns - 1);
+        VmecInternalResults internal;
+        internal.num_full = ns;
+        internal.num_half = ns - 1;
+        internal.sign_of_jacobian = 1;
+        internal.sqrtSF = Eigen::VectorXd::Zero(ns);
+        internal.sqrtSH = Eigen::VectorXd::Zero(ns - 1);
+        internal.presH = Eigen::VectorXd::Zero(ns - 1);
+        internal.dVdsH = Eigen::VectorXd::Ones(ns - 1);
+        internal.gsqrt = RowMatrixXd::Ones(ns - 1, s.nZnT);
+        internal.bsupu = RowMatrixXd::Constant(ns - 1, s.nZnT, 0.371);
+        internal.bsupv = RowMatrixXd::Ones(ns - 1, s.nZnT);
+        internal.bsubu = RowMatrixXd::Zero(ns - 1, s.nZnT);
+        internal.bsubv = RowMatrixXd::Zero(ns - 1, s.nZnT);
+        BSubSFull bsubs{RowMatrixXd::Zero(ns, s.nZnT)};
+        CovariantBDerivatives derivatives;
+        derivatives.bsubsu = RowMatrixXd::Zero(ns, s.nZnT);
+        derivatives.bsubsv = RowMatrixXd::Zero(ns, s.nZnT);
+        for (int j = 0; j < ns; ++j) {
+          internal.sqrtSF[j] = std::sqrt(j * fc.deltaS);
+        }
+        for (int j = 0; j < ns - 1; ++j) {
+          const double sh = (j + 0.5) * fc.deltaS;
+          internal.sqrtSH[j] = std::sqrt(sh);
+          for (int k = 0; k < s.nZeta; ++k) {
+            const double v = s.nZeta == 1 ? 0.0 : 2.0 * M_PI * k / s.nZeta;
+            for (int l = 0; l < s.nThetaEff; ++l) {
+              const double u = 2.0 * M_PI * l / s.nThetaEven;
+              const double asymmetric = lasym ? 0.3 : 0.0;
+              const double angular = std::sin(u) + asymmetric * std::cos(u);
+              const double angular_u = std::cos(u) - asymmetric * std::sin(u);
+              const int kl = k * s.nThetaEff + l;
+              internal.bsubu(j, kl) =
+                  std::sqrt(sh) * (1.0 + 0.2 * sh) * angular_u * std::cos(v);
+              internal.bsubv(j, kl) = -s.nfp * std::sqrt(sh) *
+                                      (1.0 + 0.2 * sh) * angular * std::sin(v);
+            }
+          }
+        }
+        bsubs.bsubs_full.setZero();
+        derivatives.bsubsu.setZero();
+        derivatives.bsubsv.setZero();
+        RecomputeBSubSFromRadialForceBalance(s, fc, t, internal, bsubs,
+                                             derivatives);
+        const RowMatrixXd du =
+            ComputeCovariantBRadialDerivative(s, fc, internal, internal.bsubu);
+        const RowMatrixXd dv =
+            ComputeCovariantBRadialDerivative(s, fc, internal, internal.bsubv);
+        for (int j = 1; j < ns - 1; ++j) {
+          for (int k = 0; k < s.nZeta; ++k) {
+            const double v = s.nZeta == 1 ? 0.0 : 2.0 * M_PI * k / s.nZeta;
+            for (int l = 0; l < s.nThetaEff; ++l) {
+              const double u = 2.0 * M_PI * l / s.nThetaEven;
+              const double sf = j * fc.deltaS;
+              const double expected =
+                  (0.5 / std::sqrt(sf) + 0.3 * std::sqrt(sf)) *
+                  (std::sin(u) + (lasym ? 0.3 : 0.0) * std::cos(u)) *
+                  std::cos(v);
+              const int kl = k * s.nThetaEff + l;
+              EXPECT_NEAR(bsubs.bsubs_full(j, kl), expected, 2e-11);
+              EXPECT_NEAR(du(j, kl) - derivatives.bsubsu(j, kl), 0.0, 2e-11);
+              EXPECT_NEAR(dv(j, kl) - derivatives.bsubsv(j, kl), 0.0, 2e-11);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 // -------------------------------------------------------------------------
