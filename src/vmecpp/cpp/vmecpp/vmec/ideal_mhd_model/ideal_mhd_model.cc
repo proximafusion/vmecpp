@@ -3349,8 +3349,9 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_asymm(
 // (symrzl)^T: full-interval geometry cotangents in the symmetric members to
 // the reduced-interval cotangents of the symmetric (same members) and the
 // antisymmetric (*_asym) halves. Each reduced point 0 < l < nThetaReduced - 1
-// is the mirror image of one extended point, where an even quantity enters as
-// +sym - asym and an odd one as -sym + asym.
+// is the image of one extended point under (\theta, \zeta) \to (2\pi - \theta,
+// 2\pi - \zeta), where an even quantity enters as x_s - x_a and an odd one as
+// x_a - x_s.
 void IdealMhdModel::symrzlTranspose() {
   const int nThetaEff = s_.nThetaEff;
   auto unfold = [&](Eigen::VectorXd& x, Eigen::VectorXd& xa, int jLo, int jHi,
@@ -3404,17 +3405,17 @@ void IdealMhdModel::symrzlTranspose() {
 // (symforce)^T: reduced-interval cotangents of the standard-parity half (in the
 // symmetric members) and the reversed-parity half (*_asym) to the
 // full-interval cotangents of the forces, written into the symmetric members.
-// The forward fold is fa = 1/2 (f -+ fRev), f <- f - fa on the reduced
-// interval.
+// The forward fold is f_a = (f \mp f_{rev}) / 2, f \leftarrow f - f_a on the
+// reduced interval.
 void IdealMhdModel::symforceTranspose() {
   const int nThetaEff = s_.nThetaEff;
-  std::vector<double> full(s_.nZnT);
+  Eigen::VectorXd full(s_.nZnT);
   auto unfold = [&](Eigen::VectorXd& f, const Eigen::VectorXd& fa, int jLo,
                     int jHi, bool std_parity) {
     const double sign = std_parity ? -1.0 : 1.0;
     for (int jF = jLo; jF < jHi; ++jF) {
       const int base = (jF - r_.nsMinF) * s_.nZnT;
-      absl::c_fill(full, 0.0);
+      full.setZero();
       for (int k = 0; k < s_.nZeta; ++k) {
         const int kRev = (s_.nZeta - k) % s_.nZeta;
         for (int l = 0; l < s_.nThetaReduced; ++l) {

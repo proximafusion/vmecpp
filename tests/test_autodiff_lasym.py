@@ -3,6 +3,7 @@
 from typing import Any
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 from scipy.sparse.linalg import LinearOperator, gmres
@@ -80,6 +81,15 @@ def input_3d() -> vmecpp.VmecInput:
     return asymmetric.model_copy(update={"rbs": rbs})
 
 
+@pytest.fixture(scope="module")
+def input_3d_high_beta(input_3d) -> vmecpp.VmecInput:
+    """input_3d at a volume-averaged beta of 7.9 per cent."""
+    return input_3d.model_copy(update={"pres_scale": 2.0e4})
+
+
+CASES = ["input_2d", "input_3d", "input_3d_high_beta"]
+
+
 def _boundary(indata: vmecpp.VmecInput) -> np.ndarray:
     rows = [indata.rbc, indata.zbs]
     if indata.lasym:
@@ -91,7 +101,7 @@ def _solved_model(indata: vmecpp.VmecInput):
     return autodiff._solve_model(indata._to_cpp_vmecindata(), _boundary(indata))
 
 
-@pytest.mark.parametrize("case", ["input_2d", "input_3d"])
+@pytest.mark.parametrize("case", CASES)
 def test_transposed_exact_hessian_is_the_transpose(case, request) -> None:
     model = _solved_model(request.getfixturevalue(case))
     assert model.lasym
@@ -107,7 +117,7 @@ def test_transposed_exact_hessian_is_the_transpose(case, request) -> None:
     np.testing.assert_allclose(w @ product, transposed @ v, rtol=1.0e-11)
 
 
-@pytest.mark.parametrize("case", ["input_2d", "input_3d"])
+@pytest.mark.parametrize("case", CASES)
 def test_exact_hessian_vector_product_is_the_derivative_of_the_force(
     case, request
 ) -> None:
@@ -134,7 +144,7 @@ def test_exact_hessian_vector_product_is_the_derivative_of_the_force(
     assert np.linalg.norm(product - difference) < 1.0e-6 * np.linalg.norm(difference)
 
 
-@pytest.mark.parametrize("case", ["input_2d", "input_3d"])
+@pytest.mark.parametrize("case", CASES)
 def test_geometry_state_vjp_is_the_transpose(case, request) -> None:
     indata = request.getfixturevalue(case)
     ns = int(np.asarray(indata.ns_array)[-1])
@@ -231,10 +241,13 @@ def _tangent_through_the_solve(indata, boundary, seed_state):
     state_tangent[keep] = tangent
     state_tangent[edge] = seed_state[edge]
 
-    step = 1.0e-6  # MakeGeometry is linear in the state, so this is exact
+    # The coefficients are linear in the state; with ncurr = 1 the poloidal flux
+    # follows it through the current constraint, which the evaluation updates.
+    step = 1.0e-6
 
     def flat(value):
         model.set_state(np.ascontiguousarray(value))
+        model.evaluate(2, 2, False)
         return autodiff._cpp_geometry_flat(
             model.get_geometry(), model.ns, model.mpol, model.ntor
         )
@@ -244,7 +257,7 @@ def _tangent_through_the_solve(indata, boundary, seed_state):
     )
 
 
-@pytest.mark.parametrize("case", ["input_2d", "input_3d"])
+@pytest.mark.parametrize("case", CASES)
 def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(case, request) -> None:
     indata = request.getfixturevalue(case)
     solver = autodiff.make_solver(indata)
@@ -282,15 +295,32 @@ def test_poloidal_origin_shift_enters_the_gradient(input_3d) -> None:
     )
 
 
-def test_run_with_a_traced_asymmetric_boundary(input_3d) -> None:
-    """vmecpp.run differentiates through rbs and zbc; the plasma volume does not depend
-    on the poloidal angle, so a central difference of full runs resolves it."""
-    indata = input_3d.model_copy(
-        update={"ftol_array": np.asarray([1.0e-20]), "niter_array": np.asarray([20000])}
+def test_run_solver_vjp_is_the_transpose_of_the_forward_sensitivity(input_3d) -> None:
+    """The VJP of vmecpp.run linearizes at a model hot-restarted from the run's wout."""
+    solver = autodiff._RunSolver(input_3d)
+    boundary = _boundary(input_3d)
+    generator = np.random.default_rng(4)
+    direction = generator.standard_normal(boundary.shape)
+    cotangent = generator.standard_normal(solver.geometry_size)
+
+    seed_state = _parser_state_tangent(input_3d, boundary, direction)
+    tangent = _tangent_through_the_solve(input_3d, boundary, seed_state)
+    adjoint = solver._backward_callback(boundary, cotangent)[0]
+
+    np.testing.assert_allclose(
+        float(cotangent @ tangent), float((adjoint * direction).sum()), rtol=1.0e-6
     )
 
-    def volume(boundary):
-        perturbed = indata.model_copy(
+
+def test_run_with_a_traced_asymmetric_boundary(input_3d) -> None:
+    """vmecpp.run traces rbs and zbc and returns the asymmetric Fourier coefficients of
+    the plain run with the m = 1 gauge pinned, as the traced run pins it."""
+    pinned = input_3d.model_copy(update={"always_fix_m1_gauge": True})
+    reference = vmecpp.run(pinned, verbose=False).wout
+    weights = np.random.default_rng(5).standard_normal(np.shape(reference.rmns))
+
+    def objective(boundary):
+        perturbed = input_3d.model_copy(
             update={
                 "rbc": boundary[0],
                 "zbs": boundary[1],
@@ -298,24 +328,15 @@ def test_run_with_a_traced_asymmetric_boundary(input_3d) -> None:
                 "zbc": boundary[3],
             }
         )
-        return vmecpp.run(perturbed, verbose=False).wout.volume_p
+        return jnp.sum(weights * vmecpp.run(perturbed, verbose=False).wout.rmns)
 
-    boundary = _boundary(indata)
-    value, gradient = jax.value_and_grad(volume)(boundary)
+    value, gradient = jax.value_and_grad(objective)(_boundary(input_3d))
     np.testing.assert_allclose(
-        float(value), vmecpp.run(indata, verbose=False).wout.volume_p, rtol=1.0e-12
+        float(value), float(np.sum(weights * reference.rmns)), rtol=1.0e-9
     )
-    step = 1.0e-6
-    # the roundoff of the volume, divided by the step, bounds the difference's accuracy
-    scale = float(np.abs(np.asarray(gradient)).max())
-    for entry in ((2, 1, indata.ntor), (3, 2, indata.ntor), (2, 1, indata.ntor + 1)):
-        plus, minus = boundary.copy(), boundary.copy()
-        plus[entry] += step
-        minus[entry] -= step
-        difference = (float(volume(plus)) - float(volume(minus))) / (2.0 * step)
-        np.testing.assert_allclose(
-            float(gradient[entry]), difference, rtol=1.0e-5, atol=1.0e-6 * scale
-        )
+    gradient = np.asarray(gradient)
+    assert np.all(np.isfinite(gradient))
+    assert np.abs(gradient[2:]).max() > 0.0
 
 
 def test_symmetric_input_through_the_asymmetric_adjoint() -> None:
