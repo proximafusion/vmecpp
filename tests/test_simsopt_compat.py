@@ -34,6 +34,9 @@ def input_file_path(request) -> Path:
 @pytest.fixture(scope="module")
 def vmec(input_file_path) -> simsopt_compat.Vmec:
     vmec = simsopt_compat.Vmec(input_file_path)
+    assert vmec.indata is not None
+    # VMEC 8.52 references: the diagonal lambda preconditioner.
+    vmec.indata.lambda_precondition_checkerboard_terms = -1.0
     vmec.run()
     return vmec
 
@@ -44,6 +47,8 @@ def vmec_advanced_backup(input_file_path) -> simsopt_compat.Vmec:
     assert vmec.indata is not None
     # The reference restarts from the advanced state.
     vmec.indata.backup_evaluated_state = False
+    # VMEC 8.52 references: the diagonal lambda preconditioner.
+    vmec.indata.lambda_precondition_checkerboard_terms = -1.0
     vmec.run()
     return vmec
 

@@ -64,11 +64,12 @@ class IdealMhdModel {
                 const VmecConstants* constants, ThreadLocalStorage* m_ls,
                 HandoverStorage* m_h, const RadialPartitioning* r,
                 const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
-                int vac_num_threads, int signOfJacobian, int nvacskip,
+                int signOfJacobian, int nvacskip,
                 VacuumPressureState* m_vacuum_pressure_state);
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
-                     bool lforbal, double lambda_preconditioner_scale);
+                     bool lforbal, double lambda_preconditioner_scale,
+                     double lambda_precondition_checkerboard_terms);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -540,6 +541,7 @@ class IdealMhdModel {
   Eigen::VectorXd cLambda;
   Eigen::VectorXd lambdaPreconditioner;
   double lambda_preconditioner_scale_ = 0.5;
+  double lambda_precondition_checkerboard_terms_ = 1e-3;
 
   // R,Z preconditioner
   Eigen::VectorXd ax;
@@ -620,13 +622,10 @@ class IdealMhdModel {
   HandoverStorage& m_h_;
   const RadialPartitioning& r_;
   // Free-boundary vacuum solvers, shared across all radial threads and sized to
-  // m_vac_num_threads_ (decoupled from the radial thread count). The vacuum
-  // solve is driven from a nested parallel region in update(): a single radial
-  // thread spawns a team of m_vac_num_threads_ threads, each invoking
-  // (*m_fb_vac_)[vac_thread_id]->update() on its tangential slice. Owned by
-  // Vmec; may be nullptr / empty for fixed-boundary runs.
+  // the radial team. In update(), every radial thread invokes
+  // (*m_fb_vac_)[r_.get_thread_id()]->update() on its tangential slice. Owned
+  // by Vmec; may be nullptr / empty for fixed-boundary runs.
   const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
-  int m_vac_num_threads_;
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
   std::function<void(const FourierForces&)> raw_force_observer_;

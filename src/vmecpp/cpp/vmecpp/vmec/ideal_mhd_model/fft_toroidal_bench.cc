@@ -108,7 +108,7 @@ struct BenchFixture {
 
     model = std::make_unique<IdealMhdModel>(
         fc.get(), &s, &fb, rprof.get(), &constants, &ls, handover.get(), &rp,
-        /*m_fb_vac=*/nullptr, /*vac_num_threads=*/0, /*signOfJacobian=*/-1,
+        /*m_fb_vac=*/nullptr, /*signOfJacobian=*/-1,
         /*nvacskip=*/0, &vacuum_pressure_state);
 
     phys_x = std::make_unique<FourierGeometry>(&s, &rp, kNs);

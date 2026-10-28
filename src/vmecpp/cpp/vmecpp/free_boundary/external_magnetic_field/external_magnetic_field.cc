@@ -11,11 +11,10 @@
 
 namespace vmecpp {
 
-ExternalMagneticField::ExternalMagneticField(const Sizes* s,
-                                             const TangentialPartitioning* tp,
-                                             const SurfaceGeometry* sg,
-                                             const MGridProvider* mgrid)
-    : s_(*s), tp_(*tp), sg_(*sg), mgrid_(*mgrid) {
+ExternalMagneticField::ExternalMagneticField(
+    const Sizes* s, const TangentialPartitioning* tp, const SurfaceGeometry* sg,
+    const MagneticFieldFunction* magnetic_field)
+    : s_(*s), tp_(*tp), sg_(*sg), magnetic_field_(magnetic_field) {
   // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
   // resolved by the surface grid, so the axis-current filament is replicated
   // over nvper equally-spaced toroidal angles (matching educational_VMEC's
@@ -32,6 +31,14 @@ ExternalMagneticField::ExternalMagneticField(const Sizes* s,
 
   surfaceXYZ.resize(3 * numLocal);
   bCoilsXYZ.resize(3 * numLocal);
+
+  surfaceR.resize(numLocal);
+  surfacePhi.resize(numLocal);
+  surfaceZ.resize(numLocal);
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    surfacePhi[kl - tp_.ztMin] =
+        2.0 * M_PI * (kl % s_.nZeta) / (s_.nfp * s_.nZeta);
+  }
 
   interpBr.resize(numLocal);
   interpBp.resize(numLocal);
@@ -54,10 +61,12 @@ absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
 #pragma omp barrier
 #endif  // _OPENMP
 
+  surfaceR = sg_.r1b.segment(tp_.ztMin, tp_.ztMax - tp_.ztMin);
+  surfaceZ = sg_.z1b.segment(tp_.ztMin, tp_.ztMax - tp_.ztMin);
+
   // Not returned here: the barriers below are collective over the team.
-  absl::Status interpolation_status =
-      mgrid_.interpolate(tp_.ztMin, tp_.ztMax, s_.nZeta, s_.nZnT, sg_.r1b,
-                         sg_.z1b, interpBr, interpBp, interpBz);
+  absl::Status field_status = (*magnetic_field_)(surfaceR, surfacePhi, surfaceZ,
+                                                 interpBr, interpBp, interpBz);
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -79,7 +88,7 @@ absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
 #pragma omp barrier
 #endif  // _OPENMP
 
-  return interpolation_status;
+  return field_status;
 }
 
 // add in contribution from net toroidal current along magnetic axis
