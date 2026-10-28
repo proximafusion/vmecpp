@@ -2815,8 +2815,11 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
     }
 
 
-def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
-    """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
+def _output_stage(
+    vmec_input: VmecInput, cpp_output_quantities
+) -> tuple[VmecWOut, JxBOut]:
+    """The ``wout`` and ``jxbout`` of a C++ run with their physics fields from the JAX
+    output stage.
 
     Input echoes, solver diagnostics such as the spectral width and the free-boundary
     vacuum potential come from the C++ run; the mass profile too, so that every profile
@@ -2831,7 +2834,7 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
     else:
         profile = {"iota_half": np.asarray(wout.iotas)[1:]}
     with enable_x64(True):
-        quantities = autodiff_wout.wout_quantities(
+        quantities, jxbout = autodiff_wout.output_quantities(
             _geometry.make(cpp_output_quantities),
             vmec_input,
             mass_half=np.asarray(wout.mass)[1:] * autodiff_wout.MU_0,
@@ -2844,7 +2847,15 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
             continue
         array = None if value is None else np.array(value)
         update[name] = array.item() if array is not None and array.ndim == 0 else array
-    return wout.model_copy(update=update)
+    tables: dict[str, typing.Any] = {
+        name: np.array(value) for name, value in jxbout.items()
+    }
+    return wout.model_copy(update=update), JxBOut.model_construct(**tables)
+
+
+def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
+    """The ``wout`` of :func:`_output_stage`."""
+    return _output_stage(vmec_input, cpp_output_quantities)[0]
 
 
 def _output_mode(verbose: bool | int | OutputMode) -> OutputMode:
@@ -2872,9 +2883,10 @@ def _run_traced(
     differentiates or traces.
 
     The forward solve is a full C++ run; its VJP needs an Enzyme-enabled build.
-    When the forward solve is observable (eager calls, ``jax.grad``), jxbout,
-    mercier, the threed1 tables and the wout diagnostics come from its C++
-    output stage; under ``jax.jit`` they are ``None`` and
+    The wout physics fields and jxbout come from the JAX output stage. When the
+    forward solve is observable (eager calls, ``jax.grad``), mercier, the threed1
+    tables and the wout diagnostics come from its C++ output stage; under
+    ``jax.jit`` they are ``None`` and
     :data:`vmecpp.autodiff_wout.UNKNOWN_DIAGNOSTICS`.
     """
     from vmecpp import autodiff  # noqa: PLC0415
@@ -2957,7 +2969,6 @@ def _run_traced(
             }
             others = dict.fromkeys(
                 (
-                    "jxbout",
                     "mercier",
                     "threed1_volumetrics",
                     "threed1_first_table",
@@ -2975,10 +2986,12 @@ def _run_traced(
             }
             fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
-        quantities = autodiff_wout.wout_quantities(
+        quantities, jxbout = autodiff_wout.output_quantities(
             geometry, template, mass_half=mass_half, **profile
         )
     wout = VmecWOut.model_construct(**{**fields, **quantities})
+    tables: dict[str, typing.Any] = jxbout
+    others = {**others, "jxbout": JxBOut.model_construct(**tables)}
     return VmecOutput.model_construct(input=vmec_input, wout=wout, **others)
 
 

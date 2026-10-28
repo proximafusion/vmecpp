@@ -69,6 +69,20 @@ def _cpp_geometry_flat(value, ns: int, mpol: int, ntor: int) -> np.ndarray:
     return np.concatenate(arrays)
 
 
+def _geometry_from_flat(flat, vmec_input) -> tuple[geometry.Geometry, Any]:
+    """The geometry at the front of a flat solver output, and the entries after it."""
+    ns = int(np.asarray(vmec_input.ns_array)[-1])
+    mpol = vmec_input.mpol
+    ntor = vmec_input.ntor
+    modes = ns * mpol * (ntor + 1)
+    arrays = [flat[:ns], flat[ns : 2 * ns]]
+    offset = 2 * ns
+    for _ in _GEOMETRY_COEFFICIENTS:
+        arrays.append(flat[offset : offset + modes].reshape(ns, mpol, ntor + 1))
+        offset += modes
+    return geometry.Geometry(*arrays, nfp=vmec_input.nfp), flat[offset:]
+
+
 def _make_indata(template, boundary: np.ndarray, profiles=None):
     indata = template.copy()
     indata.rbc[...] = boundary[0]
@@ -286,9 +300,7 @@ def _poloidal_origin_shift(model, boundary: np.ndarray) -> tuple[float, float]:
 def _boundary_from_state_vjp(
     model, state_bar: np.ndarray, boundary: np.ndarray | None = None
 ) -> np.ndarray:
-    """Transpose the fixed-boundary parser; ``boundary`` (rows ``rbc``, ``zbs``,
-    ``rbs``, ``zbc``) is required for an asymmetric input, whose parser rotates the
-    poloidal angle by a ``delta`` that depends on the boundary itself."""
+    """Transpose the fixed-boundary parser; an asymmetric input needs ``boundary``."""
     slices = _span_slices(model)
     mpol = model.mpol
     ntor = model.ntor
@@ -362,9 +374,9 @@ def _boundary_from_state_vjp(
         error_message = "the asymmetric boundary parser transpose needs the boundary"
         raise ValueError(error_message)
 
-    # Transpose of the rotation by delta, which itself depends on the m = 1,
-    # n = 0 coefficients: rbc' = rbc cos(m delta) + rbs sin(m delta),
-    # zbs' = zbs cos - zbc sin, rbs' = rbs cos - rbc sin, zbc' = zbc cos + zbs sin.
+    # Transpose of the rotation by \delta(rbc, zbs, rbs, zbc at m = 1, n = 0):
+    # rbc' = rbc \cos(m \delta) + rbs \sin(m \delta), zbs' = zbs \cos - zbc \sin,
+    # rbs' = rbs \cos - rbc \sin, zbc' = zbc \cos + zbs \sin.
     delta, sigma = _poloidal_origin_shift(model, boundary)
     m_index = np.arange(mpol)[:, None]
     cos, sin = np.cos(m_index * delta), np.sin(m_index * delta)
@@ -956,16 +968,7 @@ class DifferentiableVmec:
             return (*bars, jax.tree.map(jnp.zeros_like, values))
 
         solve_flat.defvjp(solve_fwd, solve_bwd)
-        flat = solve_flat(boundary, half, values)
-        mpol = self.vmec_input.mpol
-        ntor = self.vmec_input.ntor
-        modes = ns * mpol * (ntor + 1)
-        arrays = [flat[:ns], flat[ns : 2 * ns]]
-        offset = 2 * ns
-        for _ in _GEOMETRY_COEFFICIENTS:
-            arrays.append(flat[offset : offset + modes].reshape(ns, mpol, ntor + 1))
-            offset += modes
-        return geometry.Geometry(*arrays, nfp=self.vmec_input.nfp), flat[offset:]
+        return _geometry_from_flat(solve_flat(boundary, half, values), self.vmec_input)
 
 
 def make_solver(vmec_input) -> DifferentiableVmec:
@@ -1000,7 +1003,7 @@ class _RunSolver(DifferentiableVmec):
     """:class:`DifferentiableVmec` whose forward solve is a pinned-gauge C++ run.
 
     The C++ output of the forward solve supplies what the JAX output stage does
-    not compute (jxbout, mercier, threed1, the solver diagnostics) and, as the
+    not compute (mercier, threed1, the solver diagnostics) and, as the
     outputs after the geometry, the half-grid mass, iota and buco profiles and the
     sign the solver gives iota. The VJP
     linearizes at the state of a ``VmecModel`` hot-restarted from the forward

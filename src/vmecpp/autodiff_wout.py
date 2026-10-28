@@ -1,11 +1,13 @@
-"""JAX port of output_quantities.cc: ``wout`` quantities from a converged geometry.
+"""JAX port of output_quantities.cc: ``wout`` and ``jxbout`` quantities from a converged
+geometry.
 
 The solver returns the equilibrium in the internal product basis. From this we can
-compute all the physics quantities in a ``wout``.
+compute all the physics quantities in a ``wout`` and the tables of ``jxbout``.
 
 Only the geometry leaves are traced. Radial and angular grids, mode tables and the
 flux and mass profiles are concrete NumPy arrays taken from the input, so
-:func:`wout_quantities` works under ``jax.jit`` and ``jax.grad``.
+:func:`wout_quantities` and :func:`output_quantities` work under ``jax.jit`` and
+``jax.grad``.
 """
 
 from __future__ import annotations
@@ -124,6 +126,35 @@ WOUT_QUANTITIES = (
 The non-stellarator-symmetric fields are ``None`` for ``lasym=False``.
 """
 
+JXBOUT_QUANTITIES = (
+    "itheta",
+    "izeta",
+    "bdotk",
+    "amaxfor",
+    "aminfor",
+    "avforce",
+    "pprim",
+    "jdotb",
+    "bdotb",
+    "bdotgradv",
+    "jpar2",
+    "jperp2",
+    "phin",
+    "jsupu3",
+    "jsupv3",
+    "jsups3",
+    "bsupu3",
+    "bsupv3",
+    "jcrossb",
+    "jxb_gradp",
+    "jdotb_sqrtg",
+    "sqrtg3",
+    "bsubu3",
+    "bsubv3",
+    "bsubs3",
+)
+"""The ``JxBOut`` fields computed by :func:`output_quantities`."""
+
 _ASYMMETRIC_QUANTITIES = frozenset(
     {
         "rmns",
@@ -153,7 +184,26 @@ def wout_quantities(
     current_half=None,
     mass_half=None,
 ) -> dict[str, jax.Array | None]:
-    """Map a converged geometry to the physics quantities of its ``wout`` file.
+    """The ``wout`` quantities of :func:`output_quantities`."""
+    return output_quantities(
+        geometry,
+        vmec_input,
+        iota_half=iota_half,
+        current_half=current_half,
+        mass_half=mass_half,
+    )[0]
+
+
+def output_quantities(
+    geometry: vmec_geometry.Geometry,
+    vmec_input: Any,
+    *,
+    iota_half=None,
+    current_half=None,
+    mass_half=None,
+) -> tuple[dict[str, jax.Array | None], dict[str, jax.Array]]:
+    """Map a converged geometry to the physics quantities of its ``wout`` and ``jxbout``
+    files.
 
     Args:
         geometry: The solved equilibrium in the internal product basis.
@@ -169,7 +219,8 @@ def wout_quantities(
 
     Returns:
         The fields listed in :data:`WOUT_QUANTITIES`, in the layout of
-        :class:`vmecpp.VmecWOut`.
+        :class:`vmecpp.VmecWOut`, and those listed in :data:`JXBOUT_QUANTITIES`, in
+        the layout of :class:`vmecpp.JxBOut`.
     """
     # A run that stops early at a coarser ns_array step returns that step's geometry.
     sizes = _sizes(vmec_input, ns=np.shape(geometry.toroidal_flux)[0])
@@ -331,7 +382,6 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     )
     bsubu_out, _, bsubuv = _filter_cosine_type(setup, bsubu)
     bsubv_out, bsubvu, _ = _filter_cosine_type(setup, bsubv_fixed)
-    del bsubuv, bsubvu  # only the jsups diagnostic of jxbout uses them
 
     # Covariant B_s on the half grid (ComputeRemainingMetric, ComputeBSubSOnHalfGrid).
     rv12 = half(r.dzeta_e, r.dzeta_o)
@@ -392,6 +442,71 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     jdotb = _extrapolate_both(dnorm1 * tjnorm * surface_average(bdotk))
     bdotb = _extrapolate_both(dnorm1 * tjnorm * surface_average(sqgb2))
     bdotgradv = _extrapolate_both(dnorm1 * tjnorm * interior_full(phip_h))
+
+    # The jxbout tables. pres_h holds \mu_0 p, so pprime is dp/ds; the
+    # perpendicular current is B \times \nabla p / |B|^2.
+    ovp_3d = ovp[:, None, None]
+    pprime = (jnp.diff(pres_h) / (MU_0 * delta_s))[:, None, None]
+    pprime_ovp = pprime * ovp_3d
+    kperpu = bsubv1 * pprime / sqgb2
+    kperpv = -bsubu1 * pprime / sqgb2
+    kp2 = (
+        kperpu**2 * interior_full(guu)
+        + 2.0 * kperpu * kperpv * interior_full(guv)
+        + kperpv**2 * interior_full(gvv)
+    )
+    sqrtg = interior_full(gsqrt)
+    bsupu1 = interior_full(bsupu * gsqrt) / sqrtg
+    bsupv1 = interior_full(bsupv * gsqrt) / sqrtg
+    jxb = ovp_3d * (itheta * bsupv1 - izeta * bsupu1)
+    force_residual = jxb - pprime_ovp
+    # the force residual relative to |dp/dV|, in per cent and clipped at 999.9
+    relative_residual = force_residual / (jnp.abs(pprime_ovp) + np.finfo(float).eps)
+    nzeta_ntheta = int(np.prod(np.shape(gsqrt)[1:]))
+
+    def full_table(values_interior):
+        """Interior full-grid values with zero rows at the axis and the edge."""
+        return _pad_both(values_interior).reshape(ns, nzeta_ntheta)
+
+    def half_table(values_half):
+        """Half-grid values with the outermost half surface at zero."""
+        return jnp.pad(values_half[:-1], ((0, 1), (0, 0), (0, 0))).reshape(
+            ns - 1, nzeta_ntheta
+        )
+
+    jxbout = {
+        "itheta": full_table(itheta),
+        "izeta": _extrapolate_both(izeta).reshape(ns, nzeta_ntheta),
+        "bdotk": full_table(bdotk),
+        "amaxfor": _pad_both(
+            100.0 * jnp.minimum(jnp.max(relative_residual, axis=(1, 2)), 9.999)
+        ),
+        "aminfor": _pad_both(
+            100.0 * jnp.maximum(jnp.min(relative_residual, axis=(1, 2)), -9.999)
+        ),
+        "avforce": _pad_both(surface_average(force_residual)),
+        "pprim": _extrapolate_both(surface_average(pprime_ovp * jnp.ones_like(sqrtg))),
+        "jdotb": jdotb,
+        "bdotb": bdotb,
+        "bdotgradv": bdotgradv,
+        "jpar2": _pad_both(dnorm1 * tjnorm * surface_average(bdotk**2 / sqgb2)),
+        "jperp2": _pad_both(dnorm1 * tjnorm * surface_average(kp2 * sqrtg)),
+        "phin": toroidal_flux / toroidal_flux[-1],
+        "jsupu3": full_table(ovp_3d * itheta),
+        "jsupv3": full_table(ovp_3d * izeta),
+        "jsups3": half_table(
+            jnp.pad(ovp_3d, ((0, 1), (0, 0), (0, 0))) * (bsubuv - bsubvu) / MU_0
+        ),
+        "bsupu3": full_table(bsupu1),
+        "bsupv3": full_table(bsupv1),
+        "jcrossb": full_table(jxb),
+        "jxb_gradp": full_table(force_residual),
+        "jdotb_sqrtg": full_table(ovp_3d * bdotk),
+        "sqrtg3": full_table(sqrtg * ovp_3d),
+        "bsubu3": half_table(bsubu_out),
+        "bsubv3": half_table(bsubv_out),
+        "bsubs3": full_table(bsubs_full[1:-1]),
+    }
 
     # Mercier stability (ComputeIntermediateMercierQuantities,
     # ComputeMercierStability).
@@ -656,7 +771,7 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
         Rmajor_p=rmajor_p,
         volume=volume_p,
     )
-    return quantities
+    return quantities, jxbout
 
 
 def static_fields(vmec_input: Any) -> dict[str, Any]:
@@ -1687,8 +1802,8 @@ def _pad_axis(values_half: jax.Array) -> jax.Array:
 
 
 def _pad_both(values_interior: jax.Array) -> jax.Array:
-    """Interior full-grid profile with zeros at axis and edge."""
-    return jnp.pad(values_interior, (1, 1))
+    """Interior full-grid values with zeros at axis and edge."""
+    return jnp.pad(values_interior, [(1, 1)] + [(0, 0)] * (values_interior.ndim - 1))
 
 
 def _extrapolate_both(values_interior: jax.Array) -> jax.Array:

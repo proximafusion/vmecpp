@@ -1,12 +1,9 @@
 """The implicit adjoint for equilibria without stellarator symmetry (lasym)."""
 
-from typing import Any
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from scipy.sparse.linalg import LinearOperator, gmres
 
 import vmecpp
 from vmecpp import autodiff
@@ -171,94 +168,10 @@ def test_geometry_state_vjp_is_the_transpose(case, request) -> None:
     )
 
 
-def _parser_state_tangent(indata, boundary, direction):
-    """The asymmetric parser rotates the poloidal angle by an angle that depends on the
-    boundary, so it is nonlinear; a central difference is accurate to O(h^2)."""
-    ns = int(np.asarray(indata.ns_array)[-1])
-    step = 1.0e-6
-
-    def state(value):
-        perturbed = indata.model_copy(
-            update={"rbc": value[0], "zbs": value[1], "rbs": value[2], "zbc": value[3]}
-        )
-        model = _vmecpp.VmecModel.create(perturbed._to_cpp_vmecindata(), ns)
-        return np.asarray(model.get_state(), dtype=np.float64)
-
-    return (state(boundary + step * direction) - state(boundary - step * direction)) / (
-        2.0 * step
-    )
-
-
-def _tangent_through_the_solve(indata, boundary, seed_state):
-    """The forward sensitivity, solved with H where the adjoint solves with H^T."""
-    model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
-    state = np.asarray(model.get_state(), dtype=np.float64)
-    interior, edge = autodiff._interior_and_boundary(model)
-    gauge = autodiff._gauge_entries(model)
-    edge = np.concatenate([edge, gauge])
-    interior = np.setdiff1d(interior, gauge)
-    model.set_state(np.ascontiguousarray(state))
-    model.evaluate(2, 2, True)
-    keep = autodiff._structural_nullfree_interior(model, interior)
-    size = state.size
-
-    def forward(value):
-        return np.asarray(
-            model.exact_hessian_vector_product(np.ascontiguousarray(value)),
-            dtype=np.float64,
-        )
-
-    def restricted(value):
-        embedded = np.zeros(size)
-        embedded[keep] = value
-        return forward(embedded)[keep]
-
-    def precondition(value):
-        embedded = np.zeros(size)
-        embedded[keep] = value
-        return np.asarray(
-            model.apply_preconditioner(np.ascontiguousarray(embedded)),
-            dtype=np.float64,
-        )[keep]
-
-    factory: Any = LinearOperator
-    operator = factory((keep.size, keep.size), matvec=restricted, dtype=np.float64)
-    preconditioner = factory(
-        (keep.size, keep.size), matvec=precondition, dtype=np.float64
-    )
-    seeded = np.zeros(size)
-    seeded[edge] = seed_state[edge]
-    tangent, info = gmres(
-        operator,
-        -forward(seeded)[keep],
-        M=preconditioner,
-        rtol=1.0e-12,
-        restart=200,
-        maxiter=400,
-    )
-    assert info == 0
-    state_tangent = np.zeros(size)
-    state_tangent[keep] = tangent
-    state_tangent[edge] = seed_state[edge]
-
-    # The coefficients are linear in the state; with ncurr = 1 the poloidal flux
-    # follows it through the current constraint, which the evaluation updates.
-    step = 1.0e-6
-
-    def flat(value):
-        model.set_state(np.ascontiguousarray(value))
-        model.evaluate(2, 2, False)
-        return autodiff._cpp_geometry_flat(
-            model.get_geometry(), model.ns, model.mpol, model.ntor
-        )
-
-    return (flat(state + step * state_tangent) - flat(state - step * state_tangent)) / (
-        2.0 * step
-    )
-
-
 @pytest.mark.parametrize("case", CASES)
-def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(case, request) -> None:
+def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(
+    case, request, forward_sensitivity
+) -> None:
     indata = request.getfixturevalue(case)
     solver = autodiff.make_solver(indata)
     boundary = _boundary(indata)
@@ -268,8 +181,7 @@ def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(case, request) ->
     direction = generator.standard_normal(boundary.shape)
     cotangent = generator.standard_normal(solver.output_shape)
 
-    seed_state = _parser_state_tangent(indata, boundary, direction)
-    tangent = _tangent_through_the_solve(indata, boundary, seed_state)
+    tangent = forward_sensitivity(indata, boundary, direction)
     adjoint = solver._backward_callback(boundary, cotangent)[0]
 
     np.testing.assert_allclose(
@@ -277,17 +189,17 @@ def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(case, request) ->
     )
 
 
-def test_poloidal_origin_shift_enters_the_gradient(input_3d) -> None:
-    """A direction along rbs(m = 1, n = 0) alone changes the solve only through the
-    rotation of the poloidal angle and the boundary it rotates."""
+def test_poloidal_origin_shift_enters_the_gradient(
+    input_3d, forward_sensitivity
+) -> None:
+    """A direction along rbs(m = 1, n = 0), which sets the poloidal rotation angle."""
     solver = autodiff.make_solver(input_3d)
     boundary = _boundary(input_3d)
     direction = np.zeros(boundary.shape)
     direction[2, 1, input_3d.ntor] = 1.0
     cotangent = np.random.default_rng(2).standard_normal(solver.output_shape)
 
-    seed_state = _parser_state_tangent(input_3d, boundary, direction)
-    tangent = _tangent_through_the_solve(input_3d, boundary, seed_state)
+    tangent = forward_sensitivity(input_3d, boundary, direction)
     adjoint = solver._backward_callback(boundary, cotangent)[0][0]
 
     np.testing.assert_allclose(
@@ -295,7 +207,9 @@ def test_poloidal_origin_shift_enters_the_gradient(input_3d) -> None:
     )
 
 
-def test_run_solver_vjp_is_the_transpose_of_the_forward_sensitivity(input_3d) -> None:
+def test_run_solver_vjp_is_the_transpose_of_the_forward_sensitivity(
+    input_3d, forward_sensitivity
+) -> None:
     """The VJP of vmecpp.run linearizes at a model hot-restarted from the run's wout."""
     solver = autodiff._RunSolver(input_3d)
     boundary = _boundary(input_3d)
@@ -303,8 +217,7 @@ def test_run_solver_vjp_is_the_transpose_of_the_forward_sensitivity(input_3d) ->
     direction = generator.standard_normal(boundary.shape)
     cotangent = generator.standard_normal(solver.geometry_size)
 
-    seed_state = _parser_state_tangent(input_3d, boundary, direction)
-    tangent = _tangent_through_the_solve(input_3d, boundary, seed_state)
+    tangent = forward_sensitivity(input_3d, boundary, direction)
     adjoint = solver._backward_callback(boundary, cotangent)[0]
 
     np.testing.assert_allclose(
@@ -313,8 +226,7 @@ def test_run_solver_vjp_is_the_transpose_of_the_forward_sensitivity(input_3d) ->
 
 
 def test_run_with_a_traced_asymmetric_boundary(input_3d) -> None:
-    """vmecpp.run traces rbs and zbc and returns the asymmetric Fourier coefficients of
-    the plain run with the m = 1 gauge pinned, as the traced run pins it."""
+    """A traced asymmetric run reproduces the plain run with the m = 1 gauge pinned."""
     pinned = input_3d.model_copy(update={"always_fix_m1_gauge": True})
     reference = vmecpp.run(pinned, verbose=False).wout
     weights = np.random.default_rng(5).standard_normal(np.shape(reference.rmns))
