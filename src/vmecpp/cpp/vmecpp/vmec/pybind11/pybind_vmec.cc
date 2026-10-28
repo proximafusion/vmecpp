@@ -1496,6 +1496,7 @@ PYBIND11_MODULE(_vmecpp, m) {
                      &vmecpp::WOutFileContents::force_residual_lambda)
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
       .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
+      .def_readwrite("lcfs_force", &vmecpp::WOutFileContents::lcfs_force)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
       .def_readwrite("restart_reason_timetrace",
                      &vmecpp::WOutFileContents::restart_reason_timetrace)
