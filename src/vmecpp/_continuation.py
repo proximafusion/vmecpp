@@ -32,7 +32,7 @@ import numpy as np
 
 if typing.TYPE_CHECKING:
     from vmecpp import OutputMode, SolverState, VmecInput, VmecOutput
-    from vmecpp._free_boundary import MagneticFieldResponseTable
+    from vmecpp._free_boundary import MagneticFieldFunction, MagneticFieldResponseTable
 
 # State-vector geometry arrays on the full grid, shape [mn_mode, n_surfaces]. These
 # are the only quantities VMEC++ reads back when hot-restarting, so they must be
@@ -311,7 +311,7 @@ def _step_input(
 
 def _run_fourier_continuation(
     input: VmecInput,
-    magnetic_field: MagneticFieldResponseTable | None,
+    magnetic_field: MagneticFieldResponseTable | MagneticFieldFunction | None,
     *,
     max_threads: int | None,
     verbose: bool | int | OutputMode,

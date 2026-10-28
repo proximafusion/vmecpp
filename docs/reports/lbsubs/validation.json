@@ -1,0 +1,32 @@
+{
+  "sheared": {
+    "analytical_curl_step_check_A_m2": 3.7295278161764145e-05,
+    "max_R_change_m": 5.789146939605416e-12,
+    "max_Z_change_m": 2.765263712456445e-12
+  },
+  "sheared-asym": {
+    "analytical_curl_step_check_A_m2": 4.514050669968128e-05,
+    "max_R_change_m": 2.5277668846968027e-10,
+    "max_Z_change_m": 1.1704653218869154e-10
+  },
+  "vacuum": {
+    "max_R_change_m": 1.5465487557264623e-08,
+    "max_Z_change_m": 1.1807672450903084e-08
+  },
+  "w7x": {
+    "max_R_change_m": 5.952085935234663e-09,
+    "max_Z_change_m": 4.2540538314206344e-09
+  },
+  "w7x_ns17_before": {
+    "low_mode_current_relative_error_vs_ns65": 1.6553845556215372
+  },
+  "w7x_ns17_after": {
+    "low_mode_current_relative_error_vs_ns65": 0.009994410323638113
+  },
+  "w7x_ns33_before": {
+    "low_mode_current_relative_error_vs_ns65": 2.3622090700772973
+  },
+  "w7x_ns33_after": {
+    "low_mode_current_relative_error_vs_ns65": 0.0064199032316464375
+  }
+}

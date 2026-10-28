@@ -9,14 +9,15 @@
 namespace vmecpp {
 
 Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
-               const MGridProvider* mgrid, std::span<double> matrixShare,
-               std::span<double> bvecShare, std::span<double> bSqVacShare,
+               const MagneticFieldFunction* magnetic_field,
+               std::span<double> matrixShare, std::span<double> bvecShare,
+               std::span<double> bSqVacShare,
                Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
                std::span<double> vacuum_b_r_share,
                std::span<double> vacuum_b_phi_share,
                std::span<double> vacuum_b_z_share,
                std::span<double> reduce_slots)
-    : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
+    : FreeBoundaryBase(s, tp, magnetic_field, bSqVacShare, vacuum_b_r_share,
                        vacuum_b_phi_share, vacuum_b_z_share),
       nf(s_.ntor),
       mf(s_.mpol + 1),

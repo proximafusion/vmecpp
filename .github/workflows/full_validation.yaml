@@ -20,10 +20,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
-# CI-only dependency workaround, see .github/constraints.txt
+# CI-only dependency workarounds, see .github/constraints.txt and .github/uv.toml
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
   UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  PIP_ONLY_BINARY: netCDF4
+  UV_CONFIG_FILE: ${{ github.workspace }}/.github/uv.toml
 
 jobs:
   validation:
@@ -36,6 +38,7 @@ jobs:
     env:
       PIP_CONSTRAINT: ${{ github.workspace }}/vmecpp/.github/constraints.txt
       UV_CONSTRAINT: ${{ github.workspace }}/vmecpp/.github/constraints.txt
+      UV_CONFIG_FILE: ${{ github.workspace }}/vmecpp/.github/uv.toml
     steps:
       - name: Check out VMEC++
         uses: actions/checkout@v4
@@ -54,6 +57,13 @@ jobs:
         with:
           python-version: "3.10"
 
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            vmecpp-validation/requirements.txt
+            vmecpp/pyproject.toml
+
       - name: Install required system packages for Ubuntu
         run: |
           sudo apt-get update && sudo apt-get install -y \
@@ -66,10 +76,10 @@ jobs:
           # Install everything except vmecpp itself: we build and install vmecpp
           # from this commit below instead of the version pinned in requirements.txt.
           grep -v '^vmecpp@' requirements.txt > requirements.no-vmecpp.txt
-          python -m pip install -r requirements.no-vmecpp.txt
+          uv pip install --system -r requirements.no-vmecpp.txt
 
       - name: Install VMEC++ from this commit
-        run: python -m pip install "./vmecpp" "numpy<2.1"
+        run: uv pip install --system "./vmecpp" "numpy<2.1"
 
       - name: Run short validation
         if: github.event_name == 'push'

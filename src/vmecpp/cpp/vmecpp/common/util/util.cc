@@ -9,6 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/globals.h"
+#include "absl/log/initialize.h"
+
 namespace vmecpp {
 
 int VmecStatusCode(const VmecStatus vmec_status) {
@@ -340,15 +343,6 @@ int vmec_adjust_num_threads(const int max_threads,
   return num_threads;
 }
 
-int vmec_adjust_vacuum_num_threads(const int max_threads, const int n_znt) {
-  // The vacuum solve distributes nZnT tangential grid points among the threads
-  // (see TangentialPartitioning). There is no minimum-points-per-thread
-  // constraint like the radial solve's shared half-grid point, so we can use up
-  // to nZnT threads. In practice nZnT >> max_threads, so this returns
-  // max_threads.
-  return std::min(max_threads, n_znt);
-}
-
 int GrantedThreads(const int requested_threads) {
   int granted_threads = 1;
 #ifdef _OPENMP
@@ -363,19 +357,10 @@ int GrantedThreads(const int requested_threads) {
   return granted_threads;
 }
 
-int GrantedNestedThreads(const int outer_threads, const int nested_threads) {
-  int granted_threads = 1;
-#ifdef _OPENMP
-#pragma omp parallel num_threads(outer_threads)
-  {
-#pragma omp single
-    granted_threads = GrantedThreads(nested_threads);
-  }
-#else
-  (void)outer_threads;
-  (void)nested_threads;
-#endif  // _OPENMP
-  return granted_threads;
+void InitializeUserLogging() {
+  absl::InitializeLog();
+  absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
+  absl::EnableLogPrefix(false);
 }
 
 }  // namespace vmecpp

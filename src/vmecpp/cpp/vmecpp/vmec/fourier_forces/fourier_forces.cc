@@ -158,4 +158,28 @@ void FourierForces::residuals(Eigen::Vector3d& fRes,
   fRes[2] = local_fResL;
 }
 
+double FourierForces::lcfsRZResidual() const {
+  if (nsMax_ != ns) {
+    return 0.0;
+  }
+
+  double residual = 0.0;
+  const int num_mn = s_.mpol * (s_.ntor + 1);
+  const int offset = (ns - 1 - nsMin_) * num_mn;
+  for (int idx_mn = 0; idx_mn < num_mn; ++idx_mn) {
+    const int idx = offset + idx_mn;
+    residual += frcc[idx] * frcc[idx] + fzsc[idx] * fzsc[idx];
+    if (s_.lthreed) {
+      residual += frss[idx] * frss[idx] + fzcs[idx] * fzcs[idx];
+    }
+    if (s_.lasym) {
+      residual += frsc[idx] * frsc[idx] + fzcc[idx] * fzcc[idx];
+      if (s_.lthreed) {
+        residual += frcs[idx] * frcs[idx] + fzss[idx] * fzss[idx];
+      }
+    }
+  }
+  return residual;
+}
+
 }  // namespace vmecpp

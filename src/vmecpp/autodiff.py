@@ -6,7 +6,7 @@ and solves the transposed interior force system. This is the usual implicit
 layer for a differentiable code: JAX differentiates the consumer objective,
 and VMEC++ supplies the producer's residual transpose.
 
-The solve pins the m=1 poloidal-origin gauge (``VmecModel.always_fix_m1_gauge``):
+The solve pins the m=1 poloidal-origin gauge (``VmecInput.always_fix_m1_gauge``):
 the native iteration lets that gauge drift under its force until ``fsqz`` drops
 below 1e-6 and freezes it wherever it is, so the converged state would depend on
 the iteration history and the fixed-gauge force Jacobian would not describe it.
@@ -33,7 +33,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, gmres
+import scipy.linalg
 
 from vmecpp import autodiff_wout, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
@@ -91,11 +91,10 @@ def _key(solver_id: int, boundary: np.ndarray, profiles: dict) -> tuple[int, byt
 # did not converge.
 _VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
 
-# State vectors of recent forward solves, keyed by (solver id, boundary
-# bytes), so the VJP linearizes at the solved state instead of solving again.
-# The cache is module-level and holds NumPy data only: JAX keeps callback
-# closures alive in its caches, so anything a solver instance owned would live
-# as long as those, and C++ objects must not outlive the callback that made them.
+# Recent forward solves, keyed by solver and parameters: the solved state, the
+# forward output and, from the latest VJP until a solve or VJP at other
+# parameters, the LU factors of the transposed interior system. NumPy data only,
+# since JAX retains callback closures.
 _FORWARD_SOLVES: collections.OrderedDict[tuple[int, bytes], dict[str, Any]] = (
     collections.OrderedDict()
 )
@@ -118,13 +117,14 @@ def _solve_model(template, boundary: np.ndarray, profiles=None):
     standalone-convergent.
     """
     indata = _make_indata(template, boundary, profiles)
+    indata.always_fix_m1_gauge = True
     resolutions = [int(value) for value in np.asarray(indata.ns_array)]
     model = None
     for ns in resolutions:
         if ns < 3:
             continue
         if model is None:
-            model = _vmecpp.VmecModel.create(indata, ns, always_fix_m1_gauge=True)
+            model = _vmecpp.VmecModel.create(indata, ns)
         else:
             model.refine_to(ns)
         model.solve()
@@ -366,10 +366,183 @@ def _structural_nullfree_interior(
     return np.asarray(keep, dtype=np.int64)
 
 
-def _implicit_vjp(
-    model, geometry_bar: np.ndarray, with_profiles: bool = False
-) -> tuple[np.ndarray, np.ndarray]:
-    """The boundary cotangent and that of :func:`autodiff_wout.half_grid_profiles`."""
+class _BlockTridiagonal:
+    """A matrix that is block tridiagonal in the surface index, solved by block LU.
+
+    ``surface[k]`` is the surface of unknown ``k``. Unknowns on the same surface
+    form one diagonal block; ``lower[j]`` and ``upper[j]`` couple surface ``j`` to
+    ``j - 1`` and ``j + 1``. Blocks are stored dense and padded to the largest
+    surface.
+    """
+
+    def __init__(self, surface: np.ndarray) -> None:
+        self.surface = surface
+        self.ns = int(surface.max()) + 1
+        self.members = [np.nonzero(surface == j)[0] for j in range(self.ns)]
+        self.local = np.zeros(surface.size, dtype=np.int64)
+        for members in self.members:
+            self.local[members] = np.arange(members.size)
+        width = max(members.size for members in self.members)
+        self.diagonal = np.zeros((self.ns, width, width))
+        self.lower = np.zeros((self.ns, width, width))
+        self.upper = np.zeros((self.ns, width, width))
+        self.pivots: list[np.ndarray] = []
+
+    def set_entries(self, rows: np.ndarray, columns: np.ndarray, values) -> None:
+        offset = self.surface[columns] - self.surface[rows]
+        if np.any(np.abs(offset) > 1):
+            error_message = "entry outside the block tridiagonal band"
+            raise ValueError(error_message)
+        for band, blocks in ((-1, self.lower), (0, self.diagonal), (1, self.upper)):
+            mask = offset == band
+            blocks[
+                self.surface[rows[mask]],
+                self.local[rows[mask]],
+                self.local[columns[mask]],
+            ] = values[mask]
+
+    def _block(self, blocks: np.ndarray, j: int, k: int) -> np.ndarray:
+        return blocks[j, : self.members[j].size, : self.members[k].size]
+
+    def matvec(self, vector: np.ndarray) -> np.ndarray:
+        result = np.zeros_like(vector)
+        for j, members in enumerate(self.members):
+            result[members] = self._block(self.diagonal, j, j) @ vector[members]
+            if j > 0:
+                result[members] += (
+                    self._block(self.lower, j, j - 1) @ vector[self.members[j - 1]]
+                )
+            if j + 1 < self.ns:
+                result[members] += (
+                    self._block(self.upper, j, j + 1) @ vector[self.members[j + 1]]
+                )
+        return result
+
+    def factorize(self) -> None:
+        """Block Thomas elimination: LU-factor each Schur complement in place."""
+        self.pivots = []
+        for j in range(self.ns):
+            schur = self._block(self.diagonal, j, j)
+            if j > 0:
+                # upper[j-1] <- D'[j-1]^{-1} upper[j-1], then D'[j] = D[j] - L[j] U'[j-1]
+                coupling = scipy.linalg.lu_solve(
+                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
+                    self._block(self.upper, j - 1, j),
+                )
+                self._block(self.upper, j - 1, j)[...] = coupling
+                schur -= self._block(self.lower, j, j - 1) @ coupling
+            factor, pivots = scipy.linalg.lu_factor(schur, check_finite=False)
+            self._block(self.diagonal, j, j)[...] = factor
+            self.pivots.append(pivots)
+
+    def solve(self, rhs: np.ndarray) -> np.ndarray:
+        forward = np.zeros_like(rhs)
+        for j, members in enumerate(self.members):
+            forward[members] = rhs[members]
+            if j > 0:
+                forward[members] -= self._block(
+                    self.lower, j, j - 1
+                ) @ scipy.linalg.lu_solve(
+                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
+                    forward[self.members[j - 1]],
+                )
+        result = np.zeros_like(rhs)
+        for j in range(self.ns - 1, -1, -1):
+            members = self.members[j]
+            result[members] = scipy.linalg.lu_solve(
+                (self._block(self.diagonal, j, j), self.pivots[j]), forward[members]
+            )
+            if j + 1 < self.ns:
+                result[members] -= (
+                    self._block(self.upper, j, j + 1) @ result[self.members[j + 1]]
+                )
+        return result
+
+
+def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
+    """``H^T`` restricted to ``solved``, exactly, from coloured Hessian products.
+
+    The force on surface ``j`` depends only on the state on surfaces ``j - 1``,
+    ``j`` and ``j + 1``, so the operator is block tridiagonal in the surface index.
+    One product ``H p`` with ``p`` the indicator of every solved entry of one
+    mode on the surfaces ``j % 3 == c`` recovers all of those columns at once:
+    rows on surface ``i`` can only come from the one probed surface among
+    ``i - 1, i, i + 1``. That is ``3 * (modes per surface)`` products in total,
+    independent of ``ns``. ``H`` rather than ``H^T`` is probed because the
+    forward product is several times cheaper; the transpose is taken on storage.
+    """
+    state_size = int(np.asarray(model.get_state()).size)
+    modes_per_surface = model.mpol * (model.ntor + 1)
+    surface = np.zeros(state_size, dtype=np.int64)
+    mode = np.zeros(state_size, dtype=np.int64)
+    for index, span in enumerate(_span_slices(model).values()):
+        local = np.arange(span.stop - span.start)
+        surface[span] = local // modes_per_surface
+        mode[span] = index * modes_per_surface + local % modes_per_surface
+    solved_surface = surface[solved]
+    matrix = _BlockTridiagonal(solved_surface)
+    # One probe per (color, mode): group the solved entries once by that key.
+    n_modes = int(mode.max()) + 1
+    group_key = (solved_surface % 3) * n_modes + mode[solved]
+    order = np.argsort(group_key, kind="stable")
+    boundaries = np.flatnonzero(np.diff(group_key[order])) + 1
+    # probed_position[j + 1]: position in solved of the probed entry on surface j,
+    # padded so the neighbours j = -1 and j = ns of the edge surfaces read -1.
+    probed_position = np.full(matrix.ns + 2, -1, dtype=np.int64)
+    for group in np.split(order, boundaries):
+        color = int(group_key[group[0]]) // n_modes
+        probe = np.zeros(state_size)
+        probe[solved[group]] = 1.0
+        product = np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(probe)),
+            dtype=np.float64,
+        )[solved]
+        hit = np.flatnonzero(product)
+        hit_surface = solved_surface[hit]
+        column_surface = hit_surface - ((hit_surface - color + 1) % 3 - 1)
+        probed_position[solved_surface[group] + 1] = group
+        column = probed_position[column_surface + 1]
+        probed_position[solved_surface[group] + 1] = -1
+        found = column >= 0
+        # (H^T)[column, row] = H[row, column]
+        matrix.set_entries(column[found], hit[found], product[hit[found]])
+    return matrix
+
+
+@dataclass(frozen=True)
+class _Factorization:
+    """The transposed interior force system of one solved state, LU-factored."""
+
+    interior: np.ndarray
+    prescribed: np.ndarray
+    gauge: np.ndarray
+    matrix: _BlockTridiagonal
+
+
+def _factorize(model) -> _Factorization:
+    """Assemble and factor ``H^T`` on the interior of the model's evaluated state."""
+    interior, boundary = _interior_and_boundary(model)
+    # The pinned gauge entries are prescribed by the boundary, like the boundary
+    # entries themselves: they leave the interior system and are pulled back.
+    gauge = _gauge_entries(model)
+    interior = np.setdiff1d(interior, gauge)
+    prescribed = np.concatenate([boundary, gauge])
+    # Deflate the structural null space; without this the transposed
+    # interior system is singular and inconsistent in 3D.
+    interior = _structural_nullfree_interior(model, interior)
+    matrix = _assemble_block_tridiagonal(model, interior)
+    matrix.factorize()
+    return _Factorization(interior, prescribed, gauge, matrix)
+
+
+def _implicit_vjps(
+    model,
+    geometry_bars: np.ndarray,
+    with_profiles: bool = False,
+    factorization: _Factorization | None = None,
+) -> tuple[np.ndarray, np.ndarray, _Factorization | None]:
+    """Boundary and half-grid profile cotangents of each row of ``geometry_bars``, and
+    the factorization of the transposed interior system that serves them all."""
     if not getattr(model, "has_exact_force_jacobian", False):
         error_message = (
             "This VMEC++ build has no exact residual transpose. Rebuild with "
@@ -383,75 +556,69 @@ def _implicit_vjp(
             "force Jacobian describes the solve only with always_fix_m1_gauge"
         )
         raise RuntimeError(error_message)
-    coefficient_bar = np.asarray(geometry_bar[2 * model.ns :], dtype=np.float64)
-    poloidal_flux_bar = np.asarray(
-        geometry_bar[model.ns : 2 * model.ns], dtype=np.float64
+    geometry_bars = np.asarray(geometry_bars, dtype=np.float64).reshape(
+        -1, np.shape(geometry_bars)[-1]
     )
-    state_bar = np.asarray(
-        model.geometry_state_vjp(coefficient_bar, poloidal_flux_bar), dtype=np.float64
-    )
-    state = np.asarray(model.get_state(), dtype=np.float64)
-    interior, boundary = _interior_and_boundary(model)
-    # The pinned gauge entries are prescribed by the boundary, like the boundary
-    # entries themselves: they leave the interior system and are pulled back.
-    gauge = _gauge_entries(model)
-    interior = np.setdiff1d(interior, gauge)
-    prescribed = np.concatenate([boundary, gauge])
-    model.set_state(np.ascontiguousarray(state))
-    model.evaluate(2, 2, True)
-    state_size = state.size
-    # Deflate the structural null space; without this the transposed
-    # interior system is singular and inconsistent in 3D.
-    interior = _structural_nullfree_interior(model, interior)
-
-    def transpose(value: np.ndarray) -> np.ndarray:
-        return np.asarray(
-            model.exact_hessian_vector_product_transpose(np.ascontiguousarray(value)),
+    ns = model.ns
+    state = np.ascontiguousarray(np.asarray(model.get_state(), dtype=np.float64))
+    boundary_bars = []
+    profile_bars = []
+    for geometry_bar in geometry_bars:
+        # The VJP products use the model's state buffers as scratch, so each
+        # cotangent starts from the solved state.
+        model.set_state(state)
+        state_bar = np.asarray(
+            model.geometry_state_vjp(geometry_bar[2 * ns :], geometry_bar[ns : 2 * ns]),
             dtype=np.float64,
         )
-
-    def matvec(value: np.ndarray) -> np.ndarray:
-        embedded = np.zeros(state_size)
-        embedded[interior] = value
-        return transpose(embedded)[interior]
-
-    def precondition(value: np.ndarray) -> np.ndarray:
-        embedded = np.zeros(state_size)
-        embedded[interior] = value
-        return np.asarray(
-            model.apply_preconditioner(np.ascontiguousarray(embedded)),
+        model.set_state(state)
+        model.evaluate(2, 2, True)
+        if factorization is None:
+            factorization = _factorize(model)
+        interior = factorization.interior
+        prescribed = factorization.prescribed
+        embedded = np.zeros(state.size)
+        embedded[interior] = factorization.matrix.solve(state_bar[interior])
+        transposed = np.asarray(
+            model.exact_hessian_vector_product_transpose(
+                np.ascontiguousarray(embedded)
+            ),
             dtype=np.float64,
-        )[interior]
+        )
+        # The interior rows of the same product are the residual of the direct
+        # solve: a free check that the assembly and the factorization are sound.
+        residual = float(np.linalg.norm(transposed[interior] - state_bar[interior]))
+        residual_scale = max(float(np.linalg.norm(state_bar[interior])), 1.0e-300)
+        if residual > 1.0e-6 * residual_scale:
+            error_message = (
+                "VMEC++ implicit adjoint solve failed: relative residual "
+                f"{residual / residual_scale:.3e}"
+            )
+            raise RuntimeError(error_message)
+        full_state_bar = np.zeros(state.size)
+        full_state_bar[prescribed] = state_bar[prescribed] - transposed[prescribed]
+        full_state_bar = _pull_gauge_back_to_boundary(
+            model, full_state_bar, factorization.gauge
+        )
+        profile_bar = np.zeros((3, ns - 1))
+        if with_profiles:
+            # dJ/dp = J_p - adjoint^T F_p, J_p through the poloidal flux
+            poloidal_flux_bar = geometry_bar[ns : 2 * ns]
+            profile_bar = np.stack(model.profile_vjp(-embedded, poloidal_flux_bar))
+            profile_bar[1] *= -1.0 if model.have_to_flip_theta else 1.0
+        boundary_bars.append(_boundary_from_state_vjp(model, full_state_bar))
+        profile_bars.append(profile_bar)
+    return np.stack(boundary_bars), np.stack(profile_bars), factorization
 
-    operator_factory: Any = LinearOperator
-    operator = operator_factory(
-        (interior.size, interior.size), matvec=matvec, dtype=np.float64
+
+def _implicit_vjp(
+    model, geometry_bar: np.ndarray, with_profiles: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
+    """The boundary cotangent and that of :func:`autodiff_wout.half_grid_profiles`."""
+    boundary_bars, profile_bars, _ = _implicit_vjps(
+        model, np.asarray(geometry_bar)[None], with_profiles
     )
-    preconditioner = operator_factory(
-        (interior.size, interior.size), matvec=precondition, dtype=np.float64
-    )
-    adjoint, info = gmres(
-        operator,
-        state_bar[interior],
-        M=preconditioner,
-        rtol=1.0e-8,
-        restart=200,
-        maxiter=400,
-    )
-    if info != 0:
-        error_message = f"VMEC++ implicit adjoint solve failed with info={info}"
-        raise RuntimeError(error_message)
-    embedded = np.zeros(state_size)
-    embedded[interior] = adjoint
-    full_state_bar = np.zeros(state_size)
-    full_state_bar[prescribed] = state_bar[prescribed] - transpose(embedded)[prescribed]
-    full_state_bar = _pull_gauge_back_to_boundary(model, full_state_bar, gauge)
-    profile_bar = np.zeros((3, model.ns - 1))
-    if with_profiles:
-        # dJ/dp = J_p - adjoint^T F_p, J_p through the poloidal flux
-        profile_bar = np.stack(model.profile_vjp(-embedded, poloidal_flux_bar))
-        profile_bar[1] *= -1.0 if model.have_to_flip_theta else 1.0
-    return _boundary_from_state_vjp(model, full_state_bar), profile_bar
+    return boundary_bars[0], profile_bars[0]
 
 
 @dataclass(frozen=True)
@@ -514,46 +681,80 @@ class DifferentiableVmec:
         return (self.geometry_size + self.extra_size,)
 
     def _remember(self, boundary: np.ndarray, profiles: dict, solve: dict) -> None:
+        # A solve at other parameters releases the held factorization.
+        for other in _FORWARD_SOLVES.values():
+            other.pop("factorization", None)
         _FORWARD_SOLVES[_key(self._solver_id, boundary, profiles)] = solve
         while len(_FORWARD_SOLVES) > _FORWARD_SOLVES_SIZE:
             _FORWARD_SOLVES.popitem(last=False)
 
+    def _cached(self, boundary: np.ndarray, profiles: dict) -> dict | None:
+        key = _key(self._solver_id, boundary, profiles)
+        solve = _FORWARD_SOLVES.get(key)
+        if solve is not None:
+            _FORWARD_SOLVES.move_to_end(key)
+        return solve
+
     def _forward_callback(self, boundary: np.ndarray, profiles=None) -> np.ndarray:
         profiles = profiles or {}
+        solve = self._cached(boundary, profiles)
+        if solve is not None and "output" in solve:
+            return solve["output"]
         model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
-        self._remember(boundary, profiles, {"state": np.array(model.get_state())})
-        return _cpp_geometry_flat(
+        output = _cpp_geometry_flat(
             model.get_geometry(), model.ns, model.mpol, model.ntor
         )
+        self._remember(
+            boundary, profiles, {"state": np.array(model.get_state()), "output": output}
+        )
+        return output
 
     def _solved_state(self, boundary: np.ndarray, profiles: dict) -> np.ndarray:
         """The state vector of a fresh forward solve, for a cache miss."""
         model = _solve_model(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
         return np.array(model.get_state())
 
+    def _solve_for_vjp(self, boundary: np.ndarray, profiles: dict) -> dict:
+        """The cache entry of the forward solve, solving on a miss."""
+        solve = self._cached(boundary, profiles)
+        if solve is None:
+            solve = {"state": self._solved_state(boundary, profiles)}
+            self._remember(boundary, profiles, solve)
+        return solve
+
     def _solved_model(self, boundary: np.ndarray, profiles: dict | None = None):
-        """A model at the forward solve's state, consumed by the VJP.
+        """A model at the forward solve's state, for the VJP.
 
         A model created cold and set to a solved state reproduces the solved model's
         forces, Hessian products and preconditioner exactly.
         """
         profiles = profiles or {}
-        solve = _FORWARD_SOLVES.pop(_key(self._solver_id, boundary, profiles), None)
-        state = (
-            self._solved_state(boundary, profiles) if solve is None else solve["state"]
-        )
+        state = self._solve_for_vjp(boundary, profiles)["state"]
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
+        indata.always_fix_m1_gauge = True
         model = _vmecpp.VmecModel.create(indata, self.ns)
-        model.always_fix_m1_gauge = True
         model.set_state(np.ascontiguousarray(state))
         return model
 
     def _backward_callback(
-        self, boundary: np.ndarray, geometry_bar: np.ndarray, profiles=None
+        self, boundary: np.ndarray, geometry_bars: np.ndarray, profiles=None
     ) -> tuple[np.ndarray, np.ndarray]:
+        """The boundary and profile cotangents of each row of ``geometry_bars``."""
         profiles = profiles or {}
         model = self._solved_model(boundary, profiles)
-        return _implicit_vjp(model, geometry_bar, with_profiles=bool(profiles))
+        solve = self._solve_for_vjp(boundary, profiles)
+        # One factorization is held at a time: another point's is released before
+        # this one is built.
+        for other in _FORWARD_SOLVES.values():
+            if other is not solve:
+                other.pop("factorization", None)
+        boundary_bars, profile_bars, solve["factorization"] = _implicit_vjps(
+            model,
+            geometry_bars,
+            with_profiles=bool(profiles),
+            factorization=solve.get("factorization"),
+        )
+        return boundary_bars, profile_bars
 
     def __call__(self, boundary, profiles=None) -> geometry.Geometry:
         """The geometry for ``boundary`` and optional ``profiles`` values."""
@@ -587,11 +788,52 @@ class DifferentiableVmec:
             return flat.astype(np.asarray(value).dtype, copy=False)
 
         def backward_callback(value, values, cotangent):
-            geometry_bar = np.asarray(cotangent)[: self.geometry_size]
-            bars = self._backward_callback(
-                np.asarray(value), geometry_bar, concrete(values)
+            # Batch axes lead every argument, with size one where unbatched.
+            # Cotangents at one parameter point share one factorization.
+            value = np.asarray(value)
+            values = concrete(values)
+            cotangent = np.asarray(cotangent)
+            lead = cotangent.ndim - 1
+            parameter_batches = [value.shape[:lead]] + [
+                array.shape[:lead] for array in values.values()
+            ]
+            batch = np.broadcast_shapes(cotangent.shape[:lead], *parameter_batches)
+            geometry_bars = np.broadcast_to(
+                cotangent[..., : self.geometry_size], (*batch, self.geometry_size)
+            ).reshape(-1, self.geometry_size)
+            if all(size == 1 for shape in parameter_batches for size in shape):
+                bars = self._backward_callback(
+                    value.reshape(value.shape[lead:]),
+                    geometry_bars,
+                    {
+                        name: array.reshape(array.shape[lead:])
+                        for name, array in values.items()
+                    },
+                )
+            else:
+                points = np.broadcast_to(value, (*batch, *value.shape[lead:])).reshape(
+                    -1, *value.shape[lead:]
+                )
+                point_values = {
+                    name: np.broadcast_to(array, (*batch, *array.shape[lead:])).reshape(
+                        -1, *array.shape[lead:]
+                    )
+                    for name, array in values.items()
+                }
+                per_point = [
+                    self._backward_callback(
+                        points[k],
+                        geometry_bars[k : k + 1],
+                        {name: array[k] for name, array in point_values.items()},
+                    )
+                    for k in range(points.shape[0])
+                ]
+                bars = tuple(
+                    np.concatenate([bar[i] for bar in per_point]) for i in range(2)
+                )
+            return tuple(
+                bar.reshape(*batch, *bar.shape[1:]).astype(value.dtype) for bar in bars
             )
-            return tuple(bar.astype(np.asarray(value).dtype) for bar in bars)
 
         def forward(value, values):
             return jax.pure_callback(
@@ -615,7 +857,7 @@ class DifferentiableVmec:
                 value,
                 values,
                 cotangent,
-                vmap_method="sequential",
+                vmap_method="expand_dims",
             )
             return (*bars, jax.tree.map(jnp.zeros_like, values))
 
@@ -680,11 +922,11 @@ class _RunSolver(DifferentiableVmec):
 
     def _run(self, boundary: np.ndarray, profiles: dict):
         indata = _make_indata(self.vmec_input._to_cpp_vmecindata(), boundary, profiles)
+        indata.always_fix_m1_gauge = True
         output = _vmecpp.run(
             indata,
             max_threads=self.max_threads,
             verbose=_vmecpp.OutputMode(self.verbose),
-            always_fix_m1_gauge=True,
         )
         initial_state = _vmecpp.HotRestartState(wout=output.wout, indata=indata)
         model = _vmecpp.VmecModel.create(indata, self.ns, initial_state=initial_state)
@@ -695,17 +937,11 @@ class _RunSolver(DifferentiableVmec):
         import vmecpp  # noqa: PLC0415
 
         profiles = profiles or {}
+        solve = self._cached(boundary, profiles)
+        if solve is not None and "output" in solve:
+            return solve["output"]
         output, state, flip = self._run(boundary, profiles)
         wout = vmecpp.VmecWOut._from_cpp_wout(output.wout)
-        self._remember(
-            boundary,
-            profiles,
-            {
-                "state": state,
-                "wout_fields": dict(wout.__dict__),
-                "tables": vmecpp._output_tables_from_cpp(output),
-            },
-        )
         geometry_flat = _cpp_geometry_flat(
             _vmecpp.make_geometry(output),
             self.ns,
@@ -716,7 +952,18 @@ class _RunSolver(DifferentiableVmec):
         iota_half = np.asarray(wout.iotas, dtype=np.float64)[1:]
         buco_half = np.asarray(wout.buco, dtype=np.float64)[1:]
         extra = [mass_half, iota_half, buco_half, [flip]]
-        return np.concatenate([geometry_flat, *extra])
+        flat = np.concatenate([geometry_flat, *extra])
+        self._remember(
+            boundary,
+            profiles,
+            {
+                "state": state,
+                "wout_fields": dict(wout.__dict__),
+                "tables": vmecpp._output_tables_from_cpp(output),
+                "output": flat,
+            },
+        )
+        return flat
 
     def _solved_state(self, boundary: np.ndarray, profiles: dict) -> np.ndarray:
         return self._run(boundary, profiles)[1]

@@ -26,7 +26,7 @@ cc_test(
         ":nestor",
         "//vmecpp/common/fourier_basis_fast_toroidal",
         "//vmecpp/common/sizes:sizes",
-        "//vmecpp/free_boundary/mgrid_provider:mgrid_provider",
+        "//vmecpp/free_boundary/external_magnetic_field",
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
         "@googletest//:gtest_main",
     ],

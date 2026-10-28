@@ -7,6 +7,7 @@ cc_binary(
     deps = [
         "@abseil-cpp//absl/strings:strings",
         "//util/file_io:file_io",
+        "//vmecpp/common/util:util",
         "//vmecpp/common/vmec_indata:vmec_indata",
         "//vmecpp/vmec/vmec:vmec",
         "//vmecpp/vmec/output_quantities:output_quantities",

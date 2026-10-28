@@ -64,11 +64,11 @@ std::vector<ProfileParameterizationData> BuildProfileParameterizations() {
   all.emplace_back("two_power", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
                    /*minimumSplinePoints*/ 0,
-                   /*minimumCoefficients*/ 3);
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("two_power_gs", /*allowedForPres=*/true,
                    /*allowedForCurr*/ true, /*allowedForIota*/ false,
                    /*minimumSplinePoints*/ 0,
-                   /*minimumCoefficients*/ 3);
+                   /*minimumCoefficients*/ 0);
   all.emplace_back("akima_spline", /*allowedForPres=*/true,
                    /*allowedForCurr*/ false, /*allowedForIota*/ true,
                    /*minimumSplinePoints*/ 4,
