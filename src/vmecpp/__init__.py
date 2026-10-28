@@ -34,7 +34,6 @@ except ImportError:  # jax < 0.7, the last releases for Python 3.10
 from vmecpp import _util, autodiff_wout
 from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
-from vmecpp._coupled import Placement, run_coupled
 from vmecpp._free_boundary import (
     MagneticFieldFunction,
     MagneticFieldResponseTable,
@@ -3560,8 +3559,6 @@ __all__ = [  # noqa: RUF022
     "HotRestartMismatchError",
     "run",
     "interpolate_solution",
-    "run_coupled",
-    "Placement",
     "rescale",
     "VmecInput",
     "VmecOutput",
