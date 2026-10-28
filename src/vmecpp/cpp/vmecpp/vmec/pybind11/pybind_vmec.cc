@@ -570,11 +570,6 @@ class VmecModel {
           "VmecModel.geometry_state_vjp currently supports fixed-boundary "
           "models only");
     }
-    if (vmec_->indata_.lasym) {
-      throw std::runtime_error(
-          "VmecModel.geometry_state_vjp currently supports stellarator-"
-          "symmetric models only");
-    }
     if (poloidal_flux_bar.size() != 0 &&
         poloidal_flux_bar.size() != vmec_->fc_.ns) {
       throw std::runtime_error(
@@ -657,9 +652,27 @@ class VmecModel {
     if (vmec_->s_.lthreed) {
       if (vmec_->s_.mpol == 1) add_block(state_bar.zmncs, 5, false);
     }
+    if (vmec_->s_.lasym) {
+      // MakeGeometry couples the m = 1 r_sc, z_cc pair like r_ss, z_cs, also
+      // in 2D.
+      const int skipped = vmec_->s_.mpol > 1 ? 1 : -1;
+      add_block(state_bar.rmnsc, 2, false, skipped);
+      add_block(state_bar.zmncc, 6, false, skipped);
+      if (vmec_->s_.mpol > 1) {
+        add_m1_pair(state_bar.rmnsc, state_bar.zmncc, 2, 6);  // r_sc, z_cc
+      }
+      if (vmec_->s_.lthreed) {
+        add_block(state_bar.rmncs, 3, false);
+        add_block(state_bar.zmnss, 7, false);
+      }
+    }
 
     add_block(state_bar.lmnsc, 8, true);
     if (vmec_->s_.lthreed) add_block(state_bar.lmncs, 9, true);
+    if (vmec_->s_.lasym) {
+      add_block(state_bar.lmncc, 10, true);
+      if (vmec_->s_.lthreed) add_block(state_bar.lmnss, 11, true);
+    }
     Eigen::VectorXd result = FlattenActive(state_bar, vmec_->s_);
 
     if (vmec_->indata_.ncurr != 0 && poloidal_flux_bar.size() != 0 &&
@@ -832,9 +845,8 @@ class VmecModel {
       const Eigen::VectorXd &force_bar,
       const Eigen::VectorXd &poloidal_flux_bar) {
     RequireLforbalDisabledForExactDerivatives();
-    if (vmec_->indata_.gamma != 0.0 || vmec_->indata_.lasym) {
-      throw std::runtime_error(
-          "VmecModel.profile_vjp requires gamma == 0 and lasym == false");
+    if (vmec_->indata_.gamma != 0.0) {
+      throw std::runtime_error("VmecModel.profile_vjp requires gamma == 0");
     }
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());

@@ -124,14 +124,15 @@ print(f"Computed plasma volume: {vmec.volume()}")
 > The autodiff API is not yet stable. We are planning to make autodiff the default
 > behaviour and to release a suitable pip wheel in the upcoming weeks.
 
-The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
-in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+The `wout` quantities and the `jxbout` tables support autodiff with JAX. `jax.grad` can
+differentiate objectives written in terms of them with respect to the boundary coefficients
+`rbc`, `zbs` and, for `lasym=True`, `rbs`, `zbc`.
 When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
 force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
 Otherwise it returns NumPy arrays as before.
 
 Leaves that change shape depending on iteration progress (`fsqt` trace for example)
-are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
+are treated as aux data to support differentiability. The `mercier` and `threed1`
 tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
 and diagnostics are `None`.
 

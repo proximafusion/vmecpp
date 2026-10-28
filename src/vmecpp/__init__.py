@@ -2770,7 +2770,8 @@ class VmecOutput(BaseModelWithNumpy):
 
 
 # The boundary is the differentiable input; the other fields key the jit cache.
-_register_model_pytree(VmecInput, ("rbc", "zbs"))
+# rbs and zbc are None for lasym=False, which JAX treats as an empty subtree.
+_register_model_pytree(VmecInput, ("rbc", "zbs", "rbs", "zbc"))
 # Every field of the output and of its C++ tables is a leaf.
 for _model_type in (
     JxBOut,
@@ -2814,8 +2815,11 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
     }
 
 
-def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
-    """The ``wout`` of a C++ run with its physics fields from the JAX output stage.
+def _output_stage(
+    vmec_input: VmecInput, cpp_output_quantities
+) -> tuple[VmecWOut, JxBOut]:
+    """The ``wout`` and ``jxbout`` of a C++ run with their physics fields from the JAX
+    output stage.
 
     Input echoes, solver diagnostics such as the spectral width and the free-boundary
     vacuum potential come from the C++ run; the mass profile too, so that every profile
@@ -2830,7 +2834,7 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
     else:
         profile = {"iota_half": np.asarray(wout.iotas)[1:]}
     with enable_x64(True):
-        quantities = autodiff_wout.wout_quantities(
+        quantities, jxbout = autodiff_wout.output_quantities(
             _geometry.make(cpp_output_quantities),
             vmec_input,
             mass_half=np.asarray(wout.mass)[1:] * autodiff_wout.MU_0,
@@ -2843,7 +2847,15 @@ def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> Vme
             continue
         array = None if value is None else np.array(value)
         update[name] = array.item() if array is not None and array.ndim == 0 else array
-    return wout.model_copy(update=update)
+    tables: dict[str, typing.Any] = {
+        name: np.array(value) for name, value in jxbout.items()
+    }
+    return wout.model_copy(update=update), JxBOut.model_construct(**tables)
+
+
+def _wout_from_output_stage(vmec_input: VmecInput, cpp_output_quantities) -> VmecWOut:
+    """The ``wout`` of :func:`_output_stage`."""
+    return _output_stage(vmec_input, cpp_output_quantities)[0]
 
 
 def _output_mode(verbose: bool | int | OutputMode) -> OutputMode:
@@ -2867,19 +2879,20 @@ def _run_traced(
     verbose: bool | int | OutputMode,
     restart_from: VmecOutput | None,
 ) -> VmecOutput:
-    """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
+    """Run() for a boundary ``rbc, zbs`` (and ``rbs, zbc`` for ``lasym``) that JAX
+    differentiates or traces.
 
     The forward solve is a full C++ run; its VJP needs an Enzyme-enabled build.
-    When the forward solve is observable (eager calls, ``jax.grad``), jxbout,
-    mercier, the threed1 tables and the wout diagnostics come from its C++
-    output stage; under ``jax.jit`` they are ``None`` and
+    The wout physics fields and jxbout come from the JAX output stage. When the
+    forward solve is observable (eager calls, ``jax.grad``), mercier, the threed1
+    tables and the wout diagnostics come from its C++ output stage; under
+    ``jax.jit`` they are ``None`` and
     :data:`vmecpp.autodiff_wout.UNKNOWN_DIAGNOSTICS`.
     """
     from vmecpp import autodiff  # noqa: PLC0415
 
     unsupported = {
         "a free-boundary input": vmec_input.lfreeb,
-        "lasym=True": vmec_input.lasym,
         # VmecModel's geometry, at which the VJP linearizes, is left-handed
         "signgs=+1": vmec_input.signgs != -1,
         # the adjoint omits the dependence of the mass profile on R_00
@@ -2893,9 +2906,12 @@ def _run_traced(
         if present:
             msg = f"run() with a traced boundary does not support {name}"
             raise NotImplementedError(msg)
+    boundary_names = (
+        ("rbc", "zbs", "rbs", "zbc") if vmec_input.lasym else ("rbc", "zbs")
+    )
     if any(
-        np.dtype(getattr(value, "dtype", np.float64)) != np.float64
-        for value in (vmec_input.rbc, vmec_input.zbs)
+        np.dtype(getattr(getattr(vmec_input, name), "dtype", np.float64)) != np.float64
+        for name in boundary_names
     ):
         warnings.warn(
             "The traced boundary is not float64, so the solve sees it rounded; "
@@ -2911,7 +2927,10 @@ def _run_traced(
     # concrete placeholders; the forward solve receives the traced values
     placeholders = {name: np.zeros(np.shape(value)) for name, value in profiles.items()}
     template = vmec_input.model_copy(
-        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
+        update={
+            **{name: np.zeros(shape) for name in boundary_names},
+            **placeholders,
+        }
     )
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
@@ -2919,8 +2938,8 @@ def _run_traced(
     with enable_x64(True):
         boundary = jax.numpy.stack(
             [
-                jax.numpy.asarray(vmec_input.rbc, dtype=np.float64),
-                jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
+                jax.numpy.asarray(getattr(vmec_input, name), dtype=np.float64)
+                for name in boundary_names
             ]
         )
         geometry, extra = solver._solve(boundary, profiles)
@@ -2950,7 +2969,6 @@ def _run_traced(
             }
             others = dict.fromkeys(
                 (
-                    "jxbout",
                     "mercier",
                     "threed1_volumetrics",
                     "threed1_first_table",
@@ -2968,10 +2986,12 @@ def _run_traced(
             }
             fields = {**forward["wout_fields"], **echoes}
             others = forward["tables"]
-        quantities = autodiff_wout.wout_quantities(
+        quantities, jxbout = autodiff_wout.output_quantities(
             geometry, template, mass_half=mass_half, **profile
         )
     wout = VmecWOut.model_construct(**{**fields, **quantities})
+    tables: dict[str, typing.Any] = jxbout
+    others = {**others, "jxbout": JxBOut.model_construct(**tables)}
     return VmecOutput.model_construct(input=vmec_input, wout=wout, **others)
 
 
@@ -3195,7 +3215,7 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
+    traceable = ("rbc", "zbs", "rbs", "zbc", *autodiff_wout.PROFILE_PARAMETERS)
     if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
         return _run_traced(
             input,
