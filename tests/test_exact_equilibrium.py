@@ -35,8 +35,8 @@ NS_COARSE, NS, MPOL, NTOR = 13, 25, 12, 10
 # Largest deviations from the exact solution at NS: psi relative to its boundary
 # value, the axis in metres, the field relative to |B| at the point, and the enclosed
 # current and its radial derivative jcurv relative to their largest values. VMEC++
-# reaches 7.5e-5, 4.0e-6, 6.7e-5, 4.2e-6 and 3.4e-6 on "sheared" and 8.4e-5, 4.6e-6,
-# 6.9e-5, 4.3e-6 and 4.2e-6 on "sheared-asym", each within 16 per cent of that for
+# reaches 9.7e-5, 4.7e-6, 6.7e-5, 4.2e-6 and 3.1e-6 on "sheared" and 1.1e-4, 6.6e-6,
+# 6.8e-5, 4.2e-6 and 3.9e-6 on "sheared-asym", each within 0.5 per cent of that for
 # delt from 0.7 to 1.
 TOL = {
     "sheared": {"psi": 1.2e-4, "axis": 9e-6, "B": 1e-4, "current": 8e-6, "jcurv": 7e-6},
