@@ -1011,6 +1011,9 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   // with the corrected cross-term sign in NESTOR's analytic add-back; 329 with
   // restart backups of the last evaluated state.
   EXPECT_LE(output->wout.niter, 329);
+  ASSERT_EQ(output->wout.delbsq.size(), output->wout.fsqt.size());
+  ASSERT_EQ(output->wout.lcfs_force.size(), output->wout.fsqt.size());
+  EXPECT_GT(output->wout.lcfs_force.maxCoeff(), 0.0);
 }  // MultiGridFreeBoundary
 
 // The free-boundary threed1 section covers the poloidal range the run is solved

@@ -974,6 +974,19 @@ absl::StatusOr<bool> IdealMhdModel::update(
 
   evalFResInvar(localFResInvar);
 
+  if (m_fc_.lfreeb) {
+    Eigen::Vector3d localLcfsForce = Eigen::Vector3d::Zero();
+    localLcfsForce[0] = m_decomposed_f.lcfsRZResidual();
+    Eigen::Vector3d lcfsForce = Eigen::Vector3d::Zero();
+    SumOverThreads(localLcfsForce.data(), 3, r_.get_thread_id(),
+                   r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                   lcfsForce.data());
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    m_fc_.lcfs_force = lcfsForce[0] * m_h_.fNormRZ * 0.25;
+  }
+
   if (checkpoint == VmecCheckpoint::INVARIANT_RESIDUALS &&
       iter2 >= iterations_before_checkpointing) {
     return true;
