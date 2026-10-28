@@ -743,6 +743,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   // check that interpolating from coarse to fine mesh
   // and that old solution is available
   bool linterp = (ns_old < fc_.ns && ns_old != 0);
+  fc_.may_restart_from_guess = linterp;
+  fc_.bad_progress_reverts = 0;
 
   if (ns_old != fc_.ns) {
     // ALLOCATE NS-DEPENDENT ARRAYS
@@ -1362,7 +1364,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-        fc_.restart_reason = RestartReason::BAD_PROGRESS;
+        {
+          fc_.restart_reason = RestartReason::BAD_PROGRESS;
+          if (++fc_.bad_progress_reverts == 1) {
+            fc_.res0_at_first_bad_progress = fc_.res0;
+          }
+        }
       }
     } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
       // Store current state (restart_reason=NO_RESTART)
@@ -1391,7 +1398,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_PROGRESS;
+      {
+        fc_.restart_reason = RestartReason::BAD_PROGRESS;
+        if (++fc_.bad_progress_reverts == 1) {
+          fc_.res0_at_first_bad_progress = fc_.res0;
+        }
+      }
     }
 
     const RestartReason restart_reason = fc_.restart_reason;
@@ -1399,6 +1411,46 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+
+    // Every revert restores the same state with a smaller time step, so a
+    // multigrid step that cannot progress from its interpolated state would
+    // revert until niter. It restarts once from the boundary and axis guess at
+    // the input time step instead.
+    const bool counted_reverts =
+        restart_reason == RestartReason::BAD_PROGRESS &&
+        fc_.may_restart_from_guess &&
+        fc_.bad_progress_reverts >=
+            FlowControl::kBadProgressRevertsBeforeRestartFromGuess;
+    if (counted_reverts && fc_.res0 < 0.5 * fc_.res0_at_first_bad_progress) {
+#ifdef _OPENMP
+#pragma omp barrier
+#pragma omp single
+#endif  // _OPENMP
+      fc_.bad_progress_reverts = 0;
+    } else if (counted_reverts) {
+      decomposed_v_[thread_id]->setZero();
+      m_lreset_internal = true;
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        if (verbose_) {
+          std::cout << " NO PROGRESS FROM THE INTERPOLATED STATE: RESTARTING "
+                       "FROM THE INITIAL GUESS\n";
+        }
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        fc_.delt0r = indata_.delt;
+        fc_.res0 = -1;
+        fc_.res1 = -1;
+        fc_.bad_progress_reverts = 0;
+        fc_.may_restart_from_guess = false;
+        iter1_ = iter2_;
+      }
+      return SolveEqLoopStatus::MUST_RETRY;
+    }
 
     if (restart_reason != RestartReason::NO_RESTART) {
       // Retrieve previous good state

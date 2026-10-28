@@ -37,6 +37,13 @@ class FlowControl {
   // ns4: number of iterations between update of radial preconditioner matrix
   static constexpr int kPreconditionerUpdateInterval = 25;
 
+  // Reverts for bad progress after which a multigrid step that started from the
+  // interpolated coarse-grid solution restarts from the boundary and axis
+  // guess, unless its residual minimum res0 has halved since the first of
+  // them: each revert divides the time step by 1.03, so it has fallen about
+  // 19-fold.
+  static constexpr int kBadProgressRevertsBeforeRestartFromGuess = 100;
+
   FlowControl(bool lfreeb, double delt, int num_grids,
               std::optional<int> max_threads = std::nullopt);
 
@@ -112,6 +119,16 @@ class FlowControl {
   // a pair of <iteration, reason> (e.g. to see how many jacobian resets
   // occurred)
   std::vector<RestartReason> restart_reasons;
+
+  // Reverts for bad progress counted towards a restart from the guess, and res0
+  // at the first of them.
+  int bad_progress_reverts = 0;
+  double res0_at_first_bad_progress = 0.0;
+
+  // Whether the current multigrid step started from the interpolated
+  // coarse-grid solution and has not restarted from the boundary and axis
+  // guess yet.
+  bool may_restart_from_guess = false;
 
   // Running minimum of the preconditioned residual sum (fsq).
   double res0;
