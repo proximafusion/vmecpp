@@ -453,7 +453,6 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
 @pytest.mark.parametrize(
     ("update", "match"),
     [
-        ({"lasym": True}, "lasym"),
         ({"lfreeb": True}, "free-boundary"),
         ({"signgs": 1}, "signgs"),
         ({"gamma": 5.0 / 3.0}, "gamma"),

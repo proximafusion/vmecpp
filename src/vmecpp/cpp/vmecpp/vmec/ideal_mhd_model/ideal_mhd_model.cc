@@ -3060,6 +3060,438 @@ void IdealMhdModel::dft_FourierToRealTranspose_3d_symm(
   }  // jF
 }
 
+// (dft_ForcesToFourier_2d_asymm)^T: decomposed-force coefficient cotangents
+// (frsc, fzcc, flcc) to the reversed-parity force halves (*_asym members).
+void IdealMhdModel::dft_ForcesToFourierTranspose_2d_asymm(
+    const FourierForces& m_coeff_bar) {
+  for (auto* v :
+       {&armn_asym_e, &armn_asym_o, &brmn_asym_e, &brmn_asym_o, &azmn_asym_e,
+        &azmn_asym_o, &bzmn_asym_e, &bzmn_asym_o, &frcon_asym_e, &frcon_asym_o,
+        &fzcon_asym_e, &fzcon_asym_o, &blmn_asym_e, &blmn_asym_o}) {
+    v->setZero();
+  }
+  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  if (m_fc_.lfreeb &&
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
+    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+  }
+  for (int jF = r_.nsMinF; jF < jMaxRZ; ++jF) {
+    const int num_m = (jF == 0) ? 1 : s_.mpol;
+    for (int m = 0; m < num_m; ++m) {
+      const bool m_even = m % 2 == 0;
+      auto& armn = m_even ? armn_asym_e : armn_asym_o;
+      auto& brmn = m_even ? brmn_asym_e : brmn_asym_o;
+      auto& azmn = m_even ? azmn_asym_e : azmn_asym_o;
+      auto& bzmn = m_even ? bzmn_asym_e : bzmn_asym_o;
+      auto& frcon = m_even ? frcon_asym_e : frcon_asym_o;
+      auto& fzcon = m_even ? fzcon_asym_e : fzcon_asym_o;
+      const int idx_jm = (jF - r_.nsMinF) * s_.mpol + m;
+      const double fr = m_coeff_bar.frsc[idx_jm];
+      const double fz = m_coeff_bar.fzcc[idx_jm];
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          const int idx_ml = m * s_.nThetaReduced + l;
+          armn[idx_jl] += fr * t_.sinmui[idx_ml];
+          frcon[idx_jl] += xmpq[m] * fr * t_.sinmui[idx_ml];
+          brmn[idx_jl] += fr * t_.cosmumi[idx_ml];
+          azmn[idx_jl] += fz * t_.cosmui[idx_ml];
+          fzcon[idx_jl] += xmpq[m] * fz * t_.cosmui[idx_ml];
+          bzmn[idx_jl] += fz * t_.sinmumi[idx_ml];
+        }  // l
+      }  // k
+    }  // m
+  }  // jF
+  for (int jF = std::max(1, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      auto& blmn = (m % 2 == 0) ? blmn_asym_e : blmn_asym_o;
+      const double fl = m_coeff_bar.flcc[(jF - r_.nsMinF) * s_.mpol + m];
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_jl =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          blmn[idx_jl] += fl * t_.sinmumi[m * s_.nThetaReduced + l];
+        }  // l
+      }  // k
+    }  // m
+  }  // jF
+}
+
+// (dft_FourierToReal_2d_asymm)^T: the antisymmetric geometry cotangents
+// (*_asym members) to the rmnsc, zmncc, lmncc coefficient cotangents, which
+// are accumulated into m_coeff_bar_out.
+void IdealMhdModel::dft_FourierToRealTranspose_2d_asymm(
+    FourierGeometry& m_coeff_bar_out) {
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    const int num_m = (jF == 0) ? 2 : s_.mpol;
+    double* rsc = &(m_coeff_bar_out.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* zcc = &(m_coeff_bar_out.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* lcc = &(m_coeff_bar_out.lmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    for (int l = 0; l < s_.nThetaReduced; ++l) {
+      // the forward transform writes the same values into every plane
+      std::array<double, 2> r1b = {0.0, 0.0};
+      std::array<double, 2> rub = {0.0, 0.0};
+      std::array<double, 2> z1b = {0.0, 0.0};
+      std::array<double, 2> zub = {0.0, 0.0};
+      std::array<double, 2> lub = {0.0, 0.0};
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_jkl =
+            ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff + l;
+        r1b[kEvenParity] += r1_asym_e[idx_jkl];
+        rub[kEvenParity] += ru_asym_e[idx_jkl];
+        z1b[kEvenParity] += z1_asym_e[idx_jkl];
+        zub[kEvenParity] += zu_asym_e[idx_jkl];
+        lub[kEvenParity] += lu_asym_e[idx_jkl];
+        r1b[kOddParity] += r1_asym_o[idx_jkl];
+        rub[kOddParity] += ru_asym_o[idx_jkl];
+        z1b[kOddParity] += z1_asym_o[idx_jkl];
+        zub[kOddParity] += zu_asym_o[idx_jkl];
+        lub[kOddParity] += lu_asym_o[idx_jkl];
+      }  // k
+      for (int m = 0; m < num_m; ++m) {
+        const int p = m % 2;
+        const int idx_ml = m * s_.nThetaReduced + l;
+        rsc[m] += r1b[p] * t_.sinmu[idx_ml] + rub[p] * t_.cosmum[idx_ml];
+        zcc[m] += z1b[p] * t_.cosmu[idx_ml] + zub[p] * t_.sinmum[idx_ml];
+        lcc[m] += lub[p] * t_.sinmum[idx_ml];
+      }  // m
+    }  // l
+  }  // jF
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const int num_m = (jF == 0) ? 2 : s_.mpol;
+    double* rsc = &(m_coeff_bar_out.rmnsc[(jF - r_.nsMinF1) * s_.mnsize]);
+    double* zcc = &(m_coeff_bar_out.zmncc[(jF - r_.nsMinF1) * s_.mnsize]);
+    for (int m = 0; m < num_m; ++m) {
+      const int m_parity = m % 2;
+      const double scale =
+          xmpq[m] * (1 - m_parity + m_parity * m_p_.sqrtSF[jF - r_.nsMinF1]);
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int idx_ml = m * s_.nThetaReduced + l;
+          const int idx_con =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff + l;
+          rsc[m] += rCon_asym[idx_con] * t_.sinmu[idx_ml] * scale;
+          zcc[m] += zCon_asym[idx_con] * t_.cosmu[idx_ml] * scale;
+        }  // l
+      }  // k
+    }  // m
+  }  // jF
+}
+
+// (dft_ForcesToFourier_3d_asymm)^T: decomposed-force coefficient cotangents
+// (frsc, frcs, fzcc, fzss, flcc, flss) to the reversed-parity force halves.
+void IdealMhdModel::dft_ForcesToFourierTranspose_3d_asymm(
+    const FourierForces& m_coeff_bar) {
+  for (auto* v : {&armn_asym_e,  &armn_asym_o,  &azmn_asym_e,  &azmn_asym_o,
+                  &blmn_asym_e,  &blmn_asym_o,  &brmn_asym_e,  &brmn_asym_o,
+                  &bzmn_asym_e,  &bzmn_asym_o,  &clmn_asym_e,  &clmn_asym_o,
+                  &crmn_asym_e,  &crmn_asym_o,  &czmn_asym_e,  &czmn_asym_o,
+                  &frcon_asym_e, &frcon_asym_o, &fzcon_asym_e, &fzcon_asym_o}) {
+    v->setZero();
+  }
+  const int nThR = s_.nThetaReduced;
+  const int ntorp1 = s_.ntor + 1;
+  int jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns - 1);
+  if (m_fc_.lfreeb &&
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
+    jMaxRZ = std::min(r_.nsMaxF, m_fc_.ns);
+  }
+  const int jMinL = 1;
+  for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
+    const bool rz = jF < jMaxRZ;
+    const int mmax = (jF == 0) ? 1 : s_.mpol;
+    for (int m = 0; m < (rz ? mmax : s_.mpol); ++m) {
+      const bool m_even = m % 2 == 0;
+      auto& armn = m_even ? armn_asym_e : armn_asym_o;
+      auto& azmn = m_even ? azmn_asym_e : azmn_asym_o;
+      auto& blmn = m_even ? blmn_asym_e : blmn_asym_o;
+      auto& brmn = m_even ? brmn_asym_e : brmn_asym_o;
+      auto& bzmn = m_even ? bzmn_asym_e : bzmn_asym_o;
+      auto& clmn = m_even ? clmn_asym_e : clmn_asym_o;
+      auto& crmn = m_even ? crmn_asym_e : crmn_asym_o;
+      auto& czmn = m_even ? czmn_asym_e : czmn_asym_o;
+      auto& frcon = m_even ? frcon_asym_e : frcon_asym_o;
+      auto& fzcon = m_even ? fzcon_asym_e : fzcon_asym_o;
+      const int idx_ml_base = m * nThR;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_kl_base =
+            ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+        const int idx_kn_base = k * (s_.nnyq2 + 1);
+        const int idx_mn_base = ((jF - r_.nsMinF) * s_.mpol + m) * ntorp1;
+        double rmksc = 0, rmksc_n = 0, rmkcs = 0, rmkcs_n = 0, zmkcc = 0,
+               zmkcc_n = 0, zmkss = 0, zmkss_n = 0, lmkcc = 0, lmkcc_n = 0,
+               lmkss = 0, lmkss_n = 0;
+        for (int nn = 0; nn < ntorp1; ++nn) {
+          const int kn = idx_kn_base + nn;
+          const int mn = idx_mn_base + nn;
+          const double cosnv = t_.cosnv[kn], sinnv = t_.sinnv[kn],
+                       cosnvn = t_.cosnvn[kn], sinnvn = t_.sinnvn[kn];
+          if (rz) {
+            rmksc += m_coeff_bar.frsc[mn] * cosnv;
+            rmksc_n += m_coeff_bar.frsc[mn] * sinnvn;
+            rmkcs += m_coeff_bar.frcs[mn] * sinnv;
+            rmkcs_n += m_coeff_bar.frcs[mn] * cosnvn;
+            zmkcc += m_coeff_bar.fzcc[mn] * cosnv;
+            zmkcc_n += m_coeff_bar.fzcc[mn] * sinnvn;
+            zmkss += m_coeff_bar.fzss[mn] * sinnv;
+            zmkss_n += m_coeff_bar.fzss[mn] * cosnvn;
+          }
+          if (jMinL <= jF) {
+            lmkcc += m_coeff_bar.flcc[mn] * cosnv;
+            lmkcc_n += m_coeff_bar.flcc[mn] * sinnvn;
+            lmkss += m_coeff_bar.flss[mn] * sinnv;
+            lmkss_n += m_coeff_bar.flss[mn] * cosnvn;
+          }
+        }  // nn
+        for (int l = 0; l < nThR; ++l) {
+          const int im = idx_ml_base + l;
+          const int kl = idx_kl_base + l;
+          const double cosmui = t_.cosmui[im], sinmui = t_.sinmui[im],
+                       cosmumi = t_.cosmumi[im], sinmumi = t_.sinmumi[im];
+          if (rz) {
+            const double tR = rmksc * sinmui + rmkcs * cosmui;
+            armn[kl] += tR;
+            frcon[kl] += xmpq[m] * tR;
+            brmn[kl] += rmksc * cosmumi + rmkcs * sinmumi;
+            const double tZ = zmkcc * cosmui + zmkss * sinmui;
+            azmn[kl] += tZ;
+            fzcon[kl] += xmpq[m] * tZ;
+            bzmn[kl] += zmkcc * sinmumi + zmkss * cosmumi;
+            crmn[kl] += -(rmksc_n * sinmui + rmkcs_n * cosmui);
+            czmn[kl] += -(zmkcc_n * cosmui + zmkss_n * sinmui);
+          }
+          blmn[kl] += lmkcc * sinmumi + lmkss * cosmumi;
+          clmn[kl] += -(lmkcc_n * cosmui + lmkss_n * sinmui);
+        }  // l
+      }  // k
+    }  // m
+  }  // jF
+}
+
+// (FourierToReal3DAsymFastPoloidal)^T: the antisymmetric geometry cotangents
+// (*_asym members) to the rmnsc, rmncs, zmncc, zmnss, lmncc, lmnss coefficient
+// cotangents, which are accumulated into m_coeff_bar_out.
+void IdealMhdModel::dft_FourierToRealTranspose_3d_asymm(
+    FourierGeometry& m_coeff_bar_out) {
+  const int nThR = s_.nThetaReduced;
+  const int ntorp1 = s_.ntor + 1;
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const bool m_even = m % 2 == 0;
+      const double con_factor =
+          m_even ? xmpq[m] : xmpq[m] * m_p_.sqrtSF[jF - r_.nsMinF1];
+      const auto& r1 = m_even ? r1_asym_e : r1_asym_o;
+      const auto& ru = m_even ? ru_asym_e : ru_asym_o;
+      const auto& rv = m_even ? rv_asym_e : rv_asym_o;
+      const auto& z1 = m_even ? z1_asym_e : z1_asym_o;
+      const auto& zu = m_even ? zu_asym_e : zu_asym_o;
+      const auto& zv = m_even ? zv_asym_e : zv_asym_o;
+      const auto& lu = m_even ? lu_asym_e : lu_asym_o;
+      const auto& lv = m_even ? lv_asym_e : lv_asym_o;
+      const int jMin = (m == 0 || m == 1) ? 0 : 1;
+      if (jF < jMin) {
+        continue;
+      }
+      const int idx_ml_base = m * nThR;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int idx_kl_base =
+            ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff;
+        const bool con_in_range =
+            (r_.nsMinF <= jF && jF < r_.nsMaxFIncludingLcfs);
+        const int idx_con_base =
+            ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+        double rmksc = 0, rmkcs = 0, rmksc_n = 0, rmkcs_n = 0, zmkcc = 0,
+               zmkss = 0, zmkcc_n = 0, zmkss_n = 0, lmkcc = 0, lmkss = 0,
+               lmkcc_n = 0, lmkss_n = 0;
+        for (int l = 0; l < nThR; ++l) {
+          const int im = idx_ml_base + l;
+          const int kl = idx_kl_base + l;
+          const double cosmu = t_.cosmu[im], sinmu = t_.sinmu[im],
+                       sinmum = t_.sinmum[im], cosmum = t_.cosmum[im];
+          double rConb = 0, zConb = 0;
+          if (con_in_range) {
+            rConb = rCon_asym[idx_con_base + l] * con_factor;
+            zConb = zCon_asym[idx_con_base + l] * con_factor;
+          }
+          rmksc += ru[kl] * cosmum + (r1[kl] + rConb) * sinmu;
+          rmkcs += ru[kl] * sinmum + (r1[kl] + rConb) * cosmu;
+          rmksc_n += rv[kl] * sinmu;
+          rmkcs_n += rv[kl] * cosmu;
+          zmkcc += zu[kl] * sinmum + (z1[kl] + zConb) * cosmu;
+          zmkss += zu[kl] * cosmum + (z1[kl] + zConb) * sinmu;
+          zmkcc_n += zv[kl] * cosmu;
+          zmkss_n += zv[kl] * sinmu;
+          lmkcc += lu[kl] * sinmum;
+          lmkss += lu[kl] * cosmum;
+          lmkcc_n += -lv[kl] * cosmu;
+          lmkss_n += -lv[kl] * sinmu;
+        }  // l
+        const int idx_kn_base = k * (s_.nnyq2 + 1);
+        const int idx_mn_base = ((jF - r_.nsMinF1) * s_.mpol + m) * ntorp1;
+        for (int nn = 0; nn < ntorp1; ++nn) {
+          const int kn = idx_kn_base + nn;
+          const int mn = idx_mn_base + nn;
+          const double cosnv = t_.cosnv[kn], sinnv = t_.sinnv[kn],
+                       cosnvn = t_.cosnvn[kn], sinnvn = t_.sinnvn[kn];
+          m_coeff_bar_out.rmnsc[mn] += rmksc * cosnv + rmksc_n * sinnvn;
+          m_coeff_bar_out.rmncs[mn] += rmkcs * sinnv + rmkcs_n * cosnvn;
+          m_coeff_bar_out.zmncc[mn] += zmkcc * cosnv + zmkcc_n * sinnvn;
+          m_coeff_bar_out.zmnss[mn] += zmkss * sinnv + zmkss_n * cosnvn;
+          m_coeff_bar_out.lmncc[mn] += lmkcc * cosnv + lmkcc_n * sinnvn;
+          m_coeff_bar_out.lmnss[mn] += lmkss * sinnv + lmkss_n * cosnvn;
+        }  // nn
+      }  // k
+    }  // m
+  }  // jF
+}
+
+// (symrzl)^T: full-interval geometry cotangents in the symmetric members to
+// the reduced-interval cotangents of the symmetric (same members) and the
+// antisymmetric (*_asym) halves. Each reduced point 0 < l < nThetaReduced - 1
+// is the mirror image of one extended point, where an even quantity enters as
+// +sym - asym and an odd one as -sym + asym.
+void IdealMhdModel::symrzlTranspose() {
+  const int nThetaEff = s_.nThetaEff;
+  auto unfold = [&](Eigen::VectorXd& x, Eigen::VectorXd& xa, int jLo, int jHi,
+                    int jOffset, double parity) {
+    for (int jF = jLo; jF < jHi; ++jF) {
+      const int base = (jF - jOffset) * s_.nZnT;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kRev = (s_.nZeta - k) % s_.nZeta;
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int jl = base + k * nThetaEff + l;
+          double mirrored = 0.0;
+          if (l >= 1 && l <= s_.nThetaReduced - 2) {
+            mirrored =
+                parity * x[base + kRev * nThetaEff + (s_.nThetaEven - l)];
+          }
+          xa[jl] = x[jl] - mirrored;
+          x[jl] += mirrored;
+        }  // l
+      }  // k
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
+          x[base + k * nThetaEff + l] = 0.0;
+        }  // l
+      }  // k
+    }  // jF
+  };
+  const int lo = r_.nsMinF1;
+  const int hi = r_.nsMaxF1;
+  unfold(r1_e, r1_asym_e, lo, hi, lo, 1.0);
+  unfold(r1_o, r1_asym_o, lo, hi, lo, 1.0);
+  unfold(zu_e, zu_asym_e, lo, hi, lo, 1.0);
+  unfold(zu_o, zu_asym_o, lo, hi, lo, 1.0);
+  unfold(lu_e, lu_asym_e, lo, hi, lo, 1.0);
+  unfold(lu_o, lu_asym_o, lo, hi, lo, 1.0);
+  unfold(ru_e, ru_asym_e, lo, hi, lo, -1.0);
+  unfold(ru_o, ru_asym_o, lo, hi, lo, -1.0);
+  unfold(z1_e, z1_asym_e, lo, hi, lo, -1.0);
+  unfold(z1_o, z1_asym_o, lo, hi, lo, -1.0);
+  if (s_.lthreed) {
+    unfold(zv_e, zv_asym_e, lo, hi, lo, 1.0);
+    unfold(zv_o, zv_asym_o, lo, hi, lo, 1.0);
+    unfold(lv_e, lv_asym_e, lo, hi, lo, 1.0);
+    unfold(lv_o, lv_asym_o, lo, hi, lo, 1.0);
+    unfold(rv_e, rv_asym_e, lo, hi, lo, -1.0);
+    unfold(rv_o, rv_asym_o, lo, hi, lo, -1.0);
+  }
+  unfold(rCon, rCon_asym, r_.nsMinF, r_.nsMaxFIncludingLcfs, r_.nsMinF, 1.0);
+  unfold(zCon, zCon_asym, r_.nsMinF, r_.nsMaxFIncludingLcfs, r_.nsMinF, -1.0);
+}
+
+// (symforce)^T: reduced-interval cotangents of the standard-parity half (in the
+// symmetric members) and the reversed-parity half (*_asym) to the
+// full-interval cotangents of the forces, written into the symmetric members.
+// The forward fold is fa = 1/2 (f -+ fRev), f <- f - fa on the reduced
+// interval.
+void IdealMhdModel::symforceTranspose() {
+  const int nThetaEff = s_.nThetaEff;
+  std::vector<double> full(s_.nZnT);
+  auto unfold = [&](Eigen::VectorXd& f, const Eigen::VectorXd& fa, int jLo,
+                    int jHi, bool std_parity) {
+    const double sign = std_parity ? -1.0 : 1.0;
+    for (int jF = jLo; jF < jHi; ++jF) {
+      const int base = (jF - r_.nsMinF) * s_.nZnT;
+      absl::c_fill(full, 0.0);
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kRev = (s_.nZeta - k) % s_.nZeta;
+        for (int l = 0; l < s_.nThetaReduced; ++l) {
+          const int kl = k * nThetaEff + l;
+          const int klRev =
+              kRev * nThetaEff + ((s_.nThetaEven - l) % s_.nThetaEven);
+          const double half_bar = 0.5 * (fa[base + kl] - f[base + kl]);
+          full[kl] += f[base + kl] + half_bar;
+          full[klRev] += sign * half_bar;
+        }  // l
+      }  // k
+      for (int kl = 0; kl < s_.nZnT; ++kl) {
+        f[base + kl] = full[kl];
+      }
+    }  // jF
+  };
+  const int jRZ = r_.nsMaxF;
+  const int jL = r_.nsMaxFIncludingLcfs;
+  unfold(armn_e, armn_asym_e, r_.nsMinF, jRZ, /*std_parity=*/true);
+  unfold(armn_o, armn_asym_o, r_.nsMinF, jRZ, true);
+  unfold(brmn_e, brmn_asym_e, r_.nsMinF, jRZ, false);
+  unfold(brmn_o, brmn_asym_o, r_.nsMinF, jRZ, false);
+  unfold(azmn_e, azmn_asym_e, r_.nsMinF, jRZ, false);
+  unfold(azmn_o, azmn_asym_o, r_.nsMinF, jRZ, false);
+  unfold(bzmn_e, bzmn_asym_e, r_.nsMinF, jRZ, true);
+  unfold(bzmn_o, bzmn_asym_o, r_.nsMinF, jRZ, true);
+  unfold(frcon_e, frcon_asym_e, r_.nsMinF, jRZ, true);
+  unfold(frcon_o, frcon_asym_o, r_.nsMinF, jRZ, true);
+  unfold(fzcon_e, fzcon_asym_e, r_.nsMinF, jRZ, false);
+  unfold(fzcon_o, fzcon_asym_o, r_.nsMinF, jRZ, false);
+  unfold(blmn_e, blmn_asym_e, r_.nsMinF, jL, true);
+  unfold(blmn_o, blmn_asym_o, r_.nsMinF, jL, true);
+  if (s_.lthreed) {
+    unfold(crmn_e, crmn_asym_e, r_.nsMinF, jRZ, false);
+    unfold(crmn_o, crmn_asym_o, r_.nsMinF, jRZ, false);
+    unfold(czmn_e, czmn_asym_e, r_.nsMinF, jRZ, true);
+    unfold(czmn_o, czmn_asym_o, r_.nsMinF, jRZ, true);
+    unfold(clmn_e, clmn_asym_e, r_.nsMinF, jL, true);
+    unfold(clmn_o, clmn_asym_o, r_.nsMinF, jL, true);
+  }
+}
+
+void IdealMhdModel::forcesToFourierTranspose(const FourierForces& m_coeff_bar) {
+  if (s_.lthreed) {
+    dft_ForcesToFourierTranspose_3d_symm(m_coeff_bar);
+  } else {
+    dft_ForcesToFourierTranspose_2d_symm(m_coeff_bar);
+  }
+  if (s_.lasym) {
+    if (s_.lthreed) {
+      dft_ForcesToFourierTranspose_3d_asymm(m_coeff_bar);
+    } else {
+      dft_ForcesToFourierTranspose_2d_asymm(m_coeff_bar);
+    }
+    symforceTranspose();
+  }
+}
+
+void IdealMhdModel::geometryFromFourierTranspose(
+    FourierGeometry& m_coeff_bar_out) {
+  if (s_.lasym) {
+    symrzlTranspose();
+  }
+  if (s_.lthreed) {
+    dft_FourierToRealTranspose_3d_symm(m_coeff_bar_out);
+  } else {
+    dft_FourierToRealTranspose_2d_symm(m_coeff_bar_out);
+  }
+  if (s_.lasym) {
+    if (s_.lthreed) {
+      dft_FourierToRealTranspose_3d_asymm(m_coeff_bar_out);
+    } else {
+      dft_FourierToRealTranspose_2d_asymm(m_coeff_bar_out);
+    }
+  }
+}
+
 #ifdef VMECPP_ENABLE_ENZYME
 std::vector<double> IdealMhdModel::forceDensityCotangentFromDecomposed(
     FourierForces& m_decomposed_in, FourierForces& m_physical_f,
@@ -3072,11 +3504,7 @@ std::vector<double> IdealMhdModel::forceDensityCotangentFromDecomposed(
   }
   m_decomposed_in.m1Constraint(1.0 / std::numbers::sqrt2, signOfJacobian);
   m_decomposed_in.decomposeInto(m_physical_f, m_p_.scalxc);
-  if (s_.lthreed) {
-    dft_ForcesToFourierTranspose_3d_symm(m_physical_f);
-  } else {
-    dft_ForcesToFourierTranspose_2d_symm(m_physical_f);
-  }
+  forcesToFourierTranspose(m_physical_f);
 
   // Gather the force-density member cotangents into the flat block layout.
   // The R/Z/constraint force members (armn/azmn/brmn/bzmn/frcon/fzcon and the
@@ -3169,11 +3597,7 @@ void IdealMhdModel::applyExactForceJacobianTranspose(
       zu_o[idx_kl1] += sf * geom_bar[19 * gS + idx_kl];
     }
   }
-  if (s_.lthreed) {
-    dft_FourierToRealTranspose_3d_symm(m_physical_scratch);
-  } else {
-    dft_FourierToRealTranspose_2d_symm(m_physical_scratch);
-  }
+  geometryFromFourierTranspose(m_physical_scratch);
   m_physical_scratch.extrapolateTowardsAxisTranspose();
   m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);
@@ -3238,11 +3662,7 @@ void IdealMhdModel::chipStateVjp(const double* geomP, int geom_stride,
   // does not leak in.
   rCon.setZero();
   zCon.setZero();
-  if (s_.lthreed) {
-    dft_FourierToRealTranspose_3d_symm(m_physical_scratch);
-  } else {
-    dft_FourierToRealTranspose_2d_symm(m_physical_scratch);
-  }
+  geometryFromFourierTranspose(m_physical_scratch);
   m_physical_scratch.extrapolateTowardsAxisTranspose();
   m_physical_scratch.m1Constraint(1.0, signOfJacobian);
   m_physical_scratch.decomposeInto(m_decomposed_out, m_p_.scalxc);

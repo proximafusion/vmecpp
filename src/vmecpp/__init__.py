@@ -2770,7 +2770,8 @@ class VmecOutput(BaseModelWithNumpy):
 
 
 # The boundary is the differentiable input; the other fields key the jit cache.
-_register_model_pytree(VmecInput, ("rbc", "zbs"))
+# rbs and zbc are None for lasym=False, which JAX treats as an empty subtree.
+_register_model_pytree(VmecInput, ("rbc", "zbs", "rbs", "zbc"))
 # Every field of the output and of its C++ tables is a leaf.
 for _model_type in (
     JxBOut,
@@ -2867,7 +2868,8 @@ def _run_traced(
     verbose: bool | int | OutputMode,
     restart_from: VmecOutput | None,
 ) -> VmecOutput:
-    """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
+    """Run() for a boundary ``rbc, zbs`` (and ``rbs, zbc`` for ``lasym``) that JAX
+    differentiates or traces.
 
     The forward solve is a full C++ run; its VJP needs an Enzyme-enabled build.
     When the forward solve is observable (eager calls, ``jax.grad``), jxbout,
@@ -2879,7 +2881,6 @@ def _run_traced(
 
     unsupported = {
         "a free-boundary input": vmec_input.lfreeb,
-        "lasym=True": vmec_input.lasym,
         # VmecModel's geometry, at which the VJP linearizes, is left-handed
         "signgs=+1": vmec_input.signgs != -1,
         # the adjoint omits the dependence of the mass profile on R_00
@@ -2893,9 +2894,12 @@ def _run_traced(
         if present:
             msg = f"run() with a traced boundary does not support {name}"
             raise NotImplementedError(msg)
+    boundary_names = (
+        ("rbc", "zbs", "rbs", "zbc") if vmec_input.lasym else ("rbc", "zbs")
+    )
     if any(
-        np.dtype(getattr(value, "dtype", np.float64)) != np.float64
-        for value in (vmec_input.rbc, vmec_input.zbs)
+        np.dtype(getattr(getattr(vmec_input, name), "dtype", np.float64)) != np.float64
+        for name in boundary_names
     ):
         warnings.warn(
             "The traced boundary is not float64, so the solve sees it rounded; "
@@ -2911,7 +2915,10 @@ def _run_traced(
     # concrete placeholders; the forward solve receives the traced values
     placeholders = {name: np.zeros(np.shape(value)) for name, value in profiles.items()}
     template = vmec_input.model_copy(
-        update={"rbc": np.zeros(shape), "zbs": np.zeros(shape), **placeholders}
+        update={
+            **{name: np.zeros(shape) for name in boundary_names},
+            **placeholders,
+        }
     )
     solver = autodiff._RunSolver(
         template, max_threads=max_threads, verbose=_output_mode(verbose).value
@@ -2919,8 +2926,8 @@ def _run_traced(
     with enable_x64(True):
         boundary = jax.numpy.stack(
             [
-                jax.numpy.asarray(vmec_input.rbc, dtype=np.float64),
-                jax.numpy.asarray(vmec_input.zbs, dtype=np.float64),
+                jax.numpy.asarray(getattr(vmec_input, name), dtype=np.float64)
+                for name in boundary_names
             ]
         )
         geometry, extra = solver._solve(boundary, profiles)
@@ -3195,7 +3202,7 @@ def run(
     """
     input = VmecInput.model_validate(input)
 
-    traceable = ("rbc", "zbs", *autodiff_wout.PROFILE_PARAMETERS)
+    traceable = ("rbc", "zbs", "rbs", "zbc", *autodiff_wout.PROFILE_PARAMETERS)
     if any(isinstance(getattr(input, name), jax.core.Tracer) for name in traceable):
         return _run_traced(
             input,
