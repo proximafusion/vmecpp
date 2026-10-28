@@ -261,6 +261,7 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
 
     return vmecpp.VmecOutput(
         input=target_input,
+        success=source.success,
         wout=new_wout,
         jxbout=source.jxbout,
         mercier=source.mercier,

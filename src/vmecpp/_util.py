@@ -17,6 +17,13 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def wout_converged(wout: Any) -> bool:
+    """Check status and residuals: ier_flag=0 also covers exhausted iterations."""
+    return wout.ier_flag == 0 and all(
+        residual <= wout.ftolv for residual in (wout.fsqr, wout.fsqz, wout.fsql)
+    )
+
+
 def package_root() -> Path:
     """Return the absolute path of Python package root, i.e.
     PATH/TO/VMECPP/REPO/src/vmecpp.

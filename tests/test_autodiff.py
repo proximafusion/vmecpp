@@ -7,7 +7,7 @@ import pytest
 from scipy.sparse.linalg import LinearOperator, gmres
 
 import vmecpp
-from vmecpp import autodiff, geometry, qs
+from vmecpp import autodiff, autodiff_wout, geometry, qs
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 jax.config.update("jax_enable_x64", True)
@@ -22,6 +22,230 @@ def _small_input() -> vmecpp.VmecInput:
             "niter_array": np.asarray([200]),
         }
     )
+
+
+@pytest.fixture
+def indata() -> vmecpp.VmecInput:
+    return _small_input()
+
+
+@pytest.mark.parametrize("converges", [False, True])
+def test_solver_success_is_a_traced_boolean(indata, monkeypatch, converges):
+    monkeypatch.setattr(_vmecpp, "VMECPP_ENABLE_ENZYME", True)
+    if not converges:
+        indata.niter_array = np.asarray([1])
+    solver = autodiff.make_solver(indata, raise_on_failure=False)
+    result = jax.jit(solver.__call__)(_boundary(indata))
+    assert result.success.shape == ()
+    assert result.success.dtype == jnp.bool_
+    assert bool(result.success) == converges
+    if converges:
+        expected = autodiff.DifferentiableVmec(indata)(_boundary(indata))
+        for actual, reference in zip(
+            jax.tree.leaves(result.geometry), jax.tree.leaves(expected), strict=True
+        ):
+            np.testing.assert_allclose(actual, reference)
+    else:
+        for leaf in jax.tree.leaves(result.geometry):
+            assert np.all(np.isnan(leaf))
+
+
+@pytest.mark.parametrize("converges", [False, True])
+def test_run_success_and_nan_fields_under_jit(indata, converges):
+    if not converges:
+        indata.niter_array = np.asarray([1])
+
+    @jax.jit
+    def solve(boundary):
+        return vmecpp.run(
+            indata.model_copy(update={"rbc": boundary[0], "zbs": boundary[1]}),
+            raise_on_failure=False,
+            verbose=False,
+            max_threads=1,
+        )
+
+    result = solve(_boundary(indata))
+    assert result.success.shape == ()
+    assert result.success.dtype == jnp.bool_
+    assert bool(result.success) == converges
+    assert result.jxbout is None
+    if converges:
+        expected = jax.jit(
+            lambda boundary: vmecpp.run(
+                indata.model_copy(update={"rbc": boundary[0], "zbs": boundary[1]}),
+                verbose=False,
+                max_threads=1,
+            )
+        )(_boundary(indata))
+        for name in autodiff_wout.WOUT_QUANTITIES:
+            actual = getattr(result.wout, name)
+            if actual is not None:
+                np.testing.assert_allclose(
+                    actual, getattr(expected.wout, name), rtol=1.0e-7, atol=1.0e-10
+                )
+    else:
+        for leaf in jax.tree.leaves((result.input, result.wout)):
+            assert np.all(np.isnan(leaf))
+
+
+@pytest.mark.parametrize("api", ["run", "solver"])
+def test_failure_branch_has_zero_gradient_under_jit(indata, api):
+    indata.niter_array = np.asarray([1])
+    solver = autodiff.DifferentiableVmec(indata, raise_on_failure=False)
+
+    def objective(boundary):
+        if api == "run":
+            result = vmecpp.run(
+                indata.model_copy(update={"rbc": boundary[0], "zbs": boundary[1]}),
+                raise_on_failure=False,
+                verbose=False,
+                max_threads=1,
+            )
+            value = result.wout.aspect
+        else:
+            result = solver(boundary)
+            assert isinstance(result, autodiff.SolveResult)
+            value = jnp.sum(result.geometry.r_cc)
+        return jax.lax.cond(result.success, lambda: value, lambda: 10.0)
+
+    value, gradient = jax.jit(jax.value_and_grad(objective))(_boundary(indata))
+    assert value == 10.0
+    np.testing.assert_array_equal(gradient, np.zeros(solver.parameter_shape))
+
+
+def test_failed_solver_derivative_is_nan(indata):
+    indata.niter_array = np.asarray([1])
+    solver = autodiff.DifferentiableVmec(indata, raise_on_failure=False)
+
+    def objective(boundary):
+        result = solver(boundary)
+        assert isinstance(result, autodiff.SolveResult)
+        return jnp.sum(result.geometry.r_cc)
+
+    gradient = jax.jit(jax.grad(objective))(_boundary(indata))
+    assert np.all(np.isnan(gradient))
+
+
+def test_failed_solver_batched_cotangents(indata):
+    indata.niter_array = np.asarray([1])
+    solver = autodiff.DifferentiableVmec(indata, raise_on_failure=False)
+
+    def values(boundary):
+        result = solver(boundary)
+        assert isinstance(result, autodiff.SolveResult)
+        return jnp.stack([jnp.sum(result.geometry.r_cc), jnp.asarray(10.0)])
+
+    jacobian = jax.jit(jax.jacrev(values))(_boundary(indata))
+    assert np.all(np.isnan(jacobian[0]))
+    np.testing.assert_array_equal(jacobian[1], np.zeros(solver.parameter_shape))
+
+
+def test_vmap_can_mix_success_and_failure(indata, monkeypatch):
+    def forward(self, boundary, profiles):
+        del profiles
+        if boundary[0, 0, 0] < 0:
+            message = "solver failure"
+            raise RuntimeError(message)
+        return np.full(self.output_shape, np.sum(boundary))
+
+    def backward(self, boundary, bars, profiles):
+        del boundary, profiles
+        return (
+            np.broadcast_to(
+                np.sum(bars, axis=-1).reshape(-1, 1, 1, 1),
+                (len(bars), *self.parameter_shape),
+            ).copy(),
+            np.zeros((len(bars), 3, self.ns - 1)),
+        )
+
+    monkeypatch.setattr(autodiff.DifferentiableVmec, "_forward_callback", forward)
+    monkeypatch.setattr(autodiff.DifferentiableVmec, "_backward_callback", backward)
+    solver = autodiff.DifferentiableVmec(indata, raise_on_failure=False)
+
+    def objective(boundary):
+        result = solver(boundary)
+        assert isinstance(result, autodiff.SolveResult)
+        value = jax.lax.cond(
+            result.success,
+            lambda: jnp.sum(result.geometry.r_cc),
+            lambda: 10.0,
+        )
+        return value, result.success
+
+    boundary = jnp.asarray(_boundary(indata))
+    points = jnp.stack([boundary, boundary.at[0, 0, 0].set(-1.0)])
+    (values, success), gradient = jax.jit(
+        jax.vmap(jax.value_and_grad(objective, has_aux=True))
+    )(points)
+    np.testing.assert_array_equal(success, [True, False])
+    assert values[1] == 10.0
+    expected = solver.ns * indata.mpol * (indata.ntor + 1)
+    np.testing.assert_array_equal(
+        gradient[0], np.full(solver.parameter_shape, expected)
+    )
+    np.testing.assert_array_equal(gradient[1], np.zeros(solver.parameter_shape))
+
+
+@pytest.mark.parametrize("api", ["run", "solver"])
+def test_failed_profile_gradient_can_use_a_constant_fallback(indata, api):
+    indata.niter_array = np.asarray([1])
+    solver = autodiff.DifferentiableVmec(indata, raise_on_failure=False)
+    boundary = _boundary(indata)
+
+    def objective(ai):
+        if api == "run":
+            result = vmecpp.run(
+                indata.model_copy(update={"ai": ai}),
+                raise_on_failure=False,
+                verbose=False,
+                max_threads=1,
+            )
+            value = result.wout.aspect
+        else:
+            result = solver(boundary, profiles={"ai": ai})
+            assert isinstance(result, autodiff.SolveResult)
+            value = jnp.sum(result.geometry.r_cc)
+        return jax.lax.cond(result.success, lambda: value, lambda: 10.0)
+
+    gradient = jax.jit(jax.grad(objective))(jnp.asarray(indata.ai))
+    np.testing.assert_array_equal(gradient, np.zeros_like(indata.ai))
+
+
+def test_nonconverged_outputs_are_not_reported_as_success(indata):
+    indata.niter_array = np.asarray([1])
+    indata.return_outputs_even_if_not_converged = True
+    result = vmecpp.run(indata, raise_on_failure=False, verbose=False, max_threads=1)
+    assert not result.success
+    for leaf in jax.tree.leaves(result.wout):
+        assert np.all(np.isnan(leaf))
+
+
+def test_runtime_solver_exception_is_reported_as_failure(indata, monkeypatch):
+    def fail(*args, **kwargs):
+        del args, kwargs
+        message = "native solver failure"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(_vmecpp, "run", fail)
+    output = vmecpp.run(indata, raise_on_failure=False, verbose=False, max_threads=1)
+    assert not output.success
+    for leaf in jax.tree.leaves(output.wout):
+        assert np.all(np.isnan(leaf))
+
+
+def test_default_solver_still_raises(indata):
+    indata.niter_array = np.asarray([1])
+    solver = autodiff.DifferentiableVmec(indata)
+    with pytest.raises(RuntimeError, match="did not converge"):
+        solver._forward_callback(np.asarray(_boundary(indata)))
+
+
+def test_nonraising_run_rejects_invalid_input(indata):
+    with pytest.raises(ValueError, match="threads"):
+        vmecpp.run(indata, raise_on_failure=False, max_threads=0)
+    solver = autodiff.DifferentiableVmec(indata, raise_on_failure=False)
+    with pytest.raises(ValueError, match="boundary has shape"):
+        solver(jnp.zeros((1,)))
 
 
 def _small_3d_input() -> vmecpp.VmecInput:
@@ -103,6 +327,7 @@ def test_solver_runs_vmecpp_and_matches_native_geometry() -> None:
     solver = autodiff.make_solver(indata)
 
     actual = solver(boundary)
+    assert isinstance(actual, geometry.Geometry)
     native = _vmecpp.run(indata._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT)
     expected = geometry.make(native)
 
@@ -121,7 +346,13 @@ def test_solver_is_usable_under_jit() -> None:
     indata = _small_input()
     solver = autodiff.make_solver(indata)
     boundary = jnp.asarray(_boundary(indata))
-    value = jax.jit(lambda x: solver(x).r_cc[-1, 0, 0])(boundary)
+
+    def objective(value):
+        solved = solver(value)
+        assert isinstance(solved, geometry.Geometry)
+        return solved.r_cc[-1, 0, 0]
+
+    value = jax.jit(objective)(boundary)
     assert np.isfinite(float(value))
 
 
@@ -344,7 +575,9 @@ def test_quasisymmetry_gradient_through_a_three_dimensional_solve() -> None:
     boundary = _boundary(indata)
 
     def objective(value):
-        return qs.quasisymmetry_total(solver(value), [0.5], ntheta=16, nphi=16)
+        solved = solver(value)
+        assert isinstance(solved, geometry.Geometry)
+        return qs.quasisymmetry_total(solved, [0.5], ntheta=16, nphi=16)
 
     value, gradient = jax.value_and_grad(objective)(jnp.asarray(boundary))
     gradient = np.asarray(gradient)
