@@ -303,7 +303,12 @@ def test_run_honors_iteration_style_flag():
     assert par.wb == pytest.approx(ref.wb, rel=1.0e-5)  # magnetic energy
 
 
-@pytest.mark.parametrize("case", ["cth_like_fixed_bdy", "solovev"])
+@pytest.mark.parametrize(
+    "case",
+    # rfp_*: reversed-field pinches with lrfp, axisymmetric with gamma = 5/3, helical
+    # with nfp = 4 and up-down asymmetric, which educational_VMEC does not carry
+    ["cth_like_fixed_bdy", "solovev", "rfp_gamma", "rfp_helical", "rfp_asym"],
+)
 def test_parvmec_matches_parvmec_reference(case):
     """The PARVMEC iteration style reproduces the ORNL-Fusion/PARVMEC wout.
 
