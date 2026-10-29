@@ -274,6 +274,7 @@ VmecINDATA::VmecINDATA() {
   // numerical resolution, symmetry assumption
   lasym = false;
   nfp = 1;
+  toroidal_transits = 1;
   mpol = 6;
   ntor = 0;
   mpol_geometry = -1;
@@ -436,6 +437,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   // scalars and strings
   WriteH5Dataset(lasym, "/indata/lasym", file);
   WriteH5Dataset(nfp, "/indata/nfp", file);
+  WriteH5Dataset(toroidal_transits, "/indata/toroidal_transits", file);
   WriteH5Dataset(mpol, "/indata/mpol", file);
   WriteH5Dataset(ntor, "/indata/ntor", file);
   WriteH5Dataset(mpol_geometry, "/indata/mpol_geometry", file);
@@ -539,6 +541,10 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   }
   if (from_file.nameExists("/indata/vacuum_ntor")) {
     ReadH5Dataset(m_indata.vacuum_ntor, "/indata/vacuum_ntor", from_file);
+  }
+  if (from_file.nameExists("/indata/toroidal_transits")) {
+    ReadH5Dataset(m_indata.toroidal_transits, "/indata/toroidal_transits",
+                  from_file);
   }
   ReadH5Dataset(m_indata.ntheta, "/indata/ntheta", from_file);
   ReadH5Dataset(m_indata.nzeta, "/indata/nzeta", from_file);
@@ -754,6 +760,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
   }
   if (maybe_nfp->has_value()) {
     vmec_indata.nfp = maybe_nfp->value();
+  }
+
+  auto maybe_toroidal_transits = JsonReadInt(j, "toroidal_transits");
+  if (!maybe_toroidal_transits.ok()) {
+    return maybe_toroidal_transits.status();
+  }
+  if (maybe_toroidal_transits->has_value()) {
+    vmec_indata.toroidal_transits = maybe_toroidal_transits->value();
   }
 
   auto maybe_mpol = JsonReadInt(j, "mpol");
@@ -1469,6 +1483,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   // Numerical Resolution and Symmetry Assumptions
   output["lasym"] = lasym;
   output["nfp"] = nfp;
+  output["toroidal_transits"] = toroidal_transits;
   output["mpol"] = mpol;
   output["ntor"] = ntor;
   output["mpol_geometry"] = mpol_geometry;
@@ -1594,6 +1609,12 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   if (vmec_indata.nfp <= 0) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'nfp' needs to be > 0, but is %d", vmec_indata.nfp));
+  }
+
+  if (vmec_indata.toroidal_transits <= 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'toroidal_transits' needs to be > 0, but is %d",
+        vmec_indata.toroidal_transits));
   }
 
   if (vmec_indata.mpol < 2) {
@@ -1841,6 +1862,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
   // lfreeb
   // nothing to check here: lfreeb can be true or false and both are valid...
   if (vmec_indata.lfreeb) {
+    // the vacuum field and its Green's function cover a single toroidal transit
+    if (vmec_indata.toroidal_transits != 1) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "input variable 'toroidal_transits' must be 1 for a free-boundary "
+          "run, but is %d\n",
+          vmec_indata.toroidal_transits));
+    }
+
     // nvacskip
     if (vmec_indata.nvacskip < 1) {
       return absl::InvalidArgumentError(absl::StrFormat(

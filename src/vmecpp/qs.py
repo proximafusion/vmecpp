@@ -110,6 +110,9 @@ def quasisymmetry_residuals(
     that the sum of their squares is the objective ``f``; this matches
     SIMSOPT's ``QuasisymmetryRatioResidual.residuals()`` term by term.
     """
+    if geometry.toroidal_transits != 1:
+        msg = "quasisymmetry_residuals requires toroidal_transits = 1"
+        raise NotImplementedError(msg)
     surface_values = jnp.asarray(surfaces, dtype=jnp.float64)
     surface_weights = (
         jnp.ones_like(surface_values)
