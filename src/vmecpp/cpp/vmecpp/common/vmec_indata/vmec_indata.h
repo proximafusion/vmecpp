@@ -72,6 +72,14 @@ class VmecINDATA {
   // number of toroidal field periods (=1 for Tokamak)
   int nfp;
 
+  // Number of toroidal transits after which the domain closes on itself: the
+  // geometric toroidal angle phi runs over [0, 2 pi toroidal_transits) and
+  // holds nfp field periods, so the harmonic n of rbc, zbs, raxis_c, ... has
+  // the toroidal mode number n * nfp / toroidal_transits in phi. 1 is the
+  // usual torus; the interior of an island chain whose O-point line closes
+  // after several transits takes more. Fixed-boundary only.
+  int toroidal_transits;
+
   // number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1)
   int mpol;
 

@@ -68,6 +68,34 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+def test_free_boundary_table():
+    """The vacuum pressure on the boundary is |B|^2 / 2 of the vacuum field there, and a
+    fixed-boundary run returns zeros."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    table = vmecpp.run(vmec_input, response, verbose=False).threed1_free_boundary
+    assert np.shape(table.rb) == np.shape(table.brv)
+    np.testing.assert_allclose(
+        table.bsqvacf,
+        0.5 * (table.brv**2 + table.bphiv**2 + table.bzv**2),
+        rtol=1.0e-10,
+        atol=0.0,
+    )
+
+    fixed = vmecpp.run(
+        vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json"), verbose=False
+    )
+    assert not np.any(fixed.threed1_free_boundary.brv)
+
+
 def test_vacuum_potential_cutoffs():
     """The vacuum potential's cutoffs default to the plasma's, must not fall below them,
     and a run with larger ones converges on the same grid."""
