@@ -63,6 +63,21 @@ inline void AddConstraintForces(
   }  // jF
 }
 
+// m_coefficients = mass_inverse * m_coefficients via m_scratch
+inline void ApplyMassInverse(const double* mass_inverse, int size,
+                             double* m_coefficients, double* m_scratch) {
+  for (int n = 0; n < size; ++n) {
+    double sum = 0.0;
+    for (int n2 = 0; n2 < size; ++n2) {
+      sum += mass_inverse[n * size + n2] * m_coefficients[n2];
+    }
+    m_scratch[n] = sum;
+  }
+  for (int n = 0; n < size; ++n) {
+    m_coefficients[n] = m_scratch[n];
+  }
+}
+
 // Fourier-space bandpass of the constraint force: forward transform gConEff to
 // the (m, n) coefficients gsc/gcs scaled by tcon, then inverse transform back
 // to real space scaled by faccon[m]. Bandpass keeps m in [1, mpol-1). The axis
@@ -75,14 +90,17 @@ inline void AddConstraintForces(
 // ((jF-nsMinF)*nZeta + k)*nThetaEff + l; all Fourier scratch arrays have
 // length ntor+1. In the non-symmetric case, gConAsym has nZeta*nThetaEff
 // entries for one surface and refl has nThetaReduced entries.
+// cosnvi/sinnvi: weighted tables; mass_inverse_even/odd: projection or null.
 inline void ComputeDeAliasConstraintForce(
     const double* gConEff, const double* faccon, const double* tcon,
-    const double* sinmui, const double* cosmui, const double* cosnv,
-    const double* sinnv, const double* sinmu, const double* cosmu, int nsMinF,
-    int nsMaxF, int nZeta, int nThetaEff, int nThetaReduced, int nThetaEven,
-    int mpol, int ntor, int nnyq2, bool lasym, double* m_gsc, double* m_gcs,
-    double* m_gcc, double* m_gss, double* m_gConAsym, double* m_refl,
-    double* m_gCon) {
+    const double* sinmui, const double* cosmui, const double* cosnvi,
+    const double* sinnvi, const double* cosnv, const double* sinnv,
+    const double* sinmu, const double* cosmu, int nsMinF, int nsMaxF, int nZeta,
+    int nThetaEff, int nThetaReduced, int nThetaEven, int mpol, int ntor,
+    int nnyq2, bool lasym, const int* zeta_mirror,
+    const double* mass_inverse_even, const double* mass_inverse_odd,
+    double* m_mass_scratch, double* m_gsc, double* m_gcs, double* m_gcc,
+    double* m_gss, double* m_gConAsym, double* m_refl, double* m_gCon) {
   for (int i = 0; i < (nsMaxF - nsMinF) * nZeta * nThetaEff; ++i) {
     m_gCon[i] = 0.0;
   }
@@ -115,11 +133,11 @@ inline void ComputeDeAliasConstraintForce(
         if (!lasym) {
           for (int n = 0; n < ntor + 1; ++n) {
             const int idx_kn = k * (nnyq2 + 1) + n;
-            m_gsc[n] += cosnv[idx_kn] * w0 * tc;
-            m_gcs[n] += sinnv[idx_kn] * w1 * tc;
+            m_gsc[n] += cosnvi[idx_kn] * w0 * tc;
+            m_gcs[n] += sinnvi[idx_kn] * w1 * tc;
           }
         } else {
-          const int k_rev = (nZeta - k) % nZeta;
+          const int k_rev = zeta_mirror[k];
           const int refl_base = ((jF - nsMinF) * nZeta + k_rev) * nThetaEff;
           for (int l = 0; l < nThetaReduced; ++l) {
             const int l_rev = (nThetaEven - l) % nThetaEven;
@@ -133,13 +151,21 @@ inline void ComputeDeAliasConstraintForce(
           }
           for (int n = 0; n < ntor + 1; ++n) {
             const int idx_kn = k * (nnyq2 + 1) + n;
-            const double cosnv_value = cosnv[idx_kn];
-            const double sinnv_value = sinnv[idx_kn];
+            const double cosnv_value = cosnvi[idx_kn];
+            const double sinnv_value = sinnvi[idx_kn];
             m_gcs[n] += 0.5 * tc * sinnv_value * (w1 - w3);
             m_gsc[n] += 0.5 * tc * cosnv_value * (w0 - w4);
             m_gss[n] += 0.5 * tc * sinnv_value * (w0 + w4);
             m_gcc[n] += 0.5 * tc * cosnv_value * (w1 + w3);
           }
+        }
+      }
+      if (mass_inverse_even != nullptr) {
+        ApplyMassInverse(mass_inverse_even, ntor + 1, m_gsc, m_mass_scratch);
+        ApplyMassInverse(mass_inverse_odd, ntor + 1, m_gcs, m_mass_scratch);
+        if (lasym) {
+          ApplyMassInverse(mass_inverse_even, ntor + 1, m_gcc, m_mass_scratch);
+          ApplyMassInverse(mass_inverse_odd, ntor + 1, m_gss, m_mass_scratch);
         }
       }
 
@@ -173,7 +199,7 @@ inline void ComputeDeAliasConstraintForce(
     if (lasym) {
       const int surface_base = (jF - nsMinF) * nZeta * nThetaEff;
       for (int k = 0; k < nZeta; ++k) {
-        const int k_rev = (nZeta - k) % nZeta;
+        const int k_rev = zeta_mirror[k];
         for (int l = nThetaReduced; l < nThetaEven; ++l) {
           const int target = surface_base + k * nThetaEff + l;
           const int reflected = k_rev * nThetaEff + (nThetaEven - l);
@@ -199,9 +225,10 @@ inline void ComputeDeAliasConstraintForce(
     int nsMaxF, int nZeta, int nThetaEff, int nThetaReduced, int mpol, int ntor,
     int nnyq2, double* m_gsc, double* m_gcs, double* m_gCon) {
   ComputeDeAliasConstraintForce(
-      gConEff, faccon, tcon, sinmui, cosmui, cosnv, sinnv, sinmu, cosmu, nsMinF,
-      nsMaxF, nZeta, nThetaEff, nThetaReduced, 2 * (nThetaReduced - 1), mpol,
-      ntor, nnyq2, false, m_gsc, m_gcs, nullptr, nullptr, nullptr, nullptr,
+      gConEff, faccon, tcon, sinmui, cosmui, cosnv, sinnv, cosnv, sinnv, sinmu,
+      cosmu, nsMinF, nsMaxF, nZeta, nThetaEff, nThetaReduced,
+      2 * (nThetaReduced - 1), mpol, ntor, nnyq2, false, nullptr, nullptr,
+      nullptr, nullptr, m_gsc, m_gcs, nullptr, nullptr, nullptr, nullptr,
       m_gCon);
 }
 

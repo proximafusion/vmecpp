@@ -241,6 +241,21 @@ void FourierCoeffs::maskGeometryAbove(int mpolGeom, int ntorGeom) {
 
 double FourierCoeffs::rzNorm(bool include_offset, int nsMinHere,
                              int nsMaxHere) const {
+  if (!include_offset && s_.toroidal_elements != nullptr) {
+    // offset: projection onto the constant function, spread over all slots
+    const Eigen::VectorXd& constant = s_.toroidal_elements->constant;
+    double offset2 = 0.0;
+    for (int jF = nsMinHere; jF < nsMaxHere; ++jF) {
+      double offset = 0.0;
+      for (int n = 0; n < s_.ntor + 1; ++n) {
+        offset +=
+            rcc[((jF - nsMin_) * s_.mpol) * (s_.ntor + 1) + n] * constant[n];
+      }
+      offset2 += offset * offset;
+    }
+    return rzNorm(/*includeOffset=*/true, nsMinHere, nsMaxHere) - offset2;
+  }
+
   // accumulator for local thread
   double local_norm2 = 0.0;
 

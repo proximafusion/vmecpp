@@ -20,6 +20,7 @@
 #include "util/file_io/file_io.h"
 #include "util/hdf5_io/hdf5_io.h"
 #include "util/json_io/json_io.h"
+#include "vmecpp/common/toroidal_elements/toroidal_elements.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/boundary_from_json.h"
 #include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
@@ -342,6 +343,8 @@ VmecINDATA::VmecINDATA() {
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
   fgiveup = 30.0;
+  toroidal_element_degree = 0;
+  toroidal_element_quadrature = 0;
 
   // zero-initialized magnetic axis
   raxis_c.setZero(ntor + 1);
@@ -480,6 +483,20 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
                  "/indata/return_outputs_even_if_not_converged", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
   WriteH5Dataset(fgiveup, "/indata/fgiveup", file);
+  WriteH5Dataset(toroidal_element_degree, "/indata/toroidal_element_degree",
+                 file);
+  if (toroidal_element_degree > 0) {
+    WriteH5Dataset(toroidal_element_quadrature,
+                   "/indata/toroidal_element_quadrature", file);
+    WriteH5Dataset(toroidal_element_breaks, "/indata/toroidal_element_breaks",
+                   file);
+    WriteH5Dataset(rbc_nodes, "/indata/rbc_nodes", file);
+    WriteH5Dataset(rbs_nodes, "/indata/rbs_nodes", file);
+    WriteH5Dataset(zbc_nodes, "/indata/zbc_nodes", file);
+    WriteH5Dataset(zbs_nodes, "/indata/zbs_nodes", file);
+    WriteH5Dataset(raxis_nodes, "/indata/raxis_nodes", file);
+    WriteH5Dataset(zaxis_nodes, "/indata/zaxis_nodes", file);
+  }
 
   // 1D arrays
   WriteH5Dataset(ns_array, "/indata/ns_array", file);
@@ -638,6 +655,22 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
   if (from_file.nameExists("/indata/lgiveup")) {
     ReadH5Dataset(m_indata.lgiveup, "/indata/lgiveup", from_file);
     ReadH5Dataset(m_indata.fgiveup, "/indata/fgiveup", from_file);
+  }
+  if (from_file.nameExists("/indata/toroidal_element_degree")) {
+    ReadH5Dataset(m_indata.toroidal_element_degree,
+                  "/indata/toroidal_element_degree", from_file);
+  }
+  if (m_indata.toroidal_element_degree > 0) {
+    ReadH5Dataset(m_indata.toroidal_element_quadrature,
+                  "/indata/toroidal_element_quadrature", from_file);
+    ReadH5Dataset(m_indata.toroidal_element_breaks,
+                  "/indata/toroidal_element_breaks", from_file);
+    ReadH5Dataset(m_indata.rbc_nodes, "/indata/rbc_nodes", from_file);
+    ReadH5Dataset(m_indata.rbs_nodes, "/indata/rbs_nodes", from_file);
+    ReadH5Dataset(m_indata.zbc_nodes, "/indata/zbc_nodes", from_file);
+    ReadH5Dataset(m_indata.zbs_nodes, "/indata/zbs_nodes", from_file);
+    ReadH5Dataset(m_indata.raxis_nodes, "/indata/raxis_nodes", from_file);
+    ReadH5Dataset(m_indata.zaxis_nodes, "/indata/zaxis_nodes", from_file);
   }
 
   // 1D arrays
@@ -1218,6 +1251,68 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.fgiveup = maybe_fgiveup->value();
   }
 
+  auto maybe_toroidal_element_degree =
+      JsonReadInt(j, "toroidal_element_degree");
+  if (!maybe_toroidal_element_degree.ok()) {
+    return maybe_toroidal_element_degree.status();
+  }
+  if (maybe_toroidal_element_degree->has_value()) {
+    vmec_indata.toroidal_element_degree =
+        maybe_toroidal_element_degree->value();
+  }
+  auto maybe_toroidal_element_quadrature =
+      JsonReadInt(j, "toroidal_element_quadrature");
+  if (!maybe_toroidal_element_quadrature.ok()) {
+    return maybe_toroidal_element_quadrature.status();
+  }
+  if (maybe_toroidal_element_quadrature->has_value()) {
+    vmec_indata.toroidal_element_quadrature =
+        maybe_toroidal_element_quadrature->value();
+  }
+  for (const auto& [name, vector] :
+       {std::pair{"toroidal_element_breaks",
+                  &vmec_indata.toroidal_element_breaks},
+        std::pair{"raxis_nodes", &vmec_indata.raxis_nodes},
+        std::pair{"zaxis_nodes", &vmec_indata.zaxis_nodes}}) {
+    auto maybe_vector = JsonReadVectorDouble(j, name);
+    if (!maybe_vector.ok()) {
+      return maybe_vector.status();
+    }
+    if (maybe_vector->has_value()) {
+      *vector = maybe_vector->value();
+    }
+  }
+  // the boundary at the element nodes as a list of rows
+  for (const auto& [name, matrix] :
+       {std::pair{"rbc_nodes", &vmec_indata.rbc_nodes},
+        std::pair{"rbs_nodes", &vmec_indata.rbs_nodes},
+        std::pair{"zbc_nodes", &vmec_indata.zbc_nodes},
+        std::pair{"zbs_nodes", &vmec_indata.zbs_nodes}}) {
+    if (!j.contains(name)) {
+      continue;
+    }
+    const json& rows = j[name];
+    const int num_rows = rows.is_array() ? static_cast<int>(rows.size()) : 0;
+    const int num_cols = num_rows > 0 && rows[0].is_array()
+                             ? static_cast<int>(rows[0].size())
+                             : 0;
+    matrix->resize(num_rows, num_cols);
+    for (int row = 0; row < num_rows; ++row) {
+      if (!rows[row].is_array() ||
+          static_cast<int>(rows[row].size()) != num_cols) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "%s needs to be a list of rows of equal length\n", name));
+      }
+      for (int col = 0; col < num_cols; ++col) {
+        if (!rows[row][col].is_number()) {
+          return absl::InvalidArgumentError(
+              absl::StrFormat("%s needs to hold numbers\n", name));
+        }
+        (*matrix)(row, col) = rows[row][col].get<double>();
+      }
+    }
+  }
+
   // -----------------------------------------------
 
   // Axis Fourier coefficient arrays must have length ntor+1. Arrays that are
@@ -1536,6 +1631,26 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["lgiveup"] = lgiveup;
   output["fgiveup"] = fgiveup;
 
+  // Toroidal Elements
+  output["toroidal_element_degree"] = toroidal_element_degree;
+  output["toroidal_element_quadrature"] = toroidal_element_quadrature;
+  output["toroidal_element_breaks"] = toroidal_element_breaks;
+  output["raxis_nodes"] = raxis_nodes;
+  output["zaxis_nodes"] = zaxis_nodes;
+  for (const auto& [name, matrix] :
+       {std::pair{"rbc_nodes", &rbc_nodes}, std::pair{"rbs_nodes", &rbs_nodes},
+        std::pair{"zbc_nodes", &zbc_nodes},
+        std::pair{"zbs_nodes", &zbs_nodes}}) {
+    std::vector<std::vector<double>> rows(matrix->rows(),
+                                          std::vector<double>(matrix->cols()));
+    for (int row = 0; row < matrix->rows(); ++row) {
+      for (int col = 0; col < matrix->cols(); ++col) {
+        rows[row][col] = (*matrix)(row, col);
+      }
+    }
+    output[name] = rows;
+  }
+
   // Initial Guess for Magnetic Axis Geometry
   output["raxis_c"] = raxis_c;
   output["zaxis_s"] = zaxis_s;
@@ -1624,6 +1739,56 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
     return absl::InvalidArgumentError(absl::StrFormat(
         "input variable 'signgs' needs to be -1 or +1, but is %d\n",
         vmec_indata.signgs));
+  }
+
+  if (vmec_indata.toroidal_element_degree < 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'toroidal_element_degree' needs to be >= 0, but is "
+        "%d\n",
+        vmec_indata.toroidal_element_degree));
+  }
+  if (vmec_indata.toroidal_element_degree > 0) {
+    const absl::StatusOr<ToroidalElements> elements = MakeToroidalElements(
+        vmec_indata.toroidal_element_breaks,
+        vmec_indata.toroidal_element_degree, vmec_indata.nfp,
+        vmec_indata.toroidal_element_quadrature);
+    if (!elements.ok()) {
+      return elements.status();
+    }
+    if (vmec_indata.ntor != elements->ntor) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "with toroidal elements, ntor has to be the number of elements on "
+          "[0, pi] times their degree, %d, but is %d\n",
+          elements->ntor, vmec_indata.ntor));
+    }
+    if (vmec_indata.lbsubs) {
+      return absl::InvalidArgumentError(
+          "lbsubs solves for B_s in the toroidal Fourier basis and is not "
+          "available with toroidal elements\n");
+    }
+    if (vmec_indata.lfreeb &&
+        vmec_indata.free_boundary_method != FreeBoundaryMethod::NESTOR &&
+        vmec_indata.free_boundary_method != FreeBoundaryMethod::ONLY_COILS) {
+      return absl::InvalidArgumentError(
+          "toroidal elements support the nestor and only_coils free-boundary "
+          "methods\n");
+    }
+    const int num_nodes = 2 * vmec_indata.ntor;
+    for (const RowMatrixXd* nodes :
+         {&vmec_indata.rbc_nodes, &vmec_indata.rbs_nodes,
+          &vmec_indata.zbc_nodes, &vmec_indata.zbs_nodes}) {
+      if (nodes->rows() != vmec_indata.mpol || nodes->cols() != num_nodes) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "the boundary at the toroidal element nodes needs shape [%d, %d], "
+            "but has [%d, %d]\n",
+            vmec_indata.mpol, num_nodes, nodes->rows(), nodes->cols()));
+      }
+    }
+    if (vmec_indata.raxis_nodes.size() != num_nodes ||
+        vmec_indata.zaxis_nodes.size() != num_nodes) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "the axis at the toroidal element nodes needs size %d\n", num_nodes));
+    }
   }
 
   // the free-boundary case additionally requires nvacskip >= 1; see below

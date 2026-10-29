@@ -60,8 +60,8 @@ struct LocalForceComposition {
   // frozen chipH above.
   int ncurr = 0;
   int nThetaEff = 0;
-  const double* currH = nullptr;  // index jH-nsMinH
-  const double* wInt = nullptr;   // index kl % nThetaEff
+  const double* currH = nullptr;   // index jH-nsMinH
+  const double* wIntKL = nullptr;  // index kl within a surface
 
   // Spectral-condensation constraint force. Enabled only when with_constraint
   // is set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and
@@ -84,6 +84,11 @@ struct LocalForceComposition {
   const double* cosmui = nullptr;
   const double* cosnv = nullptr;
   const double* sinnv = nullptr;
+  const double* cosnvi = nullptr;
+  const double* sinnvi = nullptr;
+  const int* zeta_mirror = nullptr;
+  const double* mass_inverse_even = nullptr;
+  const double* mass_inverse_odd = nullptr;
   const double* sinmu = nullptr;
   const double* cosmu = nullptr;
 };
@@ -100,7 +105,7 @@ inline int LocalForceWorkSize(const LocalForceComposition& c) {
   int n = 15 * nHalf * c.nZnT + 30 * c.nZnT;
   if (c.with_constraint) {
     const int nFull = c.nsMaxFIncludingLcfs - c.nsMinF;
-    n += 4 * nFull * c.nZnT + 4 * (c.ntor + 1) + c.nZnT + c.nThetaReduced +
+    n += 4 * nFull * c.nZnT + 5 * (c.ntor + 1) + c.nZnT + c.nThetaReduced +
          nFull + 2 * nHalf;
   }
   return n;
@@ -189,13 +194,13 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
       double avg_guu_gsqrt = 0.0;
       for (int kl = 0; kl < nZnT; ++kl) {
         const int ih = (jH - c->nsMinH) * nZnT + kl;
-        const int l = kl % c->nThetaEff;
         if (c->lthreed) {
-          jvPlasma += (guu[ih] * bsupu[ih] + guv[ih] * bsupv[ih]) * c->wInt[l];
+          jvPlasma +=
+              (guu[ih] * bsupu[ih] + guv[ih] * bsupv[ih]) * c->wIntKL[kl];
         } else {
-          jvPlasma += guu[ih] * bsupu[ih] * c->wInt[l];
+          jvPlasma += guu[ih] * bsupu[ih] * c->wIntKL[kl];
         }
-        avg_guu_gsqrt += guu[ih] / gsqrt[ih] * c->wInt[l];
+        avg_guu_gsqrt += guu[ih] / gsqrt[ih] * c->wIntKL[kl];
       }
       if (avg_guu_gsqrt != 0.0) {
         chip = (currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
@@ -329,6 +334,8 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
     s += c->ntor + 1;
     double* gss = s;
     s += c->ntor + 1;
+    double* mass_scratch = s;
+    s += c->ntor + 1;
     double* gConAsym = s;
     s += nZnT;
     double* refl = s;
@@ -357,8 +364,7 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
       for (int kl = 0; kl < nZnT; ++kl) {
         const int ih = (jH - c->nsMinH) * nZnT + kl;
         // pFactor * r12 * totalPressure / tau * wInt, times (xu12 / deltaS)^2
-        const double pTau =
-            -4.0 * r12[ih] * tp[ih] / tau[ih] * c->wInt[kl % c->nThetaEff];
+        const double pTau = -4.0 * r12[ih] * tp[ih] / tau[ih] * c->wIntKL[kl];
         const double zu = zu12[ih] / c->deltaS;
         const double ru = ru12[ih] / c->deltaS;
         ar += pTau * zu * zu;
@@ -377,7 +383,7 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
       double azNorm = 0.0;
       for (int kl = 0; kl < nZnT; ++kl) {
         const int idx = (jF - c->nsMinF) * nZnT + kl;
-        const double w = c->wInt[kl % c->nThetaEff];
+        const double w = c->wIntKL[kl];
         arNorm += ruFull[idx] * ruFull[idx] * w;
         azNorm += zuFull[idx] * zuFull[idx] * w;
       }
@@ -407,10 +413,12 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
                                     nZnT, c->nsMinF, c->nsMaxFIncludingLcfs,
                                     gConEff);
     ComputeDeAliasConstraintForce(
-        gConEff, c->faccon, tcon, c->sinmui, c->cosmui, c->cosnv, c->sinnv,
-        c->sinmu, c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta, c->nThetaEff,
-        c->nThetaReduced, c->nThetaEven, c->mpol, c->ntor, c->nnyq2, c->lasym,
-        gsc, gcs, gcc, gss, gConAsym, refl, gCon);
+        gConEff, c->faccon, tcon, c->sinmui, c->cosmui, c->cosnvi, c->sinnvi,
+        c->cosnv, c->sinnv, c->sinmu, c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta,
+        c->nThetaEff, c->nThetaReduced, c->nThetaEven, c->mpol, c->ntor,
+        c->nnyq2, c->lasym, c->zeta_mirror, c->mass_inverse_even,
+        c->mass_inverse_odd, mass_scratch, gsc, gcs, gcc, gss, gConAsym, refl,
+        gCon);
     double* frcon_e = force + 16 * fS;
     double* frcon_o = force + 17 * fS;
     double* fzcon_e = force + 18 * fS;

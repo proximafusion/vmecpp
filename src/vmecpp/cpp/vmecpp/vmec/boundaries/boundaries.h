@@ -80,6 +80,9 @@ class Boundaries {
   // id: contents of INDATA namelist (VMEC input)
   void parseToInternalArrays(const VmecINDATA& id, bool verbose = true);
 
+  // parseToInternalArrays for toroidal elements
+  void parseNodesToInternalArrays(const VmecINDATA& id, bool verbose);
+
   // Check if the sign of the Jacobian of the given input boundary coefficient
   // matches the expected internal sign of the Jacobian.
   // Returns true if we need to flip the poloidal angle direction in the input

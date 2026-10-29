@@ -50,6 +50,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
   - [With JAX for gradients](#differentiable-runs)
+  - [Toroidal spectral elements](#toroidal-spectral-elements)
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -152,6 +153,57 @@ rbc = jnp.asarray(vmec_input.rbc)
 zbs = jnp.asarray(vmec_input.zbs)
 d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
 ```
+
+### Toroidal spectral elements
+
+With `toroidal_element_degree > 0`, the toroidal dependence is represented by continuous
+piecewise polynomials of that degree on elements in $v = n_{fp} \phi$ instead of the
+toroidal Fourier series. The element boundaries `toroidal_element_breaks` run from $0$
+to $\pi$ and are mirrored onto $[\pi, 2\pi]$; `ntor` is the number of elements on
+$[0, \pi]$ times the degree. Boundaries placed where the plasma boundary changes
+abruptly along $v$, such as where the straight sections of a racetrack meet its ends,
+give exponential convergence in the degree where the Fourier series converges
+algebraically. The boundary and the initial magnetic axis are given at the
+$2\,\mathrm{ntor}$ element nodes of a field period:
+
+```python
+import numpy as np
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("examples/data/cth_like_fixed_bdy.json")
+degree, breaks = 6, np.linspace(0.0, np.pi, 5)
+v = vmecpp.toroidal_element_nodes(breaks, degree, vmec_input.nfp)
+
+# R = sum_m rbc_nodes[m] cos(m u) + rbs_nodes[m] sin(m u), Z likewise, at the nodes
+n = np.arange(-vmec_input.ntor, vmec_input.ntor + 1)
+cos, sin = np.cos(np.outer(n, v)), np.sin(np.outer(n, v))
+cos_axis = np.cos(np.outer(np.arange(vmec_input.ntor + 1), v))
+sin_axis = np.sin(np.outer(np.arange(vmec_input.ntor + 1), v))
+ntor = (len(breaks) - 1) * degree
+elements = vmec_input.model_copy(
+    update={
+        "ntor": ntor,
+        "rbc": np.zeros((vmec_input.mpol, 2 * ntor + 1)),
+        "zbs": np.zeros((vmec_input.mpol, 2 * ntor + 1)),
+        "raxis_c": np.zeros(ntor + 1),
+        "zaxis_s": np.zeros(ntor + 1),
+        "toroidal_element_degree": degree,
+        "toroidal_element_breaks": breaks,
+        "rbc_nodes": vmec_input.rbc @ cos,
+        "rbs_nodes": vmec_input.rbc @ sin,
+        "zbc_nodes": -vmec_input.zbs @ sin,
+        "zbs_nodes": vmec_input.zbs @ cos,
+        "raxis_nodes": vmec_input.raxis_c @ cos_axis,
+        "zaxis_nodes": -vmec_input.zaxis_s @ sin_axis,
+    }
+)
+output = vmecpp.run(elements)
+```
+
+The wout holds the toroidal Fourier modes $n \le$ `ntor` of the solution. Free-boundary
+runs with `nestor` and `only_coils` solve the vacuum on a uniform toroidal grid of
+`nzeta` points. Hot restart and runs traced by JAX need the Fourier basis.
+
 ### As a command line tool
 
 You can use VMEC++ directly as a CLI tool.

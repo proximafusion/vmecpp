@@ -34,6 +34,16 @@ FourierBasis<Layout>::FourierBasis(const Sizes* s) : s_(*s) {
 
   computeFourierBasis(s_.nfp);
 
+  cosnvi = cosnv;
+  sinnvi = sinnv;
+  cosnvni = cosnvn;
+  sinnvni = sinnvn;
+  constant_mode = Eigen::VectorXd::Unit(s_.ntor + 1, 0);
+  nscale_fourier = nscale;
+  if (s_.toroidal_elements != nullptr) {
+    computeToroidalElementBasis(*s_.toroidal_elements);
+  }
+
   // -----------------
 
   xm.resize(s_.mnmax);
@@ -135,6 +145,75 @@ void FourierBasis<Layout>::computeFourierBasis(int nfp) {
       sinnvn[idx_kn] = -n * nfp * sinnv[idx_kn];
     }  // n
   }  // k
+}
+
+template <class Layout>
+void FourierBasis<Layout>::computeToroidalElementBasis(
+    const ToroidalElements& elements) {
+  static constexpr double kTwoPi = 2.0 * M_PI;
+  const int num_slots = elements.ntor + 1;
+  nscale_fourier = nscale;
+  for (int n = 0; n < s_.nnyq2 + 1; ++n) {
+    nscale[n] = n < num_slots ? elements.scale[n] : 1.0;
+  }
+  for (int k = 0; k < s_.nZeta; ++k) {
+    const double analysis_weight = elements.weight[k] * s_.nZeta / kTwoPi;
+    for (int n = 0; n < s_.nnyq2 + 1; ++n) {
+      const int idx_kn =
+          Layout::ToroidalBasisIndex(n, k, s_.nnyq2 + 1, s_.nZeta);
+      if (n < num_slots) {
+        const int idx = k * num_slots + n;
+        cosnv[idx_kn] = elements.even[idx] * nscale[n];
+        sinnv[idx_kn] = elements.odd[idx] * nscale[n];
+        cosnvn[idx_kn] = elements.odd_dv[idx] * s_.nfp * nscale[n];
+        sinnvn[idx_kn] = elements.even_dv[idx] * s_.nfp * nscale[n];
+      } else {
+        cosnv[idx_kn] = 0.0;
+        sinnv[idx_kn] = 0.0;
+        cosnvn[idx_kn] = 0.0;
+        sinnvn[idx_kn] = 0.0;
+      }
+      cosnvi[idx_kn] = cosnv[idx_kn] * analysis_weight;
+      sinnvi[idx_kn] = sinnv[idx_kn] * analysis_weight;
+      cosnvni[idx_kn] = cosnvn[idx_kn] * analysis_weight;
+      sinnvni[idx_kn] = sinnvn[idx_kn] * analysis_weight;
+    }  // n
+  }  // k
+  constant_mode = elements.constant;
+
+  Eigen::MatrixXd fourier_cos;
+  Eigen::MatrixXd fourier_sin;
+  FourierIntegrals(elements, s_.nnyq2, fourier_cos, fourier_sin);
+  fourier_cosnvi.resize((s_.nnyq2 + 1) * s_.nZeta);
+  fourier_sinnvi.resize((s_.nnyq2 + 1) * s_.nZeta);
+  for (int k = 0; k < s_.nZeta; ++k) {
+    for (int n = 0; n < s_.nnyq2 + 1; ++n) {
+      const int idx_kn =
+          Layout::ToroidalBasisIndex(n, k, s_.nnyq2 + 1, s_.nZeta);
+      fourier_cosnvi[idx_kn] = fourier_cos(k, n) * nscale_fourier[n] * s_.nZeta;
+      fourier_sinnvi[idx_kn] = fourier_sin(k, n) * nscale_fourier[n] * s_.nZeta;
+    }  // n
+  }  // k
+  element_to_fourier_even = Eigen::MatrixXd::Zero(num_slots, num_slots);
+  element_to_fourier_odd = Eigen::MatrixXd::Zero(num_slots, num_slots);
+  for (int k = 0; k < s_.nZeta; ++k) {
+    for (int f = 0; f < num_slots; ++f) {
+      const int idx_kf =
+          Layout::ToroidalBasisIndex(f, k, s_.nnyq2 + 1, s_.nZeta);
+      for (int n = 0; n < num_slots; ++n) {
+        const int idx_kn =
+            Layout::ToroidalBasisIndex(n, k, s_.nnyq2 + 1, s_.nZeta);
+        element_to_fourier_even(f, n) +=
+            fourier_cosnvi[idx_kf] / s_.nZeta * cosnv[idx_kn];
+        element_to_fourier_odd(f, n) +=
+            fourier_sinnvi[idx_kf] / s_.nZeta * sinnv[idx_kn];
+      }  // n
+    }  // f
+  }  // k
+  if (elements.num_quadrature > elements.degree + 1) {
+    mass_inverse_even = elements.even_mass.inverse();
+    mass_inverse_odd = elements.odd_mass.inverse();
+  }
 }
 
 // convert cos(xm[mn] theta - xn[mn] zeta) into 2D FC array form

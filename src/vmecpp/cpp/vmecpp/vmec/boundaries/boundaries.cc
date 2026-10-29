@@ -99,6 +99,11 @@ double Boundaries::ComputeSpectralWidth(const int p, const int q) const {
 }  // ComputeSpectralWidth
 
 void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
+  if (s_.toroidal_elements != nullptr) {
+    parseNodesToInternalArrays(id, verbose);
+    return;
+  }
+
   // copy over axis from INDATA to this class
   for (int n = 0; n < s_.ntor + 1; ++n) {
     raxis_c[n] = id.raxis_c[n];
@@ -237,6 +242,92 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
   }  // n
 }
 
+void Boundaries::parseNodesToInternalArrays(const VmecINDATA& id,
+                                            bool verbose) {
+  const ToroidalElements& elements = *s_.toroidal_elements;
+  const int num_nodes = 2 * s_.ntor;
+  RowMatrixXd rc = id.rbc_nodes;
+  RowMatrixXd rs = id.rbs_nodes;
+  RowMatrixXd zc = id.zbc_nodes;
+  RowMatrixXd zs = id.zbs_nodes;
+
+  if (s_.lasym && s_.mpol > 1) {
+    // poloidal-origin shift from the toroidal means of the m = 1 rows
+    auto mean = [&](const RowMatrixXd& nodes) {
+      const int num_slots = s_.ntor + 1;
+      double sum = 0.0;
+      for (int k = 0; k < elements.num_points; ++k) {
+        for (int n = 0; n < num_slots; ++n) {
+          const double even_part =
+              (n == 0 || n == s_.ntor)
+                  ? nodes(1, n)
+                  : 0.5 * (nodes(1, n) + nodes(1, num_nodes - n));
+          sum +=
+              elements.weight[k] * elements.even[k * num_slots + n] * even_part;
+        }
+      }
+      return sum / (2.0 * M_PI);
+    };
+    const double handedness = rc(1, 0) * zs(1, 0) - rs(1, 0) * zc(1, 0);
+    const bool will_flip_theta = (handedness * sign_of_jacobian_ > 0.0);
+    const double sigma = -sign_of_jacobian_ * (will_flip_theta ? -1.0 : 1.0);
+    const double delta =
+        atan2(mean(rs) - sigma * mean(zc), mean(rc) + sigma * mean(zs));
+    if (verbose && delta != 0.0) {
+      std::cout << "need to shift theta by delta = " << delta << "\n";
+    }
+    for (int m = 0; m < s_.mpol; ++m) {
+      const double cos_m_delta = cos(m * delta);
+      const double sin_m_delta = sin(m * delta);
+      const Eigen::RowVectorXd rc_m = rc.row(m);
+      const Eigen::RowVectorXd zs_m = zs.row(m);
+      rc.row(m) = rc_m * cos_m_delta + rs.row(m) * sin_m_delta;
+      rs.row(m) = rs.row(m) * cos_m_delta - rc_m * sin_m_delta;
+      zs.row(m) = zs_m * cos_m_delta - zc.row(m) * sin_m_delta;
+      zc.row(m) = zc.row(m) * cos_m_delta + zs_m * sin_m_delta;
+    }
+  }
+
+  // slot amplitudes: even and odd parts of the nodal values
+  auto mirror = [&](int n) { return (num_nodes - n) % num_nodes; };
+  auto even = [&](const auto& values, int n) {
+    return (n == 0 || n == s_.ntor) ? values(n)
+                                    : 0.5 * (values(n) + values(mirror(n)));
+  };
+  auto odd = [&](const auto& values, int n) {
+    return (n == 0 || n == s_.ntor) ? 0.0
+                                    : 0.5 * (values(n) - values(mirror(n)));
+  };
+  // axis signs of the Fourier convention, R = raxis_c cos - raxis_s sin
+  for (int n = 0; n < s_.ntor + 1; ++n) {
+    raxis_c[n] = even(id.raxis_nodes, n);
+    zaxis_s[n] = -odd(id.zaxis_nodes, n);
+    if (s_.lasym) {
+      raxis_s[n] = -odd(id.raxis_nodes, n);
+      zaxis_c[n] = even(id.zaxis_nodes, n);
+    }
+  }
+  for (int m = 0; m < s_.mpol; ++m) {
+    const Eigen::RowVectorXd rc_m = rc.row(m);
+    const Eigen::RowVectorXd rs_m = rs.row(m);
+    const Eigen::RowVectorXd zc_m = zc.row(m);
+    const Eigen::RowVectorXd zs_m = zs.row(m);
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_mn = m * (s_.ntor + 1) + n;
+      rbcc[idx_mn] = even(rc_m, n);
+      zbsc[idx_mn] = m > 0 ? even(zs_m, n) : 0.0;
+      rbss[idx_mn] = m > 0 ? odd(rs_m, n) : 0.0;
+      zbcs[idx_mn] = odd(zc_m, n);
+      if (s_.lasym) {
+        rbsc[idx_mn] = m > 0 ? even(rs_m, n) : 0.0;
+        zbcc[idx_mn] = even(zc_m, n);
+        rbcs[idx_mn] = odd(rc_m, n);
+        zbss[idx_mn] = m > 0 ? odd(zs_m, n) : 0.0;
+      }
+    }  // n
+  }  // m
+}
+
 bool Boundaries::checkSignOfJacobian() {
   /**
    * current working hypothesis: rTest, zTest are related to the leading terms
@@ -253,11 +344,16 @@ bool Boundaries::checkSignOfJacobian() {
   for (int n = 0; n < s_.ntor + 1; ++n) {
     int m = 1;
     int idx_mn = m * (s_.ntor + 1) + n;
-    rTest += rbcc[idx_mn];
-    zTest += zbsc[idx_mn];
+    // even function of slot n at zeta = 0
+    const double at_zero =
+        t_.cosnv[FourierBasisFastPoloidalLayout::ToroidalBasisIndex(
+            n, 0, s_.nnyq2 + 1, s_.nZeta)] /
+        t_.nscale[n];
+    rTest += rbcc[idx_mn] * at_zero;
+    zTest += zbsc[idx_mn] * at_zero;
     if (s_.lasym) {
-      rTestAsym += rbsc[idx_mn];
-      zTestAsym += zbcc[idx_mn];
+      rTestAsym += rbsc[idx_mn] * at_zero;
+      zTestAsym += zbcc[idx_mn] * at_zero;
     }
   }
 

@@ -12,8 +12,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":geometry",
+        "//vmecpp/common/toroidal_elements:toroidal_elements",
         "//vmecpp/common/vmec_indata:vmec_indata",
         "//vmecpp/vmec/output_quantities:output_quantities",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:statusor",
     ],
 )
 
