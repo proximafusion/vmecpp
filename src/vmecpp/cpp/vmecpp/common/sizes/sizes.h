@@ -20,7 +20,8 @@ class Sizes {
   explicit Sizes(const VmecINDATA& id);
 
   Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
-        int mpol_geometry = -1, int ntor_geometry = -1);
+        int mpol_geometry = -1, int ntor_geometry = -1,
+        int toroidal_transits = 1);
 
   // inputs from INDATA
 
@@ -29,6 +30,9 @@ class Sizes {
 
   // number of toroidal field periods
   int nfp;
+
+  // number of toroidal transits after which the domain closes on itself
+  int toroidal_transits;
 
   // number of poloidal Fourier harmoncis
   int mpol;
@@ -49,6 +53,10 @@ class Sizes {
   int nZeta;
 
   // derived
+
+  // field periods per toroidal transit, nfp / toroidal_transits, the factor
+  // from \partial/\partial\zeta to \partial/\partial\phi
+  double nfp_per_transit;
 
   // flag to indicate 3D case
   bool lthreed;

@@ -32,7 +32,7 @@ FourierBasis<Layout>::FourierBasis(const Sizes* s) : s_(*s) {
   cosnvn.resize((s_.nnyq2 + 1) * s_.nZeta);
   sinnvn.resize((s_.nnyq2 + 1) * s_.nZeta);
 
-  computeFourierBasis(s_.nfp);
+  computeFourierBasis(s_.nfp_per_transit);
 
   // -----------------
 
@@ -53,7 +53,7 @@ FourierBasis<Layout>::FourierBasis(const Sizes* s) : s_(*s) {
 }
 
 template <class Layout>
-void FourierBasis<Layout>::computeFourierBasis(int nfp) {
+void FourierBasis<Layout>::computeFourierBasis(double nfp_per_transit) {
   static constexpr double kTwoPi = 2.0 * M_PI;
 
   // Fourier transforms are always computed in VMEC
@@ -131,8 +131,8 @@ void FourierBasis<Layout>::computeFourierBasis(int nfp) {
       sinnv[idx_kn] = std::sin(arg) * nscale[n];
 
       // toroidal derivatives
-      cosnvn[idx_kn] = n * nfp * cosnv[idx_kn];
-      sinnvn[idx_kn] = -n * nfp * sinnv[idx_kn];
+      cosnvn[idx_kn] = n * nfp_per_transit * cosnv[idx_kn];
+      sinnvn[idx_kn] = -n * nfp_per_transit * sinnv[idx_kn];
     }  // n
   }  // k
 }
