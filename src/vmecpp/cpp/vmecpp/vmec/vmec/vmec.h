@@ -72,11 +72,8 @@ struct HotRestartState {
 // Called periodically from the iteration loop.
 using InterruptCallback = std::function<bool()>;
 
-// The fields of a force evaluation on the half grid, at the angles
-// theta_l = 2 pi l / ntheta_even, l < ntheta_eff, and
-// zeta_k = 2 pi k / (nfp nzeta), k < nzeta. Without lasym the poloidal points
-// cover [0, pi], and a field on the rest of a surface follows from
-// f(theta, zeta) = f(-theta, -zeta).
+// Half-grid fields at theta_l = 2 pi l / ntheta_even, in [0, pi] without lasym,
+// and zeta_k = 2 pi k toroidal_transits / (nfp nzeta), k < nzeta
 struct HalfGridFields {
   // [ns - 1, nzeta * ntheta_eff], each row zeta-major: the Jacobian sqrt(g),
   // whose sign is signgs, and the contravariant and covariant components of B
@@ -99,6 +96,7 @@ struct HalfGridFields {
   int ntheta_eff = 0;
   int nzeta = 0;
   int nfp = 0;
+  int toroidal_transits = 1;
   int signgs = 0;
 };
 

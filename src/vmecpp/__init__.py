@@ -265,6 +265,10 @@ class VmecInput(BaseModelWithNumpy):
     nfp: int = 1
     """Number of toroidal field periods (=1 for Tokamak)"""
 
+    toroidal_transits: int = 1
+    """Toroidal transits after which the domain closes, fixed boundary only; the
+    harmonic n has toroidal mode number n nfp / toroidal_transits in phi."""
+
     mpol: MpolNtorField = 6
     """Number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1).
 
@@ -1101,6 +1105,10 @@ class VmecWOut(BaseModelWithNumpy):
     nfp: int
     """Number of toroidal field periods."""
 
+    toroidal_transits: int = 1
+    """Toroidal transits after which the domain closes; coefficient mn has the toroidal
+    mode number xn[mn] / toroidal_transits in phi; phi integrals cover one transit."""
+
     ns: int
     """Number of radial grid points (=number of flux surfaces)."""
 
@@ -1761,9 +1769,12 @@ class VmecWOut(BaseModelWithNumpy):
                 "n_surfaces": "radius",
             }
 
-            # Convert VmeWOut to its NetCDF3 compatible representation
-            # (wout compatible names and datatypes)
-            dumped_fields = self.model_dump(by_alias=True, exclude={_DAPPER_TYPE_FIELD})
+            # Convert VmecWOut to its NetCDF3 representation; toroidal_transits, which
+            # has no Fortran counterpart, is written only where it is not 1.
+            exclude = {_DAPPER_TYPE_FIELD}
+            if self.toroidal_transits == 1:
+                exclude.add("toroidal_transits")
+            dumped_fields = self.model_dump(by_alias=True, exclude=exclude)
 
             # Make a dictionary of alias names to field info, from
             # model_fields (dictionary of non-alias names)
@@ -2566,6 +2577,64 @@ class Threed1ShafranovIntegrals(BaseModelWithNumpy):
         return Threed1ShafranovIntegrals(**values)
 
 
+class Threed1FreeBoundary(BaseModelWithNumpy):
+    """Boundary data of a free-boundary run, freeb_data in Fortran VMEC: points,
+    pressures and fields on either side over a field period, zero in fixed boundary."""
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    rb: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical coordinate R of the boundary points."""
+
+    phib: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Geometric toroidal angle of the boundary points."""
+
+    zb: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical coordinate Z of the boundary points."""
+
+    bsqmhdi: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Total pressure of the plasma at the boundary when the vacuum field was first
+    established."""
+
+    bsqvaci: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum magnetic pressure ``|B|^2 / 2`` at the boundary at that moment."""
+
+    bsqmhdf: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Total pressure of the plasma at the boundary at the end of the run."""
+
+    bsqvacf: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Vacuum magnetic pressure ``|B|^2 / 2`` at the boundary at the end of the run."""
+
+    bredge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^R on the plasma side of the boundary."""
+
+    bpedge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^phi on the plasma side of the boundary."""
+
+    bzedge: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^Z on the plasma side of the boundary."""
+
+    brv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^R of the vacuum field at the boundary."""
+
+    bphiv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^phi of the vacuum field at the boundary."""
+
+    bzv: jt.Float[np.ndarray, "nzeta ntheta"]
+    """Cylindrical B^Z of the vacuum field at the boundary."""
+
+    @staticmethod
+    def _from_cpp_threed1_free_boundary(
+        cpp_threed1_free_boundary: _vmecpp.Threed1FreeBoundary,
+    ) -> Threed1FreeBoundary:
+        return Threed1FreeBoundary(
+            **{
+                attr: np.array(getattr(cpp_threed1_free_boundary, attr))
+                for attr in own_model_fields(Threed1FreeBoundary)
+            }
+        )
+
+
 class Mercier(BaseModelWithNumpy):
     model_config = pydantic.ConfigDict(extra="forbid")
 
@@ -2765,6 +2834,9 @@ class VmecOutput(BaseModelWithNumpy):
     threed1_shafranov_integrals: Threed1ShafranovIntegrals
     """Python equivalent of the Shafranov surface integrals in VMEC's "threed1" file."""
 
+    threed1_free_boundary: Threed1FreeBoundary
+    """The boundary data of a free-boundary run, freeb_data in Fortran VMEC."""
+
     wout: VmecWOut
     """Python equivalent of VMEC's "wout" file."""
 
@@ -2810,6 +2882,9 @@ def _output_tables_from_cpp(cpp_output_quantities) -> dict[str, typing.Any]:
             Threed1ShafranovIntegrals._from_cpp_threed1_shafranov_integrals(
                 cpp_output_quantities.threed1_shafranov_integrals
             )
+        ),
+        "threed1_free_boundary": Threed1FreeBoundary._from_cpp_threed1_free_boundary(
+            cpp_output_quantities.threed1_free_boundary
         ),
     }
 
@@ -2880,6 +2955,8 @@ def _run_traced(
     unsupported = {
         "a free-boundary input": vmec_input.lfreeb,
         "lasym=True": vmec_input.lasym,
+        # the JAX output stage takes the toroidal mode numbers as n * nfp
+        "toroidal_transits != 1": vmec_input.toroidal_transits != 1,
         # VmecModel's geometry, at which the VJP linearizes, is left-handed
         "signgs=+1": vmec_input.signgs != -1,
         # the adjoint omits the dependence of the mass profile on R_00
@@ -2958,6 +3035,7 @@ def _run_traced(
                     "threed1_axis",
                     "threed1_betas",
                     "threed1_shafranov_integrals",
+                    "threed1_free_boundary",
                 )
             )
         else:
@@ -2989,13 +3067,8 @@ def _print_progress_tip_once() -> None:
 
 @dataclasses.dataclass(frozen=True)
 class HalfGridFields:
-    """The fields of a force evaluation on the half grid, at the angles ``theta_l = 2 pi
-    l / ntheta_even``, ``l < ntheta_eff``, and ``zeta_k = 2 pi k / (nfp nzeta)``, ``k <
-    nzeta``.
-
-    Without ``lasym`` the poloidal points cover [0, pi], and a field on the rest
-    of a surface follows from ``f(theta, zeta) = f(-theta, -zeta)``.
-    """
+    """Half-grid fields of a force evaluation at theta_l = 2 pi l / ntheta_even and
+    zeta_k = 2 pi k toroidal_transits / (nfp nzeta), theta in [0, pi] without lasym."""
 
     gsqrt: np.ndarray
     """[ns - 1, nzeta * ntheta_eff], each row zeta-major: the Jacobian sqrt(g),
@@ -3036,6 +3109,7 @@ class HalfGridFields:
     ntheta_eff: int
     nzeta: int
     nfp: int
+    toroidal_transits: int
     signgs: int
 
     @staticmethod
@@ -3056,6 +3130,7 @@ class HalfGridFields:
             ntheta_eff=cpp_fields.ntheta_eff,
             nzeta=cpp_fields.nzeta,
             nfp=cpp_fields.nfp,
+            toroidal_transits=cpp_fields.toroidal_transits,
             signgs=cpp_fields.signgs,
         )
 

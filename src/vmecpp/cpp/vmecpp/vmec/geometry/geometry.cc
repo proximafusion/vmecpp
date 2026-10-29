@@ -100,7 +100,8 @@ void CheckSize(const std::vector<double>& values, int expected,
 
 void Validate(const Geometry& geometry) {
   const GeometryDimensions& d = geometry.dimensions;
-  if (d.ns < 2 || d.mpol < 1 || d.ntor < 0 || d.nfp < 1) {
+  if (d.ns < 2 || d.mpol < 1 || d.ntor < 0 || d.nfp < 1 ||
+      d.toroidal_transits < 1) {
     throw std::invalid_argument("invalid geometry dimensions");
   }
   CheckSize(geometry.toroidal_flux, d.ns, "toroidal_flux");
@@ -120,7 +121,7 @@ void Validate(const Geometry& geometry) {
   CheckSize(geometry.coefficients.lambda_ss, size, "lambda_ss", true);
 }
 
-std::array<double, 3> TrigDerivatives(bool sine, int mode, double angle) {
+std::array<double, 3> TrigDerivatives(bool sine, double mode, double angle) {
   const double argument = mode * angle;
   if (sine) {
     return {std::sin(argument), mode * std::cos(argument),
@@ -184,7 +185,10 @@ void AddBasis(const std::vector<double>& coefficients, bool sine_m, bool sine_n,
               GeometryJet& m_value) {
   if (coefficients.empty()) return;
   const auto poloidal = TrigDerivatives(sine_m, m, theta);
-  const auto toroidal = TrigDerivatives(sine_n, n * dimensions.nfp, zeta);
+  const auto toroidal = TrigDerivatives(
+      sine_n,
+      static_cast<double>(n * dimensions.nfp) / dimensions.toroidal_transits,
+      zeta);
   std::array<double, 4> radial_coefficients{};
   for (int i = 0; i < radial.count; ++i) {
     radial_coefficients[i] =
