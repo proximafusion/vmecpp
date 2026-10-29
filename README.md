@@ -49,7 +49,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 - [Usage](#usage)
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
-  - [With JAX for gradients](#differentiable-runs)
+  - [With JAX for gradients](#with-jax-for-gradients)
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -118,7 +118,7 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 print(f"Computed plasma volume: {vmec.volume()}")
 ```
 
-## Differentiable runs
+### With JAX for gradients
 
 > [!NOTE]
 > The autodiff API is not yet stable. We are planning to make autodiff the default
@@ -159,8 +159,10 @@ In a terminal in which Python has access to the VMEC++ package:
 
 ```console
 # run on a given input file -> produce corresponding wout_w7x.nc
-# vmecpp is a python module and can be either run with `python -m` or directly as a script
 vmecpp examples/data/input.w7x
+
+# vmecpp is a python module and can also be run with `python -m`
+python -m vmecpp examples/data/input.w7x
 
 vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
 vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
@@ -170,12 +172,19 @@ vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fo
 vmecpp convert examples/data/input.w7x
 
 # compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
-# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
-vmecpp mgrid makegrid_parameters.json coils.<name>
+# (the JSON file only defines the mgrid grid, it is not a VMEC input)
+vmecpp makegrid examples/data/makegrid_parameters.json examples/data/coils.cth_like
 
-# print the version, or check all options
+# `mgrid` is an alias of `makegrid`
+vmecpp mgrid examples/data/makegrid_parameters.json examples/data/coils.cth_like
+
+# print the version number
 vmecpp --version
+
+# check all options, including for sub-commands
 vmecpp --help
+vmecpp convert --help
+vmecpp makegrid --help
 ```
 
 ### As a Docker image
