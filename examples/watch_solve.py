@@ -90,7 +90,7 @@ def surface_curves(
     _, mpol, ntor_plus_one = c["r_cc"].shape
     cos_m = np.cos(np.outer(theta, np.arange(mpol)))
     sin_m = np.sin(np.outer(theta, np.arange(mpol)))
-    toroidal = np.arange(ntor_plus_one) * geometry.nfp
+    toroidal = np.arange(ntor_plus_one) * (geometry.nfp / geometry.toroidal_transits)
     cos_n = np.cos(toroidal * zeta)
     sin_n = np.sin(toroidal * zeta)
     rows = np.asarray(surface_indices, dtype=int)
@@ -113,7 +113,9 @@ def magnetic_axis(geometry, zeta: float) -> tuple[float, float]:
     """R and Z of the magnetic axis at the cylindrical angle ``zeta``: the m = 0
     coefficients of the innermost surface."""
     c = _coefficient_arrays(geometry)
-    toroidal = np.arange(c["r_cc"].shape[2]) * geometry.nfp
+    toroidal = np.arange(c["r_cc"].shape[2]) * (
+        geometry.nfp / geometry.toroidal_transits
+    )
     cos_n = np.cos(toroidal * zeta)
     sin_n = np.sin(toroidal * zeta)
     r = c["r_cc"][0, 0] @ cos_n + c["r_cs"][0, 0] @ sin_n
