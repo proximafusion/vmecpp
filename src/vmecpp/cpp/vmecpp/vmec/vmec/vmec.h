@@ -261,6 +261,9 @@ class Vmec {
   // decomposed_x_ (already advanced by PerformTimeStep).
   void RestartIteration(double& m_delt0r, int thread_id,
                         bool backup_evaluated_state = false);
+  // A single run's ijacob and time-step control after an iteration, applied to
+  // each active configuration of a distinct batch; iter2 is the batch's.
+  void ApplyPerConfigurationRestarts(int iter2);
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);
@@ -344,6 +347,18 @@ class Vmec {
   std::vector<std::unique_ptr<RadialPartitioning>> r_;
   std::vector<std::unique_ptr<ThreadLocalStorage>> ls_;
   std::vector<std::unique_ptr<RadialProfiles>> p_;
+  // Per-configuration INDATA of a distinct batch, set by run_batched_gpu; run()
+  // builds each configuration's RadialProfiles from it. Empty otherwise.
+  std::vector<VmecINDATA> batch_indata_;
+  // Configuration slots of a batched GPU run, which the run_batched_gpu
+  // binding sets on the seed Vmec in either mode; one for ordinary runs.
+  int batch_size_ = 1;
+  // The ijacob each configuration of a distinct batch ends its first iteration
+  // with, run alone by run_batched_gpu; the first stage continues from it.
+  std::vector<int> batch_ijacob_;
+  // RadialProfiles of each configuration of a distinct batch, built from
+  // batch_indata_ for every multigrid level.
+  std::vector<std::unique_ptr<RadialProfiles>> p_percfg_;
   std::vector<std::unique_ptr<FreeBoundaryBase>> fb_vac_;
   std::vector<std::unique_ptr<TangentialPartitioning>> tp_vac_;
   std::vector<std::unique_ptr<IdealMhdModel>> m_;
@@ -369,6 +384,16 @@ class Vmec {
   // One row per vacuum thread for SumOverThreads, wide enough for the widest
   // sum of the vacuum team, which is the response matrix.
   Eigen::VectorXd vacuum_reduce_slots_;
+
+#ifdef VMECPP_USE_CUDA
+  // Batched free boundary: a vacuum solver with its own persistent state for
+  // each configuration beyond zero, which uses fb_vac_[0].
+  std::vector<std::unique_ptr<FreeBoundaryBase>> fb_extra_cfg_;
+  std::vector<Eigen::VectorXd> fb_matrix_per_cfg_;
+  std::vector<Eigen::PartialPivLU<Eigen::MatrixXd>> fb_lu_per_cfg_;
+  std::vector<Eigen::VectorXd> fb_bvec_per_cfg_;
+  std::vector<Eigen::VectorXd> fb_reduce_slots_per_cfg_;
+#endif
 
  private:
   enum class SolveEqLoopStatus : std::uint8_t {

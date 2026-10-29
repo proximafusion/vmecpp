@@ -126,8 +126,9 @@ jobs:
       - name: Test example scripts
         run: |
           set -ex
-          # Scripts that require unavailable external assets or optional dependencies.
-          SKIP="compare_vmecpp_to_parvmec.py mpi_finite_difference.py simsopt_qh_fixed_resolution.py visualize_magnetic_field.py"
+          # Scripts that require unavailable external assets, optional dependencies or a
+          # CUDA build.
+          SKIP="compare_vmecpp_to_parvmec.py cuda_cross_validation.py mpi_finite_difference.py simsopt_qh_fixed_resolution.py visualize_magnetic_field.py"
           export MPLBACKEND=Agg OMP_NUM_THREADS=1
           for script in examples/*.py; do
             name=$(basename "$script")

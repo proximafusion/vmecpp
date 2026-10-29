@@ -10,21 +10,30 @@
 #include <pybind11/stl/filesystem.h>
 
 #include <Eigen/Dense>
+#include <array>
+#include <cstdint>
+#include <cstring>  // memcpy
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
+#include <vector>
 
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
+#include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/geometry/geometry.h"
 #include "vmecpp/vmec/geometry/vmec_geometry.h"
 #include "vmecpp/vmec/output_quantities/output_quantities.h"
 #include "vmecpp/vmec/vmec/vmec.h"
+
+#ifdef VMECPP_USE_CUDA
+#include "vmecpp/vmec/ideal_mhd_model/fft_toroidal_cuda.h"
+#endif  // VMECPP_USE_CUDA
 
 namespace py = pybind11;
 using Eigen::VectorXd;
@@ -282,6 +291,14 @@ class VmecModel {
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
       const std::optional<vmecpp::HotRestartState> &initial_state) {
+#ifdef VMECPP_USE_CUDA
+    // The model evaluates state by state through the host arrays, while the
+    // CUDA build keeps the iteration state on the device for a whole run.
+    throw std::runtime_error(
+        "VmecModel drives the host iteration and is not available in the "
+        "CUDA build (VMECPP_USE_CUDA); use vmecpp.run or run_batched_gpu, or "
+        "build without VMECPP_USE_CUDA for the iteration API");
+#endif
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -1008,6 +1025,14 @@ PYBIND11_MODULE(_vmecpp, m) {
   m.attr("VMECPP_ENABLE_ENZYME") = false;
 #endif
 
+  // Whether the iteration body runs on the GPU (VMECPP_USE_CUDA), read by
+  // vmecpp.has_cuda(); a CUDA build rejects lasym and lforbal inputs.
+#ifdef VMECPP_USE_CUDA
+  m.attr("VMECPP_USE_CUDA") = true;
+#else
+  m.attr("VMECPP_USE_CUDA") = false;
+#endif
+
   // C++ stdout and stderr cannot easily be captured or redirected from Python.
   // This adds a Python context manager that can be used to redirect them like
   // this:
@@ -1595,7 +1620,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             if (!s.ok()) {
               const std::string msg =
                   "There was an error saving OutputQuantities to file '" +
-                  std::string(path) + "':\n" + std::string(s.message());
+                  path.string() + "':\n" + std::string(s.message());
               throw std::runtime_error(msg);
             }
           },
@@ -1605,8 +1630,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         if (!maybe_oq.ok()) {
           const std::string msg =
               "There was an error loading OutputQuantities from file '" +
-              std::string(path) + "':\n" +
-              std::string(maybe_oq.status().message());
+              path.string() + "':\n" + std::string(maybe_oq.status().message());
           throw std::runtime_error(msg);
         }
         return maybe_oq.value();
@@ -1912,6 +1936,791 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress,
       py::arg("iteration_callback") = py::none());
+
+  // Batched GPU entry: N equilibria of one shape in one device loop; broadcast
+  // mode returns the first input's output, distinct mode one per input.
+  m.def(
+      "run_batched_gpu",
+      [](const std::vector<VmecINDATA> &indata_list,
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         bool return_spectra, bool distinct) -> py::object {
+        // Residual traces of the first-iteration attempts that the distinct
+        // pre-initialization runs alone and the batch does not repeat.
+        struct TracePrefix {
+          std::vector<double> r, z, lambda, energy, delbsq;
+          std::vector<vmecpp::RestartReason> reasons;
+        };
+#ifdef VMECPP_USE_CUDA
+        // Derives each configuration's OutputQuantities from the flushed device
+        // state; false when a precondition fails.
+        auto derive_outputs_from_batched_flush =
+            [](const std::vector<vmecpp::VmecINDATA> &indata_local, int n_cfg,
+               std::optional<int> max_threads,
+               const vmecpp::OutputQuantities &seed_oq,
+               const vmecpp::FlowControl &batch_fc,
+               const std::vector<TracePrefix> &trace_prefix,
+               std::vector<vmecpp::OutputQuantities> &outs) -> bool {
+          // Reads each configuration's last fsqr, fsqz, fsql from the snapshot
+          // cache before the deriver's setup run resets the device.
+          if (static_cast<int>(batch_fc.converged_per_cfg.size()) != n_cfg ||
+              static_cast<int>(batch_fc.niter_per_cfg.size()) != n_cfg ||
+              static_cast<int>(trace_prefix.size()) != n_cfg ||
+              static_cast<int>(batch_fc.force_residual_r_per_cfg.size()) !=
+                  n_cfg) {
+            return false;
+          }
+          const std::vector<double> fsqr_snapshot_pc =
+              vmecpp::GetFsqrPerCfgCache();
+          std::vector<double> spectra;
+          int sn = 0;
+          int sns = 0;
+          int smpol = 0;
+          int sntor = 0;
+          if (!vmecpp::GetBatchOutputSpectraCuda(&spectra, &sn, &sns, &smpol,
+                                                 &sntor) ||
+              sn != n_cfg) {
+            return false;
+          }
+          const vmecpp::VmecINDATA &ind0 = indata_local[0];
+          vmecpp::Sizes sizes(ind0.lasym, ind0.nfp, ind0.mpol, ind0.ntor,
+                              ind0.ntheta, ind0.nzeta);
+          if (smpol != sizes.mpol || sntor != sizes.ntor || sizes.lasym) {
+            return false;
+          }
+          const int ns = sns;
+          const int ns_h = ns - 1;
+          const int nZnT = sizes.nZnT;
+          const size_t half1 = static_cast<size_t>(ns_h) * nZnT;
+          const size_t full1 = static_cast<size_t>(ns) * nZnT;
+          const size_t prof1 = static_cast<size_t>(ns_h);
+          const size_t profF1 = static_cast<size_t>(ns);
+          const size_t spec1 =
+              static_cast<size_t>(ns) * sizes.mpol * (sizes.ntor + 1);
+          const auto nv = [&](size_t per) {
+            return std::vector<double>(static_cast<size_t>(n_cfg) * per, 0.0);
+          };
+          auto f_gsqrt = nv(half1), f_guu = nv(half1), f_guv = nv(half1),
+               f_gvv = nv(half1), f_bsubu = nv(half1), f_bsubv = nv(half1),
+               f_bsupu = nv(half1), f_bsupv = nv(half1), f_totp = nv(half1),
+               f_r12 = nv(half1), f_ru12 = nv(half1), f_zu12 = nv(half1),
+               f_rs = nv(half1), f_zs = nv(half1);
+          auto f_r1e = nv(full1), f_r1o = nv(full1), f_z1e = nv(full1),
+               f_z1o = nv(full1), f_rue = nv(full1), f_ruo = nv(full1),
+               f_zue = nv(full1), f_zuo = nv(full1), f_rve = nv(full1),
+               f_rvo = nv(full1), f_zve = nv(full1), f_zvo = nv(full1),
+               f_ruF = nv(full1), f_zuF = nv(full1), f_blmn = nv(full1);
+          auto f_presH = nv(prof1), f_dVdsH = nv(prof1), f_bvcoH = nv(prof1),
+               f_bucoH = nv(prof1), f_chipH = nv(prof1), f_iotaH = nv(prof1);
+          auto f_chipF = nv(profF1), f_iotaF = nv(profF1);
+          // Recomputes dVdsH of configurations masked before the batch ended,
+          // whose betatot would otherwise flush as zero.
+          vmecpp::RecomputeZeroedDVdsHForOutputCuda(
+              n_cfg, ns_h, nZnT, sizes.nThetaEff,
+              vmecpp::Vmec::kSignOfJacobian);
+          vmecpp::FlushAllConfigsForOutputCudaNs(
+              ns, sizes, n_cfg, f_gsqrt.data(), f_guu.data(), f_guv.data(),
+              f_gvv.data(), f_bsubu.data(), f_bsubv.data(), f_bsupu.data(),
+              f_bsupv.data(), f_totp.data(), f_r12.data(), f_ru12.data(),
+              f_zu12.data(), f_rs.data(), f_zs.data(), f_r1e.data(),
+              f_r1o.data(), f_z1e.data(), f_z1o.data(), f_rue.data(),
+              f_ruo.data(), f_zue.data(), f_zuo.data(), f_rve.data(),
+              f_rvo.data(), f_zve.data(), f_zvo.data(), f_ruF.data(),
+              f_zuF.data(), f_blmn.data(), f_presH.data(), f_dVdsH.data(),
+              f_bvcoH.data(), f_bucoH.data(), f_chipH.data(), f_iotaH.data(),
+              f_chipF.data(), f_iotaF.data(), nullptr, nullptr, nullptr,
+              nullptr, nullptr, nullptr);
+          const std::vector<double> pres_cache =
+              vmecpp::GetPressureScalarsPerCfgCache();
+          const std::vector<double> vol_cache =
+              vmecpp::GetPlasmaVolumePerCfgCache();
+          if (static_cast<int>(pres_cache.size()) < 3 * n_cfg ||
+              static_cast<int>(vol_cache.size()) < n_cfg) {
+            return false;
+          }
+
+          // A setup-only run at the converged ns supplies the sizes, bases,
+          // constants, profiles and storage that each configuration patches.
+          vmecpp::VmecINDATA ind_drv = ind0;
+          ind_drv.ns_array = Eigen::VectorXi::Constant(1, ns);
+          const int last_ftol = static_cast<int>(ind0.ftol_array.size()) - 1;
+          ind_drv.ftol_array = Eigen::VectorXd::Constant(
+              1, (last_ftol >= 0) ? ind0.ftol_array[last_ftol] : 1.0e-12);
+          ind_drv.niter_array = Eigen::VectorXi::Constant(1, 1);
+          auto drv_or = vmecpp::Vmec::FromIndata(
+              ind_drv, /*magnetic_response_table=*/nullptr, max_threads,
+              vmecpp::OutputMode::kSilent);
+          if (!drv_or.ok()) {
+            return false;
+          }
+          auto deriver = std::move(*drv_or);
+          auto setup_or =
+              deriver->run(vmecpp::VmecCheckpoint::SETUP_INITIAL_STATE,
+                           /*iterations_before_checkpointing=*/1,
+                           /*maximum_multi_grid_step=*/1);
+          if (!setup_or.ok() || deriver->r_.empty() || deriver->p_.empty()) {
+            return false;
+          }
+          const auto &res_template = seed_oq.vmec_internal_results;
+          if (res_template.num_full != ns) {
+            return false;
+          }
+
+          const int mpol = sizes.mpol;
+          const int ntor = sizes.ntor;
+          for (int c = 0; c < n_cfg; ++c) {
+            const auto at = [&](const std::vector<double> &v,
+                                size_t per) -> const double * {
+              return v.data() + static_cast<size_t>(c) * per;
+            };
+            vmecpp::OutputQuantities oq;
+            oq.vmec_internal_results = res_template;
+            auto &res = oq.vmec_internal_results;
+            const auto cp = [&](vmecpp::RowMatrixXd &dst,
+                                const std::vector<double> &src, size_t per) {
+              std::memcpy(dst.data(), at(src, per), per * sizeof(double));
+            };
+            cp(res.gsqrt, f_gsqrt, half1);
+            cp(res.guu, f_guu, half1);
+            if (sizes.lthreed) {
+              cp(res.guv, f_guv, half1);
+            }
+            cp(res.gvv, f_gvv, half1);
+            cp(res.bsubu, f_bsubu, half1);
+            cp(res.bsubv, f_bsubv, half1);
+            cp(res.bsupu, f_bsupu, half1);
+            cp(res.bsupv, f_bsupv, half1);
+            cp(res.total_pressure, f_totp, half1);
+            cp(res.r12, f_r12, half1);
+            cp(res.ru12, f_ru12, half1);
+            cp(res.zu12, f_zu12, half1);
+            cp(res.rs, f_rs, half1);
+            cp(res.zs, f_zs, half1);
+            cp(res.r_e, f_r1e, full1);
+            cp(res.r_o, f_r1o, full1);
+            cp(res.z_e, f_z1e, full1);
+            cp(res.z_o, f_z1o, full1);
+            cp(res.ru_e, f_rue, full1);
+            cp(res.ru_o, f_ruo, full1);
+            cp(res.zu_e, f_zue, full1);
+            cp(res.zu_o, f_zuo, full1);
+            if (sizes.lthreed) {
+              cp(res.rv_e, f_rve, full1);
+              cp(res.rv_o, f_rvo, full1);
+              cp(res.zv_e, f_zve, full1);
+              cp(res.zv_o, f_zvo, full1);
+            }
+            cp(res.ruFull, f_ruF, full1);
+            cp(res.zuFull, f_zuF, full1);
+            const double *blmn = at(f_blmn, full1);
+            const double lamscale = deriver->constants_.lamscale;
+            for (int jF = 0; jF < ns; ++jF) {
+              const double unlamscale = (jF > 0) ? (-1.0 / lamscale) : 1.0;
+              for (int kl = 0; kl < nZnT; ++kl) {
+                res.bsubvF(jF * nZnT + kl) = blmn[jF * nZnT + kl] * unlamscale;
+              }
+            }
+            const auto cpv = [&](Eigen::VectorXd &dst,
+                                 const std::vector<double> &src, size_t per) {
+              std::memcpy(dst.data(), at(src, per), per * sizeof(double));
+            };
+            cpv(res.presH, f_presH, prof1);
+            cpv(res.dVdsH, f_dVdsH, prof1);
+            cpv(res.bvcoH, f_bvcoH, prof1);
+            cpv(res.chipH, f_chipH, prof1);
+            cpv(res.iotaH, f_iotaH, prof1);
+            cpv(res.chipF, f_chipF, profF1);
+            cpv(res.iotaF, f_iotaF, profF1);
+
+            // The converged spectra into the state vector, transposed as the
+            // gather does, and the per-surface spectral width (p = 4, q = 1).
+            const size_t spec_base = static_cast<size_t>(c) * spec1;
+            const auto sp_at = [&](int sp) -> const double * {
+              return spectra.data() + static_cast<size_t>(sp) * n_cfg * spec1 +
+                     spec_base;
+            };
+            const double *x_rcc = sp_at(0);
+            const double *x_rss = sp_at(1);
+            const double *x_zsc = sp_at(2);
+            const double *x_zcs = sp_at(3);
+            const double *x_lsc = sp_at(4);
+            const double *x_lcs = sp_at(5);
+            for (int jF = 0; jF < ns; ++jF) {
+              for (int n = 0; n < ntor + 1; ++n) {
+                for (int mm = 0; mm < mpol; ++mm) {
+                  const int src = (jF * mpol + mm) * (ntor + 1) + n;
+                  const int dst = (jF * (ntor + 1) + n) * mpol + mm;
+                  res.rmncc(dst) = x_rcc[src];
+                  res.zmnsc(dst) = x_zsc[src];
+                  res.lmnsc(dst) = x_lsc[src];
+                  if (sizes.lthreed) {
+                    res.rmnss(dst) = x_rss[src];
+                    res.zmncs(dst) = x_zcs[src];
+                    res.lmncs(dst) = x_lcs[src];
+                  }
+                }
+              }
+            }
+            res.spectral_width[0] = 1.0;
+            for (int jF = 1; jF < ns; ++jF) {
+              double num = 0.0;
+              double den = 0.0;
+              for (int mm = 1; mm < mpol; ++mm) {
+                for (int n = 0; n < ntor + 1; ++n) {
+                  const int idx = (jF * mpol + mm) * (ntor + 1) + n;
+                  const double bn =
+                      deriver->t_.mscale[mm] * deriver->t_.nscale[n];
+                  double rcc_v = x_rcc[idx];
+                  double zsc_v = x_zsc[idx];
+                  double norm = rcc_v * rcc_v + zsc_v * zsc_v;
+                  if (sizes.lthreed) {
+                    double rss_v = x_rss[idx];
+                    double zcs_v = x_zcs[idx];
+                    if (mm == 1) {
+                      const double r_plus = rss_v;
+                      const double r_minus = zcs_v;
+                      rss_v = r_plus + r_minus;
+                      zcs_v = r_plus - r_minus;
+                    }
+                    norm += rss_v * rss_v + zcs_v * zcs_v;
+                  }
+                  norm *= bn * bn;
+                  num += norm * std::pow(mm, 5);
+                  den += norm * std::pow(mm, 4);
+                }
+              }
+              res.spectral_width[jF] = num / den;
+            }
+
+            vmecpp::HandoverStorage h_c = deriver->h_;
+            h_c.thermalEnergy = pres_cache[3 * c + 0];
+            h_c.magneticEnergy = pres_cache[3 * c + 1];
+            h_c.mhdEnergy = pres_cache[3 * c + 2];
+            h_c.plasmaVolume = vol_cache[c];
+            const double *bv = at(f_bvcoH, prof1);
+            const double *bu = at(f_bucoH, prof1);
+            h_c.rBtor0 = 1.5 * bv[0] - 0.5 * bv[1];
+            h_c.rBtor = 1.5 * bv[ns_h - 1] - 0.5 * bv[ns_h - 2];
+            h_c.cTor = (1.5 * bu[ns_h - 1] - 0.5 * bu[ns_h - 2]) *
+                       vmecpp::Vmec::kSignOfJacobian * 2.0 * M_PI;
+            const double *r1e = at(f_r1e, full1);
+            const double *r1o = at(f_r1o, full1);
+            const double *z1e = at(f_z1e, full1);
+            const int outer_index = (ns - 1) * nZnT + 0;
+            const int inner_index = (ns - 1) * nZnT + (sizes.nThetaReduced - 1);
+            h_c.SetRadialExtent(
+                {.r_outer = r1e[outer_index] + r1o[outer_index],
+                 .r_inner = r1e[inner_index] + r1o[inner_index]});
+            h_c.SetGeometricOffset({.r_00 = r1e[0], .z_00 = z1e[0]});
+
+            // This configuration's residuals, traces and iteration count
+            // replace the deriver's setup values.
+            vmecpp::FlowControl fc_c = deriver->fc_;
+            const size_t s3 = static_cast<size_t>(3) * c;
+            if (fsqr_snapshot_pc.size() >= s3 + 3) {
+              fc_c.fsqr = fsqr_snapshot_pc[s3 + 0];
+              fc_c.fsqz = fsqr_snapshot_pc[s3 + 1];
+              fc_c.fsql = fsqr_snapshot_pc[s3 + 2];
+            }
+            const auto prefixed = [](auto prefix, const auto &trace) {
+              prefix.insert(prefix.end(), trace.begin(), trace.end());
+              return prefix;
+            };
+            const TracePrefix &prefix = trace_prefix[c];
+            fc_c.force_residual_r =
+                prefixed(prefix.r, batch_fc.force_residual_r_per_cfg[c]);
+            fc_c.force_residual_z =
+                prefixed(prefix.z, batch_fc.force_residual_z_per_cfg[c]);
+            fc_c.force_residual_lambda = prefixed(
+                prefix.lambda, batch_fc.force_residual_lambda_per_cfg[c]);
+            fc_c.mhd_energy =
+                prefixed(prefix.energy, batch_fc.mhd_energy_per_cfg[c]);
+            fc_c.delbsq = prefixed(prefix.delbsq, batch_fc.delbsq_per_cfg[c]);
+            fc_c.restart_reasons =
+                prefixed(prefix.reasons, batch_fc.restart_reasons_per_cfg[c]);
+
+            outs.push_back(vmecpp::DeriveOutputQuantities(
+                std::move(oq), indata_local[c], deriver->s_, fc_c,
+                deriver->constants_, deriver->t_, h_c, seed_oq.wout.mgrid_mode,
+                seed_oq.wout.curlabel, vmecpp::VmecCheckpoint::NONE,
+                vmecpp::VacuumPressureState::kOff,
+                batch_fc.converged_per_cfg[c] != 0
+                    ? vmecpp::VmecStatus::SUCCESSFUL_TERMINATION
+                    : vmecpp::VmecStatus::NORMAL_TERMINATION,
+                batch_fc.niter_per_cfg[c]));
+          }
+          return true;
+        };
+#endif  // VMECPP_USE_CUDA
+#ifndef VMECPP_USE_CUDA
+        throw std::runtime_error(
+            "run_batched_gpu requires a build with VMECPP_USE_CUDA");
+#endif
+        const int n_cfg = static_cast<int>(indata_list.size());
+        if (n_cfg <= 0) {
+          throw std::runtime_error("run_batched_gpu: empty indata list");
+        }
+        const VmecINDATA &seed = indata_list[0];
+        if (seed.ns_array.size() == 0) {
+          throw std::runtime_error("run_batched_gpu: seed.ns_array is empty");
+        }
+        const int ns_first = seed.ns_array(0);
+        const int mpol = seed.mpol;
+        const int ntor = seed.ntor;
+        // A distinct batch's inputs with their recovered axes, which the seed
+        // run consumes; broadcast mode uses indata_list[0].
+        std::vector<VmecINDATA> indata_local;
+        const VmecINDATA *run_seed = &seed;
+        // Validate shared shape across all inputs.
+        for (int c = 1; c < n_cfg; ++c) {
+          const VmecINDATA &v = indata_list[c];
+          if (v.mpol != mpol || v.ntor != ntor || v.nfp != seed.nfp ||
+              v.lasym != seed.lasym ||
+              v.ns_array.size() != seed.ns_array.size() ||
+              v.ns_array(0) != ns_first) {
+            throw std::runtime_error(
+                "run_batched_gpu: all inputs must share mpol, ntor, nfp, "
+                "lasym, and ns_array[0]");
+          }
+        }
+        // The batched kernels index radial surface and configuration together
+        // in one grid dimension, which CUDA caps at 65535 blocks.
+        constexpr int kMaxGridBlocks = 65535;
+        const int ns_max = seed.ns_array.maxCoeff();
+        if (n_cfg > kMaxGridBlocks / ns_max) {
+          throw std::runtime_error(
+              "run_batched_gpu: a batch at ns = " + std::to_string(ns_max) +
+              " holds at most " + std::to_string(kMaxGridBlocks / ns_max) +
+              " configurations, but " + std::to_string(n_cfg) +
+              " were given; split the batch");
+        }
+        // Free-boundary batches share one coil field: every input must carry
+        // the same mgrid file and external currents.
+        if (seed.lfreeb) {
+          for (int c = 1; c < n_cfg; ++c) {
+            const VmecINDATA &v = indata_list[c];
+            const bool extcur_matches =
+                v.extcur.size() == seed.extcur.size() &&
+                (v.extcur.size() == 0 ||
+                 (v.extcur.array() == seed.extcur.array()).all());
+            if (!v.lfreeb || v.mgrid_file != seed.mgrid_file ||
+                !extcur_matches) {
+              throw std::runtime_error(
+                  "run_batched_gpu: free-boundary batches must share "
+                  "lfreeb, mgrid_file, and extcur across all inputs");
+            }
+          }
+        }
+        // Distinct mode interpolates on the device at multigrid transitions,
+        // which does not reset the m = 1 gauge as always_fix_m1_gauge does.
+        if (distinct && seed.always_fix_m1_gauge && seed.ns_array.size() > 1) {
+          throw std::runtime_error(
+              "run_batched_gpu distinct mode supports always_fix_m1_gauge with "
+              "a single-entry ns_array only; solve multigrid inputs with "
+              "always_fix_m1_gauge through vmecpp.run");
+        }
+
+        // Distinct batches may differ in boundary, axis and profiles only;
+        // anything else is rejected. Broadcast mode runs the seed alone.
+        if (distinct) {
+          const std::string seed_json = seed.ToJsonOrException();
+          for (int c = 1; c < n_cfg; ++c) {
+            VmecINDATA probe = indata_list[c];
+            probe.rbc = seed.rbc;
+            probe.zbs = seed.zbs;
+            probe.rbs = seed.rbs;
+            probe.zbc = seed.zbc;
+            probe.raxis_c = seed.raxis_c;
+            probe.zaxis_s = seed.zaxis_s;
+            probe.raxis_s = seed.raxis_s;
+            probe.zaxis_c = seed.zaxis_c;
+            // Per-config plasma profiles are now built from each config's
+            // INDATA and staged to the device, so allow them to differ too.
+            probe.phiedge = seed.phiedge;
+            probe.ncurr = seed.ncurr;
+            probe.pmass_type = seed.pmass_type;
+            probe.am = seed.am;
+            probe.am_aux_s = seed.am_aux_s;
+            probe.am_aux_f = seed.am_aux_f;
+            probe.pres_scale = seed.pres_scale;
+            probe.gamma = seed.gamma;
+            probe.spres_ped = seed.spres_ped;
+            probe.piota_type = seed.piota_type;
+            probe.ai = seed.ai;
+            probe.ai_aux_s = seed.ai_aux_s;
+            probe.ai_aux_f = seed.ai_aux_f;
+            probe.pcurr_type = seed.pcurr_type;
+            probe.ac = seed.ac;
+            probe.ac_aux_s = seed.ac_aux_s;
+            probe.ac_aux_f = seed.ac_aux_f;
+            probe.curtor = seed.curtor;
+            // Compared as JSON, since the defaulted operator== is undefined for
+            // Eigen arrays of different lengths.
+            if (probe.ToJsonOrException() != seed_json) {
+              throw std::runtime_error(
+                  "run_batched_gpu distinct mode stages per-config boundary "
+                  "(rbc/zbs/rbs/zbc), magnetic axis (raxis/zaxis), and plasma "
+                  "profiles (am/ai/ac/pres_scale/curtor/p*_type) to the "
+                  "device; "
+                  "all other inputs -- convergence controls (ns_array, "
+                  "ftol_array, niter_array), resolution (mpol/ntor), and "
+                  "free-boundary settings -- are taken from the first "
+                  "configuration. Configuration " +
+                  std::to_string(c) +
+                  " differs from configuration 0 in such a field and would "
+                  "otherwise run silently with configuration 0's settings. "
+                  "Make "
+                  "those inputs identical across configurations, or run the "
+                  "configurations separately.");
+            }
+          }
+        }
+
+#ifdef VMECPP_USE_CUDA
+        // Drops the per-configuration staging buffers on return, so a later run
+        // cannot pick up this batch's profiles.
+        struct BatchProfileRestore {
+          ~BatchProfileRestore() { vmecpp::ClearBatchProfilesCuda(); }
+        } batch_profile_restore;
+#endif
+
+        // Each configuration's first iteration, run alone: the ijacob it ends
+        // with and the traces of its attempts the batch does not repeat.
+        std::vector<int> seed_ijacob;
+        std::vector<TracePrefix> trace_prefix;
+        if (distinct) {
+          seed_ijacob.assign(n_cfg, 0);
+          trace_prefix.assign(n_cfg, TracePrefix{});
+          const size_t spec_len =
+              static_cast<size_t>(ns_first) * mpol * (ntor + 1);
+          const int n_specs = 6;
+          std::vector<double> batch_buf(static_cast<size_t>(n_specs) *
+                                            static_cast<size_t>(n_cfg) *
+                                            spec_len,
+                                        0.0);
+          // Each configuration's decomposed_x_[0], before m = 1 mixing and axis
+          // extrapolation, for the device position slots at iteration 1.
+          std::vector<double> dec_x_buf(static_cast<size_t>(n_specs) *
+                                            static_cast<size_t>(n_cfg) *
+                                            spec_len,
+                                        0.0);
+
+          // Each configuration's first iteration runs alone below with its
+          // single run's axis recovery; indata_local holds the recovered axes.
+          indata_local.assign(indata_list.begin(), indata_list.end());
+          run_seed = &indata_local[0];
+
+          for (int c = 0; c < n_cfg; ++c) {
+            // The first iteration recomputes the axis and starts over on a bad
+            // Jacobian or huge forces, as in a single run.
+            {
+              auto probe_or = vmecpp::Vmec::FromIndata(
+                  indata_local[c], /*magnetic_response_table=*/nullptr,
+                  max_threads, vmecpp::OutputMode::kSilent);
+              if (!probe_or.ok()) {
+                throw std::runtime_error(
+                    "run_batched_gpu: axis-probe FromIndata failed for cfg " +
+                    std::to_string(c) + ": " +
+                    std::string(probe_or.status().message()));
+              }
+              auto probe = std::move(*probe_or);
+              auto first_or = probe->run(vmecpp::VmecCheckpoint::EVOLVE,
+                                         /*iterations_before_checkpointing=*/1,
+                                         /*maximum_multi_grid_step=*/1);
+              if (!first_or.ok()) {
+                throw std::runtime_error(
+                    "run_batched_gpu: the first iteration failed for cfg " +
+                    std::to_string(c) + ": " +
+                    std::string(first_or.status().message()));
+              }
+              seed_ijacob[c] = probe->fc_.ijacob;
+              const vmecpp::FlowControl &probe_fc = probe->fc_;
+              if (probe->get_jacob_off() == 0 &&
+                  probe_fc.force_residual_r.size() > 1) {
+                const auto all_but_last = [](auto trace) {
+                  trace.pop_back();
+                  return trace;
+                };
+                TracePrefix &prefix = trace_prefix[c];
+                prefix.r = all_but_last(probe_fc.force_residual_r);
+                prefix.z = all_but_last(probe_fc.force_residual_z);
+                prefix.lambda = all_but_last(probe_fc.force_residual_lambda);
+                prefix.energy = all_but_last(probe_fc.mhd_energy);
+                prefix.delbsq = all_but_last(probe_fc.delbsq);
+                prefix.reasons = all_but_last(probe_fc.restart_reasons);
+              }
+              if (probe_fc.ijacob > 0) {
+                const int ntor_c = indata_local[c].ntor;
+                for (int n = 0; n <= ntor_c; ++n) {
+                  indata_local[c].raxis_c[n] = probe->b_.raxis_c[n];
+                  indata_local[c].zaxis_s[n] = probe->b_.zaxis_s[n];
+                }
+                if (indata_local[c].lasym) {
+                  for (int n = 0; n <= ntor_c; ++n) {
+                    if (indata_local[c].raxis_s.has_value()) {
+                      (*indata_local[c].raxis_s)[n] = probe->b_.raxis_s[n];
+                    }
+                    if (indata_local[c].zaxis_c.has_value()) {
+                      (*indata_local[c].zaxis_c)[n] = probe->b_.zaxis_c[n];
+                    }
+                  }
+                }
+              }
+            }
+
+            auto vmec_or = vmecpp::Vmec::FromIndata(
+                indata_local[c], /*magnetic_response_table=*/nullptr,
+                max_threads, vmecpp::OutputMode::kSilent);
+            if (!vmec_or.ok()) {
+              throw std::runtime_error(
+                  "run_batched_gpu: FromIndata failed for cfg " +
+                  std::to_string(c) + ": " +
+                  std::string(vmec_or.status().message()));
+            }
+            auto vmec = std::move(*vmec_or);
+
+            auto run_or = vmec->run(vmecpp::VmecCheckpoint::SETUP_INITIAL_STATE,
+                                    /*iterations_before_checkpointing=*/1,
+                                    /*maximum_multi_grid_step=*/1);
+            if (!run_or.ok()) {
+              throw std::runtime_error(
+                  "run_batched_gpu: init-only run failed for cfg " +
+                  std::to_string(c) + ": " +
+                  std::string(run_or.status().message()));
+            }
+            if (vmec->decomposed_x_.empty() ||
+                vmec->decomposed_x_[0] == nullptr ||
+                vmec->physical_x_.empty() || vmec->physical_x_[0] == nullptr ||
+                vmec->p_.empty() || vmec->p_[0] == nullptr) {
+              throw std::runtime_error(
+                  "run_batched_gpu: null thread-vec after init for cfg " +
+                  std::to_string(c));
+            }
+            // Reads decomposed_x_[0] before decomposeInto writes
+            // physical_x_[0].
+            auto &dx = *vmec->decomposed_x_[0];
+            if (static_cast<size_t>(dx.rmncc.size()) != spec_len) {
+              throw std::runtime_error(
+                  "run_batched_gpu: decomposed_x rmncc.size() mismatch "
+                  "for cfg " +
+                  std::to_string(c));
+            }
+            const std::array<const double *, 6> dec_srcs = {
+                dx.rmncc.data(), dx.rmnss.data(), dx.zmnsc.data(),
+                dx.zmncs.data(), dx.lmnsc.data(), dx.lmncs.data()};
+            const std::array<size_t, 6> dec_sizes = {
+                static_cast<size_t>(dx.rmncc.size()),
+                static_cast<size_t>(dx.rmnss.size()),
+                static_cast<size_t>(dx.zmnsc.size()),
+                static_cast<size_t>(dx.zmncs.size()),
+                static_cast<size_t>(dx.lmnsc.size()),
+                static_cast<size_t>(dx.lmncs.size())};
+            for (int sp = 0; sp < n_specs; ++sp) {
+              // The odd-parity spectra are empty at ntor = 0, so their slots
+              // stay zero.
+              if (dec_sizes[sp] < spec_len) continue;
+              std::memcpy(
+                  &dec_x_buf[static_cast<size_t>(sp) * n_cfg * spec_len +
+                             static_cast<size_t>(c) * spec_len],
+                  dec_srcs[sp], spec_len * sizeof(double));
+            }
+            vmec->decomposed_x_[0]->decomposeInto(*vmec->physical_x_[0],
+                                                  vmec->p_[0]->scalxc);
+            vmec->physical_x_[0]->m1Constraint(1.0, vmec->indata_.signgs);
+            vmec->physical_x_[0]->extrapolateTowardsAxis();
+            auto &px = *vmec->physical_x_[0];
+            if (static_cast<size_t>(px.rmncc.size()) != spec_len) {
+              throw std::runtime_error(
+                  "run_batched_gpu: rmncc.size() mismatch for cfg " +
+                  std::to_string(c));
+            }
+            const std::array<const double *, 6> srcs = {
+                px.rmncc.data(), px.rmnss.data(), px.zmnsc.data(),
+                px.zmncs.data(), px.lmnsc.data(), px.lmncs.data()};
+            const std::array<size_t, 6> src_sizes = {
+                static_cast<size_t>(px.rmncc.size()),
+                static_cast<size_t>(px.rmnss.size()),
+                static_cast<size_t>(px.zmnsc.size()),
+                static_cast<size_t>(px.zmncs.size()),
+                static_cast<size_t>(px.lmnsc.size()),
+                static_cast<size_t>(px.lmncs.size())};
+            for (int sp = 0; sp < n_specs; ++sp) {
+              // Odd-parity spectra are empty for axisymmetric inputs; their
+              // zero-initialized batch_buf slots are left untouched.
+              if (src_sizes[sp] < spec_len) continue;
+              std::memcpy(
+                  &batch_buf[static_cast<size_t>(sp) * n_cfg * spec_len +
+                             static_cast<size_t>(c) * spec_len],
+                  srcs[sp], spec_len * sizeof(double));
+            }
+          }
+
+#ifdef VMECPP_USE_CUDA
+          // Hand both staging blocks to the CUDA layer.
+          vmecpp::SetBatchStagingCuda(batch_buf.data(), dec_x_buf.data(), n_cfg,
+                                      ns_first, mpol, ntor);
+#endif
+        }
+
+        // Runs the iteration body: distinct mode loads each configuration's
+        // spectra at the first CudaForward, broadcast mode the seed's.
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) return true;
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        // The seed run's FlowControl, whose per-configuration fields describe
+        // the configuration slots.
+        std::optional<vmecpp::FlowControl> batch_fc;
+        absl::StatusOr<vmecpp::OutputQuantities> ret_seed;
+        {
+          py::gil_scoped_release release;
+          // Runs the seed as vmecpp::run would, with the per-configuration
+          // INDATA handed to this Vmec so it cannot leak into a later run.
+          auto seed_or = vmecpp::Vmec::FromIndata(
+              *run_seed, /*magnetic_response_table=*/nullptr, max_threads,
+              verbose, interrupt_check);
+          if (!seed_or.ok()) {
+            ret_seed = seed_or.status();
+          } else {
+            vmecpp::Vmec &seed_vmec = **seed_or;
+#ifdef VMECPP_USE_CUDA
+            seed_vmec.batch_size_ = n_cfg;
+            seed_vmec.batch_ijacob_ = seed_ijacob;
+            if (distinct) {
+              seed_vmec.batch_indata_ = indata_local;
+            }
+#endif
+            absl::StatusOr<bool> seed_ok = seed_vmec.run();
+            batch_fc.emplace(seed_vmec.fc_);
+            if (seed_ok.ok()) {
+              ret_seed = std::move(seed_vmec.output_quantities_);
+            } else {
+              ret_seed = seed_ok.status();
+            }
+          }
+        }
+#ifdef VMECPP_USE_CUDA
+        // The staging belongs to this batched call alone; drop it before
+        // any exit so a later run with a matching shape cannot consume it.
+        vmecpp::ClearBatchStagingCuda();
+#endif
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
+        if (!ret_seed.ok()) {
+          throw std::runtime_error(
+              "run_batched_gpu: batched VMEC run failed: " +
+              std::string(ret_seed.status().message()));
+        }
+        // As in a single run, a configuration that misses the last stage's
+        // tolerance is an error unless best-effort outputs are asked for.
+        if (distinct && n_cfg > 1 &&
+            !run_seed->return_outputs_even_if_not_converged) {
+          const std::vector<std::uint8_t> &converged_per_cfg =
+              batch_fc->converged_per_cfg;
+          std::string unconverged;
+          for (int c = 0; c < n_cfg; ++c) {
+            if (c >= static_cast<int>(converged_per_cfg.size()) ||
+                converged_per_cfg[c] == 0) {
+              unconverged +=
+                  (unconverged.empty() ? "" : ", ") + std::to_string(c);
+            }
+          }
+          if (!unconverged.empty()) {
+            throw std::runtime_error(
+                "run_batched_gpu: configuration(s) " + unconverged +
+                " did not converge; set "
+                "return_outputs_even_if_not_converged for their best-effort "
+                "outputs");
+          }
+        }
+
+        // Distinct mode returns one OutputQuantities per input from the device
+        // state; broadcast mode and a single input return the seed's.
+        std::vector<vmecpp::OutputQuantities> outs;
+        if (distinct && n_cfg > 1) {
+#ifdef VMECPP_USE_CUDA
+          outs.reserve(n_cfg);
+          if (!derive_outputs_from_batched_flush(
+                  indata_local, n_cfg, max_threads, *ret_seed, *batch_fc,
+                  trace_prefix, outs)) {
+            throw std::runtime_error(
+                "run_batched_gpu: the per-configuration outputs could not be "
+                "derived from the batched run");
+          }
+#endif
+        } else {
+          outs.push_back(*ret_seed);
+        }
+
+        if (return_spectra) {
+          // The converged per-configuration spectra, shape [6][n_cfg][spec];
+          // None for a single configuration slot.
+          py::object spectra_obj = py::none();
+#ifdef VMECPP_USE_CUDA
+          std::vector<double> spectra;
+          int sn = 0;
+          int sns = 0;
+          int smpol = 0;
+          int sntor = 0;
+          if (vmecpp::GetBatchOutputSpectraCuda(&spectra, &sn, &sns, &smpol,
+                                                &sntor)) {
+            const py::ssize_t spec_len =
+                static_cast<py::ssize_t>(sns) * smpol * (sntor + 1);
+            py::array_t<double> arr({static_cast<py::ssize_t>(6),
+                                     static_cast<py::ssize_t>(sn), spec_len});
+            std::memcpy(arr.mutable_data(), spectra.data(),
+                        spectra.size() * sizeof(double));
+            spectra_obj = std::move(arr);
+          }
+#endif
+          return py::make_tuple(py::cast(outs), spectra_obj);
+        }
+        return py::cast(outs);
+      },
+      py::arg("indata_list"), py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("return_spectra") = false, py::arg("distinct") = false,
+      R"pbdoc(Batched-GPU solver for N fixed-boundary equilibria.
+
+Solves a list of VmecINDATA inputs in a single CUDA-resident iteration
+loop. All inputs must share the shape parameters mpol, ntor, nfp, lasym,
+and ns_array[0], since the persistent device buffers are dimensioned at
+the first invocation of the iteration body. The distinct argument selects
+the mode:
+
+  Broadcast mode (distinct=False, the default): the first input's spectra
+  are broadcast across all N configuration slots, the batched kernel chain
+  executes at full N, and the returned list contains the single converged
+  OutputQuantities.
+
+  Distinct mode (distinct=True): a per-configuration pre-initialization
+  stage runs each input's first iteration alone, with the magnetic-axis
+  recovery of a single run, extracts its initial spectra, and hands the
+  concatenated spectra to the iteration body in memory. The iteration body
+  loads the per-configuration spectra at its first invocation of
+  CudaForward and drives each configuration with the time step and the
+  restart control of its own single run. The
+  returned list holds one OutputQuantities per input, derived from the
+  batched run's device state with its configuration's residual traces and
+  iteration count; a derivation that fails raises, and so
+  does a configuration that misses the tolerance of the last multigrid
+  stage unless return_outputs_even_if_not_converged is set.
+
+With return_spectra=True the return value is a tuple (outputs,
+spectra), where spectra is a float64 array of shape [6][n_cfg][spec]
+holding each configuration's converged decomposed spectra (rmncc,
+rmnss, zmnsc, zmncs, lmnsc, lmncs; spec = ns * mpol * (ntor + 1) at
+the final multigrid stage), or None when the run held a single
+configuration slot.
+
+Requires a build with VMECPP_USE_CUDA.
+)pbdoc");
 
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
