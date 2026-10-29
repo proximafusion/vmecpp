@@ -50,8 +50,38 @@ namespace {
 // potential's cutoffs may exceed the plasma's, leaving the higher modes zero.
 void HandOverBoundaryGeometry(vmecpp::HandoverStorage& m_h,
                               const vmecpp::FourierGeometry& physical_x,
-                              const vmecpp::Sizes& sizes, int offset) {
+                              const vmecpp::Sizes& sizes,
+                              const vmecpp::FourierBasisFastPoloidal& t,
+                              int offset) {
   const int ntorp1 = sizes.ntor + 1;
+  if (sizes.toroidal_elements != nullptr) {
+    // the vacuum solvers take the Fourier modes of the element boundary
+    Eigen::VectorXd slots(ntorp1);
+    auto project = [&](std::span<const double> coefficients,
+                       const Eigen::MatrixXd& element_to_fourier,
+                       Eigen::VectorXd& m_lcfs) {
+      for (int m = 0; m < sizes.mpol; ++m) {
+        for (int n = 0; n < ntorp1; ++n) {
+          slots[n] = coefficients[offset + m * ntorp1 + n];
+        }
+        const Eigen::VectorXd fourier = element_to_fourier * slots;
+        for (int n = 0; n < ntorp1; ++n) {
+          m_lcfs[n * m_h.vacuum_mpol + m] = fourier[n];
+        }
+      }
+    };
+    project(physical_x.rmncc, t.element_to_fourier_even, m_h.rCC_LCFS);
+    project(physical_x.zmnsc, t.element_to_fourier_even, m_h.zSC_LCFS);
+    project(physical_x.rmnss, t.element_to_fourier_odd, m_h.rSS_LCFS);
+    project(physical_x.zmncs, t.element_to_fourier_odd, m_h.zCS_LCFS);
+    if (sizes.lasym) {
+      project(physical_x.rmnsc, t.element_to_fourier_even, m_h.rSC_LCFS);
+      project(physical_x.zmncc, t.element_to_fourier_even, m_h.zCC_LCFS);
+      project(physical_x.rmncs, t.element_to_fourier_odd, m_h.rCS_LCFS);
+      project(physical_x.zmnss, t.element_to_fourier_odd, m_h.zSS_LCFS);
+    }
+    return;
+  }
   for (int m = 0; m < sizes.mpol; ++m) {
     for (int n = 0; n < ntorp1; ++n) {
       const int idx_mn = m * ntorp1 + n;
@@ -100,12 +130,18 @@ void vmecpp::deAliasConstraintForce(
     const Eigen::VectorXd& gConEff, Eigen::VectorXd& m_gsc,
     Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gCon) {
   if (!s_.lasym) {
+    const bool project = fb.mass_inverse_even.size() > 0;
+    Eigen::VectorXd mass_scratch(project ? s_.ntor + 1 : 0);
     ComputeDeAliasConstraintForce(
         gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
-        fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
-        fb.cosmu.data(), rp.nsMinF, rp.nsMaxF, s_.nZeta, s_.nThetaEff,
-        s_.nThetaReduced, s_.mpol, s_.ntor, s_.nnyq2, m_gsc.data(),
-        m_gcs.data(), m_gCon.data());
+        fb.cosmui.data(), fb.cosnvi.data(), fb.sinnvi.data(), fb.cosnv.data(),
+        fb.sinnv.data(), fb.sinmu.data(), fb.cosmu.data(), rp.nsMinF, rp.nsMaxF,
+        s_.nZeta, s_.nThetaEff, s_.nThetaReduced, 2 * (s_.nThetaReduced - 1),
+        s_.mpol, s_.ntor, s_.nnyq2, false, nullptr,
+        project ? fb.mass_inverse_even.data() : nullptr,
+        project ? fb.mass_inverse_odd.data() : nullptr, mass_scratch.data(),
+        m_gsc.data(), m_gcs.data(), nullptr, nullptr, nullptr, nullptr,
+        m_gCon.data());
     return;
   }
   Eigen::VectorXd gcc;
@@ -130,11 +166,16 @@ void vmecpp::deAliasConstraintForce(
     Eigen::VectorXd& m_gcs, Eigen::VectorXd& m_gcc, Eigen::VectorXd& m_gss,
     Eigen::VectorXd& m_gConAsym, Eigen::VectorXd& m_refl,
     Eigen::VectorXd& m_gCon) {
+  const bool project = fb.mass_inverse_even.size() > 0;
+  Eigen::VectorXd mass_scratch(project ? s_.ntor + 1 : 0);
   ComputeDeAliasConstraintForce(
       gConEff.data(), faccon.data(), tcon.data(), fb.sinmui.data(),
-      fb.cosmui.data(), fb.cosnv.data(), fb.sinnv.data(), fb.sinmu.data(),
-      fb.cosmu.data(), rp.nsMinF, rp.nsMaxF, s_.nZeta, s_.nThetaEff,
-      s_.nThetaReduced, s_.nThetaEven, s_.mpol, s_.ntor, s_.nnyq2, s_.lasym,
+      fb.cosmui.data(), fb.cosnvi.data(), fb.sinnvi.data(), fb.cosnv.data(),
+      fb.sinnv.data(), fb.sinmu.data(), fb.cosmu.data(), rp.nsMinF, rp.nsMaxF,
+      s_.nZeta, s_.nThetaEff, s_.nThetaReduced, s_.nThetaEven, s_.mpol, s_.ntor,
+      s_.nnyq2, s_.lasym, s_.zetaMirror.data(),
+      project ? fb.mass_inverse_even.data() : nullptr,
+      project ? fb.mass_inverse_odd.data() : nullptr, mass_scratch.data(),
       m_gsc.data(), m_gcs.data(), m_gcc.data(), m_gss.data(), m_gConAsym.data(),
       m_refl.data(), m_gCon.data());
 }
@@ -175,6 +216,16 @@ IdealMhdModel::IdealMhdModel(
   ncurr = 0;
   adiabaticIndex = 0.0;
   tcon0 = 0.0;
+
+  toroidal_stiffness_.resize(s_.ntor + 1);
+  for (int n = 0; n < s_.ntor + 1; ++n) {
+    toroidal_stiffness_[n] = n * s_.nfp * n * s_.nfp;
+  }
+  toroidal_stiffness_odd_ = toroidal_stiffness_;
+  if (s_.toroidal_elements != nullptr) {
+    toroidal_stiffness_ = s_.toroidal_elements->even_eigenvalues;
+    toroidal_stiffness_odd_ = s_.toroidal_elements->odd_eigenvalues;
+  }
 
   // allocate arrays
   xmpq.setZero(s_.mpol);
@@ -276,6 +327,7 @@ IdealMhdModel::IdealMhdModel(
   cLambda.setZero(r_.nsMaxF1 - r_.nsMinF1 + 1);
   lambdaPreconditioner.setZero((r_.nsMaxFIncludingLcfs - r_.nsMinF) * s_.mpol *
                                (s_.ntor + 1));
+  lambdaPreconditionerOdd.setZero(lambdaPreconditioner.size());
 
   ax.setZero((r_.nsMaxH - r_.nsMinH) * 4);
   bx.setZero((r_.nsMaxH - r_.nsMinH) * 3);
@@ -298,6 +350,8 @@ IdealMhdModel::IdealMhdModel(
   az.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
   dr.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
   dz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
+  dr_odd.setZero(dr.size());
+  dz_odd.setZero(dz.size());
   br.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
   bz.setZero((r_.nsMaxF - r_.nsMinF) * (s_.ntor + 1) * s_.mpol);
 
@@ -707,7 +761,7 @@ absl::StatusOr<bool> IdealMhdModel::update(
       if (r_.nsMaxF1 == m_fc_.ns) {
         // can only get this from thread that has the LCFS !!!
         HandOverBoundaryGeometry(
-            m_h_, m_physical_x, s_,
+            m_h_, m_physical_x, s_, t_,
             /*offset=*/(r_.nsMaxF1 - 1 - r_.nsMinF1) * s_.mnsize);
       }
 
@@ -724,6 +778,40 @@ absl::StatusOr<bool> IdealMhdModel::update(
       const double netToroidalCurrent = m_h_.cTor / MU_0;
       const bool at_checkpoint_iteration =
           iter2 >= iterations_before_checkpointing;
+
+      const bool elements = s_.toroidal_elements != nullptr;
+      if (elements) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        {
+          // axis on the uniform vacuum grid from its Fourier modes
+          const int nzeta = static_cast<int>(m_h_.vacuum_grid_r_axis.size());
+          m_h_.vacuum_grid_r_axis.setZero();
+          m_h_.vacuum_grid_z_axis.setZero();
+          for (int n = 0; n <= s_.ntor; ++n) {
+            double r_cos = 0.0;
+            double r_sin = 0.0;
+            double z_cos = 0.0;
+            double z_sin = 0.0;
+            for (int k = 0; k < s_.nZeta; ++k) {
+              const int idx_kn = k * (s_.nnyq2 + 1) + n;
+              r_cos += t_.fourier_cosnvi[idx_kn] * m_h_.rAxis[k];
+              r_sin += t_.fourier_sinnvi[idx_kn] * m_h_.rAxis[k];
+              z_cos += t_.fourier_cosnvi[idx_kn] * m_h_.zAxis[k];
+              z_sin += t_.fourier_sinnvi[idx_kn] * m_h_.zAxis[k];
+            }
+            const double scale = t_.nscale_fourier[n] / s_.nZeta;
+            for (int kv = 0; kv < nzeta; ++kv) {
+              const double v = 2.0 * M_PI * kv / nzeta;
+              const double c = scale * std::cos(n * v);
+              const double s = scale * std::sin(n * v);
+              m_h_.vacuum_grid_r_axis[kv] += r_cos * c + r_sin * s;
+              m_h_.vacuum_grid_z_axis[kv] += z_cos * c + z_sin * s;
+            }
+          }  // n
+        }
+      }
 
       // Run the free-boundary vacuum solve cooperatively in the radial team:
       // every radial thread drives its own tangential slice of NESTOR (the
@@ -745,9 +833,10 @@ absl::StatusOr<bool> IdealMhdModel::update(
             (*m_fb_vac_)[r_.get_thread_id()]->update(
                 m_h_.rCC_LCFS, m_h_.rSS_LCFS, m_h_.rSC_LCFS, m_h_.rCS_LCFS,
                 m_h_.zSC_LCFS, m_h_.zCS_LCFS, m_h_.zCC_LCFS, m_h_.zSS_LCFS,
-                signOfJacobian, m_h_.rAxis, m_h_.zAxis, &(m_h_.bSubUVac),
-                &(m_h_.bSubVVac), netToroidalCurrent, ivacskip, checkpoint,
-                at_checkpoint_iteration);
+                signOfJacobian, elements ? m_h_.vacuum_grid_r_axis : m_h_.rAxis,
+                elements ? m_h_.vacuum_grid_z_axis : m_h_.zAxis,
+                &(m_h_.bSubUVac), &(m_h_.bSubVVac), netToroidalCurrent,
+                ivacskip, checkpoint, at_checkpoint_iteration);
         // Reduced across the team; the first error wins.
         if (!rc.ok()) {
 #ifdef _OPENMP
@@ -769,6 +858,28 @@ absl::StatusOr<bool> IdealMhdModel::update(
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+      if (elements) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        {
+          // vacuum outputs at the element points, layout l * nZeta + k
+          const int nzeta = static_cast<int>(m_h_.vacuum_interpolation.cols());
+          auto interpolate = [&](const Eigen::VectorXd& vacuum_grid,
+                                 Eigen::VectorXd& m_elements) {
+            for (int l = 0; l < s_.nThetaEff; ++l) {
+              m_elements.segment(l * s_.nZeta, s_.nZeta) =
+                  m_h_.vacuum_interpolation *
+                  vacuum_grid.segment(l * nzeta, nzeta);
+            }
+          };
+          interpolate(m_h_.vacuum_grid_magnetic_pressure,
+                      m_h_.vacuum_magnetic_pressure);
+          interpolate(m_h_.vacuum_grid_b_r, m_h_.vacuum_b_r);
+          interpolate(m_h_.vacuum_grid_b_phi, m_h_.vacuum_b_phi);
+          interpolate(m_h_.vacuum_grid_b_z, m_h_.vacuum_b_z);
+        }
+      }
       // Only a warning here: the boundary may leave the grid transiently while
       // the equilibrium is still moving. Vmec::run turns a still-outside
       // boundary into an error once the run has converged.
@@ -1006,12 +1117,14 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
+  transformToroidalForces(m_decomposed_f, /*into_eigenvectors=*/true);
   absl::Status status = applyRZPreconditioner(m_decomposed_f);
   if (!status.ok()) {
     return status;
   }
 
   applyLambdaPreconditioner(m_decomposed_f);
+  transformToroidalForces(m_decomposed_f, /*into_eigenvectors=*/false);
   if (checkpoint == VmecCheckpoint::APPLY_RADIAL_PRECONDITIONER &&
       iter2 >= iterations_before_checkpointing) {
     return true;
@@ -1130,7 +1243,8 @@ void IdealMhdModel::dft_FourierToReal_3d_symm(
                                     .zCon = zCon};
 
 #ifdef VMECPP_USE_FFTX
-  if (fft_plans_.kernels_available()) {
+  // the FFT kernels transform the uniform grid of the Fourier basis
+  if (fft_plans_.kernels_available() && s_.toroidal_elements == nullptr) {
     FourierToReal3DSymmFastPoloidalFft(physical_x, xmpq, r_, s_, m_p_, t_,
                                        fft_plans_, geometry);
   } else {
@@ -1484,7 +1598,7 @@ void IdealMhdModel::symrzl() {
 
     // extended interval first, while the reduced arrays still hold pure sym
     for (int k = 0; k < s_.nZeta; ++k) {
-      const int kRev = (s_.nZeta - k) % s_.nZeta;
+      const int kRev = s_.zetaMirror[k];
       for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
         const int jl = base + k * nThetaEff + l;
         const int jlRev = base + kRev * nThetaEff + (s_.nThetaEven - l);
@@ -1542,7 +1656,7 @@ void IdealMhdModel::symrzl() {
   for (int jF = r_.nsMinF; jF < r_.nsMaxFIncludingLcfs; ++jF) {
     const int base = (jF - r_.nsMinF) * s_.nZnT;
     for (int k = 0; k < s_.nZeta; ++k) {
-      const int kRev = (s_.nZeta - k) % s_.nZeta;
+      const int kRev = s_.zetaMirror[k];
       for (int l = s_.nThetaReduced; l < s_.nThetaEven; ++l) {
         const int jl = base + k * nThetaEff + l;
         const int jlRev = base + kRev * nThetaEff + (s_.nThetaEven - l);
@@ -1659,10 +1773,9 @@ void IdealMhdModel::updateDifferentialVolume() {
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
     m_p_.dVdsH[jH - r_.nsMinH] = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int l = kl % s_.nThetaEff;
       // multiply by surface differential
       m_p_.dVdsH[jH - r_.nsMinH] +=
-          gsqrt[(jH - r_.nsMinH) * s_.nZnT + kl] * s_.wInt[l];
+          gsqrt[(jH - r_.nsMinH) * s_.nZnT + kl] * s_.wIntKL[kl];
     }  // kl
 
     // cancel signgs contained in gsqrt so that dVds is always positive
@@ -1758,14 +1871,13 @@ void IdealMhdModel::computeBContra() {
       double avg_guu_gsqrt = 0.0;
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-        int l = kl % s_.nThetaEff;
         if (s_.lthreed) {
           jvPlasma += (guu[iHalf] * bsupu[iHalf] + guv[iHalf] * bsupv[iHalf]) *
-                      s_.wInt[l];
+                      s_.wIntKL[kl];
         } else {
-          jvPlasma += guu[iHalf] * bsupu[iHalf] * s_.wInt[l];
+          jvPlasma += guu[iHalf] * bsupu[iHalf] * s_.wIntKL[kl];
         }
-        avg_guu_gsqrt += guu[iHalf] / gsqrt[iHalf] * s_.wInt[l];
+        avg_guu_gsqrt += guu[iHalf] / gsqrt[iHalf] * s_.wIntKL[kl];
       }  // kl
 
       // add in prescribed toroidal current profile and re-compute chi' and iota
@@ -1889,9 +2001,8 @@ void IdealMhdModel::pressureAndEnergies() {
     // This must be done over UNIQUE half-grid points !!!
     if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
       for (int kl = 0; kl < s_.nZnT; ++kl) {
-        int l = kl % s_.nThetaEff;
         localMagneticEnergy +=
-            gsqrt[offset + kl] * totalPressure[offset + kl] * s_.wInt[l];
+            gsqrt[offset + kl] * totalPressure[offset + kl] * s_.wIntKL[kl];
       }
     }
 
@@ -1940,9 +2051,8 @@ void IdealMhdModel::radialForceBalance() {
     m_p_.bvcoH[jH - r_.nsMinH] = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int iHalf = (jH - r_.nsMinH) * s_.nZnT + kl;
-      int l = kl % s_.nThetaEff;
-      m_p_.bucoH[jH - r_.nsMinH] += bsubu[iHalf] * s_.wInt[l];
-      m_p_.bvcoH[jH - r_.nsMinH] += bsubv[iHalf] * s_.wInt[l];
+      m_p_.bucoH[jH - r_.nsMinH] += bsubu[iHalf] * s_.wIntKL[kl];
+      m_p_.bvcoH[jH - r_.nsMinH] += bsubv[iHalf] * s_.wIntKL[kl];
     }  // kl
   }  // jH
 
@@ -2017,12 +2127,11 @@ void IdealMhdModel::computeForceNorms(const FourierGeometry& decomposed_x) {
       // --> The standard partitioning has half-grid points between
       //     neighboring ranks that are handled by both ranks.
       if (jH < r_.nsMaxH - 1 || jH == m_fc_.ns - 2) {
-        int l = kl % s_.nThetaEff;
         localForceNormSumRZ +=
-            guu[iHalf] * r12[iHalf] * r12[iHalf] * s_.wInt[l];
+            guu[iHalf] * r12[iHalf] * r12[iHalf] * s_.wIntKL[kl];
         localForceNormSumL +=
             (bsubu[iHalf] * bsubu[iHalf] + bsubv[iHalf] * bsubv[iHalf]) *
-            s_.wInt[l];
+            s_.wIntKL[kl];
       }
     }  // kl
   }  // j
@@ -2152,16 +2261,17 @@ void IdealMhdModel::updateLambdaPreconditioner() {
     cLambda[jH + 1 - r_.nsMinH] = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (jH - r_.nsMinH) * s_.nZnT + kl;
-      int l = kl % s_.nThetaEff;
-      bLambda[jH + 1 - r_.nsMinH] += guu[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
-      cLambda[jH + 1 - r_.nsMinH] += gvv[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
+      bLambda[jH + 1 - r_.nsMinH] +=
+          guu[idx_kl] / gsqrt[idx_kl] * s_.wIntKL[kl];
+      cLambda[jH + 1 - r_.nsMinH] +=
+          gvv[idx_kl] / gsqrt[idx_kl] * s_.wIntKL[kl];
     }  // kl
 
     if (s_.lthreed) {
       for (int kl = 0; kl < s_.nZnT; ++kl) {
         int idx_kl = (jH - r_.nsMinH) * s_.nZnT + kl;
-        int l = kl % s_.nThetaEff;
-        dLambda[jH + 1 - r_.nsMinH] += guv[idx_kl] / gsqrt[idx_kl] * s_.wInt[l];
+        dLambda[jH + 1 - r_.nsMinH] +=
+            guv[idx_kl] / gsqrt[idx_kl] * s_.wIntKL[kl];
       }  // kl
     }
   }  // jH
@@ -2206,40 +2316,40 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // jMin is 1, and the (m, n) = (0, 0) element on every surface. Both stay
   // zero for the life of the model, which is what zeroes the corresponding
   // lambda forces in applyLambdaPreconditioner.
+  // inverse diagonal of the lambda energy Hessian for toroidal stiffness tnn
+  auto lambda_preconditioner = [&](int jF, int m, double tnn) {
+    int tmm = m * m;
+
+    // sqrt(s)^pwr high-m damping; ~1 for m << kLambdaHighMDampingReferenceM
+    double pwr = std::min(
+        tmm / (kLambdaHighMDampingReferenceM * kLambdaHighMDampingReferenceM),
+        kLambdaHighMDampingMaxPower);
+    double tmn = 2.0 * m * std::sqrt(tnn);
+
+    double faclam =
+        tnn * bLambda[jF - r_.nsMinF] +
+        tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
+        tmm * cLambda[jF - r_.nsMinF];
+
+    if (faclam == 0.0) {
+      faclam = kLambdaPreconditionerZeroGuard;
+    }
+    return pFactor / faclam * pow(m_p_.sqrtSF[jF - r_.nsMinF1], pwr);
+  };
   for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
-      double tnn = n * s_.nfp * n * s_.nfp;
-
       for (int m = 0; m < s_.mpol; ++m) {
         if (m == 0 && n == 0) {
           continue;
         }
 
         int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
-
-        int tmm = m * m;
-
-        // sqrt(s)^pwr high-m damping; ~1 for m << kLambdaHighMDampingReferenceM
-        double pwr = std::min(tmm / (kLambdaHighMDampingReferenceM *
-                                     kLambdaHighMDampingReferenceM),
-                              kLambdaHighMDampingMaxPower);
-        double tmn = 2.0 * m * n * s_.nfp;
-
-        // diagonal of the second variation of the magnetic energy with
-        // respect to lambda_mn, with flux-surface-averaged metric coefficients
-        double faclam =
-            tnn * bLambda[jF - r_.nsMinF] +
-            tmn * copysign(dLambda[jF - r_.nsMinF], bLambda[jF - r_.nsMinF]) +
-            tmm * cLambda[jF - r_.nsMinF];
-
-        if (faclam == 0.0) {
-          faclam = kLambdaPreconditionerZeroGuard;
-        }
-
-        // NOTE: This also computes the inverse of each entry in
-        // lambdaPreconditioner !
         lambdaPreconditioner[idx_mn] =
-            pFactor / faclam * pow(m_p_.sqrtSF[jF - r_.nsMinF1], pwr);
+            lambda_preconditioner(jF, m, toroidal_stiffness_[n]);
+        if (s_.toroidal_elements != nullptr) {
+          lambdaPreconditionerOdd[idx_mn] =
+              lambda_preconditioner(jF, m, toroidal_stiffness_odd_[n]);
+        }
       }  // m
     }  // n
   }  // jF
@@ -2295,10 +2405,8 @@ void IdealMhdModel::computePreconditioningMatrix(
       int iFull_0 = (jH - r_.nsMinF1) * s_.nZnT + kl;
       int iFull_1 = (jH + 1 - r_.nsMinF1) * s_.nZnT + kl;
 
-      int l = kl % s_.nThetaEff;
-
-      double pTau =
-          pFactor * r12[iHalf] * totalPressure[iHalf] / tau[iHalf] * s_.wInt[l];
+      double pTau = pFactor * r12[iHalf] * totalPressure[iHalf] / tau[iHalf] *
+                    s_.wIntKL[kl];
 
       // COMPUTE DOMINANT (1/DELTA-S)**2 PRECONDITIONING MATRIX ELEMENTS
 
@@ -2349,7 +2457,7 @@ void IdealMhdModel::computePreconditioningMatrix(
       // 0.25 cancels 4 in pFactor; r0scale == 1
       // --> essentially, 0.25 * pFactor simply introduces a (-1) here!
       cx[jH - r_.nsMinH] += 0.25 * pFactor * bsupv[iHalf] * bsupv[iHalf] *
-                            gsqrt[iHalf] * s_.wInt[l];
+                            gsqrt[iHalf] * s_.wIntKL[kl];
 
       if (do_eqfactor) {
         // Fortran precondn: temp(js) += (pfactor*r12*bsq*wint)*trigmult*xu12.
@@ -2455,9 +2563,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     double azNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
       int idx_kl = (jF - r_.nsMinF) * s_.nZnT + kl;
-      int l = kl % s_.nThetaEff;
-      arNorm += ruFull[idx_kl] * ruFull[idx_kl] * s_.wInt[l];
-      azNorm += zuFull[idx_kl] * zuFull[idx_kl] * s_.wInt[l];
+      arNorm += ruFull[idx_kl] * ruFull[idx_kl] * s_.wIntKL[kl];
+      azNorm += zuFull[idx_kl] * zuFull[idx_kl] * s_.wIntKL[kl];
     }
 
     if (arNorm == 0.0) {
@@ -2622,7 +2729,7 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.nThetaEff = s_.nThetaEff;
   comp.ncurr = ncurr;
   comp.currH = m_p_.currH.data();
-  comp.wInt = s_.wInt.data();
+  comp.wIntKL = s_.wIntKL.data();
   comp.nThetaEven = s_.nThetaEven;
   comp.nThetaReduced = s_.nThetaReduced;
   comp.mpol = s_.mpol;
@@ -2637,6 +2744,13 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.cosmui = t_.cosmui.data();
   comp.cosnv = t_.cosnv.data();
   comp.sinnv = t_.sinnv.data();
+  comp.cosnvi = t_.cosnvi.data();
+  comp.sinnvi = t_.sinnvi.data();
+  comp.zeta_mirror = s_.zetaMirror.data();
+  if (t_.mass_inverse_even.size() > 0) {
+    comp.mass_inverse_even = t_.mass_inverse_even.data();
+    comp.mass_inverse_odd = t_.mass_inverse_odd.data();
+  }
   comp.sinmu = t_.sinmu.data();
   comp.cosmu = t_.cosmu.data();
   return comp;
@@ -2907,8 +3021,8 @@ void IdealMhdModel::dft_ForcesToFourierTranspose_3d_symm(
         for (int nn = 0; nn < ntorp1; ++nn) {
           const int kn = idx_kn_base + nn;
           const int mn = idx_mn_base + nn;
-          const double cosnv = t_.cosnv[kn], sinnv = t_.sinnv[kn],
-                       cosnvn = t_.cosnvn[kn], sinnvn = t_.sinnvn[kn];
+          const double cosnv = t_.cosnvi[kn], sinnv = t_.sinnvi[kn],
+                       cosnvn = t_.cosnvni[kn], sinnvn = t_.sinnvni[kn];
           const double frcc = m_coeff_bar.frcc[mn], frss = m_coeff_bar.frss[mn],
                        fzsc = m_coeff_bar.fzsc[mn], fzcs = m_coeff_bar.fzcs[mn];
           rmkcc += frcc * cosnv;
@@ -2964,10 +3078,10 @@ void IdealMhdModel::dft_ForcesToFourierTranspose_3d_symm(
         for (int nn = 0; nn < ntorp1; ++nn) {
           const int kn = idx_kn_base + nn;
           const int mn = idx_mn_base + nn;
-          lmksc += m_coeff_bar.flsc[mn] * t_.cosnv[kn];
-          lmksc_n += m_coeff_bar.flsc[mn] * t_.sinnvn[kn];
-          lmkcs += m_coeff_bar.flcs[mn] * t_.sinnv[kn];
-          lmkcs_n += m_coeff_bar.flcs[mn] * t_.cosnvn[kn];
+          lmksc += m_coeff_bar.flsc[mn] * t_.cosnvi[kn];
+          lmksc_n += m_coeff_bar.flsc[mn] * t_.sinnvni[kn];
+          lmkcs += m_coeff_bar.flcs[mn] * t_.sinnvi[kn];
+          lmkcs_n += m_coeff_bar.flcs[mn] * t_.cosnvni[kn];
         }
         for (int l = 0; l < nThR; ++l) {
           const int im = idx_ml_base + l;
@@ -3376,7 +3490,8 @@ void IdealMhdModel::dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f) {
   };
 
 #ifdef VMECPP_USE_FFTX
-  if (fft_plans_.kernels_available()) {
+  // the FFT kernels transform the uniform grid of the Fourier basis
+  if (fft_plans_.kernels_available() && s_.toroidal_elements == nullptr) {
     ForcesToFourier3DSymmFastPoloidalFft(input_data, xmpq, r_, m_fc_, s_, t_,
                                          fft_plans_, m_vacuum_pressure_state_,
                                          m_physical_f);
@@ -3533,7 +3648,7 @@ void IdealMhdModel::symforce() {
     for (int jF = jLo; jF < jHi; ++jF) {
       const int base = (jF - r_.nsMinF) * s_.nZnT;
       for (int k = 0; k < s_.nZeta; ++k) {
-        const int kRev = (s_.nZeta - k) % s_.nZeta;
+        const int kRev = s_.zetaMirror[k];
         for (int l = 0; l < s_.nThetaReduced; ++l) {
           const int jl = base + k * nThetaEff + l;
           const int jlRev =
@@ -3737,12 +3852,22 @@ void IdealMhdModel::assembleRZPreconditioner() {
           }
 
           // diagonal: jF-th forces full-grid pos
-          dr[idx_mn] = -(ard[(jF - r_.nsMinF) * 2 + m_parity] +
-                         brd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
-          dz[idx_mn] = -(azd[(jF - r_.nsMinF) * 2 + m_parity] +
-                         bzd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
+          const double toroidal =
+              s_.toroidal_elements == nullptr
+                  ? cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp
+                  : cxd[jF - r_.nsMinF] * toroidal_stiffness_[n];
+          dr[idx_mn] =
+              -(ard[(jF - r_.nsMinF) * 2 + m_parity] +
+                brd[(jF - r_.nsMinF) * 2 + m_parity] * m * m + toroidal);
+          dz[idx_mn] =
+              -(azd[(jF - r_.nsMinF) * 2 + m_parity] +
+                bzd[(jF - r_.nsMinF) * 2 + m_parity] * m * m + toroidal);
+          if (s_.toroidal_elements != nullptr) {
+            const double toroidal_odd =
+                cxd[jF - r_.nsMinF] * toroidal_stiffness_odd_[n];
+            dr_odd[idx_mn] = dr[idx_mn] + toroidal - toroidal_odd;
+            dz_odd[idx_mn] = dz[idx_mn] + toroidal - toroidal_odd;
+          }
 
           // sub-diagonal: half-grid pos inside jF-th forces full-grid point
           if (jF > 0) {
@@ -3759,12 +3884,16 @@ void IdealMhdModel::assembleRZPreconditioner() {
             // instead of staying on the sub-diagonal.
             dr[idx_mn] += br[idx_mn];
             dz[idx_mn] += bz[idx_mn];
+            dr_odd[idx_mn] += br[idx_mn];
+            dz_odd[idx_mn] += bz[idx_mn];
           }
         } else {
           ar[idx_mn] = 0.0;
           az[idx_mn] = 0.0;
           dr[idx_mn] = 0.0;
           dz[idx_mn] = 0.0;
+          dr_odd[idx_mn] = 0.0;
+          dz_odd[idx_mn] = 0.0;
           br[idx_mn] = 0.0;
           bz[idx_mn] = 0.0;
         }
@@ -3787,6 +3916,8 @@ void IdealMhdModel::assembleRZPreconditioner() {
             ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
         dr[idx_mn] *= 1.0 + edge_pedestal;
         dz[idx_mn] *= 1.0 + edge_pedestal;
+        dr_odd[idx_mn] *= 1.0 + edge_pedestal;
+        dz_odd[idx_mn] *= 1.0 + edge_pedestal;
       }
       {
         int m = 1;
@@ -3794,12 +3925,16 @@ void IdealMhdModel::assembleRZPreconditioner() {
             ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
         dr[idx_mn] *= 1.0 + edge_pedestal;
         dz[idx_mn] *= 1.0 + edge_pedestal;
+        dr_odd[idx_mn] *= 1.0 + edge_pedestal;
+        dz_odd[idx_mn] *= 1.0 + edge_pedestal;
       }
       for (int m = 2; m < s_.mpol; ++m) {
         int idx_mn =
             ((m_fc_.ns - 1 - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
         dr[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
         dz[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
+        dr_odd[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
+        dz_odd[idx_mn] *= 1.0 + 2.0 * edge_pedestal;
       }
     }
 
@@ -3816,6 +3951,7 @@ void IdealMhdModel::assembleRZPreconditioner() {
     // for Z forces !
     int idx_00 = (m_fc_.ns - 1 - r_.nsMinF) * s_.mpol * (s_.ntor + 1);
     dz[idx_00] *= (1.0 - multFact) / (1.0 + edge_pedestal);
+    dz_odd[idx_00] *= (1.0 - multFact) / (1.0 + edge_pedestal);
   }
 
   // ACCELERATE (IMPROVE) CONVERGENCE OF FREE BOUNDARY.
@@ -3894,6 +4030,10 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
       m_h_.all_az(mn, jF) = az[idx_mn];
       m_h_.all_dr(mn, jF) = dr[idx_mn];
       m_h_.all_dz(mn, jF) = dz[idx_mn];
+      if (s_.toroidal_elements != nullptr) {
+        m_h_.all_dr_odd(mn, jF) = dr_odd[idx_mn];
+        m_h_.all_dz_odd(mn, jF) = dz_odd[idx_mn];
+      }
       m_h_.all_br(mn, jF) = br[idx_mn];
       m_h_.all_bz(mn, jF) = bz[idx_mn];
       for (int idx_basis = 0; idx_basis < s_.num_basis; ++idx_basis) {
@@ -3926,7 +4066,31 @@ absl::Status IdealMhdModel::applyRZPreconditioner(
   // call serial Thomas solver for every mode number individually
   // Uses span accessors to pass contiguous radial slices to the solver
   const int ns = m_h_.all_ar.cols();
-  for (int mn = mnmin; mn < mnmax; ++mn) {
+  if (s_.toroidal_elements != nullptr) {
+    // even (cc, sc) and odd (ss, cs) components take their own diagonals
+    std::vector<double> a(ns);
+    std::vector<double> d(ns);
+    std::vector<double> b(ns);
+    auto solve = [&](const RowMatrixXd& all_a, const RowMatrixXd& all_d,
+                     const RowMatrixXd& all_b, double* rhs, int mn) {
+      for (int j = 0; j < ns; ++j) {
+        a[j] = all_a(mn, j);
+        d[j] = all_d(mn, j);
+        b[j] = all_b(mn, j);
+      }
+      TridiagonalSolveSerial(a, d, b, rhs, ns, jMin[mn], jMax, /*nRHS=*/1);
+    };
+    for (int mn = mnmin; mn < mnmax; ++mn) {
+      for (int idx_basis = 0; idx_basis < s_.num_basis; ++idx_basis) {
+        const bool odd = idx_basis % 2 == 1;
+        solve(m_h_.all_ar, odd ? m_h_.all_dr_odd : m_h_.all_dr, m_h_.all_br,
+              m_h_.all_cr[mn].row(idx_basis).data(), mn);
+        solve(m_h_.all_az, odd ? m_h_.all_dz_odd : m_h_.all_dz, m_h_.all_bz,
+              m_h_.all_cz[mn].row(idx_basis).data(), mn);
+      }  // idx_basis
+    }  // mn
+  }
+  for (int mn = mnmin; mn < mnmax && s_.toroidal_elements == nullptr; ++mn) {
     TridiagonalSolveSerial(std::span<double>(m_h_.all_ar.row(mn).data(), ns),
                            std::span<double>(m_h_.all_dr.row(mn).data(), ns),
                            std::span<double>(m_h_.all_br.row(mn).data(), ns),
@@ -4037,14 +4201,17 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
       for (int n = 0; n <= s_.ntor; ++n) {
         int idx_mn = ((jF - r_.nsMinF) * s_.mpol + m) * (s_.ntor + 1) + n;
 
+        const double odd = s_.toroidal_elements != nullptr
+                               ? lambdaPreconditionerOdd[idx_mn]
+                               : lambdaPreconditioner[idx_mn];
         m_decomposed_f.flsc[idx_mn] *= lambdaPreconditioner[idx_mn];
         if (s_.lthreed) {
-          m_decomposed_f.flcs[idx_mn] *= lambdaPreconditioner[idx_mn];
+          m_decomposed_f.flcs[idx_mn] *= odd;
         }
         if (s_.lasym) {
           m_decomposed_f.flcc[idx_mn] *= lambdaPreconditioner[idx_mn];
           if (s_.lthreed) {
-            m_decomposed_f.flss[idx_mn] *= lambdaPreconditioner[idx_mn];
+            m_decomposed_f.flss[idx_mn] *= odd;
           }
         }
       }  // n
@@ -4072,8 +4239,11 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
     const int ns = m_fc_.ns;
     const double step_scale = lambda_preconditioner_scale_ /
                               (constants_.lamscale * constants_.lamscale);
-    for (int n = 1; n <= s_.ntor; ++n) {
-      const double tnn = n * s_.nfp * n * s_.nfp;
+    // rows lmncs (odd) and lasym lmncc (even); zero stiffness carries no force
+    auto solve_m0 = [&](double tnn, double* rhs, int num_rhs) {
+      if (tnn == 0.0) {
+        return;
+      }
       for (int jF = 1; jF < ns; ++jF) {
         const double a_in = tnn * m_h_.lambda_b_half[jF];
         const double a_out = tnn * m_h_.lambda_b_half[jF + 1];
@@ -4087,9 +4257,20 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
       TridiagonalSolveSerial(std::span<double>(m_h_.lambda_m0_a.data(), ns),
                              std::span<double>(m_h_.lambda_m0_d.data(), ns),
                              std::span<double>(m_h_.lambda_m0_b.data(), ns),
-                             m_h_.lambda_m0_c.row(n * num_m0_basis).data(), ns,
-                             /*jMin=*/1,
-                             /*jMax=*/ns, num_m0_basis);
+                             rhs, ns, /*jMin=*/1, /*jMax=*/ns, num_rhs);
+    };
+    for (int n = 1; n <= s_.ntor; ++n) {
+      if (s_.toroidal_elements == nullptr) {
+        solve_m0(toroidal_stiffness_[n],
+                 m_h_.lambda_m0_c.row(n * num_m0_basis).data(), num_m0_basis);
+      } else {
+        solve_m0(toroidal_stiffness_odd_[n],
+                 m_h_.lambda_m0_c.row(n * num_m0_basis).data(), 1);
+        if (s_.lasym) {
+          solve_m0(toroidal_stiffness_[n],
+                   m_h_.lambda_m0_c.row(n * num_m0_basis + 1).data(), 1);
+        }
+      }
     }  // n
     m_h_.lambda_m0_c *= step_scale;
   }
@@ -4110,15 +4291,57 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
   }  // jF
 }
 
+void IdealMhdModel::transformToroidalForces(FourierForces& m_decomposed_f,
+                                            bool into_eigenvectors) const {
+  if (s_.toroidal_elements == nullptr) {
+    return;
+  }
+  const ToroidalElements& elements = *s_.toroidal_elements;
+  const int num_slots = s_.ntor + 1;
+  Eigen::VectorXd transformed(num_slots);
+  auto apply = [&](std::span<double> forces, const Eigen::MatrixXd& vectors,
+                   int jMax) {
+    for (int jF = r_.nsMinF; jF < jMax; ++jF) {
+      for (int m = 0; m < s_.mpol; ++m) {
+        Eigen::Map<Eigen::VectorXd> slots(
+            forces.data() + ((jF - r_.nsMinF) * s_.mpol + m) * num_slots,
+            num_slots);
+        if (into_eigenvectors) {
+          transformed.noalias() = vectors.transpose() * slots;
+        } else {
+          transformed.noalias() = vectors * slots;
+        }
+        slots = transformed;
+      }  // m
+    }  // jF
+  };
+  apply(m_decomposed_f.frcc, elements.even_eigenvectors, r_.nsMaxF);
+  apply(m_decomposed_f.fzsc, elements.even_eigenvectors, r_.nsMaxF);
+  apply(m_decomposed_f.frss, elements.odd_eigenvectors, r_.nsMaxF);
+  apply(m_decomposed_f.fzcs, elements.odd_eigenvectors, r_.nsMaxF);
+  apply(m_decomposed_f.flsc, elements.even_eigenvectors,
+        r_.nsMaxFIncludingLcfs);
+  apply(m_decomposed_f.flcs, elements.odd_eigenvectors, r_.nsMaxFIncludingLcfs);
+  if (s_.lasym) {
+    apply(m_decomposed_f.frsc, elements.even_eigenvectors, r_.nsMaxF);
+    apply(m_decomposed_f.fzcc, elements.even_eigenvectors, r_.nsMaxF);
+    apply(m_decomposed_f.frcs, elements.odd_eigenvectors, r_.nsMaxF);
+    apply(m_decomposed_f.fzss, elements.odd_eigenvectors, r_.nsMaxF);
+    apply(m_decomposed_f.flcc, elements.even_eigenvectors,
+          r_.nsMaxFIncludingLcfs);
+    apply(m_decomposed_f.flss, elements.odd_eigenvectors,
+          r_.nsMaxFIncludingLcfs);
+  }
+}
+
 double IdealMhdModel::get_delbsq() const {
   double delBSqAvg = 0.0;
   if (m_fc_.lfreeb &&
       m_vacuum_pressure_state_ >= VacuumPressureState::kActive) {
     double delBSqNorm = 0.0;
     for (int kl = 0; kl < s_.nZnT; ++kl) {
-      int l = kl % s_.nThetaEff;
-      delBSqAvg += delBSq[kl] * s_.wInt[l];
-      delBSqNorm += insideTotalPressure[kl] * s_.wInt[l];
+      delBSqAvg += delBSq[kl] * s_.wIntKL[kl];
+      delBSqNorm += insideTotalPressure[kl] * s_.wIntKL[kl];
     }
     delBSqAvg /= delBSqNorm;
   }

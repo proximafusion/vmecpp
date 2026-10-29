@@ -1552,7 +1552,9 @@ vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
   const int previous_half = fc.ns - 3;
 
   for (int k = 0; k < num_zeta; ++k) {
-    const double zeta = 2.0 * M_PI * k / (num_zeta * s.nfp);
+    const double zeta = s.toroidal_elements != nullptr
+                            ? s.toroidal_elements->zeta[k] / s.nfp
+                            : 2.0 * M_PI * k / (num_zeta * s.nfp);
     for (int l = 0; l < num_theta; ++l) {
       // fast-poloidal within-surface index, and the fast-toroidal one Nestor
       // hands its results back in
@@ -1590,6 +1592,43 @@ vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
 
   return result;
 }  // ComputeThreed1FreeBoundary
+
+namespace {
+
+// element coefficients to those of the Fourier modes n <= ntor
+void ProjectSpectralStateToFourier(const vmecpp::Sizes& s,
+                                   const vmecpp::FourierBasisFastPoloidal& t,
+                                   vmecpp::VmecInternalResults& m_results) {
+  const int num_slots = s.ntor + 1;
+  Eigen::VectorXd slots(num_slots);
+  Eigen::VectorXd fourier(num_slots);
+  auto project = [&](vmecpp::RowMatrixXd& m_coefficients,
+                     const Eigen::MatrixXd& element_to_fourier) {
+    for (int jF = 0; jF < m_coefficients.rows(); ++jF) {
+      for (int m = 0; m < s.mpol; ++m) {
+        for (int n = 0; n < num_slots; ++n) {
+          slots[n] = m_coefficients(jF, n * s.mpol + m);
+        }
+        fourier.noalias() = element_to_fourier * slots;
+        for (int n = 0; n < num_slots; ++n) {
+          m_coefficients(jF, n * s.mpol + m) = fourier[n];
+        }
+      }  // m
+    }  // jF
+  };
+  for (vmecpp::RowMatrixXd* even :
+       {&m_results.rmncc, &m_results.zmnsc, &m_results.lmnsc, &m_results.rmnsc,
+        &m_results.zmncc, &m_results.lmncc}) {
+    project(*even, t.element_to_fourier_even);
+  }
+  for (vmecpp::RowMatrixXd* odd :
+       {&m_results.rmnss, &m_results.zmncs, &m_results.lmncs, &m_results.rmncs,
+        &m_results.zmnss, &m_results.lmnss}) {
+    project(*odd, t.element_to_fourier_odd);
+  }
+}
+
+}  // namespace
 
 vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     const int sign_of_jacobian, const VmecINDATA& indata, const Sizes& s,
@@ -1743,8 +1782,19 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
       return output_quantities;  // output_quantities partially uninitialized.
     }
 
-    output_quantities.threed1_axis = ComputeThreed1AxisGeometry(
-        s, t, output_quantities.vmec_internal_results);
+    // with toroidal elements, the axis and wout use the Fourier projection
+    VmecInternalResults fourier_results;
+    if (s.toroidal_elements != nullptr) {
+      fourier_results = output_quantities.vmec_internal_results;
+      ProjectSpectralStateToFourier(s, t, fourier_results);
+    }
+    VmecInternalResults& spectral_results =
+        s.toroidal_elements != nullptr
+            ? fourier_results
+            : output_quantities.vmec_internal_results;
+
+    output_quantities.threed1_axis =
+        ComputeThreed1AxisGeometry(s, t, spectral_results);
 
     if (checkpoint == VmecCheckpoint::THREED1_AXIS) {
       return output_quantities;  // output_quantities partially uninitialized.
@@ -1781,7 +1831,7 @@ vmecpp::OutputQuantities vmecpp::ComputeOutputQuantities(
     // and how to prevent that crash in the future.
     output_quantities.wout = ComputeWOutFileContents(
         indata, s, t, fc, constants, h, mgrid_mode, coil_group_names,
-        /*m_vmec_internal_results=*/output_quantities.vmec_internal_results,
+        /*m_vmec_internal_results=*/spectral_results,
         output_quantities.bsubs_full, output_quantities.mercier,
         output_quantities.jxbout,
         output_quantities.threed1_first_table_intermediate,
@@ -2146,9 +2196,8 @@ vmecpp::PoloidalCurrentToFixBSubV vmecpp::ComputePoloidalCurrentToFixBSubV(
     double poloidal_current_from_bsubv = 0.0;
     for (int kl = 0; kl < s.nZnT; ++kl) {
       int iHalf = jH * s.nZnT + kl;
-      int l = kl % s.nThetaEff;
       poloidal_current_from_bsubv +=
-          vmec_internal_results.bsubv(iHalf) * s.wInt[l];
+          vmec_internal_results.bsubv(iHalf) * s.wIntKL[kl];
     }  // kl
 
     // deviation = actual value - expected value
@@ -2363,7 +2412,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         const int source_index = jF * s.nZnT + (k * s.nThetaEven + l);
 
         const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        const int k_reversed = s.zetaMirror[k];
         const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
 
         const int source_index_reversed = jF * s.nZnT + kl_reversed;
@@ -2386,7 +2435,7 @@ vmecpp::SymmetryDecomposedCovariantB vmecpp::DecomposeCovariantBBySymmetry(
         const int source_index = jH * s.nZnT + (k * s.nThetaEven + l);
 
         const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        const int k_reversed = s.zetaMirror[k];
         const int kl_reversed = k_reversed * s.nThetaEven + l_reversed;
 
         const int source_index_reversed = jH * s.nZnT + kl_reversed;
@@ -2480,6 +2529,15 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
     bsubuv_a.resize(m_vmec_internal_results.num_half * s.nZnT);
   }
 
+  // coefficients of one (j, m); inverse mass when integrated beyond the nodes
+  const bool project = t.mass_inverse_even.size() > 0;
+  std::vector<std::vector<double>> coefficients(
+      8, std::vector<double>(s.ntor + 1, 0.0));
+  auto apply_mass_inverse = [&](int index, const Eigen::MatrixXd& inverse) {
+    Eigen::Map<Eigen::VectorXd> c(coefficients[index].data(), s.ntor + 1);
+    c = (inverse * c).eval();
+  };
+
   // FOURIER LOW-PASS FILTER bsubs
   for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
     for (int m = 0; m < s.mpol; ++m) {
@@ -2511,9 +2569,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
                 jF * m_vmec_internal_results.nZnT_reduced + kl;
 
             // sin-cos
-            const double tsini1 = t.sinmui[idx_ml] * t.cosnv[idx_kn] * dnorm1;
+            const double tsini1 = t.sinmui[idx_ml] * t.cosnvi[idx_kn] * dnorm1;
             // cos-sin
-            const double tsini2 = t.cosmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
+            const double tsini2 = t.cosmui[idx_ml] * t.sinnvi[idx_kn] * dnorm1;
 
             // sin-cos
             bsubsmn1 += tsini1 * decomposed_bcov.bsubs_s(source_index);
@@ -2522,9 +2580,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             if (s.lasym) {
               // cos-cos
-              const double tcosi1 = t.cosmui[idx_ml] * t.cosnv[idx_kn] * dnorm1;
+              const double tcosi1 =
+                  t.cosmui[idx_ml] * t.cosnvi[idx_kn] * dnorm1;
               // sin-sin
-              const double tcosi2 = t.sinmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
+              const double tcosi2 =
+                  t.sinmui[idx_ml] * t.sinnvi[idx_kn] * dnorm1;
 
               // cos-cos
               bsubsmn3 += tcosi1 * decomposed_bcov.bsubs_a(source_index);
@@ -2533,6 +2593,22 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
             }  // lasym
           }  // l
         }  // k
+        coefficients[0][n] = bsubsmn1;
+        coefficients[1][n] = bsubsmn2;
+        coefficients[2][n] = bsubsmn3;
+        coefficients[3][n] = bsubsmn4;
+      }  // n
+      if (project) {
+        apply_mass_inverse(0, t.mass_inverse_even);
+        apply_mass_inverse(1, t.mass_inverse_odd);
+        apply_mass_inverse(2, t.mass_inverse_even);
+        apply_mass_inverse(3, t.mass_inverse_odd);
+      }
+      for (int n = 0; n <= s.ntor; ++n) {
+        const double bsubsmn1 = coefficients[0][n];
+        const double bsubsmn2 = coefficients[1][n];
+        const double bsubsmn3 = coefficients[2][n];
+        const double bsubsmn4 = coefficients[3][n];
 
         // FOURIER INVERSE TRANSFORM
         // Compute on u-v grid (must add symmetric, antisymmetric parts for
@@ -2605,9 +2681,9 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
                 jH * m_vmec_internal_results.nZnT_reduced + kl;
 
             // cos-cos
-            const double tcosi1 = t.cosmui[idx_ml] * t.cosnv[idx_kn] * dnorm1;
+            const double tcosi1 = t.cosmui[idx_ml] * t.cosnvi[idx_kn] * dnorm1;
             // sin-sin
-            const double tcosi2 = t.sinmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
+            const double tcosi2 = t.sinmui[idx_ml] * t.sinnvi[idx_kn] * dnorm1;
 
             // cos-cos
             bsubvmn1 += tcosi1 * decomposed_bcov.bsubv_s(source_index);
@@ -2620,9 +2696,11 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
 
             if (s.lasym) {
               // sin-cos
-              const double tsini1 = t.sinmui[idx_ml] * t.cosnv[idx_kn] * dnorm1;
+              const double tsini1 =
+                  t.sinmui[idx_ml] * t.cosnvi[idx_kn] * dnorm1;
               // cos-sin
-              const double tsini2 = t.cosmui[idx_ml] * t.sinnv[idx_kn] * dnorm1;
+              const double tsini2 =
+                  t.cosmui[idx_ml] * t.sinnvi[idx_kn] * dnorm1;
 
               // sin-cos
               bsubvmn3 += tsini1 * decomposed_bcov.bsubv_a(source_index);
@@ -2635,6 +2713,30 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
             }  // lasym
           }  // l
         }  // k
+        coefficients[0][n] = bsubumn1;
+        coefficients[1][n] = bsubumn2;
+        coefficients[2][n] = bsubumn3;
+        coefficients[3][n] = bsubumn4;
+        coefficients[4][n] = bsubvmn1;
+        coefficients[5][n] = bsubvmn2;
+        coefficients[6][n] = bsubvmn3;
+        coefficients[7][n] = bsubvmn4;
+      }  // n
+      if (project) {
+        for (int index = 0; index < 8; index += 2) {
+          apply_mass_inverse(index, t.mass_inverse_even);
+          apply_mass_inverse(index + 1, t.mass_inverse_odd);
+        }
+      }
+      for (int n = 0; n <= s.ntor; ++n) {
+        const double bsubumn1 = coefficients[0][n];
+        const double bsubumn2 = coefficients[1][n];
+        const double bsubumn3 = coefficients[2][n];
+        const double bsubumn4 = coefficients[3][n];
+        const double bsubvmn1 = coefficients[4][n];
+        const double bsubvmn2 = coefficients[5][n];
+        const double bsubvmn3 = coefficients[6][n];
+        const double bsubvmn4 = coefficients[7][n];
 
         // FOURIER INVERSE TRANSFORM
         // Compute on u-v grid (must add symmetric, antisymmetric parts for
@@ -2694,7 +2796,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
     const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
     for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
       for (int k = 0; k < s.nZeta; ++k) {
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        const int k_reversed = s.zetaMirror[k];
         for (int l = 0; l < s.nThetaReduced; ++l) {
           const int source_index =
               jH * nZnT_reduced + (k * s.nThetaReduced + l);
@@ -2739,7 +2841,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
     const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
     for (int jH = 0; jH < m_vmec_internal_results.num_half; ++jH) {
       for (int k = 0; k < s.nZeta; ++k) {
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        const int k_reversed = s.zetaMirror[k];
         for (int l = 0; l < s.nThetaReduced; ++l) {
           const int source_index =
               jH * nZnT_reduced + (k * s.nThetaReduced + l);
@@ -2784,7 +2886,7 @@ vmecpp::CovariantBDerivatives vmecpp::LowPassFilterCovariantB(
     const int nZnT_reduced = m_vmec_internal_results.nZnT_reduced;
     for (int jF = 0; jF < m_vmec_internal_results.num_full; ++jF) {
       for (int k = 0; k < s.nZeta; ++k) {
-        const int k_reversed = (s.nZeta - k) % s.nZeta;
+        const int k_reversed = s.zetaMirror[k];
         for (int l = s.nThetaReduced; l < s.nThetaEven; ++l) {
           const int l_reversed = (s.nThetaEven - l) % s.nThetaEven;
           const int source_index_reversed =
@@ -2839,7 +2941,7 @@ vmecpp::RowMatrixXd vmecpp::ComputeCovariantBRadialDerivative(
         int shifted_k = k;
         if (!s.lasym && shifted_l >= s.nThetaReduced) {
           shifted_l = s.nThetaEven - shifted_l;
-          shifted_k = (s.nZeta - k) % s.nZeta;
+          shifted_k = s.zetaMirror[k];
         }
         const int kl = k * s.nThetaEff + l;
         const int shifted_kl = shifted_k * s.nThetaEff + shifted_l;
@@ -2965,7 +3067,7 @@ void vmecpp::RecomputeBSubSFromRadialForceBalance(
     }
     double average_force = 0.0;
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      average_force += brho[kl] * s.wInt[kl % s.nThetaEff];
+      average_force += brho[kl] * s.wIntKL[kl];
     }
     const double vp = 0.5 * (vmec_internal_results.dVdsH[jF - 1] +
                              vmec_internal_results.dVdsH[jF]);
@@ -3115,7 +3217,6 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     double average_jperp2 = 0.0;
 
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int l = kl % s.nThetaEff;
       const int target_index = jF * s.nZnT + kl;
 
       // --------
@@ -3227,8 +3328,8 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
       force_residual_max = std::max(force_residual_max, force_residual * pnorm);
       force_residual_min = std::min(force_residual_min, force_residual * pnorm);
 
-      average_force_residual += force_residual * s.wInt[l];
-      average_pressure_gradient += pprime_ovp * s.wInt[l];
+      average_force_residual += force_residual * s.wIntKL[kl];
+      average_pressure_gradient += pprime_ovp * s.wIntKL[kl];
 
       // --------
 
@@ -3236,12 +3337,12 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
       // jpar2 = <j||**2>, jperp2 = <j-perp**2>,
       // with <...> = flux surface average
 
-      average_jdotb += jxbout.bdotk(target_index) * s.wInt[l];
-      average_bdotb += sqgb2[kl] * s.wInt[l];
+      average_jdotb += jxbout.bdotk(target_index) * s.wIntKL[kl];
+      average_bdotb += sqgb2[kl] * s.wIntKL[kl];
 
       average_jpar2 += jxbout.bdotk(target_index) * jxbout.bdotk(target_index) *
-                       s.wInt[l] / sqgb2[kl];
-      average_jperp2 += kp2[kl] * sqrtg[kl] * s.wInt[l];
+                       s.wIntKL[kl] / sqgb2[kl];
+      average_jperp2 += kp2[kl] * sqrtg[kl] * s.wIntKL[kl];
     }  // kl
 
     jxbout.amaxfor[jF] = 100.0 * std::min(force_residual_max, 9.999);
@@ -3418,9 +3519,8 @@ vmecpp::ComputeIntermediateMercierQuantities(
     // I_tor = 2 pi * < B_theta >
     for (int kl = 0; kl < s.nZnT; ++kl) {
       const int idx_kl = jH * s.nZnT + kl;
-      const int l = kl % s.nThetaEff;
       mercier_intermediate.torcur[jH] +=
-          vmec_internal_results.bsubu(idx_kl) * s.wInt[l];
+          vmec_internal_results.bsubu(idx_kl) * s.wIntKL[kl];
     }  // kl
     mercier_intermediate.torcur[jH] *=
         vmec_internal_results.sign_of_jacobian * 2.0 * M_PI;
@@ -3561,7 +3661,6 @@ vmecpp::ComputeIntermediateMercierQuantities(
     const int jHo = jF;
 
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int l = kl % s.nThetaEff;
       const int index_full = jF * s.nZnT + kl;
       const int index_half_o = jHo * s.nZnT + kl;
       const int index_half_i = jHi * s.nZnT + kl;
@@ -3573,24 +3672,24 @@ vmecpp::ComputeIntermediateMercierQuantities(
 
       // <1/B^2>
       const double ob2 = mercier_intermediate.gsqrt_full(index_full) / b2i;
-      mercier_intermediate.tpp[jF] += ob2 * s.wInt[l];
+      mercier_intermediate.tpp[jF] += ob2 * s.wIntKL[kl];
 
       // <B.B/|grad-phi|^2> = <B^2/|grad-phi|^2>
       const double ob2_reused = b2i *
                                 mercier_intermediate.gsqrt_full(index_full) *
                                 mercier_intermediate.gpp(index_full);
-      mercier_intermediate.tbb[jF] += ob2_reused * s.wInt[l];
+      mercier_intermediate.tbb[jF] += ob2_reused * s.wIntKL[kl];
 
       // <j.B/|grad-phi|^2>
       const double jdotb = mercier_intermediate.bdotj(index_full) *
                            mercier_intermediate.gpp(index_full) *
                            mercier_intermediate.gsqrt_full(index_full);
-      mercier_intermediate.tjb[jF] += jdotb * s.wInt[l];
+      mercier_intermediate.tjb[jF] += jdotb * s.wIntKL[kl];
 
       // <(j.B)^2/(B^2 * |grad-phi|^2)>
       const double jdotb_reused =
           jdotb * mercier_intermediate.bdotj(index_full) / b2i;
-      mercier_intermediate.tjj[jF] += jdotb_reused * s.wInt[l];
+      mercier_intermediate.tjj[jF] += jdotb_reused * s.wIntKL[kl];
     }  // kl
 
     mercier_intermediate.tpp[jF] *= four_pi_squared;
@@ -3767,11 +3866,10 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
     double s2 = 0.0;
     double avg_tau_over_r12 = 0.0;
     for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int l = kl % s.nThetaEff;
       const int index_half = jH * s.nZnT + kl;
 
       threed1_first_table_intermediate.tau(index_half) =
-          vmec_internal_results.sign_of_jacobian * s.wInt[l] *
+          vmec_internal_results.sign_of_jacobian * s.wIntKL[kl] *
           vmec_internal_results.gsqrt(index_half);
 
       s2 += vmec_internal_results.total_pressure(index_half) *
@@ -3850,11 +3948,10 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
   for (int jH = 0; jH < fc.ns - 1; ++jH) {
     for (int kl = 0; kl < s.nZnT; ++kl) {
       int iHalf = jH * s.nZnT + kl;
-      int l = kl % s.nThetaEff;
       threed1_first_table_intermediate.bucoH[jH] +=
-          vmec_internal_results.bsubu(iHalf) * s.wInt[l];
+          vmec_internal_results.bsubu(iHalf) * s.wIntKL[kl];
       threed1_first_table_intermediate.bvcoH[jH] +=
-          vmec_internal_results.bsubv(iHalf) * s.wInt[l];
+          vmec_internal_results.bsubv(iHalf) * s.wIntKL[kl];
     }  // kl
   }  // jH
 
@@ -4053,7 +4150,6 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
   intermediate.surf_area = VectorXd::Zero(s.nZnT);
   intermediate.circumference_sum = 0.0;
   for (int kl = 0; kl < s.nZnT; ++kl) {
-    const int l = kl % s.nThetaEff;
     const int lcfs_kl = (fc.ns - 1) * s.nZnT + kl;
 
     const double ru0 = vmec_internal_results.ruFull(lcfs_kl);
@@ -4061,7 +4157,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     const double guu_1u = ru0 * ru0 + zu0 * zu0;
 
     // compute circumference
-    intermediate.circumference_sum += std::sqrt(guu_1u) * s.wInt[l];
+    intermediate.circumference_sum += std::sqrt(guu_1u) * s.wIntKL[kl];
 
     const double r =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
@@ -4076,7 +4172,7 @@ vmecpp::ComputeIntermediateThreed1GeometricMagneticQuantities(
     const double rv_zu_minus_zv_ru = rv * zu0 - zv * ru0;
 
     intermediate.surf_area[kl] =
-        s.wInt[l] *
+        s.wIntKL[kl] *
         std::sqrt(r * r * guu_1u + rv_zu_minus_zv_ru * rv_zu_minus_zv_ru);
   }  // kl
 
@@ -4288,14 +4384,13 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   double cross_section_area_sum = 0.0;
   double volume_sum = 0.0;
   for (int kl = 0; kl < s.nZnT; ++kl) {
-    const int l = kl % s.nThetaEff;
     const int lcfs_kl = (fc.ns - 1) * s.nZnT + kl;
 
     const double rb =
         vmec_internal_results.r_e(lcfs_kl) + vmec_internal_results.r_o(lcfs_kl);
     const double zub = vmec_internal_results.zu_e(lcfs_kl) +
                        vmec_internal_results.zu_o(lcfs_kl);
-    const double t1 = rb * zub * s.wInt[l];
+    const double t1 = rb * zub * s.wIntKL[kl];
 
     cross_section_area_sum += t1;
     volume_sum += rb * t1;
@@ -4524,7 +4619,7 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
         int t1 = 1;
         if (icount == 1) {
           // (twopi-v), reflected plane
-          k1 = (s.nZeta - k) % s.nZeta;
+          k1 = s.zetaMirror[k];
           t1 = -1;
         }
 
@@ -4634,7 +4729,7 @@ vmecpp::Threed1AxisGeometry vmecpp::ComputeThreed1AxisGeometry(
   const int m = 0;
   for (int n = 0; n <= s.ntor; ++n) {
     const double basis_scaling =
-        fourier_basis.mscale[0] * fourier_basis.nscale[n];
+        fourier_basis.mscale[0] * fourier_basis.nscale_fourier[n];
 
     double tz = basis_scaling;
     if (!s.lthreed) {
@@ -4757,7 +4852,6 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
   double sigr1 = 0.0;
   double sigz1 = 0.0;
   for (int kl = 0; kl < s.nZnT; ++kl) {
-    const int l = kl % s.nThetaEff;
     const int lcfs_kl = (fc.ns - 1) * s.nZnT + kl;
 
     const double r_edge = threed1_geometric_magnetic_intermediate.redge[kl];
@@ -4765,7 +4859,7 @@ vmecpp::Threed1ShafranovIntegrals vmecpp::ComputeThreed1ShafranovIntegrals(
         vmec_internal_results.z_e(lcfs_kl) + vmec_internal_results.z_o(lcfs_kl);
 
     const double p_hat = threed1_geometric_magnetic_intermediate.phat[kl];
-    const double rbps1u = facnorm * r_edge * p_hat * s.wInt[l];
+    const double rbps1u = facnorm * r_edge * p_hat * s.wIntKL[kl];
 
     sigr0 += rbps1u * vmec_internal_results.zuFull(lcfs_kl);
     sigr1 += rbps1u * vmec_internal_results.zuFull(lcfs_kl) * r_edge;
@@ -5089,11 +5183,14 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }
   }
 
+  // with toroidal elements, Fourier modes of the interpolant, no Nyquist mode
+  const bool toroidal_elements = s.toroidal_elements != nullptr;
+  const Eigen::VectorXd& sinnv = toroidal_elements ? t.fourier_sinnvi : t.sinnv;
   std::vector<double> cosnv((s.nnyq2 + 1) * s.nZeta);
   for (int kn = 0; kn < (s.nnyq2 + 1) * s.nZeta; ++kn) {
-    cosnv[kn] = t.cosnv[kn];
+    cosnv[kn] = toroidal_elements ? t.fourier_cosnvi[kn] : t.cosnv[kn];
   }
-  if (s.nnyq != 0) {
+  if (s.nnyq != 0 && !toroidal_elements) {
     for (int k = 0; k < s.nZeta; ++k) {
       // FIXME(eguiraud) slow loop
       const int kn = k * (s.nnyq2 + 1) + s.nnyq;
@@ -5138,7 +5235,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     for (int n = 0; n <= s.ntor; ++n) {
       mn++;
       const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m_0;
-      const double t1 = t.mscale[m_0] * t.nscale[n];
+      const double t1 = t.mscale[m_0] * t.nscale_fourier[n];
       rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc);
       if (s.lthreed) {
         zmns1[mn] = -t1 * m_vmec_internal_results.zmncs(idx_fc);
@@ -5155,7 +5252,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         mn++;
         const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
         const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
-        const double t1 = t.mscale[m_0] * t.nscale[n];
+        const double t1 = t.mscale[m_0] * t.nscale_fourier[n];
         lmns1[mn] = -t1 * (2.0 * m_vmec_internal_results.lmncs(idx_ns_1) -
                            m_vmec_internal_results.lmncs(idx_ns_2));
       }  // n
@@ -5167,7 +5264,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         mn++;
         const int abs_n = std::abs(n);
         const int idx_fc = (jF * (s.ntor + 1) + abs_n) * s.mpol + m;
-        const double t1 = t.mscale[m] * t.nscale[abs_n];
+        const double t1 = t.mscale[m] * t.nscale_fourier[abs_n];
         if (n == 0) {
           rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc);
           zmns1[mn] = t1 * m_vmec_internal_results.zmnsc(idx_fc);
@@ -5344,7 +5441,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double fc_bsupu_a = 0.0, fs_bsupu_a = 0.0;
           double fc_bsupv_a = 0.0, fs_bsupv_a = 0.0;
           if (s.lasym) {
-            k_rev = (s.nZeta - k) % s.nZeta;
+            k_rev = s.zetaMirror[k];
           }
 
           for (int l = 0; l < s.nThetaReduced; ++l) {
@@ -5454,7 +5551,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int n = wout.xn_nyq[mn_nyq] / wout.nfp;
         const int abs_n = std::abs(n);
         const int sign_n = signum(n);
-        double dmult = t.mscale[m] * t.nscale[abs_n] * tmult;
+        double dmult = t.mscale[m] * t.nscale_fourier[abs_n] * tmult;
         if (m == 0 || n == 0) {
           dmult *= 2.0;
         }
@@ -5466,7 +5563,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         for (int k = 0; k < s.nZeta; ++k) {
           const int kn = k * (s.nnyq2 + 1) + abs_n;
           const double cnv = cosnv[kn];
-          const double snv = t.sinnv[kn];
+          const double snv = sinnv[kn];
           const int idx_mk = m_nzeta + k;
 
           // cos(mu-nv) kernel: cnv*Fc + sign_n*snv*Fs
@@ -5500,7 +5597,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           for (int k = 0; k < s.nZeta; ++k) {
             const int kn = k * (s.nnyq2 + 1) + abs_n;
             const double cnv = cosnv[kn];
-            const double snv = t.sinnv[kn];
+            const double snv = sinnv[kn];
             const int idx_mk = m_nzeta + k;
 
             // sin(mu-nv) kernel for antisymmetric fields
@@ -5574,7 +5671,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double fc_a = 0.0, fs_a = 0.0;
           int k_rev = 0;
           if (s.lasym) {
-            k_rev = (s.nZeta - k) % s.nZeta;
+            k_rev = s.zetaMirror[k];
           }
           for (int l = 0; l < s.nThetaReduced; ++l) {
             const int ml = m * s.nThetaReduced + l;
@@ -5611,7 +5708,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const int n = wout.xn_nyq[mn_nyq] / wout.nfp;
         const int abs_n = std::abs(n);
         const int sign_n = signum(n);
-        double dmult = t.mscale[m] * t.nscale[abs_n] * tmult;
+        double dmult = t.mscale[m] * t.nscale_fourier[abs_n] * tmult;
         if (m == 0 || n == 0) {
           dmult *= 2.0;
         }
@@ -5624,11 +5721,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           const int idx_mk = m_nzeta + k;
           // sin(mu-nv) kernel: cosnv*Fs - sign_n*sinnv*Fc
           acc += cosnv[kn] * Fs_bsubs_full[idx_mk] -
-                 sign_n * t.sinnv[kn] * Fc_bsubs_full[idx_mk];
+                 sign_n * sinnv[kn] * Fc_bsubs_full[idx_mk];
           if (s.lasym) {
             // cos(mu-nv) kernel: cosnv*Fc + sign_n*sinnv*Fs
             acc_a += cosnv[kn] * Fc_bsubs_full_a[idx_mk] +
-                     sign_n * t.sinnv[kn] * Fs_bsubs_full_a[idx_mk];
+                     sign_n * sinnv[kn] * Fs_bsubs_full_a[idx_mk];
           }
         }  // k
         wout.bsubsmns(mn_nyq, jF) = dmult * acc;
@@ -5674,8 +5771,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             const double derivative =
                 poloidal_ghost ? bsubus(jF, kl) - MU_0 * jxbout.izeta(jF, kl)
                                : bsubvs(jF, kl) + MU_0 * jxbout.itheta(jF, kl);
-            projection += derivative * basis * s.wInt[l];
-            norm += basis * basis * s.wInt[l];
+            projection += derivative * basis * s.wIntKL[kl];
+            norm += basis * basis * s.wIntKL[kl];
           }
         }
         wout.bsubsmns(mn, jF) =
@@ -5731,7 +5828,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       for (int n = 0; n <= s.ntor; ++n) {
         mn++;
         const int idx_fc = (jF * (s.ntor + 1) + n) * s.mpol + m_0;
-        const double t1 = t.mscale[m_0] * t.nscale[n];
+        const double t1 = t.mscale[m_0] * t.nscale_fourier[n];
         zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc);
         lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc);
         if (s.lthreed) {
@@ -5748,7 +5845,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           mn++;
           const int idx_ns_1 = (1 * (s.ntor + 1) + n) * s.mpol + m_0;
           const int idx_ns_2 = (2 * (s.ntor + 1) + n) * s.mpol + m_0;
-          const double t1 = t.mscale[m_0] * t.nscale[n];
+          const double t1 = t.mscale[m_0] * t.nscale_fourier[n];
           lmnc1[mn] = t1 * (2.0 * m_vmec_internal_results.lmncc(idx_ns_1) -
                             m_vmec_internal_results.lmncc(idx_ns_2));
         }  // n
@@ -5760,7 +5857,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           mn++;
           const int abs_n = std::abs(n);
           const int idx_fc = (jF * (s.ntor + 1) + abs_n) * s.mpol + m;
-          const double t1 = t.mscale[m] * t.nscale[abs_n];
+          const double t1 = t.mscale[m] * t.nscale_fourier[abs_n];
           if (n == 0) {
             rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
             zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc);

@@ -8,7 +8,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings:str_format",
+        "//vmecpp/common/toroidal_elements:toroidal_elements",
         "//vmecpp/common/util:util",
         "//vmecpp/common/vmec_indata:vmec_indata",
     ],

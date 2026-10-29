@@ -121,6 +121,18 @@ MpolNtorField: typing.TypeAlias = typing.Annotated[
 ]
 
 
+def _as_node_matrix(value: typing.Any) -> typing.Any:
+    """Empty input as a (0, 0) array; JSON stores an empty matrix as []."""
+    array = np.asarray(value, dtype=float)
+    return array.reshape(0, 0) if array.size == 0 else array
+
+
+NodeMatrix: typing.TypeAlias = typing.Annotated[
+    jt.Float[np.ndarray, "mpol_nodes num_nodes"],
+    pydantic.BeforeValidator(_as_node_matrix),
+]
+
+
 def _final_resolution(value: int | np.ndarray) -> int:
     """The target Fourier resolution: itself if scalar, else the schedule's last
     (finest) entry."""
@@ -647,6 +659,39 @@ class VmecInput(BaseModelWithNumpy):
 
     Only used if lasym=True.
     """
+
+    toroidal_element_degree: int = 0
+    """Toroidal element degree; 0 selects the Fourier basis."""
+
+    toroidal_element_quadrature: int = 0
+    """Gauss-Lobatto points per element, >= degree + 1; 0 selects degree + 2."""
+
+    toroidal_element_breaks: jt.Float[np.ndarray, "num_breaks"] = pydantic.Field(
+        default_factory=lambda: np.zeros(0)
+    )
+    """Element boundaries in v = nfp phi from 0 to pi, mirrored onto [pi, 2 pi]."""
+
+    rbc_nodes: NodeMatrix = pydantic.Field(default_factory=lambda: np.zeros((0, 0)))
+    """R coefficients of cos(m u) at the 2 ntor element nodes, [mpol, 2 ntor]."""
+
+    rbs_nodes: NodeMatrix = pydantic.Field(default_factory=lambda: np.zeros((0, 0)))
+    """R coefficients of sin(m u) at the element nodes."""
+
+    zbc_nodes: NodeMatrix = pydantic.Field(default_factory=lambda: np.zeros((0, 0)))
+    """Z coefficients of cos(m u) at the element nodes."""
+
+    zbs_nodes: NodeMatrix = pydantic.Field(default_factory=lambda: np.zeros((0, 0)))
+    """Z coefficients of sin(m u) at the element nodes."""
+
+    raxis_nodes: jt.Float[np.ndarray, "num_nodes"] = pydantic.Field(
+        default_factory=lambda: np.zeros(0)
+    )
+    """R of the initial axis at the element nodes."""
+
+    zaxis_nodes: jt.Float[np.ndarray, "num_nodes"] = pydantic.Field(
+        default_factory=lambda: np.zeros(0)
+    )
+    """Z of the initial axis at the element nodes."""
 
     @pydantic.model_validator(mode="after")
     def _validate_fourier_coefficients_shapes(self) -> VmecInput:
@@ -2888,6 +2933,7 @@ def _run_traced(
         or not isinstance(vmec_input.ntor, int),
         "magnetic_field": magnetic_field is not None,
         "restart_from": restart_from is not None,
+        "toroidal elements": vmec_input.toroidal_element_degree > 0,
     }
     for name, present in unsupported.items():
         if present:
@@ -3137,6 +3183,14 @@ class SolverState:
             half_grid=HalfGridFields._from_cpp(cpp_state.half_grid),
             curr_h=np.array(cpp_state.curr_h),
         )
+
+
+def toroidal_element_nodes(
+    breaks: np.ndarray | typing.Sequence[float], degree: int, nfp: int
+) -> np.ndarray:
+    """Nodes in v = nfp phi of the toroidal elements with boundaries `breaks`."""
+    elements = _vmecpp.toroidal_elements(np.asarray(breaks, dtype=float), degree, nfp)
+    return np.asarray(elements["node_zeta"])
 
 
 def run(
@@ -3478,6 +3532,7 @@ __all__ = [  # noqa: RUF022
     "FreeBoundaryMethod",
     "IterationStyle",
     "set_profile",
+    "toroidal_element_nodes",
     "iterate",
     "solve_equilibrium",
     "solve_multigrid",

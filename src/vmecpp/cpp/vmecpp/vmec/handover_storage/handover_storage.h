@@ -143,6 +143,9 @@ class HandoverStorage {
   RowMatrixXd all_az;
   RowMatrixXd all_dr;
   RowMatrixXd all_dz;
+  // with toroidal elements, the diagonals of the odd toroidal functions
+  RowMatrixXd all_dr_odd;
+  RowMatrixXd all_dz_odd;
   RowMatrixXd all_br;
   RowMatrixXd all_bz;
 
@@ -214,6 +217,15 @@ class HandoverStorage {
 
   // [nZnT] cylindrical B^Z of Nestor's vacuum magnetic field
   Eigen::VectorXd vacuum_b_z;
+
+  // with toroidal elements: vacuum-grid axis, outputs and interpolation
+  Eigen::VectorXd vacuum_grid_r_axis;
+  Eigen::VectorXd vacuum_grid_z_axis;
+  Eigen::VectorXd vacuum_grid_magnetic_pressure;
+  Eigen::VectorXd vacuum_grid_b_r;
+  Eigen::VectorXd vacuum_grid_b_phi;
+  Eigen::VectorXd vacuum_grid_b_z;
+  Eigen::MatrixXd vacuum_interpolation;
 
   // Fourier coefficients of Nestor's scalar magnetic potential; empty unless
   // this is a free-boundary run. Reported as `potvac` in the wout file.

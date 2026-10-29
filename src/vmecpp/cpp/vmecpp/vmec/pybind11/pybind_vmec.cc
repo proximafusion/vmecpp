@@ -19,6 +19,7 @@
 
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
+#include "vmecpp/common/toroidal_elements/toroidal_elements.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 #include "vmecpp/vmec/geometry/geometry.h"
@@ -876,11 +877,13 @@ class VmecModel {
     UnflattenActive(tmp, vmec_->s_, v);
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     model.applyM1Preconditioner(tmp);
+    model.transformToroidalForces(tmp, /*into_eigenvectors=*/true);
     const absl::Status status = model.applyRZPreconditioner(tmp);
     if (!status.ok()) {
       throw std::runtime_error(std::string(status.message()));
     }
     model.applyLambdaPreconditioner(tmp);
+    model.transformToroidalForces(tmp, /*into_eigenvectors=*/false);
     return FlattenActive(tmp, vmec_->s_);
   }
 
@@ -1107,6 +1110,18 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
+      .def_readwrite("toroidal_element_degree",
+                     &VmecINDATA::toroidal_element_degree)
+      .def_readwrite("toroidal_element_quadrature",
+                     &VmecINDATA::toroidal_element_quadrature)
+      .def_readwrite("toroidal_element_breaks",
+                     &VmecINDATA::toroidal_element_breaks)
+      .def_readwrite("rbc_nodes", &VmecINDATA::rbc_nodes)
+      .def_readwrite("rbs_nodes", &VmecINDATA::rbs_nodes)
+      .def_readwrite("zbc_nodes", &VmecINDATA::zbc_nodes)
+      .def_readwrite("zbs_nodes", &VmecINDATA::zbs_nodes)
+      .def_readwrite("raxis_nodes", &VmecINDATA::raxis_nodes)
+      .def_readwrite("zaxis_nodes", &VmecINDATA::zaxis_nodes)
 
       // initial guess for magnetic axis
       // disallow re-assignment of the whole vector (to preserve sizes
@@ -1684,6 +1699,42 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readonly("geometry", &vmecpp::SolverState::geometry)
       .def_readonly("half_grid", &vmecpp::SolverState::half_grid)
       .def_readwrite("curr_h", &vmecpp::SolverState::curr_h);
+  m.def(
+      "toroidal_elements",
+      [](const Eigen::VectorXd &breaks, int degree, int nfp,
+         int num_quadrature) {
+        absl::StatusOr<vmecpp::ToroidalElements> elements =
+            vmecpp::MakeToroidalElements(breaks, degree, nfp, num_quadrature);
+        if (!elements.ok()) {
+          throw std::invalid_argument(std::string(elements.status().message()));
+        }
+        const int num_slots = elements->ntor + 1;
+        auto table = [&](const std::vector<double> &values) {
+          return Eigen::Map<const vmecpp::RowMatrixXd>(
+                     values.data(), elements->num_points, num_slots)
+              .eval();
+        };
+        py::dict result;
+        result["ntor"] = elements->ntor;
+        result["zeta"] = elements->zeta;
+        result["weight"] = elements->weight;
+        result["node_zeta"] = elements->node_zeta;
+        result["scale"] = elements->scale;
+        result["even"] = table(elements->even);
+        result["odd"] = table(elements->odd);
+        result["even_dv"] = table(elements->even_dv);
+        result["odd_dv"] = table(elements->odd_dv);
+        result["even_mass"] = elements->even_mass;
+        result["odd_mass"] = elements->odd_mass;
+        result["even_eigenvalues"] = elements->even_eigenvalues;
+        result["odd_eigenvalues"] = elements->odd_eigenvalues;
+        return result;
+      },
+      py::arg("breaks"), py::arg("degree"), py::arg("nfp"),
+      py::arg("num_quadrature") = 0,
+      "The toroidal element basis for element boundaries `breaks` on [0, pi] "
+      "in v = nfp phi.");
+
   m.def("make_geometry", [](const vmecpp::OutputQuantities &output) {
     return vmecpp::MakeGeometry(output.indata, output.vmec_internal_results,
                                 vmecpp::GeometryCoefficientState::kPhysical);
