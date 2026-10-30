@@ -1,0 +1,1287 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/radial_profiles/radial_profiles.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <iostream>
+#include <limits>
+#include <string>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
+#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
+#include "vmecpp/vmec/vmec_constants/vmec_algorithm_constants.h"
+#include "vmecpp/vmec/vmec_constants/vmec_constants.h"
+
+using vmecpp::vmec_algorithm_constants::kEvenParity;
+using vmecpp::vmec_algorithm_constants::kOddParity;
+
+namespace {
+// 10-point Gauss-Legendre nodes/weights on [0, 1], as used by Fortran VMEC's
+// pcurr to integrate an I-prime(s) profile into the enclosed current I(s).
+constexpr std::array<double, 10> kGaussLegendreNodes01 = {
+    0.01304673574141414, 0.06746831665550774, 0.1602952158504878,
+    0.2833023029353764,  0.4255628305091844,  0.5744371694908156,
+    0.7166976970646236,  0.8397047841495122,  0.9325316833444923,
+    0.9869532642585859};
+constexpr std::array<double, 10> kGaussLegendreWeights01 = {
+    0.03333567215434407, 0.0747256745752903, 0.1095431812579910,
+    0.1346333596549982,  0.1477621123573764, 0.1477621123573764,
+    0.1346333596549982,  0.1095431812579910, 0.0747256745752903,
+    0.03333567215434407};
+
+// Compile-time self-consistency check on the tabulated nodes/weights: the rule
+// must integrate a constant and a linear function over [0, 1] exactly.
+template <typename Integrand>
+constexpr double GaussLegendreIntegral01(Integrand integrand) {
+  double result = 0.0;
+  for (std::size_t i = 0; i < kGaussLegendreNodes01.size(); ++i) {
+    result += kGaussLegendreWeights01[i] * integrand(kGaussLegendreNodes01[i]);
+  }
+  return result;
+}
+static_assert(GaussLegendreIntegral01([](double) { return 2.0; }) == 2.0);
+static_assert(GaussLegendreIntegral01([](double x) { return x; }) == 0.5);
+
+// Coefficient access with Fortran-style zero-padding: profile coefficient
+// arrays are dimensioned (0:20) in Fortran VMEC and zero-filled beyond the
+// provided entries.
+double Coef(const Eigen::VectorXd& c, int i) {
+  return (i >= 0 && i < static_cast<int>(c.size())) ? c[i] : 0.0;
+}
+
+// Value at s = 1 of a sum_atan term (2/pi) * atan(b * s^p / (1 - s)^q), the
+// limit from below: sign(b) for q > 0, (2/pi) * atan(b) for q = 0 and zero for
+// q < 0.
+double SumAtanEdge(double b, double q) {
+  if (q > 0.0) {
+    if (b > 0.0) {
+      return 1.0;
+    }
+    return (b < 0.0) ? -1.0 : 0.0;
+  }
+  if (q < 0.0) {
+    return 0.0;
+  }
+  return 2.0 / M_PI * std::atan(b);
+}
+
+// Per-interval cubic coefficients of the Akima spline through (knots, values),
+// ported 1:1 from educational_VMEC spline_akima.f. The construction is shared
+// between the direct evaluation and the integrated variant. Fortran uses the
+// extended index range [-1, iv+2] (two phantom points at each end, with values
+// quadratically extrapolated); here cpp_index = fortran_index + 1.
+struct AkimaCoeffs {
+  int iv = 0;                      // number of active knots
+  std::vector<double> xloc;        // extended knots,           size iv + 4
+  std::vector<double> a, b, c, d;  // cubic coefficients per interval
+};
+
+AkimaCoeffs BuildAkimaCoeffs(const Eigen::VectorXd& xx,
+                             const Eigen::VectorXd& yy) {
+  const int iv = static_cast<int>(xx.size());
+  const int sz = iv + 4;
+  AkimaCoeffs r;
+  r.iv = iv;
+  r.xloc.assign(sz, 0.0);
+  r.a.assign(sz, 0.0);
+  r.b.assign(sz, 0.0);
+  r.c.assign(sz, 0.0);
+  r.d.assign(sz, 0.0);
+  std::vector<double> yloc(sz, 0.0), m(sz, 0.0), t(sz, 0.0), dm(sz, 0.0),
+      p(sz, 0.0), q(sz, 0.0);
+  // accessors using Fortran indexing (cpp = fortran + 1)
+  auto X = [&](int f) -> double& { return r.xloc[f + 1]; };
+  auto Y = [&](int f) -> double& { return yloc[f + 1]; };
+  auto M = [&](int f) -> double& { return m[f + 1]; };
+  auto DM = [&](int f) -> double& { return dm[f + 1]; };
+  auto P = [&](int f) -> double& { return p[f + 1]; };
+  auto Q = [&](int f) -> double& { return q[f + 1]; };
+  auto T = [&](int f) -> double& { return t[f + 1]; };
+  auto A = [&](int f) -> double& { return r.a[f + 1]; };
+  auto B = [&](int f) -> double& { return r.b[f + 1]; };
+  auto C = [&](int f) -> double& { return r.c[f + 1]; };
+  auto D = [&](int f) -> double& { return r.d[f + 1]; };
+
+  for (int i = 1; i <= iv; ++i) X(i) = xx[i - 1];
+  X(-1) = 2 * X(1) - X(3);
+  X(0) = X(1) + X(2) - X(3);
+  X(iv + 2) = 2 * X(iv) - X(iv - 2);
+  X(iv + 1) = X(iv) + X(iv - 1) - X(iv - 2);
+  for (int i = 1; i <= iv; ++i) Y(i) = yy[i - 1];
+
+  // interior linear slopes m(1..iv-1); the phantom yloc are still 0 here, which
+  // matches Fortran (those m entries are overwritten below).
+  for (int f = -1; f <= iv + 1; ++f)
+    M(f) = (Y(f + 1) - Y(f)) / (X(f + 1) - X(f));
+  // edge values by quadratic extrapolation
+  const double cl = (M(2) - M(1)) / (X(3) - X(1));
+  const double bl = M(1) - cl * (X(2) - X(1));
+  // The right edge mirrors the left: a quadratic fit through the three nearest
+  // nodes, with cr the right-edge curvature and br the right-edge slope.
+  // Fortran VMEC's spline_akima.f instead reuses the left curvature cl on the
+  // right-edge phantom points, which gives the right boundary the wrong
+  // curvature and makes the interpolant orientation-dependent. Using cr keeps
+  // the two ends consistent (verified by AkimaIsReflectionSymmetric).
+  const double cr = (M(iv - 1) - M(iv - 2)) / (X(iv) - X(iv - 2));
+  const double br = M(iv - 1) - cr * (X(iv - 1) - X(iv));
+  Y(0) = Y(1) + bl * (X(0) - X(1)) + cl * std::pow(X(0) - X(1), 2);
+  Y(-1) = Y(1) + bl * (X(-1) - X(1)) + cl * std::pow(X(-1) - X(1), 2);
+  Y(iv + 1) =
+      Y(iv) + br * (X(iv + 1) - X(iv)) + cr * std::pow(X(iv + 1) - X(iv), 2);
+  Y(iv + 2) =
+      Y(iv) + br * (X(iv + 2) - X(iv)) + cr * std::pow(X(iv + 2) - X(iv), 2);
+  // phantom slopes
+  M(-1) = (Y(0) - Y(-1)) / (X(0) - X(-1));
+  M(0) = (Y(1) - Y(0)) / (X(1) - X(0));
+  M(iv) = (Y(iv + 1) - Y(iv)) / (X(iv + 1) - X(iv));
+  M(iv + 1) = (Y(iv + 2) - Y(iv + 1)) / (X(iv + 2) - X(iv + 1));
+  // Akima weights for the slope estimates
+  for (int f = -1; f <= iv; ++f) DM(f) = std::abs(M(f + 1) - M(f));
+  for (int i = 1; i <= iv; ++i) {
+    const double denom = DM(i) + DM(i - 2);
+    if (denom != 0.0) {  // exclude division by zero (locally-linear regions)
+      P(i) = DM(i) / denom;
+      Q(i) = DM(i - 2) / denom;
+    }
+  }
+  for (int i = 1; i <= iv; ++i) {
+    T(i) = P(i) * M(i - 1) + Q(i) * M(i);
+    // both weights zero -> give the two slopes equal weight
+    if (P(i) + Q(i) < std::numeric_limits<double>::min())
+      T(i) = 0.5 * M(i - 1) + 0.5 * M(i);
+  }
+  for (int f = -1; f <= iv + 2; ++f) {
+    A(f) = Y(f);
+    B(f) = T(f);
+  }
+  for (int i = 1; i <= iv - 1; ++i) {
+    const double h = X(i + 1) - X(i);
+    C(i) = (3 * M(i) - T(i + 1) - 2 * T(i)) / h;
+    D(i) = (T(i + 1) + T(i) - 2 * M(i)) / (h * h);
+  }
+  return r;
+}
+
+// Second derivatives of the natural-form cubic spline through (xa, ya), with
+// the boundary first-derivatives fixed by a quadratic fit to the three nearest
+// points. Ported from educational_VMEC spline_cubic.f (Numerical Recipes
+// spline()/splint() recoded).
+Eigen::VectorXd BuildCubicSecondDerivatives(const Eigen::VectorXd& xa,
+                                            const Eigen::VectorXd& ya) {
+  const int n = static_cast<int>(xa.size());
+  double c =
+      ((ya[2] - ya[0]) / (xa[2] - xa[0]) - (ya[1] - ya[0]) / (xa[1] - xa[0])) /
+      (xa[2] - xa[1]);
+  const double yp1 = (ya[1] - ya[0]) / (xa[1] - xa[0]) - c * (xa[1] - xa[0]);
+  c = ((ya[n - 3] - ya[n - 1]) / (xa[n - 3] - xa[n - 1]) -
+       (ya[n - 2] - ya[n - 1]) / (xa[n - 2] - xa[n - 1])) /
+      (xa[n - 3] - xa[n - 2]);
+  const double ypn = (ya[n - 2] - ya[n - 1]) / (xa[n - 2] - xa[n - 1]) -
+                     c * (xa[n - 2] - xa[n - 1]);
+  Eigen::VectorXd y2 = Eigen::VectorXd::Zero(n);
+  Eigen::VectorXd u = Eigen::VectorXd::Zero(n);
+  y2[0] = -0.5;
+  u[0] = (3.0 / (xa[1] - xa[0])) * ((ya[1] - ya[0]) / (xa[1] - xa[0]) - yp1);
+  for (int i = 1; i <= n - 2; ++i) {
+    const double sig = (xa[i] - xa[i - 1]) / (xa[i + 1] - xa[i - 1]);
+    const double p = sig * y2[i - 1] + 2.0;
+    y2[i] = (sig - 1.0) / p;
+    u[i] = (6.0 *
+                ((ya[i + 1] - ya[i]) / (xa[i + 1] - xa[i]) -
+                 (ya[i] - ya[i - 1]) / (xa[i] - xa[i - 1])) /
+                (xa[i + 1] - xa[i - 1]) -
+            sig * u[i - 1]) /
+           p;
+  }
+  const double qn = 0.5;
+  const double un = (3.0 / (xa[n - 1] - xa[n - 2])) *
+                    (ypn - (ya[n - 1] - ya[n - 2]) / (xa[n - 1] - xa[n - 2]));
+  y2[n - 1] = (un - qn * u[n - 2]) / (qn * y2[n - 2] + 1.0);
+  for (int k = n - 2; k >= 0; --k) y2[k] = y2[k] * y2[k + 1] + u[k];
+  return y2;
+}
+
+// Index of the lower knot of the interval containing x (binary search), as in
+// the Numerical Recipes splint().
+int CubicLowerIndex(const Eigen::VectorXd& xa, double x) {
+  int klo = 0;
+  int khi = static_cast<int>(xa.size()) - 1;
+  while (khi - klo > 1) {
+    const int k = (khi + klo) / 2;
+    if (xa[k] > x) {
+      khi = k;
+    } else {
+      klo = k;
+    }
+  }
+  return klo;
+}
+}  // namespace
+
+namespace vmecpp {
+
+RadialProfiles::RadialProfiles(const RadialPartitioning* r,
+                               HandoverStorage* m_h, const VmecINDATA* id,
+                               const FlowControl* fc, int signOfJacobian,
+                               double pDamp)
+    : r_(*r),
+      m_h_(*m_h),
+      id_(*id),
+      fc_(*fc),
+      signOfJacobian(signOfJacobian),
+      pDamp(pDamp) {
+  maxToroidalFlux = 0.0;
+  maxPoloidalFlux = 0.0;
+
+  currv = 0.0;
+  Itor = 0.0;
+  pressureScalingFactor = 0.0;
+
+  pmassType = ProfileParameterization::INVALID_PARAM;
+  piotaType = ProfileParameterization::INVALID_PARAM;
+  pcurrType = ProfileParameterization::INVALID_PARAM;
+
+  // half-grid
+  phipH.resize(r_.nsMaxH - r_.nsMinH);
+  chipH.resize(r_.nsMaxH - r_.nsMinH);
+  iotaH.resize(r_.nsMaxH - r_.nsMinH);
+  currH.resize(r_.nsMaxH - r_.nsMinH);
+  massH.resize(r_.nsMaxH - r_.nsMinH);
+  sqrtSH.resize(r_.nsMaxH - r_.nsMinH);
+
+  // full-grid
+  phipF.resize(r_.nsMaxF1 - r_.nsMinF1);
+  chipF.resize(r_.nsMaxF1 - r_.nsMinF1);
+  iotaF.resize(r_.nsMaxF1 - r_.nsMinF1);
+  sqrtSF.resize(r_.nsMaxF1 - r_.nsMinF1);
+  radialBlending.resize(r_.nsMaxF1 - r_.nsMinF1);
+
+  // ---------------------------------
+
+  dVdsH.resize(r_.nsMaxH - r_.nsMinH);
+  presH.resize(r_.nsMaxH - r_.nsMinH);
+  presH.setZero();  // read by the exact adjoint before the first update()
+  bucoH.resize(r_.nsMaxH - r_.nsMinH);
+  bvcoH.resize(r_.nsMaxH - r_.nsMinH);
+
+  jcuruF.resize(r_.nsMaxFi - r_.nsMinFi);
+  jcurvF.resize(r_.nsMaxFi - r_.nsMinFi);
+  presgradF.resize(r_.nsMaxFi - r_.nsMinFi);
+  dVdsF.resize(r_.nsMaxFi - r_.nsMinFi);
+  equiF.resize(r_.nsMaxFi - r_.nsMinFi);
+
+  spectral_width.resize(r_.nsMaxF1 - r_.nsMinF1);
+  spectral_width.setZero();
+
+  // ---------------------------------
+
+  scalxc.resize((r_.nsMaxF1 - r_.nsMinF1) * 2);
+
+  sm.resize(r_.nsMaxH - r_.nsMinH);
+  sm.setZero();
+  sp.resize(r_.nsMaxH - r_.nsMinH);
+  sp.setZero();
+}
+
+void RadialProfiles::setupInputProfiles() {
+  pmassType = findParameterization(id_.pmass_type, ProfileType::PRESSURE);
+  piotaType = findParameterization(id_.piota_type, ProfileType::IOTA);
+  pcurrType = findParameterization(id_.pcurr_type, ProfileType::CURRENT);
+
+  pressureScalingFactor = MU_0 * id_.pres_scale;
+
+  computeMagneticFluxes();
+}
+
+ProfileParameterization RadialProfiles::findParameterization(
+    const std::string& name, ProfileType intendedType) {
+  for (int i = 0; i < NUM_PARAM; ++i) {
+    if (name == AllProfileParameterizations()[i].Name()) {
+      bool isApplicable = false;
+      switch (intendedType) {
+        case ProfileType::PRESSURE:
+          isApplicable = AllProfileParameterizations()[i].IsAllowedFor().pres;
+          break;
+        case ProfileType::CURRENT:
+          isApplicable = AllProfileParameterizations()[i].IsAllowedFor().curr;
+          break;
+        case ProfileType::IOTA:
+          isApplicable = AllProfileParameterizations()[i].IsAllowedFor().iota;
+          break;
+        default:
+          std::cerr << absl::StrFormat("unknown profile: %s",
+                                       profileTypeToString(intendedType))
+                    << '\n';
+          break;
+      }
+
+      if (!isApplicable) {
+        std::cerr << absl::StrFormat(
+                         "profile name '%s' is not applicable for %s profile",
+                         AllProfileParameterizations()[i].Name(),
+                         profileTypeToString(intendedType))
+                  << '\n';
+        return ProfileParameterization::INVALID_PARAM;
+      }
+
+      return static_cast<ProfileParameterization>(i);
+    }
+  }
+  return ProfileParameterization::INVALID_PARAM;
+}
+
+std::string RadialProfiles::profileTypeToString(ProfileType profileType) {
+  switch (profileType) {
+    case ProfileType::PRESSURE:
+      return "pressure";
+    case ProfileType::CURRENT:
+      return "current";
+    case ProfileType::IOTA:
+      return "iota";
+    default:
+      return "<unknown>";
+  }
+}
+
+/** Compute the maximum toroidal and poloidal magnetic fluxes. */
+void RadialProfiles::computeMagneticFluxes() {
+  // the bloating factor scales the enclosed toroidal flux
+  const double phiedge = id_.phiedge * id_.bloat;
+  maxToroidalFlux = signOfJacobian * phiedge / (2.0 * M_PI);
+  double edgeToroidalFluxFromProfile = torflux(1.0);
+  if (edgeToroidalFluxFromProfile != 0.0) {
+    maxToroidalFlux /= edgeToroidalFluxFromProfile;
+  }
+
+  // maxPoloidalFlux is set here and then never read: chips and chipf are built
+  // from maxToroidalFlux * polfluxDeriv, so nothing in the solver consumes it,
+  // and only the reference comparison of profil1d does. Scaling it from
+  // maxToroidalFlux assumes phiedge scales both phi' and chi'.
+  maxPoloidalFlux = maxToroidalFlux;
+  double edgePoloidalFluxFromProfile = polflux(1.0);
+  if (edgePoloidalFluxFromProfile != 0.0) {
+    maxPoloidalFlux /= edgePoloidalFluxFromProfile;
+  }
+}
+
+/**
+ * Evaluate the derivative of the aphi polynomial at position x
+ * @param x evaluation position
+ * @return d(aphi)/dx at x
+ */
+double RadialProfiles::torfluxDeriv(double x) {
+  double torflux_deriv = 0.0;
+  for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
+    torflux_deriv = x * torflux_deriv + (i + 1) * id_.aphi[i];
+  }
+  return torflux_deriv;
+}
+
+/**
+ * Compute radial profile of enclosed toroidal flux
+ *
+ * @param x
+ * @return
+ */
+double RadialProfiles::torflux(double x) {
+  //  Analytic evaluation of the polynomial (0 at x=0) using Horner's method.
+  //  This is the exact integral of torfluxDeriv, which is what keeps the
+  //  normalization consistent: phipf is built from torfluxDeriv and
+  //  maxToroidalFlux divides by torflux(1), so the profile is scaled by the
+  //  value it actually integrates to and the enclosed flux at the edge comes
+  //  out at signOfJacobian * phiedge / 2 pi for any aphi. Approximating this
+  //  integral by a quadrature would divide by something else and miss it.
+  double torflux = 0.0;
+  for (int i = static_cast<int>(id_.aphi.size()) - 1; i >= 0; i--) {
+    torflux = x * torflux + id_.aphi[i];
+  }
+  return torflux * x;
+}
+
+/**
+ * TOKAMAK/STELLARATOR: d(chi)/ds = iota * d(phi)/ds
+ *
+ * @param x
+ * @return
+ */
+double RadialProfiles::polfluxDeriv(double x) {
+  // figure out what toroidal flux x corresponds to
+  double tf = std::min(torflux(x), 1.0);
+
+  // profiles are always specified in toroidal flux --> eval at toroidal flux
+  // corresponding to x
+  double iota = evalIotaProfile(tf);
+
+  double polflux_deriv = iota * torfluxDeriv(x);
+  return polflux_deriv;
+}
+
+/**
+ * Compute radial profile of enclosed poloidal flux
+ * by trapezoidal quadrature.
+ *
+ * @param x
+ * @return
+ */
+double RadialProfiles::polflux(double x) {
+  // trapezoidal integration outwards from 0 to x in N=100 steps
+  const int N = 100;
+  double delta_x = x / N;
+
+  double polflux = 0.0;
+  for (int i = 0; i <= N; ++i) {
+    double contribution = polfluxDeriv(i * delta_x);
+    if (i == 0 || i == N) {
+      polflux += 0.5 * contribution;
+    } else {
+      polflux += contribution;
+    }
+  }
+  polflux *= delta_x;
+
+  return polflux;
+}
+
+double RadialProfiles::evalMassProfile(double x) {
+  // apply bloating factor
+  // only allowed for current and pressure profile (checked in
+  // VmecIndata.sanitize())
+  double normX = std::min(fabs(x * id_.bloat), 1.0);
+
+  double p = evalProfileFunction(pmassType, id_.am, id_.am_aux_s, id_.am_aux_f,
+                                 /*shouldIntegrate=*/false, normX);
+
+  return p * pressureScalingFactor;
+}
+
+double RadialProfiles::evalIotaProfile(double x) {
+  double p = evalProfileFunction(piotaType, id_.ai, id_.ai_aux_s, id_.ai_aux_f,
+                                 /*shouldIntegrate=*/false, x);
+
+  return p;
+}
+
+double RadialProfiles::evalCurrProfile(double x) {
+  // apply bloating factor
+  // only allowed for current and pressure profile (checked in
+  // VmecIndata.sanitize())
+  double normX = std::min(std::abs(x * id_.bloat), 1.0);
+
+  double p = evalProfileFunction(pcurrType, id_.ac, id_.ac_aux_s, id_.ac_aux_f,
+                                 /*shouldIntegrate=*/true, normX);
+
+  return p;
+}
+
+absl::Status RadialProfiles::CheckCurrentProfileEnclosesEdgeCurrent() {
+  if (id_.ncurr != 1) {
+    return absl::OkStatus();
+  }
+  const double edge_current = std::abs(evalCurrProfile(1.0));
+  double largest_current = edge_current;
+  static constexpr int kSamples = 100;
+  for (int i = 1; i < kSamples; ++i) {
+    largest_current =
+        std::max(largest_current,
+                 std::abs(evalCurrProfile(static_cast<double>(i) / kSamples)));
+  }
+  if (largest_current > 0.0 && edge_current <= 1.0e-10 * largest_current) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "the current profile '%s' encloses no net current at the boundary "
+        "(I(1) = %.3e against max |I| = %.3e), so it cannot be scaled to "
+        "curtor; give a profile with I(1) != 0 or prescribe iota with ncurr = "
+        "0",
+        id_.pcurr_type, edge_current, largest_current));
+  }
+  return absl::OkStatus();
+}
+
+double RadialProfiles::evalProfileFunction(const ProfileParameterization& param,
+                                           const Eigen::VectorXd& coeffs,
+                                           const Eigen::VectorXd& splineKnots,
+                                           const Eigen::VectorXd& splineValues,
+                                           bool shouldIntegrate, double normX) {
+  switch (param) {
+    case ProfileParameterization::POWER_SERIES:
+      return evalPowerSeries(coeffs, normX, shouldIntegrate);
+    case ProfileParameterization::POWER_SERIES_I:
+      return evalPowerSeriesI(coeffs, normX);
+    case ProfileParameterization::GAUSS_TRUNC:
+      return evalGaussTrunc(coeffs, normX, shouldIntegrate);
+    case ProfileParameterization::SUM_ATAN:
+      return evalSumAtan(coeffs, normX);
+    case ProfileParameterization::TWO_LORENTZ:
+      return evalTwoLorentz(coeffs, normX);
+    case ProfileParameterization::TWO_POWER:
+      return evalTwoPower(coeffs, normX, shouldIntegrate);
+    case ProfileParameterization::TWO_POWER_GS:
+      return evalTwoPowerGs(coeffs, normX, shouldIntegrate);
+    case ProfileParameterization::AKIMA_SPLINE:
+    case ProfileParameterization::AKIMA_SPLINE_I:
+      return evalAkima(splineKnots, splineValues, normX);
+    case ProfileParameterization::AKIMA_SPLINE_IP:
+      return evalAkimaIntegrated(splineKnots, splineValues, normX);
+    case ProfileParameterization::CUBIC_SPLINE:
+    case ProfileParameterization::CUBIC_SPLINE_I:
+      return evalCubic(splineKnots, splineValues, normX);
+    case ProfileParameterization::CUBIC_SPLINE_IP:
+      return evalCubicIntegrated(splineKnots, splineValues, normX);
+    case ProfileParameterization::PEDESTAL:
+      return evalPedestal(coeffs, normX, shouldIntegrate);
+    case ProfileParameterization::RATIONAL:
+      return evalRational(coeffs, normX);
+    case ProfileParameterization::LINE_SEGMENT:
+    case ProfileParameterization::LINE_SEGMENT_I:
+      return evalLineSegment(splineKnots, splineValues, normX);
+    case ProfileParameterization::LINE_SEGMENT_IP:
+      return evalLineSegmentIntegrated(splineKnots, splineValues, normX);
+    case ProfileParameterization::NICE_QUADRATIC:
+      return evalNiceQuadratic(coeffs, normX);
+    case ProfileParameterization::SUM_COSSQ_S:
+      return evalSumCossqS(coeffs, normX);
+    case ProfileParameterization::SUM_COSSQ_SQRTS:
+      return evalSumCossqSqrts(coeffs, normX);
+    case ProfileParameterization::SUM_COSSQ_S_FREE:
+      return evalSumCossqSFree(coeffs, normX);
+    default:
+      std::cerr
+          << absl::StrFormat(
+                 "profile parameterization '%s' not implemented yet",
+                 AllProfileParameterizations()[static_cast<int>(param)].Name())
+          << '\n';
+  }
+
+  return 0.0;
+}
+
+double RadialProfiles::evalPowerSeries(const Eigen::VectorXd& coeffs, double x,
+                                       bool should_integrate) {
+  double ret = 0.0;
+
+  for (Eigen::VectorXd::Index i = coeffs.size() - 1; i >= 0; i--) {
+    const double coeff = coeffs[i];
+    if (should_integrate) {
+      ret = x * ret + coeff / static_cast<double>(i + 1);
+    } else {
+      ret = x * ret + coeff;
+    }
+  }
+  if (should_integrate) {
+    ret *= x;
+  }
+  return ret;
+}
+
+double RadialProfiles::evalPowerSeriesI(const Eigen::VectorXd& coeffs,
+                                        double x) {
+  double ret = 0.0;
+  for (Eigen::VectorXd::Index i = coeffs.size() - 1; i >= 0; i--) {
+    const double coeff = coeffs[i];
+    ret = (ret + coeff) * x;
+  }
+  return ret;
+}
+
+double RadialProfiles::evalGaussTrunc(const Eigen::VectorXd& coeffs, double x,
+                                      bool shouldIntegrate) {
+  // Truncated Gaussian. Ported from Fortran VMEC pmass/pcurr 'gauss_trunc'.
+  if (coeffs.size() < 2) {
+    LOG(WARNING)
+        << "too few coefficients for 'gauss_trunc' profile; need 2, got "
+        << coeffs.size() << "\n";
+    return 0.0;
+  }
+  const double a0 = coeffs[0];
+  const double a1 = coeffs[1];
+  const double edge = std::exp(-std::pow(1.0 / a1, 2));
+  if (!shouldIntegrate) {
+    // pressure: p(s) = a0/(1 - exp(-(1/a1)^2)) * (exp(-(s/a1)^2) - edge),
+    // normalized so that p(0) = a0.
+    return (a0 / (1.0 - edge)) * (std::exp(-std::pow(x / a1, 2)) - edge);
+  }
+  // current: I(s) = integral_0^x of I-prime(s') = a0*(exp(-(s'/a1)^2) - edge),
+  // evaluated by 10-point Gauss-Legendre quadrature.
+  double integral = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    const double xp = x * kGaussLegendreNodes01[i];
+    integral += kGaussLegendreWeights01[i] * a0 *
+                (std::exp(-std::pow(xp / a1, 2)) - edge);
+  }
+  return integral * x;
+}
+
+double RadialProfiles::evalSumAtan(const Eigen::VectorXd& coeffs, double x) {
+  // c0 + (2/pi) * sum_i c_i * atan(c_{i+1} * x^c_{i+2} / (1 - x)^c_{i+3}) for
+  // i = 1, 5, 9, 13, 17; at x = 1 each term takes its limit from below.
+  double ret = 0.0;
+
+  if (coeffs.size() > 0) {
+    ret = coeffs[0];
+  }
+
+  if (x >= 1.0) {
+    for (int i = 1; i <= 17; i += 4) {
+      ret += Coef(coeffs, i) *
+             SumAtanEdge(Coef(coeffs, i + 1), Coef(coeffs, i + 3));
+    }
+  } else {
+    double atan_sum = 0.0;
+    for (int i = 1; i <= 17; i += 4) {
+      atan_sum +=
+          Coef(coeffs, i) *
+          std::atan(Coef(coeffs, i + 1) * std::pow(x, Coef(coeffs, i + 2)) /
+                    std::pow(1 - x, Coef(coeffs, i + 3)));
+    }
+    ret += 2.0 / M_PI * atan_sum;
+  }
+
+  return ret;
+}
+
+double RadialProfiles::evalTwoLorentz(const Eigen::VectorXd& coeffs, double x) {
+  if (coeffs.size() < 8) {
+    LOG(WARNING)
+        << "too few coefficients for 'two_lorentz' profile; need 8, got "
+        << coeffs.size() << "\n";
+    return 0.0;
+  }
+  double ret = 0.0;
+  ret =
+      coeffs[0] *
+      (coeffs[1] *
+           (1.0 /
+                std::pow(1.0 + std::pow(x / (coeffs[2] * coeffs[2]), coeffs[3]),
+                         coeffs[4]) -
+            1.0 / std::pow(
+                      1.0 + std::pow(1.0 / (coeffs[2] * coeffs[2]), coeffs[3]),
+                      coeffs[4])) /
+           (1.0 - 1.0 / std::pow(1.0 + std::pow(1.0 / (coeffs[2] * coeffs[2]),
+                                                coeffs[3]),
+                                 coeffs[4])) +
+       (1.0 - coeffs[1]) *
+           (1.0 /
+                std::pow(1.0 + std::pow(x / (coeffs[5] * coeffs[5]), coeffs[6]),
+                         coeffs[7]) -
+            1.0 / std::pow(
+                      1.0 + std::pow(1.0 / (coeffs[5] * coeffs[5]), coeffs[6]),
+                      coeffs[7])) /
+           (1.0 - 1.0 / std::pow(1.0 + std::pow(1.0 / (coeffs[5] * coeffs[5]),
+                                                coeffs[6]),
+                                 coeffs[7])));
+  return ret;
+}
+
+double RadialProfiles::evalTwoPower(const Eigen::VectorXd& coeffs, double x,
+                                    bool shouldIntegrate) {
+  const double c0 = Coef(coeffs, 0);
+  const double c1 = Coef(coeffs, 1);
+  const double c2 = Coef(coeffs, 2);
+  double ret = 0.0;
+  if (!shouldIntegrate) {
+    // p(s) = am(0) * [1 - s**am(1)]**am(2)
+    ret = c0 * std::pow(1.0 - std::pow(x, c1), c2);
+  } else {
+    // regular 10-pt Gauss-Legendre quadrature from pcurr() in Fortran VMEC
+    int ngl = 10;
+    std::array glx = {0.01304673574141414, 0.06746831665550774,
+                      0.1602952158504878,  0.2833023029353764,
+                      0.4255628305091844,  0.5744371694908156,
+                      0.7166976970646236,  0.8397047841495122,
+                      0.9325316833444923,  0.9869532642585859};
+    std::array glw = {0.03333567215434407, 0.0747256745752903,
+                      0.1095431812579910,  0.1346333596549982,
+                      0.1477621123573764,  0.1477621123573764,
+                      0.1346333596549982,  0.1095431812579910,
+                      0.0747256745752903,  0.03333567215434407};
+
+    ret = 0.0;
+    for (int i = 0; i < ngl; ++i) {
+      const double xp = x * glx[i];
+      ret += glw[i] * c0 * std::pow(1.0 - std::pow(xp, c1), c2);
+    }
+    ret *= x;
+  }
+  return ret;
+}
+
+double RadialProfiles::evalTwoPowerGs(const Eigen::VectorXd& coeffs, double x,
+                                      bool shouldIntegrate) {
+  // two_power with Gaussian peaks:
+  //   two_power(s) * (1 + sum_{i=3,6,...,18} c(i)*exp(-((s -
+  //   c(i+1))/c(i+2))^2))
+  // with two_power(s) = c0 * (1 - s^c1)^c2. Ported from Fortran VMEC
+  // functions.f (two_power_gs) and pmass/pcurr 'two_power_gs'.
+  auto raw = [&coeffs](double s) {
+    const double two_power =
+        Coef(coeffs, 0) *
+        std::pow(1.0 - std::pow(s, Coef(coeffs, 1)), Coef(coeffs, 2));
+    double gaussian = 1.0;
+    for (int i = 3; i <= 18; i += 3) {
+      const double amplitude = Coef(coeffs, i);
+      if (amplitude != 0.0) {
+        gaussian += amplitude *
+                    std::exp(-std::pow(
+                        (s - Coef(coeffs, i + 1)) / Coef(coeffs, i + 2), 2));
+      }
+    }
+    return two_power * gaussian;
+  };
+  if (!shouldIntegrate) {
+    return raw(x);
+  }
+  // current: integrate I-prime via 10-point Gauss-Legendre quadrature.
+  double integral = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    integral += kGaussLegendreWeights01[i] * raw(x * kGaussLegendreNodes01[i]);
+  }
+  return integral * x;
+}
+
+double RadialProfiles::evalAkima(const Eigen::VectorXd& splineKnots,
+                                 const Eigen::VectorXd& splineValues,
+                                 double x) {
+  // Akima spline interpolation. Ported from Fortran VMEC spline_akima.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'akima_spline' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  const AkimaCoeffs coeffs = BuildAkimaCoeffs(splineKnots, splineValues);
+  const int iv = coeffs.iv;
+  auto X = [&](int f) { return coeffs.xloc[f + 1]; };
+  // Outside the knot range Fortran returns 0 (and raises an error flag).
+  if (x < X(1) || x > X(iv)) {
+    return 0.0;
+  }
+  if (x == X(iv)) {
+    return splineValues[iv - 1];
+  }
+  for (int i = 1; i <= iv - 1; ++i) {
+    if (x >= X(i) && x < X(i + 1)) {
+      const double dx = x - X(i);
+      return coeffs.a[i + 1] +
+             dx * (coeffs.b[i + 1] +
+                   dx * (coeffs.c[i + 1] + coeffs.d[i + 1] * dx));
+    }
+  }
+  return 0.0;
+}
+
+double RadialProfiles::evalAkimaIntegrated(const Eigen::VectorXd& splineKnots,
+                                           const Eigen::VectorXd& splineValues,
+                                           double x) {
+  // Integral from the first knot to x of the Akima spline (enclosed current
+  // from an I-prime profile). Ported from Fortran VMEC spline_akima_int.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'akima_spline_ip' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  const AkimaCoeffs coeffs = BuildAkimaCoeffs(splineKnots, splineValues);
+  const int iv = coeffs.iv;
+  auto X = [&](int f) { return coeffs.xloc[f + 1]; };
+  constexpr double kThird = 1.0 / 3.0;
+  // integral over each complete interval [X(i), X(i+1)], i = 1 .. iv-1
+  std::vector<double> interval_integral(iv, 0.0);
+  for (int i = 1; i <= iv - 1; ++i) {
+    const double dx = X(i + 1) - X(i);
+    interval_integral[i] = coeffs.a[i + 1] * dx +
+                           0.5 * coeffs.b[i + 1] * dx * dx +
+                           kThird * coeffs.c[i + 1] * dx * dx * dx +
+                           0.25 * coeffs.d[i + 1] * dx * dx * dx * dx;
+  }
+  if (x >= X(iv)) {
+    double y = 0.0;
+    for (int i = 1; i <= iv - 1; ++i) y += interval_integral[i];
+    return y;
+  }
+  if (x <= X(1)) {
+    return 0.0;
+  }
+  double y = 0.0;
+  for (int i = 1; i <= iv - 1; ++i) {
+    if (x >= X(i + 1)) {
+      y += interval_integral[i];
+    } else {
+      const double dx = x - X(i);
+      y += dx * (coeffs.a[i + 1] + dx * (0.5 * coeffs.b[i + 1] +
+                                         dx * (kThird * coeffs.c[i + 1] +
+                                               0.25 * coeffs.d[i + 1] * dx)));
+      return y;
+    }
+  }
+  return y;
+}
+
+double RadialProfiles::evalCubic(const Eigen::VectorXd& splineKnots,
+                                 const Eigen::VectorXd& splineValues,
+                                 double x) {
+  // Cubic spline interpolation (Numerical Recipes spline/splint, boundary
+  // derivatives by quadratic fit). Ported from Fortran VMEC spline_cubic.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'cubic_spline' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  if (x < splineKnots[0] || x > splineKnots[n - 1]) {
+    return 0.0;
+  }
+  const Eigen::VectorXd y2 =
+      BuildCubicSecondDerivatives(splineKnots, splineValues);
+  const int klo = CubicLowerIndex(splineKnots, x);
+  const int khi = klo + 1;
+  const double h = splineKnots[khi] - splineKnots[klo];
+  const double a = (splineKnots[khi] - x) / h;
+  const double b = (x - splineKnots[klo]) / h;
+  return a * splineValues[klo] + b * splineValues[khi] +
+         ((a * a * a - a) * y2[klo] + (b * b * b - b) * y2[khi]) * (h * h) /
+             6.0;
+}
+
+double RadialProfiles::evalCubicIntegrated(const Eigen::VectorXd& splineKnots,
+                                           const Eigen::VectorXd& splineValues,
+                                           double x) {
+  // Integral from the first knot to x of the cubic spline (enclosed current
+  // from an I-prime profile). Ported from Fortran VMEC spline_cubic_int.f.
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 4 || n != static_cast<int>(splineValues.size())) {
+    LOG(WARNING)
+        << "'cubic_spline_ip' profile needs at least 4 spline points; got " << n
+        << " knots and " << splineValues.size() << " values\n";
+    return 0.0;
+  }
+  if (x < splineKnots[0] || x > splineKnots[n - 1]) {
+    return 0.0;
+  }
+  const Eigen::VectorXd y2 =
+      BuildCubicSecondDerivatives(splineKnots, splineValues);
+  const int klo = CubicLowerIndex(splineKnots, x);
+  const int khi = klo + 1;
+  // integral over the complete intervals before the one containing x
+  double prefix = 0.0;
+  for (int i = 0; i < klo; ++i) {
+    const double dxa = splineKnots[i + 1] - splineKnots[i];
+    prefix += 0.5 * dxa * (splineValues[i + 1] + splineValues[i]) -
+              (dxa * dxa * dxa) * (y2[i + 1] + y2[i]) / 24.0;
+  }
+  const double h = splineKnots[khi] - splineKnots[klo];
+  const double dx = x - splineKnots[klo];
+  const double dya = splineValues[khi] - splineValues[klo];
+  const double dy2a = y2[khi] - y2[klo];
+  const double y = splineValues[klo] * dx + 0.5 * dya * dx * dx / h +
+                   y2[klo] * dx * dx * (2 * dx - 3 * h) / 12.0 +
+                   dy2a * dx * dx * (dx * dx - 2 * h * h) / (h * 24.0);
+  return y + prefix;
+}
+
+double RadialProfiles::evalPedestal(const Eigen::VectorXd& coeffs, double x,
+                                    bool shouldIntegrate) {
+  // Pedestal profile. Ported from Fortran VMEC pcurr/pmass 'pedestal'. The
+  // enclosed-current and pressure variants use different coefficient layouts,
+  // selected here by shouldIntegrate (true for the current profile). Neither
+  // form is numerically integrated: the current variant's polynomial backbone
+  // already represents I(s).
+  if (shouldIntegrate) {
+    // current: polynomial backbone c(0..7) (in already-enclosed-current form)
+    // plus three tanh pedestal terms.
+    double value = 0.0;
+    for (int i = 7; i >= 0; --i) {
+      value = x * value + Coef(coeffs, i) / (i + 1.0);
+    }
+    value *= x;
+
+    double width = Coef(coeffs, 11);
+    double amplitude = Coef(coeffs, 8);
+    double normalization;
+    if (width <= 0.0) {
+      // disable the first pedestal term
+      amplitude = 0.0;
+      normalization = 0.0;
+      width = 1.0e30;
+    } else {
+      normalization = 1.0 / (std::tanh(2.0 * Coef(coeffs, 10) / width) -
+                             std::tanh(2.0 * (Coef(coeffs, 10) - 1) / width));
+    }
+    const double width1 = std::max(Coef(coeffs, 16), 0.01);
+    const double width2 = std::max(Coef(coeffs, 20), 0.01);
+    const double g1 = (x - Coef(coeffs, 15)) / width1;
+    const double g3 = (-Coef(coeffs, 15)) / width1;
+    const double g2 = (x - Coef(coeffs, 19)) / width2;
+    const double g4 = (-Coef(coeffs, 19)) / width2;
+    value += normalization * amplitude *
+                 (std::tanh(2.0 * Coef(coeffs, 10) / width) -
+                  std::tanh(2.0 * (Coef(coeffs, 10) - std::sqrt(x)) / width)) +
+             Coef(coeffs, 13) * (std::tanh(g1) - std::tanh(g3)) +
+             Coef(coeffs, 17) * (std::tanh(g2) - std::tanh(g4));
+    return value;
+  }
+  // pressure: polynomial backbone c(0..15) plus one tanh pedestal term.
+  double value = 0.0;
+  for (int i = 15; i >= 0; --i) {
+    value = x * value + Coef(coeffs, i);
+  }
+
+  double width = Coef(coeffs, 19);
+  double normalization;
+  if (width <= 0.0) {
+    normalization = 0.0;
+    width = 1.0e30;
+  } else {
+    normalization = 1.0 / (std::tanh(2.0 * Coef(coeffs, 18) / width) -
+                           std::tanh(2.0 * (Coef(coeffs, 18) - 1) / width));
+  }
+  value += normalization * Coef(coeffs, 17) *
+           (std::tanh(2.0 * (Coef(coeffs, 18) - std::sqrt(x)) / width) -
+            std::tanh(2.0 * (Coef(coeffs, 18) - 1.0) / width));
+  return value;
+}
+
+double RadialProfiles::evalRational(const Eigen::VectorXd& coeffs, double x) {
+  // Ratio of polynomials: numerator coefficients c(0..9), denominator
+  // coefficients c(10..). Ported from Fortran VMEC pcurr/piota/pmass
+  // 'rational'.
+  double numerator = 0.0;
+  for (int i = 9; i >= 0; --i) {
+    numerator = x * numerator + Coef(coeffs, i);
+  }
+  double denominator = 0.0;
+  for (int i = static_cast<int>(coeffs.size()) - 1; i >= 10; --i) {
+    denominator = x * denominator + Coef(coeffs, i);
+  }
+  return (denominator != 0.0) ? numerator / denominator
+                              : std::numeric_limits<double>::max();
+}
+
+// Linear interpolation between the two knots that bracket x, continued along
+// the first or last segment for an x outside the knots.
+double RadialProfiles::evalLineSegment(const Eigen::VectorXd& splineKnots,
+                                       const Eigen::VectorXd& splineValues,
+                                       double x) {
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 2 || n != static_cast<int>(splineValues.size())) {
+    return 0.0;
+  }
+  int ilow = 0;
+  if (x >= splineKnots[n - 1]) {
+    ilow = n - 2;
+  } else if (x > splineKnots[0]) {
+    // the first knot strictly above x, so the interval below it encloses x and
+    // has positive length
+    const auto upper =
+        std::upper_bound(splineKnots.begin(), splineKnots.end(), x);
+    ilow = static_cast<int>(std::distance(splineKnots.begin(), upper)) - 1;
+  }
+  const double x0 = splineKnots[ilow];
+  const double x1 = splineKnots[ilow + 1];
+  const double y0 = splineValues[ilow];
+  const double y1 = splineValues[ilow + 1];
+  const double t = (x - x0) / (x1 - x0);
+  return (1.0 - t) * y0 + t * y1;
+}
+
+// Integral of evalLineSegment from 0 to x.
+double RadialProfiles::evalLineSegmentIntegrated(
+    const Eigen::VectorXd& splineKnots, const Eigen::VectorXd& splineValues,
+    double x) {
+  const int n = static_cast<int>(splineKnots.size());
+  if (n < 2 || n != static_cast<int>(splineValues.size())) {
+    return 0.0;
+  }
+
+  const auto value_at = [this, &splineKnots, &splineValues](double xi) {
+    return evalLineSegment(splineKnots, splineValues, xi);
+  };
+
+  // The interpolant is linear between consecutive knots and along the
+  // continued end segments outside them, so the trapezoidal rule is exact on
+  // every piece the knots inside (0, x) cut the interval into.
+  double result = 0.0;
+  double lower = 0.0;
+  for (int i = 0; i < n && splineKnots[i] < x; ++i) {
+    if (splineKnots[i] <= lower) {
+      continue;
+    }
+    const double upper = splineKnots[i];
+    result += 0.5 * (upper - lower) * (value_at(lower) + value_at(upper));
+    lower = upper;
+  }
+  result += 0.5 * (x - lower) * (value_at(lower) + value_at(x));
+
+  return result;
+}
+
+double RadialProfiles::evalNiceQuadratic(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  // iota(s) = a0*(1 - s) + a1*s + 4*a2*s*(1 - s): a0 and a1 are the values at
+  // s = 0 and s = 1, a2 is the shift of iota(1/2) from the straight line.
+  // Ported from Fortran VMEC piota 'nice_quadratic'.
+  return Coef(coeffs, 0) * (1.0 - x) + Coef(coeffs, 1) * x +
+         4.0 * Coef(coeffs, 2) * x * (1.0 - x);
+}
+
+namespace {
+// Integral from lower to upper of cos^2(pi (t - center) / (2 half_width)), the
+// enclosed current of one cos^2 hump of the sum_cossq profiles.
+double CosSqHumpIntegral(double center, double half_width, double lower,
+                         double upper) {
+  const auto primitive = [center, half_width](double t) {
+    return 0.5 * (t - center) + half_width / (2.0 * M_PI) *
+                                    std::sin(M_PI * (t - center) / half_width);
+  };
+  return primitive(upper) - primitive(lower);
+}
+}  // namespace
+
+// Enclosed current of coeffs[0] cos^2 humps in s of half-width
+// delta = 1 / (coeffs[0] - 1), centred on (i - 1) delta with amplitude
+// coeffs[i] for i = 1, ..., coeffs[0]; the two end humps are cut at s = 0 and
+// s = 1. Ported from Fortran VMEC pcurr 'sum_cossq_s'.
+double RadialProfiles::evalSumCossqS(const Eigen::VectorXd& coeffs, double x) {
+  const int num_humps = static_cast<int>(Coef(coeffs, 0));
+  if (num_humps < 2) {
+    return 0.0;
+  }
+  const double delta = 1.0 / (num_humps - 1);
+  double current = 0.0;
+  for (int i = 1; i <= num_humps; ++i) {
+    const double center = (i - 1) * delta;
+    const double lower = std::max(0.0, center - delta);
+    const double upper = std::min(x, std::min(center + delta, 1.0));
+    if (upper > lower) {
+      current +=
+          Coef(coeffs, i) * CosSqHumpIntegral(center, delta, lower, upper);
+    }
+  }
+  return current;
+}
+
+// The same humps placed in rho = sqrt(s), so the enclosed current is the
+// integral of hump times rho up to sqrt(s). Ported from Fortran VMEC pcurr
+// 'sum_cossq_sqrts'.
+double RadialProfiles::evalSumCossqSqrts(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  const int num_humps = static_cast<int>(Coef(coeffs, 0));
+  if (num_humps < 2) {
+    return 0.0;
+  }
+  const double delta = 1.0 / (num_humps - 1);
+  const double rho = std::sqrt(std::max(x, 0.0));
+  double current = 0.0;
+  for (int i = 1; i <= num_humps; ++i) {
+    const double center = (i - 1) * delta;
+    const double lower = std::max(0.0, center - delta);
+    const double upper = std::min(rho, std::min(center + delta, 1.0));
+    if (upper <= lower) {
+      continue;
+    }
+    // antiderivative of t cos^2(pi (t - center) / (2 delta))
+    const auto primitive = [center, delta](double t) {
+      const double angle = M_PI * (t - center) / delta;
+      return 0.25 * t * t + delta * t / (2.0 * M_PI) * std::sin(angle) +
+             delta * delta / (2.0 * M_PI * M_PI) * std::cos(angle);
+    };
+    current += Coef(coeffs, i) * (primitive(upper) - primitive(lower));
+  }
+  return current;
+}
+
+// Up to seven cos^2 humps in s with their own amplitude coeffs[3 i], centre
+// coeffs[3 i + 1] and half-width coeffs[3 i + 2], each cut at s = 0 and
+// s = 1. Ported from Fortran VMEC pcurr 'sum_cossq_s_free'.
+double RadialProfiles::evalSumCossqSFree(const Eigen::VectorXd& coeffs,
+                                         double x) {
+  double current = 0.0;
+  for (int i = 0; i < 7; ++i) {
+    const double amplitude = Coef(coeffs, 3 * i);
+    const double center = Coef(coeffs, 3 * i + 1);
+    const double half_width = Coef(coeffs, 3 * i + 2);
+    if (amplitude == 0.0 || half_width <= 0.0) {
+      continue;
+    }
+    const double lower = std::max(0.0, center - half_width);
+    const double upper = std::min(x, std::min(center + half_width, 1.0));
+    if (upper > lower) {
+      current +=
+          amplitude * CosSqHumpIntegral(center, half_width, lower, upper);
+    }
+  }
+  return current;
+}
+
+void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
+                                        VmecConstants& m_vmecconst) {
+  // R_00 of initial boundary is ~ major radius
+  // and used as normalization factor for mass profile
+  const double r00 = id_.rbc(0, id_.ntor);
+
+  // scale profile of enclosed toroidal current to prescribed net toroidal
+  // current,
+  currv = MU_0 * id_.curtor;
+
+  // only scale current profile if value at edge is "sufficiently non-zero"
+  // outermost value of enclosed current profile -->
+  const double edgeCurrent = evalCurrProfile(1.0);
+  Itor = 0.0;
+  // Fortran profil1d.f90 compares against EPSILON(pedge)*curtor in the same
+  // way. The guard exists to keep the division below from blowing up on a
+  // vanishing edge value; currv differs from curtor only by MU_0, so which of
+  // the two sets the scale makes no practical difference.
+  if (std::abs(edgeCurrent) > std::abs(DBL_EPSILON * id_.curtor)) {
+    // FACTOR OF SIGNGS NEEDED HERE, SINCE MATCH IS MADE TO LINE INTEGRAL OF
+    // BSUBU (IN GETIOTA) ~ SIGNGS * CURTOR
+    Itor = signOfJacobian * currv / (2.0 * M_PI * edgeCurrent);
+  }
+
+  double local_rmsPhiP = 0.0;
+
+  // half-grid
+  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    const double halfGridPos = (jH + 0.5) / (fc_.ns - 1.0);
+
+    // normalized toroidal flux array
+    sqrtSH[jH - r_.nsMinH] = std::sqrt(halfGridPos);
+
+    phipH[jH - r_.nsMinH] = maxToroidalFlux * torfluxDeriv(halfGridPos);
+    chipH[jH - r_.nsMinH] = maxToroidalFlux * polfluxDeriv(halfGridPos);
+
+    const double toroidalFlux = std::min(torflux(halfGridPos), 1.0);
+    iotaH[jH - r_.nsMinH] = evalIotaProfile(toroidalFlux);
+    currH[jH - r_.nsMinH] = evalCurrProfile(toroidalFlux);
+
+    if (haveToFlipTheta) {
+      chipH[jH - r_.nsMinH] *= -1.0;
+      iotaH[jH - r_.nsMinH] *= -1.0;
+    }
+
+    // here effectively:
+    // Itor == mu0/(2 * pi) * curtor * signgs
+    // and then includes also 1/edgeCurrent to normalize profile of enclosed
+    // toroidal current
+    currH[jH - r_.nsMinH] *= Itor;
+
+    // mass profile
+
+    // effectively vpnorm == phipH[jH]
+    const double vpnorm = maxToroidalFlux * torfluxDeriv(halfGridPos);
+    const double massEvalPos = std::min(halfGridPos, id_.spres_ped);
+    // if (massEvalPos > id_.spres_ped) {
+    //     massEvalPos = id_.spres_ped;
+    // }
+    const double massEvalTorFlux = std::min(torflux(massEvalPos), 1.0);
+    const double mass = evalMassProfile(massEvalTorFlux);
+    massH[jH - r_.nsMinH] = mass * std::pow(std::abs(vpnorm) * r00, id_.gamma);
+
+    // This must be done over UNIQUE half-grid points !!!
+    // --> The standard partitioning has half-grid points between
+    //     neighboring ranks that are handled by both ranks.
+    if (jH < r_.nsMaxH - 1 || jH == fc_.ns - 2) {
+      local_rmsPhiP += phipH[jH - r_.nsMinH] * phipH[jH - r_.nsMinH];
+    }
+  }
+
+  // global accumulation of rmsPhiP
+  m_vmecconst.rmsPhiP += local_rmsPhiP;
+
+  // ------------------------------------------
+
+  const double sqrtS1 = sqrt(1.0 / (fc_.ns - 1));
+
+  // full-grid
+  for (int jF1 = r_.nsMinF1; jF1 < r_.nsMaxF1; ++jF1) {
+    const double fullGridPos = jF1 / (fc_.ns - 1.0);
+
+    // normalized toroidal flux array
+    sqrtSF[jF1 - r_.nsMinF1] = std::sqrt(fullGridPos);
+
+    phipF[jF1 - r_.nsMinF1] = maxToroidalFlux * torfluxDeriv(fullGridPos);
+    chipF[jF1 - r_.nsMinF1] = maxToroidalFlux * polfluxDeriv(fullGridPos);
+
+    const double toroidalFlux = std::min(torflux(fullGridPos), 1.0);
+    iotaF[jF1 - r_.nsMinF1] = evalIotaProfile(toroidalFlux);
+
+    // Fortran bdamp, from profil1d.f90. A linear ramp from 2*pDamp at the axis
+    // to 0 at the boundary, which with pDamp = 0.05 is 0.1 to 0. bcovar.f90
+    // uses it as lvv, the weight blending the two estimates of the covariant
+    // B_v on the full grid; hybridLambdaForce does the same here. That a
+    // time-step parameter sets a radial blending weight is odd, and the
+    // reference says so too. The amount can be adjusted in 0...1 to trade
+    // convergence speed.
+    radialBlending[jF1 - r_.nsMinF1] = 2.0 * pDamp * (1.0 - fullGridPos);
+
+    // even-m: no scaling
+    scalxc[(jF1 - r_.nsMinF1) * 2 + kEvenParity] = 1.0;
+
+    // odd-m: factor out 1/sqrt(s)
+    // This is Eqn. (8c) in Hirshman, Schwenn & Nuehrenberg (1990).
+    // The innermost full-grid point (== magnetic axis)
+    // gets sqrt(s) of the innermost actual flux surface at j=1.
+    // This is a constant extrapolation towards the axis.
+    scalxc[(jF1 - r_.nsMinF1) * 2 + kOddParity] =
+        1.0 / std::max(sqrtSF[jF1 - r_.nsMinF1], sqrtS1);
+  }
+
+  // avoid round-off errors
+  if (r_.nsMaxF1 == fc_.ns) {
+    sqrtSF[fc_.ns - 1 - r_.nsMinF1] = 1.0;
+  }
+
+  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    const int jFi = jH;
+    const int jFo = jH + 1;
+    sm[jH - r_.nsMinH] = sqrtSH[jH - r_.nsMinH] / sqrtSF[jFo - r_.nsMinF1];
+    if (jH > 0) {
+      sp[jH - r_.nsMinH] = sqrtSH[jH - r_.nsMinH] / sqrtSF[jFi - r_.nsMinF1];
+    }
+  }  // jH
+  if (r_.nsMinH == 0) {
+    // cannot divide by sqrtSF[0]==0, so extrapolate as constant from next point
+    sp[0] = sm[0];
+  }
+}  // evalRadialProfiles
+
+void RadialProfiles::AccumulateVolumeAveragedSpectralWidth() const {
+  SpectralWidthContribution spectral_width_contribution = {.numerator = 0.0,
+                                                           .denominator = 0.0};
+
+  for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
+    // This must be done over UNIQUE half-grid points !!!
+    // --> The standard partitioning has half-grid points between
+    //     neighboring ranks that are handled by both ranks.
+    if (jH < r_.nsMaxH - 1 || jH == fc_.ns - 2) {
+      const int jFi = jH;
+      const int jFo = jH + 1;
+
+      const double spectral_width_on_half_grid =
+          (spectral_width[jFo - r_.nsMinF1] +
+           spectral_width[jFi - r_.nsMinF1]) /
+          2.0;
+      spectral_width_contribution.numerator +=
+          spectral_width_on_half_grid * dVdsH[jH - r_.nsMinH];
+
+      spectral_width_contribution.denominator += dVdsH[jH - r_.nsMinH];
+    }
+  }  // jH
+
+  SumOverThreads(&spectral_width_contribution.numerator, 1, r_.get_thread_id(),
+                 r_.get_num_threads(), m_h_.thread_reduce_slots.data(),
+                 m_h_.SpectralWidthNumerator());
+  SumOverThreads(&spectral_width_contribution.denominator, 1,
+                 r_.get_thread_id(), r_.get_num_threads(),
+                 m_h_.thread_reduce_slots.data(),
+                 m_h_.SpectralWidthDenominator());
+}  // AccumulateVolumeAveragedSpectralWidth
+
+}  // namespace vmecpp

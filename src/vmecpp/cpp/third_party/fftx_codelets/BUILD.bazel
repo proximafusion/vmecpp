@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+#
+# Vendored FFTX/SPIRAL codelets for vmecpp's toroidal FFT path.
+# See README.md for what shapes are covered and how to regenerate.
+
+cc_library(
+    name = "fftx_codelets",
+    srcs = glob([
+        "lib_fftx_iprdftbat_cpu_srcs/*.cpp",
+        "lib_fftx_prdftbat_cpu_srcs/*.cpp",
+    ]),
+    hdrs = glob([
+        "lib_fftx_iprdftbat_cpu_srcs/*.h",
+        "lib_fftx_prdftbat_cpu_srcs/*.h",
+        "include/*.h",
+        "include/*.hpp",
+    ]),
+    includes = [
+        # SPIRAL kernels include <include/omega64.h>; this directory ends up on
+        # the search path so that resolves to "include/omega64.h" relative to
+        # the package root.
+        ".",
+        # Direct includes for fftx_minimal.hpp and the kernel public/decls
+        # headers.  Bazel adds the package-relative paths via "includes" so
+        # `#include "fftx_minimal.hpp"` works without a leading directory.
+        "include",
+        "lib_fftx_iprdftbat_cpu_srcs",
+        "lib_fftx_prdftbat_cpu_srcs",
+    ],
+    visibility = ["//visibility:public"],
+)

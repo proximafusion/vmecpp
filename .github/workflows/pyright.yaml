@@ -1,0 +1,41 @@
+name: Python Type Checking
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Cancel currently running job if a new one comes along for the same branch or tag.
+# From https://stackoverflow.com/a/72408109.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  tests:
+    name: Pyright type check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install build-essential cmake zlib1g-dev python3-dev
+      # Parse the dependencies from the pyproject.toml file and install them,
+      # without installing and building the entire vmecpp project
+      - run: |
+          uv venv .venv
+          uv pip install .
+
+      - run: echo "$PWD/.venv/bin" >> $GITHUB_PATH
+      - uses: jakebailey/pyright-action@v2
+        with:
+          version: 1.1.400

@@ -1,0 +1,2504 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/vmec/vmec.h"
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <numbers>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "vmecpp/common/flow_control/flow_control.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
+#include "vmecpp/common/util/util.h"
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/free_boundary/nestor/nestor.h"
+#include "vmecpp/free_boundary/only_coils/only_coils.h"
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
+#include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/profile_parameterization_data/profile_parameterization_data.h"
+
+namespace {
+
+void UpdateStatusForThread(absl::Status& m_status_of_all_threads, int thread_id,
+                           const absl::Status& thread_status) {
+  CHECK(!thread_status.ok()) << "UpdateStatusForThread expects an error status";
+
+  const auto thread_msg =
+      absl::StrFormat("Thread %i:\n\t%s\n", thread_id, thread_status.message());
+
+  // Collapses to kInternal; recoverability is tracked separately.
+  if (m_status_of_all_threads.ok()) {
+    m_status_of_all_threads = absl::InternalError(absl::StrCat(
+        "There was an error in one or more threads during a VMEC++ run:\n",
+        thread_msg));
+    return;
+  }
+
+  m_status_of_all_threads = absl::InternalError(
+      absl::StrCat(m_status_of_all_threads.message(), thread_msg));
+}
+
+absl::Status HotRestartMismatch(absl::Status status) {
+  status.SetPayload(vmecpp::kHotRestartMismatchPayload, absl::Cord());
+  return status;
+}
+
+// Check preconditions on (initial_state, indata) pair passed to Vmec::run
+// in order to make sure that the state to hot-restart from can be copied over
+// 1:1.
+absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
+                               const vmecpp::VmecINDATA& indata) {
+  const auto msg_start = "Mismatch in variable '";
+  const auto msg_end =
+      "' between hot restart initial state and indata. This is not supported "
+      "yet.";
+
+  // check for match in `lasym`, since that determines whether
+  // non-stellarator-symmetric terms are expected or not
+  if (initial_state.indata.lasym != indata.lasym) {
+    return HotRestartMismatch(
+        absl::InvalidArgumentError(absl::StrCat(msg_start, "lasym", msg_end)));
+  }
+
+  // check for `mpol` and `ntor` match, since they determine the expected array
+  // size in tangential direction
+  if (initial_state.indata.mpol != indata.mpol) {
+    return HotRestartMismatch(
+        absl::InvalidArgumentError(absl::StrCat(msg_start, "mpol", msg_end)));
+  }
+  if (initial_state.indata.ntor != indata.ntor) {
+    return HotRestartMismatch(
+        absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end)));
+  }
+
+  // check for matching `ns`: the state is read from the wout, one column per
+  // flux surface
+  if (initial_state.wout.ns != indata.ns_array[0]) {
+    return HotRestartMismatch(absl::InvalidArgumentError(absl::StrFormat(
+        "%sns_array%s The wout of the initial state has ns = %d, but "
+        "ns_array[0] = %d.",
+        msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0])));
+  }
+
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
+    const VmecINDATA& indata, std::optional<HotRestartState> initial_state,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  auto maybe_vmec = Vmec::FromIndata(indata, nullptr, max_threads, verbose,
+                                     std::move(interrupt_callback),
+                                     std::move(iteration_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
+
+  // the values of the first three arguments should just be VMEC's defaults
+  absl::StatusOr<bool> s =
+      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+
+  if (!s.ok()) {
+    return s.status();
+  }
+
+  return std::move(v.output_quantities_);
+}
+
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable& magnetic_response_table,
+    std::optional<HotRestartState> initial_state,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  auto maybe_vmec = Vmec::FromIndata(
+      indata, &magnetic_response_table, max_threads, verbose,
+      std::move(interrupt_callback), std::move(iteration_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
+
+  // the values of the first three arguments should just be VMEC's defaults
+  absl::StatusOr<bool> s =
+      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+
+  if (!s.ok()) {
+    return s.status();
+  }
+
+  return std::move(v.output_quantities_);
+}
+
+absl::StatusOr<vmecpp::OutputQuantities> vmecpp::run(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<HotRestartState> initial_state,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  auto maybe_vmec = Vmec::FromIndata(
+      indata, std::move(magnetic_field), max_threads, verbose,
+      std::move(interrupt_callback), std::move(iteration_callback));
+  if (!maybe_vmec.ok()) {
+    return maybe_vmec.status();
+  }
+  Vmec& v = **maybe_vmec;
+
+  // the values of the first three arguments should just be VMEC's defaults
+  absl::StatusOr<bool> s =
+      v.run(VmecCheckpoint::NONE, INT_MAX, 500, std::move(initial_state));
+
+  if (!s.ok()) {
+    return s.status();
+  }
+
+  return std::move(v.output_quantities_);
+}
+
+namespace vmecpp {
+
+namespace {
+// Checks what the Vmec constructor relies on.
+absl::Status CheckConstructorArguments(const VmecINDATA& indata,
+                                       std::optional<int> max_threads) {
+  // check the input before the constructor builds Sizes from it; the
+  // informational messages are left to the check in run()
+  absl::Status is_indata_consistent =
+      IsConsistent(indata, /*enable_info_messages=*/false);
+  if (!is_indata_consistent.ok()) {
+    return is_indata_consistent;
+  }
+
+  // the constructor sizes the thread pool from max_threads
+  if (max_threads.has_value() && *max_threads < 1) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "The number of threads must be >= 1, but is %d. To use all available "
+        "threads, leave max_threads unset.",
+        *max_threads));
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata,
+    const makegrid::MagneticFieldResponseTable* magnetic_response_table,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  absl::Status arguments_status =
+      CheckConstructorArguments(indata, max_threads);
+  if (!arguments_status.ok()) {
+    return arguments_status;
+  }
+
+  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+                                  std::move(interrupt_callback),
+                                  std::move(iteration_callback));
+
+  // This part of Vmec initialization requires Status handling, and is therefore
+  // in this factory method instead of the constructor.
+  if (indata.lfreeb) {
+    absl::Status s{};
+    if (magnetic_response_table == nullptr) {
+      s = v->mgrid_.LoadFile(indata.mgrid_file, indata.extcur);
+    } else {
+      s = v->mgrid_.LoadFields(*magnetic_response_table, indata.extcur);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+    v->magnetic_field_ =
+        std::bind_front(&MGridProvider::interpolate, &v->mgrid_);
+  }
+
+  return v;
+}
+
+absl::StatusOr<std::unique_ptr<Vmec>> Vmec::FromIndata(
+    const VmecINDATA& indata, MagneticFieldFunction magnetic_field,
+    std::optional<int> max_threads, OutputMode verbose,
+    InterruptCallback interrupt_callback,
+    IterationCallback iteration_callback) {
+  if (!magnetic_field) {
+    return absl::InvalidArgumentError("magnetic_field must not be empty.");
+  }
+  absl::Status arguments_status =
+      CheckConstructorArguments(indata, max_threads);
+  if (!arguments_status.ok()) {
+    return arguments_status;
+  }
+
+  auto v = std::make_unique<Vmec>(indata, max_threads, verbose,
+                                  std::move(interrupt_callback),
+                                  std::move(iteration_callback));
+  v->magnetic_field_ = std::move(magnetic_field);
+  return v;
+}
+
+// initialize based on input file contents
+namespace {
+// Fourier cutoffs of the vacuum potential: the plasma's unless raised.
+int VacuumMpol(const vmecpp::VmecINDATA& indata) {
+  return std::max(indata.vacuum_mpol, indata.mpol);
+}
+int VacuumNtor(const vmecpp::VmecINDATA& indata) {
+  return std::max(indata.vacuum_ntor, indata.ntor);
+}
+}  // namespace
+
+Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
+           OutputMode verbose, InterruptCallback interrupt_callback,
+           IterationCallback iteration_callback)
+    : indata_(indata),
+      s_(indata_),
+      vacuum_s_(indata_.lasym, indata_.nfp, VacuumMpol(indata_),
+                VacuumNtor(indata_), s_.ntheta, s_.nZeta, VacuumMpol(indata_),
+                VacuumNtor(indata_)),
+      t_(&s_),
+      b_(&s_, &t_, indata_.signgs),
+      h_(&s_),
+      fc_(indata_.lfreeb, indata_.delt,
+          static_cast<int>(indata_.ns_array.size()), max_threads),
+      verbose_(verbose != OutputMode::kSilent),
+      logger_(std::cout, verbose),
+      interrupt_callback_(std::move(interrupt_callback)),
+      iteration_callback_(std::move(iteration_callback)),
+      vacuum_pressure_state_(VacuumPressureState::kOff),
+      status_(VmecStatus::NORMAL_TERMINATION),
+      iter2_(1),
+      iter1_(iter2_),
+      invTau_(kNDamp),
+      last_preconditioner_update_(0),
+      last_full_update_nestor_(0) {
+  always_fix_m1_gauge_ = indata_.always_fix_m1_gauge;
+
+  // remainder of readin()
+  fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
+
+  if (fc_.lfreeb) {
+    // tangential Fourier resolution of the vacuum potential
+    // 0 : ntor
+    int nf = vacuum_s_.ntor;
+    // 0 : (mpol + 1)
+    int mf = vacuum_s_.mpol + 1;
+    int mnpd = (2 * nf + 1) * (mf + 1);
+    // For lasym = true the scalar potential carries both sin(mu-nv) and
+    // cos(mu-nv) coefficients, doubling the Nestor linear system to
+    // mnpd2 = 2 * mnpd (analog of mnpd2 in the Fortran vacmod / scalpot).
+    int mnpd_dim = s_.lasym ? 2 * mnpd : mnpd;
+    matrixShare.setZero(mnpd_dim * mnpd_dim);
+    bvecShare.setZero(mnpd_dim);
+
+    h_.SetVacuumCutoffs(vacuum_s_.mpol, vacuum_s_.ntor);
+    h_.vacuum_magnetic_pressure.setZero(s_.nZnT);
+    h_.initial_plasma_pressure_at_boundary.setZero(s_.nZnT);
+    h_.initial_vacuum_pressure_at_boundary.setZero(s_.nZnT);
+    h_.edge_total_pressure.setZero(s_.nZnT);
+    h_.vacuum_b_r.setZero(s_.nZnT);
+    h_.vacuum_b_phi.setZero(s_.nZnT);
+    h_.vacuum_b_z.setZero(s_.nZnT);
+  }
+}
+
+// main worker method; equivalent of vmec.f90
+// checked visually to comply with vmec.f90
+absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
+                               const int iterations_before_checkpointing,
+                               const int maximum_multi_grid_step,
+                               std::optional<HotRestartState> initial_state,
+                               const int checkpoint_multi_grid_step) {
+  if (maximum_multi_grid_step < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("maximum_multi_grid_step must be at least 1, but is %d",
+                        maximum_multi_grid_step));
+  }
+
+  if (indata_.lfreeb && !magnetic_field_) {
+    if (!mgrid_.IsLoaded()) {
+      // Fallback: load mgrid from file if constructed directly via the public
+      // constructor instead of the FromIndata factory method.
+      absl::Status status = mgrid_.LoadFile(indata_.mgrid_file, indata_.extcur);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+    magnetic_field_ = std::bind_front(&MGridProvider::interpolate, &mgrid_);
+  }
+  if (indata_.lfreeb && mgrid_.IsLoaded()) {
+    // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
+    // toroidal resolution of the run.
+    if (mgrid_.numPhi != s_.nZeta) {
+      const std::string raised_from =
+          s_.nZeta == indata_.nzeta
+              ? ""
+              : absl::StrFormat(
+                    " (nzeta = %d in VmecINDATA, raised to the "
+                    "minimum for ntor = %d)",
+                    indata_.nzeta, indata_.ntor);
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider has %d phi grid points, but the run has %d toroidal "
+          "grid points%s. Please ensure that the two are consistent.",
+          mgrid_.numPhi, s_.nZeta, raised_from));
+    }
+    if (mgrid_.nfp != indata_.nfp) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider has %d field periods, but VmecINDATA has nfp = %d. "
+          "Please ensure that the two are consistent.",
+          mgrid_.nfp, indata_.nfp));
+    }
+  }
+
+  auto is_indata_consistent =
+      IsConsistent(indata_, /*enable_info_messages=*/verbose_);
+  if (!is_indata_consistent.ok()) {
+    return is_indata_consistent;
+  }
+
+  if (initial_state.has_value()) {
+    absl::Status status = CheckInitialState(*initial_state, indata_);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  stopped_by_callback_ = false;
+  callback_status_ = absl::OkStatus();
+
+  // !!! THIS must be the ONLY place where this gets set to zero !!!
+  num_eqsolve_retries_ = 0;
+
+  fc_.ns_old = 0;
+  fc_.delt0r = indata_.delt;
+
+  // Set when the solver gives up on a fundamentally broken equilibrium (e.g.
+  // persistently bad Jacobian) while
+  // indata_.return_outputs_even_if_not_converged is set: breaks out of both
+  // multigrid loops below so we fall through to ComputeOutputQuantities() with
+  // best-effort (likely unphysical) state, instead of hard-erroring, for
+  // debugging purposes.
+  bool giving_up = false;
+
+  // retry with ns=3 if immediately fails at lowest radial resolution
+  for (jacob_off_ = 0; jacob_off_ < 2; ++jacob_off_) {
+    // jacob_off=1 indicates that an initial run with ns=3 shall be inserted
+    // before the user-provided ns values from ns_array are processed
+    // in the multi-grid run
+
+    // Free-boundary hot-restart attempt. Assuming that the initial_guess is
+    // very good, we can immediately take the vacuum contribution into account,
+    // instead of slowly activating it (as we would in a regular free-bdy
+    // solve). If the initial guess completely off, jacob_off>0 will trigger a
+    // retry with VacuumPressureState::kOff anyway.
+    if (fc_.lfreeb && initial_state.has_value()) {
+      vacuum_pressure_state_ = VacuumPressureState::kInitialized;
+    }
+
+    fc_.ns_min = 3;
+
+    // multi-grid iterations: loop over ns_array
+    // jacob_off=0,1 is required to insert one ns=3 run before
+    // starting to work with the user-provided ns_array
+    // if the first ns value from ns_array gave a bad jacobian
+
+    const int max_grids = std::min(fc_.multi_ns_grid, maximum_multi_grid_step);
+    for (int igrid = -jacob_off_; igrid < max_grids; igrid++) {
+      multigrid_step_ = igrid;
+      constants_.reset();
+
+      // retrieve settings for (ns, ftol, niter) for current multi-grid
+      // iteration
+      if (igrid < 0) {
+        // igrid .lt. 1 can only happen when jacob_off == 1 (then igrid==0)
+
+        // TRY TO GET NON-SINGULAR JACOBIAN ON A 3 PT RADIAL MESH
+        // COMPUTE INITIAL SOLUTION ON COARSE GRID
+        // IF PREVIOUS SEQUENCE DID NOT CONVERGE WELL
+        fc_.nsval = 3;
+        fc_.ftolv = 1.0e-4;
+        // fc_.niterv keeps the niter_array entry of the stage that failed
+
+        // Fully restart the vacuum. The assignment to kInitialized above
+        // applies to a hot restart, where the vacuum solution carried in with
+        // the initial state can be reused. This branch is the jacob_off
+        // recovery pass, which drops back to a three-surface mesh, so that
+        // solution no longer corresponds to the geometry being solved.
+        vacuum_pressure_state_ = VacuumPressureState::kOff;
+      } else {
+        // proceed regularly with ns values from ns_array
+        fc_.nsval = indata_.ns_array[igrid];
+        if (fc_.nsval < fc_.ns_min) {
+          // skip entries that have less flux surfaces than previous iteration
+          continue;
+        }
+
+        // update ns_min --> reduction in number of flux surfaces not allowed
+        fc_.ns_min = fc_.nsval;
+
+        fc_.ftolv = indata_.ftol_array[igrid];
+        fc_.niterv = indata_.niter_array[igrid];
+      }
+
+      // Reserve the per-iteration convergence-history vectors for this stage so
+      // the push_backs in Evolve do not reallocate inside the hot loop.
+      {
+        const size_t cap =
+            fc_.force_residual_r.size() + static_cast<size_t>(fc_.niterv) + 1;
+        fc_.force_residual_r.reserve(cap);
+        fc_.force_residual_z.reserve(cap);
+        fc_.force_residual_lambda.reserve(cap);
+        fc_.mhd_energy.reserve(cap);
+        fc_.delbsq.reserve(cap);
+        fc_.lcfs_force_timetrace.reserve(cap);
+        fc_.restart_reasons.reserve(cap);
+      }
+
+      // notify logger of the next multigrid stage
+      logger_.BeginStage(igrid + jacob_off_, max_grids + jacob_off_, fc_.nsval,
+                         s_.mnmax, fc_.ftolv, fc_.niterv, fc_.lfreeb);
+
+      // initialize ns-dependent arrays
+      // and (if previous solution is available) interpolate to current ns
+      // value
+      // igrid is the index into ns_array; the inserted ns=3 stage runs at
+      // igrid = -1 and is never a checkpoint step.
+      const bool is_checkpoint_step = igrid == checkpoint_multi_grid_step - 1;
+      const absl::StatusOr<bool> initialized = InitializeRadial(
+          checkpoint, iterations_before_checkpointing, fc_.nsval, fc_.ns_old,
+          fc_.delt0r, initial_state, std::nullopt, is_checkpoint_step);
+      if (!initialized.ok()) {
+        return initialized.status();
+      }
+      if (*initialized) {
+        return true;
+      }
+
+      // *HERE* is the *ACTUAL* call to the equilibrium solver !
+      const absl::StatusOr<bool> reached_checkpoint =
+          SolveEquilibrium(checkpoint, iterations_before_checkpointing);
+      if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
+        return reached_checkpoint;
+      }
+
+      if (stopped_by_callback_) {
+        break;
+      }
+
+      // break the multi-grid sequence if current number of flux surfaces did
+      // not reach convergence
+      if (status_ != VmecStatus::NORMAL_TERMINATION &&
+          status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+        if (retry_from_three_surfaces_) {
+          // retried below from a three-surface mesh
+          break;
+        }
+        if (!indata_.return_outputs_even_if_not_converged) {
+          const auto msg = absl::StrFormat(
+              "FATAL ERROR in SolveEquilibrium: %s\n"
+              "VmecINDATA had these contents:\n%s",
+              VmecStatusAsString(status_), *indata_.ToJson());
+
+          return absl::InternalError(msg);
+        }
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+              "WARNING: FATAL ERROR in SolveEquilibrium: %s\n"
+              "return_outputs_even_if_not_converged is set, so returning "
+              "best-effort (likely unphysical) output for debugging "
+              "purposes.\n",
+              VmecStatusAsString(status_));
+        }
+        giving_up = true;
+        break;
+      }
+
+      // A step that ends this far from its tolerance will not be rescued by a
+      // finer grid, so abandon the sequence rather than interpolate that state
+      // onto one.
+      if (indata_.lgiveup && (fc_.fsqr > fc_.ftolv * indata_.fgiveup ||
+                              fc_.fsqz > fc_.ftolv * indata_.fgiveup ||
+                              fc_.fsql > fc_.ftolv * indata_.fgiveup)) {
+        giving_up = true;
+        break;
+      }
+
+      // If this point is reached, the current multi-grid step should have
+      // properly converged.
+    }  // igrid
+
+    if (giving_up || stopped_by_callback_) {
+      break;
+    }
+
+    // if did not converge only because jacobian was bad
+    // and the intermediate ns=3 run was not performed yet (jacob_off is still
+    // == 0), retry the whole thing again
+    if (status_ != VmecStatus::BAD_JACOBIAN) {
+      // We can only correct a bad Jacobian (by re-trying with ns = 3);
+      // all other errors are fatal.
+      break;
+    }
+
+    // if ier_flag .eq. bad_jacobian_flag, repeat once again with ns=3 before
+  }  // jacob_off
+
+  if (!callback_status_.ok()) {
+    return callback_status_;
+  }
+
+  if (status_ != VmecStatus::SUCCESSFUL_TERMINATION && !stopped_by_callback_ &&
+      !indata_.return_outputs_even_if_not_converged) {
+    // By the time we get here, a bad-Jacobian-type status has already been
+    // reported (with more specific diagnostics) from inside the multigrid
+    // loop above, so status_ is always NORMAL_TERMINATION: the last
+    // multigrid stage exhausted its iteration budget without reaching
+    // ftol. Diagnostics help distinguish 'almost-converged' runs from 'failing'
+    const auto msg = absl::StrFormat(
+        "VMEC++ did not converge: %s. Completed %d/%d iterations at ns = "
+        "%d without meeting ftol = %.3e; final force residuals were "
+        "fsqr = %.3e, fsqz = %.3e, fsql = %.3e.",
+        VmecStatusAsString(status_), iter2_ - 1, fc_.niterv, fc_.nsval,
+        fc_.ftolv, fc_.fsqr, fc_.fsqz, fc_.fsql);
+    return absl::InternalError(msg);
+  }
+
+  // A run that ran out of iterations advanced its state after the last force
+  // evaluation, so the model is evaluated once more at the state it returns.
+  if (status_ == VmecStatus::NORMAL_TERMINATION) {
+    absl::Status evaluated = EvaluateFinalState();
+    if (!evaluated.ok()) {
+      return evaluated;
+    }
+  }
+
+  // A converged free-boundary result must not rest on a vacuum field that was
+  // clamped to the grid edge. h_.vacuum_status holds the last vacuum solve, so
+  // a boundary that only left the grid transiently has already cleared it.
+  if (!h_.vacuum_status.ok()) {
+    if (!indata_.return_outputs_even_if_not_converged) {
+      return h_.vacuum_status;
+    }
+    status_ = VmecStatus::UNRECOVERABLE_ERROR;
+  }
+
+  // Hand Nestor's converged scalar potential over for the wout `potvac` field.
+  if (fc_.lfreeb) {
+    h_.vacuum_potential = bvecShare;
+  }
+
+  // compute output file quantities, but do not write them to output file yet
+  // (for creating the output file, use WriteOutputFile())
+  output_quantities_ = vmecpp::ComputeOutputQuantities(
+      indata_.signgs, indata_, s_, fc_, constants_, t_, h_, mgrid_.mgrid_mode,
+      mgrid_.coil_group_names, r_, decomposed_x_, m_, p_, checkpoint,
+      vacuum_pressure_state_, status_, iter2_);
+
+  {
+    const auto& w = output_quantities_.wout;
+    RunSummary summary;
+    summary.converged = (status_ == VmecStatus::SUCCESSFUL_TERMINATION);
+    summary.total_iterations = w.itfsq;
+    summary.num_jacobian_resets = fc_.ijacob;
+    summary.fsqr = w.fsqr;
+    summary.fsqz = w.fsqz;
+    summary.fsql = w.fsql;
+    summary.ftolv = fc_.ftolv;
+    summary.betatot = w.betatotal;
+    summary.betapol = w.betapol;
+    summary.betator = w.betator;
+    summary.w_mhd = h_.mhdEnergy * 4.0 * M_PI * M_PI;
+    summary.rax = w.Rmajor_p;
+    summary.aminor = w.Aminor_p;
+    summary.rmajor = w.Rmajor_p;
+    summary.b0 = w.b0;
+    logger_.EndRun(summary);
+  }
+
+  return false;
+}  // run
+
+void Vmec::SetupVacuumSolvers() {
+  // The vacuum solve runs cooperatively in the persistent radial parallel
+  // region (see IdealMhdModel::update), so its tangential partitioning is over
+  // the radial team of num_threads_ threads, which the runtime has granted.
+  const int vac_num_threads = num_threads_;
+  if (vac_num_threads == vac_num_threads_) {
+    return;
+  }
+  // A rebuild happens only between multigrid steps, where the first vacuum
+  // solve is a full update, so no state of the previous solvers is needed.
+  vac_num_threads_ = vac_num_threads;
+
+  vacuum_reduce_slots_.setZero(static_cast<Eigen::Index>(vac_num_threads_) *
+                               matrixShare.size());
+
+  fb_vac_.resize(vac_num_threads_);
+  tp_vac_.resize(vac_num_threads_);
+
+  for (int vac_thread_id = 0; vac_thread_id < vac_num_threads_;
+       ++vac_thread_id) {
+    tp_vac_[vac_thread_id] = std::make_unique<TangentialPartitioning>(
+        s_.nZnT, vac_num_threads_, vac_thread_id);
+
+    if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
+      fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
+          std::span<double>(matrixShare.data(), matrixShare.size()),
+          std::span<double>(bvecShare.data(), bvecShare.size()),
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          &lu_decomposition,
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()),
+          std::span<double>(vacuum_reduce_slots_.data(),
+                            vacuum_reduce_slots_.size()));
+    } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
+      fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
+          &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
+          std::span<double>(h_.vacuum_magnetic_pressure.data(),
+                            h_.vacuum_magnetic_pressure.size()),
+          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
+          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
+          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()),
+          std::span<double>(vacuum_reduce_slots_.data(),
+                            vacuum_reduce_slots_.size()));
+    } else {
+      LOG(FATAL) << absl::StrCat("free boundary method '",
+                                 ToString(indata_.free_boundary_method),
+                                 "' not implemented yet");
+    }  // indata_.free_boundary_method
+  }  // vac_thread_id
+}  // SetupVacuumSolvers
+
+// initialize_radial quantities, return true if a checkpoint was reached
+absl::StatusOr<bool> Vmec::InitializeRadial(
+    VmecCheckpoint checkpoint, int iterations_before_checkpointing, int nsval,
+    int ns_old, double& m_delt0,
+    const std::optional<HotRestartState>& initial_state,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme,
+    bool is_checkpoint_step) {
+  // Stage info output is now handled by logger_.BeginStage() in run().
+
+  // Set timestep control parameters
+  fc_.fsq = 1.0;
+
+  iter2_ = 1;
+  iter1_ = iter2_;
+
+  fc_.ijacob = 0;
+  fc_.restart_reason = RestartReason::NO_RESTART;
+  fc_.res0 = -1;
+  fc_.res1 = -1;
+  m_delt0 = indata_.delt;
+
+  // INITIALIZE MESH-DEPENDENT SCALARS
+
+  // *THIS* actually sets the global ns value for the main physics algorithm
+  fc_.ns = nsval;
+
+  fc_.deltaS = 1.0 / (fc_.ns - 1.0);
+  fc_.num_surfaces_to_distribute = fc_.ns - 1;
+  if (fc_.lfreeb) {
+    fc_.num_surfaces_to_distribute = fc_.ns;
+  }
+
+  // number of Fourier coefficients per basis function for the whole volume
+  int mns = fc_.ns * s_.mnsize;
+
+  // number of Fourier coefficients per quantity (R, Z, lambda)
+  int irzloff = s_.num_basis * mns;
+
+  // total number of degrees-of-freedom
+  fc_.neqs = 3 * irzloff;
+
+  // check that interpolating from coarse to fine mesh
+  // and that old solution is available
+  bool linterp = (ns_old < fc_.ns && ns_old != 0);
+
+  if (ns_old != fc_.ns) {
+    // ALLOCATE NS-DEPENDENT ARRAYS
+
+    // backup current xc, scalxc in xstore, scalxc
+    // Note that this relies on old/previous value of num_threads_!
+    if (linterp && fc_.neqs_old > 0) {
+      old_xc_scaled_.resize(num_threads_);
+      old_r_.resize(num_threads_);
+
+      // expect that previous solution is available at this point
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        old_xc_scaled_[thread_id] = std::make_unique<FourierGeometry>(
+            &s_, r_[thread_id].get(), fc_.ns_old);
+        old_r_[thread_id] = std::move(r_[thread_id]);
+
+        decomposed_x_[thread_id]->decomposeInto(*old_xc_scaled_[thread_id],
+                                                p_[thread_id]->scalxc);
+      }  // thread_id
+    }
+
+    // adjust parallellism for nsval at hand. The radial partitioning below
+    // assigns every surface to one of num_threads_ threads, so num_threads_ is
+    // the team the runtime grants, which OMP_THREAD_LIMIT or an enclosing
+    // parallel region can make smaller than the request.
+    num_threads_ = GrantedThreads(vmec_adjust_num_threads(
+        fc_.max_threads(), fc_.num_surfaces_to_distribute));
+
+    // Set up the free-boundary vacuum solvers, partitioned over the tangential
+    // grid (nZnT) among the num_threads_ radial threads. The solvers persist
+    // across multigrid steps, rebuilt only when num_threads_ changes; the
+    // accumulated vacuum response matrix/RHS live in Vmec, in ns-independent
+    // Fourier space, and persist either way, reproducing Fortran VMEC's
+    // persistent vacuum state.
+    if (fc_.lfreeb) {
+      SetupVacuumSolvers();
+    }
+
+    r_.resize(num_threads_);
+    ls_.resize(num_threads_);
+    p_.resize(num_threads_);
+    m_.resize(num_threads_);
+    decomposed_x_.resize(num_threads_);
+    physical_x_backup_.resize(num_threads_);
+    last_evaluated_x_.resize(num_threads_);
+    physical_x_.resize(num_threads_);
+    decomposed_f_.resize(num_threads_);
+    physical_f_.resize(num_threads_);
+    decomposed_v_.resize(num_threads_);
+
+    // single-threaded creation of objects used in parallel threads
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      r_[thread_id] = std::make_unique<RadialPartitioning>();
+
+      // Set this to `true` if you want to have the distribution
+      // of radial grid points over threads to be printed out.
+      // Disabled for now to reduce noise.
+      const bool printout_radial_partitioning = false;
+      r_[thread_id]->adjustRadialPartitioning(num_threads_, thread_id, nsval,
+                                              fc_.lfreeb,
+                                              printout_radial_partitioning);
+
+      h_.allocate(*r_[thread_id], fc_.ns);
+
+      ls_[thread_id] = std::make_unique<ThreadLocalStorage>(&s_);
+
+      p_[thread_id] = std::make_unique<RadialProfiles>(
+          r_[thread_id].get(), &h_, &indata_, &fc_, indata_.signgs, kPDamp);
+
+      // update profile parameterizations based on p****_type strings
+      p_[thread_id]->setupInputProfiles();
+
+      // setup MHD model. The free-boundary vacuum solvers (fb_vac_) are shared
+      // across all radial threads, each of which drives one of them, so the
+      // whole vector - not a per-thread solver - is handed to the model.
+      m_[thread_id] = std::make_unique<IdealMhdModel>(
+          &fc_, &s_, &t_, p_[thread_id].get(), &constants_,
+          ls_[thread_id].get(), &h_, r_[thread_id].get(), &fb_vac_,
+          indata_.signgs, indata_.nvacskip, &vacuum_pressure_state_);
+      m_[thread_id]->setFromINDATA(
+          indata_.ncurr, indata_.gamma, indata_.tcon0, indata_.lforbal,
+          indata_.lambda_preconditioner_scale,
+          indata_.lambda_precondition_checkerboard_terms);
+    }  // thread_id
+
+    absl::Status current_profile_status =
+        p_[0]->CheckCurrentProfileEnclosesEdgeCurrent();
+    if (!current_profile_status.ok()) {
+      return current_profile_status;
+    }
+
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::SPECTRAL_CONSTRAINT &&
+        iterations_before_checkpointing <= 1) {
+      // break the loop over thread_id here to check spectral constraint static
+      // data; need to have all "threads" initialized before being able to test
+      // all at once
+      return true;
+    }
+
+    // single-threaded creation of objects used in parallel threads
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      // vector of free parameters
+
+      // physically-correct coefficients
+      decomposed_x_[thread_id] =
+          std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
+
+      // even/odd-m decomposed coefficients
+      physical_x_[thread_id] =
+          std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
+
+      // physically-correct coefficients
+      physical_x_backup_[thread_id] =
+          std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
+      last_evaluated_x_[thread_id] =
+          std::make_unique<FourierGeometry>(&s_, r_[thread_id].get(), fc_.ns);
+
+      // even/odd-m decomposed coefficients
+      physical_f_[thread_id] =
+          std::make_unique<FourierForces>(&s_, r_[thread_id].get(), fc_.ns);
+
+      // physically-correct coefficients
+      decomposed_f_[thread_id] =
+          std::make_unique<FourierForces>(&s_, r_[thread_id].get(), fc_.ns);
+
+      // physically-correct coefficients
+      decomposed_v_[thread_id] =
+          std::make_unique<FourierVelocity>(&s_, r_[thread_id].get(), fc_.ns);
+    }
+
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      decomposed_v_[thread_id]->setZero();
+      decomposed_x_[thread_id]->setZero();
+    }
+
+    // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      p_[thread_id]->evalRadialProfiles(fc_.haveToFlipTheta, constants_);
+    }
+
+    // Now that all contributions to lamscale have been accumulated in
+    // VmecConstants::rmsPhiP, can update lamscale.
+    constants_.lamscale = sqrt(constants_.rmsPhiP * fc_.deltaS);
+
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::RADIAL_PROFILES_EVAL &&
+        iterations_before_checkpointing <= 1) {
+      return true;
+    }
+
+    // The state profil3d() sets up is what is actually used whenever there is
+    // nothing to interpolate from: the first multigrid step, and a hot restart
+    // with ns_old == 0. InterpolateToNextMultigridStep only runs from the
+    // second step onwards, under linterp.
+    if (initial_state.has_value() && ns_old == 0) {
+      // ns_old == 0 means we hot restart only on the very first multigrid step
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        if (indata_.lfreeb) {
+          // free-boundary hot restart: use all flux surfaces from initial state
+          decomposed_x_[thread_id]->InitFromState(
+              t_, initial_state->wout.rmnc, initial_state->wout.zmns,
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_, indata_.signgs);
+        } else {
+          // fixed-boundary hot restart: use inner flux surfaces from initial
+          // state, and LCFS geometry from Boundaries (from INDATA)
+          decomposed_x_[thread_id]->InitFromState(
+              t_, initial_state->wout.rmnc, initial_state->wout.zmns,
+              initial_state->wout.lmns_full, initial_state->wout.rmns,
+              initial_state->wout.zmnc, initial_state->wout.lmnc_full,
+              *p_[thread_id], constants_, indata_.signgs, &b_);
+        }
+      }
+    } else {
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_,
+                                                            *p_[thread_id]);
+      }
+    }
+    if (is_checkpoint_step &&
+        checkpoint == VmecCheckpoint::SETUP_INITIAL_STATE &&
+        iterations_before_checkpointing <= 1) {
+      return true;
+    }
+
+    // INTERPOLATE FROM COARSE (ns_old) TO NEXT FINER (ns) RADIAL GRID
+    if (linterp) {
+      InterpolateToNextMultigridStep(fc_.ns, fc_.ns_old, p_, r_, old_r_,
+                                     decomposed_x_, old_xc_scaled_,
+                                     interpolation_scheme);
+
+      // TODO(jons): check for max_multigrid_steps
+      //
+      // No iteration guard here, unlike the checkpoints inside the solver
+      // loop: this one sits between multigrid steps and fires once per step,
+      // so a condition on the iteration counter would not mean anything. It
+      // is not gated on the checkpoint step either: INTERP is only reached
+      // when interpolating from a coarser grid, so it cannot occur in the
+      // first multi-grid step at all.
+      if (checkpoint == VmecCheckpoint::INTERP) {
+        return true;
+      }
+    }
+
+    // With the m=1 gauge force zeroed throughout, the gauge stays at its
+    // initial value. Set it from the boundary here so that it does not
+    // carry the hot-restart state or the coarse-grid interpolation (whose
+    // odd-m axis extrapolation does not reproduce the sqrt(s) profile).
+    if (always_fix_m1_gauge_) {
+      for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+        decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_,
+                                                         *p_[thread_id]);
+      }
+    }
+
+    // restart_reason == NO_RESTART at entry of restart_iter means to store xc
+    // in xstore. The backup is taken AFTER the multigrid interpolation, so
+    // that the first rollback target of a continuation stage is the
+    // interpolated coarse-grid solution, not the cold boundary+axis initial
+    // guess that the interpolation overwrites. Fortran VMEC 8.52 backed up
+    // before the interpolation; PARVMEC/VMEC2000 moved the backup after it
+    // ("SPH 012417" in initialize_radial.f), which is what VMEC++ follows.
+    for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
+      fc_.restart_reason = RestartReason::NO_RESTART;
+
+      // RestartIteration does not modify the time step when NO_RESTART.
+      RestartIteration(indata_.delt, thread_id);
+    }
+
+    fc_.ns_old = fc_.ns;
+    fc_.neqs_old = fc_.neqs;
+  }
+
+  return false;
+}
+
+// eqsolve
+// This is the amalgamation of the `1000` and `20` GOTOs in `eqsolve` in Fortran
+// VMEC. It is responsible for re-trying with an improved axis guess or
+// resetting the time step.
+absl::StatusOr<bool> Vmec::SolveEquilibrium(
+    VmecCheckpoint checkpoint, int iterations_before_checkpointing) {
+  // Table header output is now handled by logger_.BeginStage() in run().
+
+  absl::Status status_of_all_threads = absl::OkStatus();
+  bool any_checkpoint_reached = false;
+  // Whether every thread that reported an error reported a kFailedPrecondition
+  // (a physical inconsistency that indata_.return_outputs_even_if_not_converged
+  // can recover from), as opposed to e.g. kInternal (a genuine code bug).
+  // Tracked independently of status_of_all_threads, which always collapses to
+  // kInternal once aggregated (see UpdateStatusForThread).
+  bool all_errors_are_recoverable = true;
+
+  // Shared communication variable for all threads. Used to signal an early exit
+  // of the main iteration loop.
+  bool liter_flag = true;
+
+  retry_from_three_surfaces_ = false;
+
+// NOTE: *THIS* is the main parallel region for the equilibrium solver
+#ifdef _OPENMP
+#pragma omp parallel num_threads(num_threads_)
+#endif  // _OPENMP
+  {
+#ifdef _OPENMP
+    int thread_id = omp_get_thread_num();
+    const int team_size = omp_get_num_threads();
+#else
+    int thread_id = 0;
+    const int team_size = 1;
+#endif
+
+    // COMPUTE INITIAL R, Z AND MAGNETIC FLUX PROFILES
+
+    // this needs to be persistent across loops, so we create it here
+    bool m_lreset_internal = false;
+
+    absl::StatusOr<SolveEqLoopStatus> s = SolveEqLoopStatus::MUST_RETRY;
+
+    // num_threads_ is the team InitializeRadial found the runtime grants; a
+    // smaller team here would leave the surfaces of the missing threads
+    // unevaluated. Every thread of the team sees the same size, so the team
+    // skips the solve as a whole.
+    if (team_size != num_threads_) {
+      s = absl::ResourceExhaustedError(absl::StrFormat(
+          "the radial solve is partitioned over %d threads, but OpenMP granted "
+          "%d",
+          num_threads_, team_size));
+    }
+
+    // n_local_eqsolve_retries is a thread-local counter
+    // max iterations only to ensure this terminates eventually, should never be
+    // reached.
+    int n_local_eqsolve_retries = 0;
+    for (n_local_eqsolve_retries = 0;
+         n_local_eqsolve_retries < fc_.niterv && s.ok() &&
+         *s == SolveEqLoopStatus::MUST_RETRY && liter_flag;
+         n_local_eqsolve_retries++) {
+// protect read of `liter_flag` from write within `SolveEquilibriumLoop` below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+      s = SolveEquilibriumLoop(
+          thread_id, iterations_before_checkpointing, checkpoint,
+          /*m_lreset_internal=*/m_lreset_internal, /*m_liter_flag=*/liter_flag);
+    }
+// nowait because critical below has an implicit barrier
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+    num_eqsolve_retries_ += n_local_eqsolve_retries;
+
+#ifdef _OPENMP
+#pragma omp critical
+#endif  // _OPENMP
+    {
+      if (s.ok()) {
+        any_checkpoint_reached |= (*s == SolveEqLoopStatus::CHECKPOINT_REACHED);
+      } else {
+        all_errors_are_recoverable &=
+            (s.status().code() == absl::StatusCode::kFailedPrecondition);
+        UpdateStatusForThread(status_of_all_threads, thread_id, s.status());
+      }
+    }
+  }  // omp parallel
+
+  if (interrupted_) {
+    return absl::CancelledError("Run interrupted by user");
+  }
+
+  if (!status_of_all_threads.ok()) {
+    absl::Status unrecovered = RecoverFromThreadErrors(
+        status_of_all_threads, all_errors_are_recoverable);
+    if (!unrecovered.ok()) {
+      return unrecovered;
+    }
+    return false;
+  }
+
+  if (!any_checkpoint_reached) {
+    // write MHD energy at end of iterations for current number of surfaces
+    logger_.EndStage(h_.mhdEnergy * 4.0 * M_PI * M_PI);
+  }
+
+  return any_checkpoint_reached;
+}  // SolveEquilibrium
+
+absl::Status Vmec::RecoverFromThreadErrors(
+    const absl::Status& status_of_all_threads,
+    bool all_errors_are_recoverable) {
+  if (!indata_.return_outputs_even_if_not_converged ||
+      !all_errors_are_recoverable) {
+    return status_of_all_threads;
+  }
+  // A physical inconsistency (not a code bug) was detected deep in the
+  // MHD model, with no retry strategy available. Since outputs were
+  // requested even if not converged, don't hard-error here: record it as
+  // an unrecoverable status and let run() fall through to
+  // ComputeOutputQuantities() with best-effort (likely unphysical)
+  // state, for debugging purposes.
+  if (verbose_) {
+    std::cout << absl::StrFormat(
+        "WARNING: %s\n"
+        "return_outputs_even_if_not_converged is set, so returning "
+        "best-effort (likely unphysical) output for debugging "
+        "purposes.\n",
+        status_of_all_threads.message());
+  }
+  status_ = VmecStatus::UNRECOVERABLE_ERROR;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
+    int thread_id, int iterations_before_checkpointing,
+    VmecCheckpoint checkpoint, bool& m_lreset_internal, bool& m_liter_flag) {
+  // RECOMPUTE INITIAL PROFILE, BUT WITH IMPROVED AXIS
+  // OR
+  // RESTART FROM INITIAL PROFILE, BUT WITH A SMALLER TIME-STEP
+  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+    decomposed_x_[thread_id]->setZero();
+    if (m_lreset_internal) {
+      decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_,
+                                                          *p_[thread_id]);
+    }
+
+    // protect reads of restart_reason above from write below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+    // tells restart_iter to store current xc in xstore
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      fc_.restart_reason = RestartReason::NO_RESTART;
+    }
+
+    // In the first multigrid iteration (OFF IN v8.50)
+    RestartIteration(fc_.delt0r, thread_id);
+  }  // restart_reason == BAD_JACOBIAN
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    // start normal iterations
+    m_liter_flag = true;
+
+    // reset error flag
+    status_ = VmecStatus::NORMAL_TERMINATION;
+  }
+
+  // `iter_loop`: FORCE ITERATION LOOP
+  // It may hold iter2_>1 when entering this method and when prev iter
+  // returned SolveEqLoopStatus::MUST_RETRY.
+
+  // bad_resets counts the number of times we early exit with a reason OTHER
+  // THAN SolveEqLoopStatus::MUST_RETRY
+  for (int force_iteration = iter2_, bad_resets = 0;
+       (force_iteration <= fc_.niterv) && m_liter_flag; force_iteration++) {
+    const int iter2 = force_iteration - bad_resets;
+    // ADVANCE FOURIER AMPLITUDES OF R, Z, AND LAMBDA
+    absl::StatusOr<bool> reached_checkpoint =
+        Evolve(checkpoint, iterations_before_checkpointing, fc_.delt0r,
+               thread_id, /*m_liter_flag=*/m_liter_flag);
+    if (!reached_checkpoint.ok()) {
+      return reached_checkpoint.status();
+    }
+    if (*reached_checkpoint) {
+      return SolveEqLoopStatus::CHECKPOINT_REACHED;
+    }
+
+    // check for bad jacobian and bad initial guess for axis
+    if (fc_.ijacob == 0 &&
+        (status_ == VmecStatus::BAD_JACOBIAN ||
+         fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
+        fc_.ns >= 3) {
+// protect reads of ijacob above from write below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        if (verbose_) {
+          // Only warn about bad jacobian if that is actually the reason.
+          // The other reason could be restart_reason == HUGE_INITIAL_FORCES,
+          // which means that the initial forces are huge (but the Jacbian is
+          // fine, i.e., flux surfaces don't overlap yet).
+          if (status_ == VmecStatus::BAD_JACOBIAN) {
+            std::cout << " INITIAL JACOBIAN CHANGED SIGN!\n";
+          }
+          std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
+        }
+
+        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, indata_.signgs);
+        fc_.ijacob = 1;
+
+        // prepare parameters to functions that get called due to
+        // m_lreset_internal and restart_reason == BAD_JACOBIAN
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      }
+
+      // Signals to re-initialize the state vector
+      // from the (updated/improved) initial guess
+      // at the top of this method, in the next call.
+      // NOTE: `m_lreset_internal` is thread-local, hence need to do this
+      // outside the `omp single` block
+      m_lreset_internal = true;
+
+      // try again: GOTO 20
+      // but need to leave m_liter_flag loop first...
+      return SolveEqLoopStatus::MUST_RETRY;
+    } else if (status_ != VmecStatus::NORMAL_TERMINATION &&
+               status_ != VmecStatus::SUCCESSFUL_TERMINATION) {
+      // if something went totally wrong even in this initial steps, do not
+      // continue at all; a bad Jacobian on the first pass returns to run(),
+      // which retries from a three-surface mesh
+      const bool retry_from_three_surfaces =
+          status_ == VmecStatus::BAD_JACOBIAN && jacob_off_ == 0;
+      if (!indata_.return_outputs_even_if_not_converged &&
+          !retry_from_three_surfaces) {
+        const auto msg = absl::StrFormat(
+            "FATAL ERROR in thread=%d. The solver failed during the first "
+            "iterations. This may happen if the initial boundary is poorly "
+            "shaped or if it isn't spectrally condensed enough.",
+            thread_id);
+        return absl::UnknownError(msg);
+      }
+
+      if (retry_from_three_surfaces) {
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif  // _OPENMP
+        retry_from_three_surfaces_ = true;
+      }
+
+      // return_outputs_even_if_not_converged: stop iterating on this thread
+      // instead of hard-erroring, so run() falls through to
+      // ComputeOutputQuantities() with best-effort (likely unphysical)
+      // state, for debugging purposes. status_ still reflects the failure
+      // (e.g. BAD_JACOBIAN), so run() will still surface a warning about it.
+      return SolveEqLoopStatus::NORMAL_TERMINATION;
+    }
+
+    if (checkpoint == VmecCheckpoint::EVOLVE &&
+        iter2 >= iterations_before_checkpointing) {
+      // need to get past re-try with guess_axis in case of bad Jacobian
+      return SolveEqLoopStatus::CHECKPOINT_REACHED;
+    }
+
+    // (compute MHD energy)
+    // (has been done in updateFwdModel already: `h_.mhdEnergy`)
+
+    // ADDITIONAL STOPPING CRITERION (set m_liter_flag to FALSE)
+
+#ifdef _OPENMP
+// Protect the reads of fc_.ijacob from writes in the single region below.
+#pragma omp barrier
+#endif  // _OPENMP
+
+    // the blocks for ijacob=25 or 50 are equal up to the point
+    // that for 25, delt0r is reset to 0.98*delt (delt given by user)
+    // and  for 50, delt0r is reset to 0.96*delt (delt given by user)
+    if (fc_.ijacob == 25 || fc_.ijacob == 50) {
+      // jacobian changed sign 25/50 times: hmmm? :-/
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      }
+
+      RestartIteration(fc_.delt0r, thread_id);
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        // fc_.ijacob is incremented in RestartIteration
+        const double scale = fc_.ijacob < 50 ? 0.98 : 0.96;
+
+        fc_.delt0r = scale * indata_.delt;
+
+        if (verbose_) {
+          std::cout
+              << absl::StrFormat(
+                     "HAVING A CONVERGENCE PROBLEM: RESETTING DELT TO %8.3f. "
+                     " If this does NOT resolve the problem,"
+                     " try changing (decrease OR increase) the value of DELT\n",
+                     fc_.delt0r)
+              << std::flush;
+        }
+
+        // done by restart_iter already...
+        fc_.restart_reason = RestartReason::NO_RESTART;
+      }
+      // try again: GOTO 20
+      // but need to leave m_liter_flag loop first...
+      return SolveEqLoopStatus::MUST_RETRY;
+    } else if (fc_.ijacob >= 75) {
+      // jacobian changed sign at least 75 times: time to give up :-(
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      {
+        // 'MORE THAN 75 JACOBIAN ITERATIONS (DECREASE DELT)'
+        status_ = VmecStatus::JACOBIAN_75_TIMES_BAD;
+        m_liter_flag = false;
+      }
+    }
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      // TIME STEP CONTROL
+
+      if (iter2 == iter1_ || fc_.res0 == -1) {
+        // if res0 has never been assigned (-1), give it the current value of
+        // fsq
+        fc_.res0 = fc_.fsq;
+      }
+
+      // res0 is the best force residual we got so far
+      fc_.res0 = std::min(fc_.res0, fc_.fsq);
+
+      // PARVMEC additionally tracks the invariant residual minimum res1. Keep
+      // it (and its inputs) off the vmec_8_52 path so the default control stays
+      // byte-for-byte unchanged.
+      if (indata_.iteration_style == IterationStyle::PARVMEC) {
+        const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+        if (iter2 == iter1_ || fc_.res1 == -1) {
+          fc_.res1 = fsq_invariant;
+        }
+        fc_.res1 = std::min(fc_.res1, fsq_invariant);
+      }
+    }
+
+    if (indata_.iteration_style == IterationStyle::PARVMEC) {
+      // PARVMEC control: store when both residual minima improve; revert via
+      // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
+      // minimum after 10 steps.
+      const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
+      if (fc_.fsq <= fc_.res0 && fsq_invariant <= fc_.res1) {
+        RestartIteration(fc_.delt0r, thread_id, indata_.backup_evaluated_state);
+      } else if ((iter2 - iter1_) > 10 && (fc_.fsq > 1.0e4 * fc_.res0 ||
+                                           fsq_invariant > 1.0e4 * fc_.res1)) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+        fc_.restart_reason = RestartReason::BAD_PROGRESS;
+      }
+    } else if (fc_.fsq <= fc_.res0 && (iter2 - iter1_) > 10) {
+      // Store current state (restart_reason=NO_RESTART)
+      // --> was able to reduce force consistenly over at least 10 iterations
+      RestartIteration(fc_.delt0r, thread_id, indata_.backup_evaluated_state);
+    } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
+      // Residuals are growing in time, reduce time step
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+    } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
+               iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
+               fc_.fsqr + fc_.fsqz > 1.0e-2) {
+      // quite some iterations and quite large forces
+      // --> restart with different timestep
+
+      // Lowering this threshold is a behaviour change, not a tuning knob: it
+      // makes the restart fire earlier, which changes the iteration path and
+      // so the converged state. Against the reference outputs, 1e-3 moves 3 of
+      // the 45 test targets outside tolerance and 1e-4 moves 10. It may still
+      // be the right thing for cases that stall at ~2e-3, but it needs the
+      // reference outputs regenerated with it.
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+      fc_.restart_reason = RestartReason::BAD_PROGRESS;
+    }
+
+    const RestartReason restart_reason = fc_.restart_reason;
+// protect read of restart_reason above from write (in different thread) below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+    if (restart_reason != RestartReason::NO_RESTART) {
+      // Retrieve previous good state
+      RestartIteration(fc_.delt0r, thread_id);
+      // This code path does not increment the iter2 counter in VMEC 8.52, so we
+      // have to keep track
+      bad_resets++;
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+      iter1_ = iter2;
+    } else {
+      // Increment time step and printout every nstep iterations
+      // status report due or
+      // first iteration or
+      // iterations cancelled already (last iteration)
+      if (iter2 % indata_.nstep == 0 || iter2 == 1 || !m_liter_flag) {
+        // The backup holds the last accepted state, which is the one whose
+        // force residuals are printed on this same line; decomposed_x_ has
+        // already been advanced by the current time step. It is the decomposed
+        // state, so the odd-m amplitudes carry the scalxc factor and <M> is
+        // the spectral width of the scaled coefficients, as in Fortran VMEC,
+        // which takes its spectrum from xc.
+        physical_x_backup_[thread_id]->ComputeSpectralWidth(t_, *p_[thread_id]);
+
+        // NOTE: IIRC, this still needs to be called to keep the spectral width
+        // updated. Screen output will be controlled by checking the `verbose_`
+        // flag inside `Printout`.
+        Printout(fc_.delt0r, thread_id, iter2);
+
+        // Check for interrupt signal (e.g., Ctrl+C from Python).
+        // Only the master thread calls the callback; the subsequent barrier
+        // ensures all threads see the updated m_liter_flag.
+        // It MUST be the master thread, other threads cannot acquire the GIL.
+#ifdef _OPENMP
+#pragma omp master
+#endif  // _OPENMP
+        {
+          if (interrupt_callback_ && interrupt_callback_()) {
+            m_liter_flag = false;
+#pragma omp atomic write
+            interrupted_ = true;
+            std::cout << "Received interrupt signal from Python thread.\n";
+          }
+        }
+
+        if (checkpoint == VmecCheckpoint::PRINTOUT &&
+            iter2 >= iterations_before_checkpointing) {
+          return SolveEqLoopStatus::CHECKPOINT_REACHED;
+        }
+      }
+    }
+
+    if (iteration_callback_) {
+      // Every thread has finished this iteration's time step; the master
+      // thread hands the state to the callback while the others sleep until
+      // it returns.
+      if (thread_id == 0) {
+        callback_running_.store(true, std::memory_order_relaxed);
+      }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+      if (thread_id == 0) {
+        NotifyIterationCallback(iter2, restart_reason, m_liter_flag);
+        callback_running_.store(false, std::memory_order_release);
+        callback_running_.notify_all();
+      } else {
+        callback_running_.wait(true, std::memory_order_acquire);
+      }
+    }
+
+// protect read of vacuum_pressure_state_ in get_delbsq called by Printout above
+// from write below
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+// don't use nowait here, since need implicit barrier to protect read of iter2_
+// from write below in potentially different thread
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      // vacuum_pressure_state gets set to VacuumPressureState::kInitialized in
+      // vacuum() of NESTOR
+      if (vacuum_pressure_state_ == VacuumPressureState::kInitialized) {
+        vacuum_pressure_state_ = VacuumPressureState::kActive;
+
+        if (verbose_) {
+          std::cout << absl::StrFormat(
+                           "VACUUM PRESSURE TURNED ON AT %4d ITERATIONS",
+                           iter2_)
+                    << "\n\n";
+        }
+      }
+    }
+
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif  // _OPENMP
+    // update iter2_ for all threads, all threads have the same value of iter2,
+    // it does not matter who does it.
+    // bad resets didn't increment, iter2 in VMEC 8.52, so we need to compute
+    // the backwards compatible iteration count
+    iter2_ = (force_iteration - bad_resets) + 1;  // equivalent to iter2++
+  }  // while m_liter_flag
+
+  return SolveEqLoopStatus::NORMAL_TERMINATION;
+}
+
+// aligned visually with restart_iter.f90
+void Vmec::RestartIteration(double& m_delt0r, int thread_id,
+                            bool backup_evaluated_state) {
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
+    // restore previous good state
+
+    // zero velocity
+    decomposed_v_[thread_id]->setZero();
+
+    // restore state from backup
+    *decomposed_x_[thread_id] = *physical_x_backup_[thread_id];
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      // reduce time step
+      m_delt0r = m_delt0r * 0.9;
+
+      // count occurence of bad Jacobian
+      fc_.ijacob = fc_.ijacob + 1;
+
+      // update marker
+      iter1_ = iter2_;
+
+      fc_.restart_reason = RestartReason::NO_RESTART;
+    }
+
+  } else if (fc_.restart_reason == RestartReason::BAD_PROGRESS) {
+    // restore previous good state
+
+    // zero velocity
+    decomposed_v_[thread_id]->setZero();
+
+    // restore state from backup
+    *decomposed_x_[thread_id] = *physical_x_backup_[thread_id];
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    {
+      // reduce time step
+      m_delt0r = m_delt0r / 1.03;
+
+      fc_.restart_reason = RestartReason::NO_RESTART;
+    }
+  } else {
+    // NO_RESTART or HUGE_INITIAL_FORCES
+    // save current state vector, e.g. restart_reason == NO_RESTART
+
+    // update backup
+    if (backup_evaluated_state) {
+      // decomposed_x_ is already advanced and unevaluated.
+      *physical_x_backup_[thread_id] = *last_evaluated_x_[thread_id];
+    } else {
+      *physical_x_backup_[thread_id] = *decomposed_x_[thread_id];
+    }
+  }
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+}
+
+absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
+                                  int iterations_before_checkpointing,
+                                  double time_step, int thread_id,
+                                  bool& m_liter_flag) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    fc_.restart_reason = RestartReason::NO_RESTART;
+  }
+
+  // `funct3d` - COMPUTE MHD FORCES
+  absl::StatusOr<bool> reached_checkpoint = UpdateForwardModel(
+      checkpoint, iterations_before_checkpointing, thread_id);
+  if (!reached_checkpoint.ok() || *reached_checkpoint == true) {
+    return reached_checkpoint;
+  }
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    // COMPUTE ABSOLUTE STOPPING CRITERION
+    // A residual is either NaN or inf, guard for highly degenerate inputs
+    bool all_residuals_finite = std::isfinite(fc_.fsqr) &&
+                                std::isfinite(fc_.fsqz) &&
+                                std::isfinite(fc_.fsql);
+    if ((iter2_ == 1 && fc_.restart_reason == RestartReason::BAD_JACOBIAN) ||
+        !all_residuals_finite) {
+      // first iteration and Jacobian was not computed correctly
+      status_ = VmecStatus::BAD_JACOBIAN;
+    } else if (fc_.fsqr <= fc_.ftolv && fc_.fsqz <= fc_.ftolv &&
+               fc_.fsql <= fc_.ftolv) {
+      // converged to desired tolerance
+
+      m_liter_flag = false;
+      status_ = VmecStatus::SUCCESSFUL_TERMINATION;
+    }
+  }  // #pragma omp single (there is an implicit omp barrier here)
+
+  if (status_ != VmecStatus::NORMAL_TERMINATION || !m_liter_flag) {
+    // erroneous iteration or shall not iterate further
+    return false;
+  }
+
+  // ...else no error and not converged --> keep going...
+
+  // COMPUTE DAMPING PARAMETER (DTAU) AND
+  // EVOLVE R, Z, AND LAMBDA ARRAYS IN FOURIER SPACE
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    // sum of preconditioned force residuals in current iteration
+    const double fsq1 = fc_.fsqr1 + fc_.fsqz1 + fc_.fsql1;
+
+    if (iter2_ == iter1_) {
+      // initialize all entries in otau to 0.15/time_step --> required for
+      // averaging otau: "over" tau --> 1/tau ???
+      invTau_.setConstant(0.15 / time_step);
+    }
+
+    // shift elements for averaging to the left to make space at end for new
+    // entry (oldest entry ends up at the end and will be overwritten later)
+    {
+      // Left-shift the averaging history in place (drop the oldest entry). A
+      // forward copy is alias-safe since the destination precedes the source,
+      // which avoids a per-iteration heap temporary.
+      std::copy(invTau_.data() + 1, invTau_.data() + invTau_.size(),
+                invTau_.data());
+    }
+
+    if (iter2_ > iter1_) {
+      double invtau_numerator = 0.;
+      if (fsq1 != 0.) {
+        // fsq is 1 (first iteration) or fsq1 from previous iteration
+        // fsq1/fsq is y_n assuming monotonic decrease of energy
+        invtau_numerator = std::min(std::abs(std::log(fsq1 / fc_.fsq)), 0.15);
+      }
+
+      // overwrite oldest entry (at last index after rotation above) with the
+      // new value of 1/tau
+      invTau_[invTau_.size() - 1] = invtau_numerator / time_step;
+    }
+
+    // update backup copy of fsq1 --> here, fsq is fsq1 of previous iteration
+    fc_.fsq = fsq1;
+  }  // #pragma omp single (there is an implicit omp barrier here)
+
+  // Our thread owns the last LCFS, it is our responsibility to log the
+  // residuals.
+  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
+    fc_.force_residual_r.push_back(fc_.fsqr);
+    fc_.force_residual_z.push_back(fc_.fsqz);
+    fc_.force_residual_lambda.push_back(fc_.fsql);
+    if (fc_.lfreeb) {
+      // delbsq is only available on the LCFS thread
+      fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
+      fc_.lcfs_force_timetrace.push_back(fc_.lcfs_force);
+    } else {
+      fc_.delbsq.push_back(0.0);
+      fc_.lcfs_force_timetrace.push_back(0.0);
+    }
+    fc_.restart_reasons.push_back(fc_.restart_reason);
+    fc_.mhd_energy.push_back(h_.mhdEnergy);
+  }
+
+  // averaging over ndamp entries : 1/ndamp*sum(invTau)
+  const double otav = invTau_.sum() / kNDamp;
+
+  const double dtau = time_step * otav / 2.0;
+  const double b1 = 1.0 - dtau;
+  const double fac = 1.0 / (1.0 + dtau);
+
+  // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
+  // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
+  // BASED ON A METHOD GIVEN BY P. GARABEDIAN
+  PerformTimeStep(fac, b1, time_step, thread_id);
+
+  return false;
+}
+
+void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
+                                   bool& m_liter_flag) {
+  SolverState state{
+      .iteration = iter2,
+      .multigrid_step = multigrid_step_,
+      .ns = fc_.ns,
+      .fsqr = fc_.fsqr,
+      .fsqz = fc_.fsqz,
+      .fsql = fc_.fsql,
+      .ftol = fc_.ftolv,
+      .delt = fc_.delt0r,
+      .restart_reason = restart_reason,
+      .jacobian_resets = fc_.ijacob,
+      .vacuum_pressure_active =
+          vacuum_pressure_state_ >= VacuumPressureState::kInitialized,
+      .mhd_energy = h_.mhdEnergy * 4.0 * std::numbers::pi * std::numbers::pi,
+      .geometry = EquilibriumState(),
+      .half_grid = HalfGridState(),
+      .curr_h = EnclosedCurrent(),
+  };
+  const Eigen::Index num_current = state.curr_h.size();
+  const bool keep_going = iteration_callback_(state);
+
+  if (state.curr_h.size() != num_current) {
+    callback_status_ = absl::InvalidArgumentError(absl::StrFormat(
+        "the iteration callback may change the values of state.curr_h, which "
+        "has one entry per half-grid surface, %d, but left it with %d",
+        num_current, state.curr_h.size()));
+  } else if (num_current > 0) {
+    // the other threads wait on callback_running_ until this call returns
+    for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
+      const RadialPartitioning& r = *r_[thread_id];
+      for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+        p_[thread_id]->currH[jH - r.nsMinH] = state.curr_h[jH];
+      }
+    }
+  }
+
+  if (!keep_going || !callback_status_.ok()) {
+    m_liter_flag = false;
+    status_ = VmecStatus::MORE_ITERATIONS_NEEDED;
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif  // _OPENMP
+    stopped_by_callback_ = true;
+  }
+}
+
+Geometry Vmec::EquilibriumState() const {
+  return MakeGeometry(indata_, GatherSpectralStateFromThreads(
+                                   kSignOfJacobian, s_, fc_, constants_, r_,
+                                   decomposed_x_, p_));
+}
+
+HalfGridFields Vmec::HalfGridState() const {
+  const int num_half = fc_.ns - 1;
+  HalfGridFields fields{
+      .gsqrt = RowMatrixXd(num_half, s_.nZnT),
+      .bsupu = RowMatrixXd(num_half, s_.nZnT),
+      .bsupv = RowMatrixXd(num_half, s_.nZnT),
+      .bsubu = RowMatrixXd(num_half, s_.nZnT),
+      .bsubv = RowMatrixXd(num_half, s_.nZnT),
+      .weight = s_.wInt,
+      .buco = Eigen::VectorXd(num_half),
+      .bvco = Eigen::VectorXd(num_half),
+      .iota = Eigen::VectorXd(num_half),
+      .phip = Eigen::VectorXd(num_half),
+      .vp = Eigen::VectorXd(num_half),
+      .ntheta_even = s_.nThetaEven,
+      .ntheta_eff = s_.nThetaEff,
+      .nzeta = s_.nZeta,
+      .nfp = s_.nfp,
+      .signgs = indata_.signgs,
+  };
+  for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
+    const RadialPartitioning& r = *r_[thread_id];
+    const IdealMhdModel& m = *m_[thread_id];
+    const RadialProfiles& p = *p_[thread_id];
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      // a surface two threads share is taken from the outer one
+      if (jH == r.nsMaxH - 1 && jH != num_half - 1) {
+        continue;
+      }
+      const int local = jH - r.nsMinH;
+      const Eigen::Index offset = static_cast<Eigen::Index>(local) * s_.nZnT;
+      fields.gsqrt.row(jH) = m.gsqrt.segment(offset, s_.nZnT).transpose();
+      fields.bsupu.row(jH) = m.bsupu.segment(offset, s_.nZnT).transpose();
+      fields.bsupv.row(jH) = m.bsupv.segment(offset, s_.nZnT).transpose();
+      fields.bsubu.row(jH) = m.bsubu.segment(offset, s_.nZnT).transpose();
+      fields.bsubv.row(jH) = m.bsubv.segment(offset, s_.nZnT).transpose();
+      fields.buco[jH] = p.bucoH[local];
+      fields.bvco[jH] = p.bvcoH[local];
+      fields.iota[jH] = p.iotaH[local];
+      fields.phip[jH] = p.phipH[local];
+      fields.vp[jH] = p.dVdsH[local];
+    }
+  }
+  return fields;
+}
+
+Eigen::VectorXd Vmec::EnclosedCurrent() const {
+  if (indata_.ncurr != 1) {
+    return {};
+  }
+  Eigen::VectorXd current(fc_.ns - 1);
+  for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
+    const RadialPartitioning& r = *r_[thread_id];
+    for (int jH = r.nsMinH; jH < r.nsMaxH; ++jH) {
+      current[jH] = p_[thread_id]->currH[jH - r.nsMinH];
+    }
+  }
+  return current;
+}
+
+void Vmec::Printout(double delt0r, int thread_id, int iter2) {
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    h_.ResetSpectralWidthAccumulators();
+  }
+  p_[thread_id]->AccumulateVolumeAveragedSpectralWidth();
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  if (r_[thread_id]->nsMaxF1 == fc_.ns) {
+    // only the thread that computes the free-boundary force can compute
+    // delbsq
+
+    // radial location of magnetic axis at zeta = 0
+    const GeometricOffset& geometric_offset = h_.GetGeometricOffset();
+    double r00 = geometric_offset.r_00;
+
+    // MHD energy (in SI units, i.e., Joules?)
+    double energy = h_.mhdEnergy * 4.0 * M_PI * M_PI;
+
+    // volume-averaged beta
+    double betaVolAvg = h_.thermalEnergy / h_.magneticEnergy;
+
+    // volume-averaged spectral width <M>
+    double volAvgM = h_.VolumeAveragedSpectralWidth();
+
+    // mismatch in |B|^2 at LCFS for free-boundary
+    double delbsq = m_[thread_id]->get_delbsq();
+
+    logger_.LogIteration(iter2, fc_.fsqr, fc_.fsqz, fc_.fsql, fc_.fsqr1,
+                         fc_.fsqz1, fc_.fsql1, delt0r, r00, energy, betaVolAvg,
+                         volAvgM, delbsq);
+  }  // thread which has boundary
+}
+
+absl::StatusOr<bool> Vmec::UpdateForwardModel(
+    VmecCheckpoint checkpoint, int iterations_before_checkpointing,
+    int thread_id) {
+  bool need_restart = false;
+
+  absl::StatusOr<bool> reached_checkpoint = m_[thread_id]->update(
+      *decomposed_x_[thread_id], *physical_x_[thread_id],
+      *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
+      last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+      iter2_, checkpoint, iterations_before_checkpointing, verbose_,
+      always_fix_m1_gauge_);
+  if (!reached_checkpoint.ok()) {
+    return reached_checkpoint;
+  }
+
+  // triggered at activation of vacuum forces.
+  // all threads return the same value for this flag.
+  if (need_restart) {
+    double delt0 = indata_.delt;
+    RestartIteration(delt0, thread_id);
+
+#ifdef _OPENMP
+#pragma omp single nowait
+#endif  // _OPENMP
+    // already done in restart_iter for restart_reason == BAD_JACOBIAN
+    fc_.restart_reason = RestartReason::NO_RESTART;
+  }
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  return reached_checkpoint;
+}
+
+absl::Status Vmec::EvaluateFinalState() {
+  // as Evolve does before each evaluation; computeJacobian sets BAD_JACOBIAN
+  fc_.restart_reason = RestartReason::NO_RESTART;
+
+  absl::Status status_of_all_threads = absl::OkStatus();
+  bool all_errors_are_recoverable = true;
+  // Switching on the vacuum pressure also sets BAD_JACOBIAN, to restart the
+  // iterations that would follow.
+  bool vacuum_pressure_switched_on = false;
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(num_threads_)
+#endif  // _OPENMP
+  {
+#ifdef _OPENMP
+    const int thread_id = omp_get_thread_num();
+#else
+    const int thread_id = 0;
+#endif  // _OPENMP
+
+    bool need_restart = false;
+    const absl::StatusOr<bool> evaluated = m_[thread_id]->update(
+        *decomposed_x_[thread_id], *physical_x_[thread_id],
+        *decomposed_f_[thread_id], *physical_f_[thread_id], need_restart,
+        last_preconditioner_update_, last_full_update_nestor_, fc_, iter1_,
+        iter2_, VmecCheckpoint::NONE, INT_MAX, verbose_);
+
+#ifdef _OPENMP
+#pragma omp critical
+#endif  // _OPENMP
+    {
+      vacuum_pressure_switched_on = vacuum_pressure_switched_on || need_restart;
+      if (!evaluated.ok()) {
+        all_errors_are_recoverable &= (evaluated.status().code() ==
+                                       absl::StatusCode::kFailedPrecondition);
+        UpdateStatusForThread(status_of_all_threads, thread_id,
+                              evaluated.status());
+      }
+    }
+  }  // omp parallel
+
+  if (!status_of_all_threads.ok()) {
+    return RecoverFromThreadErrors(status_of_all_threads,
+                                   all_errors_are_recoverable);
+  }
+  if (fc_.restart_reason == RestartReason::BAD_JACOBIAN &&
+      !vacuum_pressure_switched_on) {
+    status_ = VmecStatus::BAD_JACOBIAN;
+  }
+  return absl::OkStatus();
+}
+
+void Vmec::PerformTimeStep(double fac, double b1, double time_step,
+                           int thread_id) {
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  // Keep the last state with a valid force evaluation.
+  if (fc_.restart_reason == RestartReason::NO_RESTART ||
+      fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) {
+    *last_evaluated_x_[thread_id] = *decomposed_x_[thread_id];
+  }
+
+  performTimeStep(s_, fc_, *r_[thread_id], fac, b1, time_step,
+                  /*m_decomposed_x=*/*decomposed_x_[thread_id],
+                  /*m_decomposed_v=*/*decomposed_v_[thread_id],
+                  *decomposed_f_[thread_id],
+                  /*m_h_=*/h_);
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+}
+
+// velocity_scale == fac
+// conjugation_parameter == b1
+void Vmec::performTimeStep(const Sizes& s, const FlowControl& fc,
+                           const RadialPartitioning& r, double velocity_scale,
+                           double conjugation_parameter, double time_step,
+                           FourierGeometry& m_decomposed_x,
+                           FourierVelocity& m_decomposed_v,
+                           const FourierForces& decomposed_f,
+                           HandoverStorage& m_h_) const {
+  // THIS IS THE TIME-STEP ALGORITHM. IT IS ESSENTIALLY A CONJUGATE
+  // GRADIENT METHOD, WITHOUT THE LINE SEARCHES (FLETCHER-REEVES),
+  // BASED ON A METHOD GIVEN BY P. GARABEDIAN
+
+  for (int jF = r.nsMinF; jF < r.nsMaxFIncludingLcfs; ++jF) {
+    for (int m = 0; m < s.mpol; ++m) {
+      for (int n = 0; n < s.ntor + 1; ++n) {
+        const int idx_mn = ((jF - r.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
+        const int idx_mn1 = ((jF - r.nsMinF1) * s.mpol + m) * (s.ntor + 1) + n;
+
+        // update velocity
+        m_decomposed_v.vrcc[idx_mn] =
+            velocity_scale *
+            (conjugation_parameter * m_decomposed_v.vrcc[idx_mn] +
+             time_step * decomposed_f.frcc[idx_mn]);
+        m_decomposed_v.vzsc[idx_mn] =
+            velocity_scale *
+            (conjugation_parameter * m_decomposed_v.vzsc[idx_mn] +
+             time_step * decomposed_f.fzsc[idx_mn]);
+        m_decomposed_v.vlsc[idx_mn] =
+            velocity_scale *
+            (conjugation_parameter * m_decomposed_v.vlsc[idx_mn] +
+             time_step * decomposed_f.flsc[idx_mn]);
+        if (s.lthreed) {
+          m_decomposed_v.vrss[idx_mn] =
+              velocity_scale *
+              (conjugation_parameter * m_decomposed_v.vrss[idx_mn] +
+               time_step * decomposed_f.frss[idx_mn]);
+          m_decomposed_v.vzcs[idx_mn] =
+              velocity_scale *
+              (conjugation_parameter * m_decomposed_v.vzcs[idx_mn] +
+               time_step * decomposed_f.fzcs[idx_mn]);
+          m_decomposed_v.vlcs[idx_mn] =
+              velocity_scale *
+              (conjugation_parameter * m_decomposed_v.vlcs[idx_mn] +
+               time_step * decomposed_f.flcs[idx_mn]);
+        }
+        if (s.lasym) {
+          m_decomposed_v.vrsc[idx_mn] =
+              velocity_scale *
+              (conjugation_parameter * m_decomposed_v.vrsc[idx_mn] +
+               time_step * decomposed_f.frsc[idx_mn]);
+          m_decomposed_v.vzcc[idx_mn] =
+              velocity_scale *
+              (conjugation_parameter * m_decomposed_v.vzcc[idx_mn] +
+               time_step * decomposed_f.fzcc[idx_mn]);
+          m_decomposed_v.vlcc[idx_mn] =
+              velocity_scale *
+              (conjugation_parameter * m_decomposed_v.vlcc[idx_mn] +
+               time_step * decomposed_f.flcc[idx_mn]);
+          if (s.lthreed) {
+            m_decomposed_v.vrcs[idx_mn] =
+                velocity_scale *
+                (conjugation_parameter * m_decomposed_v.vrcs[idx_mn] +
+                 time_step * decomposed_f.frcs[idx_mn]);
+            m_decomposed_v.vzss[idx_mn] =
+                velocity_scale *
+                (conjugation_parameter * m_decomposed_v.vzss[idx_mn] +
+                 time_step * decomposed_f.fzss[idx_mn]);
+            m_decomposed_v.vlss[idx_mn] =
+                velocity_scale *
+                (conjugation_parameter * m_decomposed_v.vlss[idx_mn] +
+                 time_step * decomposed_f.flss[idx_mn]);
+          }
+        }
+
+        // advance "position" (==Fourier coefficients of geometry) by
+        // velocity*timeStep
+        m_decomposed_x.rmncc[idx_mn1] +=
+            time_step * m_decomposed_v.vrcc[idx_mn];
+        m_decomposed_x.zmnsc[idx_mn1] +=
+            time_step * m_decomposed_v.vzsc[idx_mn];
+        m_decomposed_x.lmnsc[idx_mn1] +=
+            time_step * m_decomposed_v.vlsc[idx_mn];
+        if (s.lthreed) {
+          m_decomposed_x.rmnss[idx_mn1] +=
+              time_step * m_decomposed_v.vrss[idx_mn];
+          m_decomposed_x.zmncs[idx_mn1] +=
+              time_step * m_decomposed_v.vzcs[idx_mn];
+          m_decomposed_x.lmncs[idx_mn1] +=
+              time_step * m_decomposed_v.vlcs[idx_mn];
+        }
+        if (s.lasym) {
+          m_decomposed_x.rmnsc[idx_mn1] +=
+              time_step * m_decomposed_v.vrsc[idx_mn];
+          m_decomposed_x.zmncc[idx_mn1] +=
+              time_step * m_decomposed_v.vzcc[idx_mn];
+          m_decomposed_x.lmncc[idx_mn1] +=
+              time_step * m_decomposed_v.vlcc[idx_mn];
+          if (s.lthreed) {
+            m_decomposed_x.rmncs[idx_mn1] +=
+                time_step * m_decomposed_v.vrcs[idx_mn];
+            m_decomposed_x.zmnss[idx_mn1] +=
+                time_step * m_decomposed_v.vzss[idx_mn];
+            m_decomposed_x.lmnss[idx_mn1] +=
+                time_step * m_decomposed_v.vlss[idx_mn];
+          }
+        }
+      }  // n
+    }  // m
+  }  // jF
+
+  // also evolve satellite radial locations: nsMinF1, nsMaxF1-1 in case
+  // inside, outside threads exist
+  bool hasInside = (r.nsMinF1 > 0);
+  bool hasOutside = (r.nsMaxF1 < fc.ns);
+
+  // get Full1-specific elements from neighboring threads
+  // Uses RowMatrixXd with (thread, mn) indexing
+  if (hasInside) {
+    // put innermost grid point into _o storage of previous rank
+    const int prev_thread = r.get_thread_id() - 1;
+    for (int mn = 0; mn < s_.mnsize; ++mn) {
+      int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+      m_h_.rmncc_o(prev_thread, mn) = m_decomposed_x.rmncc[idx_mn];
+      m_h_.zmnsc_o(prev_thread, mn) = m_decomposed_x.zmnsc[idx_mn];
+      m_h_.lmnsc_o(prev_thread, mn) = m_decomposed_x.lmnsc[idx_mn];
+    }
+
+    if (s_.lthreed) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnss_o(prev_thread, mn) = m_decomposed_x.rmnss[idx_mn];
+        m_h_.zmncs_o(prev_thread, mn) = m_decomposed_x.zmncs[idx_mn];
+        m_h_.lmncs_o(prev_thread, mn) = m_decomposed_x.lmncs[idx_mn];
+      }
+    }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnsc_o(prev_thread, mn) = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_o(prev_thread, mn) = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_o(prev_thread, mn) = m_decomposed_x.lmncc[idx_mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMinF - r.nsMinF1) * s_.mnsize + mn;
+          m_h_.rmncs_o(prev_thread, mn) = m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_o(prev_thread, mn) = m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_o(prev_thread, mn) = m_decomposed_x.lmnss[idx_mn];
+        }
+      }
+    }  // lasym
+  }
+
+  if (hasOutside) {
+    // put outermost grid point into _i storage of next rank
+    const int next_thread = r.get_thread_id() + 1;
+    for (int mn = 0; mn < s_.mnsize; ++mn) {
+      int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+      m_h_.rmncc_i(next_thread, mn) = m_decomposed_x.rmncc[idx_mn];
+      m_h_.zmnsc_i(next_thread, mn) = m_decomposed_x.zmnsc[idx_mn];
+      m_h_.lmnsc_i(next_thread, mn) = m_decomposed_x.lmnsc[idx_mn];
+    }
+
+    if (s_.lthreed) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnss_i(next_thread, mn) = m_decomposed_x.rmnss[idx_mn];
+        m_h_.zmncs_i(next_thread, mn) = m_decomposed_x.zmncs[idx_mn];
+        m_h_.lmncs_i(next_thread, mn) = m_decomposed_x.lmncs[idx_mn];
+      }
+    }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_h_.rmnsc_i(next_thread, mn) = m_decomposed_x.rmnsc[idx_mn];
+        m_h_.zmncc_i(next_thread, mn) = m_decomposed_x.zmncc[idx_mn];
+        m_h_.lmncc_i(next_thread, mn) = m_decomposed_x.lmncc[idx_mn];
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMaxF - 1 - r.nsMinF1) * s_.mnsize + mn;
+          m_h_.rmncs_i(next_thread, mn) = m_decomposed_x.rmncs[idx_mn];
+          m_h_.zmnss_i(next_thread, mn) = m_decomposed_x.zmnss[idx_mn];
+          m_h_.lmnss_i(next_thread, mn) = m_decomposed_x.lmnss[idx_mn];
+        }
+      }
+    }  // lasym
+  }
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  // Now that the crossover data is in the HandoverStorage,
+  // put it locally into the correct satellite locations.
+
+  if (hasOutside) {
+    // put _o storage filled by thread_id-1 into nsMaxF1-1
+    const int this_thread = r.get_thread_id();
+    for (int mn = 0; mn < s_.mnsize; ++mn) {
+      int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_o(this_thread, mn);
+      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_o(this_thread, mn);
+      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_o(this_thread, mn);
+    }
+
+    if (s_.lthreed) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_o(this_thread, mn);
+        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_o(this_thread, mn);
+        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_o(this_thread, mn);
+      }
+    }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_o(this_thread, mn);
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_o(this_thread, mn);
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_o(this_thread, mn);
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMaxF1 - 1 - r.nsMinF1) * s_.mnsize + mn;
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_o(this_thread, mn);
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_o(this_thread, mn);
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_o(this_thread, mn);
+        }
+      }
+    }  // lasym
+  }
+
+  if (hasInside) {
+    // put _i storage filled by thread_id+1 into nsMinF1
+    const int this_thread = r.get_thread_id();
+    for (int mn = 0; mn < s_.mnsize; ++mn) {
+      int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+      m_decomposed_x.rmncc[idx_mn] = m_h_.rmncc_i(this_thread, mn);
+      m_decomposed_x.zmnsc[idx_mn] = m_h_.zmnsc_i(this_thread, mn);
+      m_decomposed_x.lmnsc[idx_mn] = m_h_.lmnsc_i(this_thread, mn);
+    }
+
+    if (s_.lthreed) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnss[idx_mn] = m_h_.rmnss_i(this_thread, mn);
+        m_decomposed_x.zmncs[idx_mn] = m_h_.zmncs_i(this_thread, mn);
+        m_decomposed_x.lmncs[idx_mn] = m_h_.lmncs_i(this_thread, mn);
+      }
+    }  // lthreed
+
+    if (s_.lasym) {
+      for (int mn = 0; mn < s_.mnsize; ++mn) {
+        int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+        m_decomposed_x.rmnsc[idx_mn] = m_h_.rmnsc_i(this_thread, mn);
+        m_decomposed_x.zmncc[idx_mn] = m_h_.zmncc_i(this_thread, mn);
+        m_decomposed_x.lmncc[idx_mn] = m_h_.lmncc_i(this_thread, mn);
+      }
+
+      if (s_.lthreed) {
+        for (int mn = 0; mn < s_.mnsize; ++mn) {
+          int idx_mn = (r.nsMinF1 - r.nsMinF1) * s_.mnsize + mn;
+          m_decomposed_x.rmncs[idx_mn] = m_h_.rmncs_i(this_thread, mn);
+          m_decomposed_x.zmnss[idx_mn] = m_h_.zmnss_i(this_thread, mn);
+          m_decomposed_x.lmnss[idx_mn] = m_h_.lmnss_i(this_thread, mn);
+        }
+      }
+    }  // lasym
+  }
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+}  // performTimeStep
+
+void Vmec::InterpolateToNextMultigridStep(
+    int ns_new, int ns_old,
+    const std::vector<std::unique_ptr<RadialProfiles>>& p,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& r_new,
+    const std::vector<std::unique_ptr<RadialPartitioning>>& r_old,
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_new,
+    std::vector<std::unique_ptr<FourierGeometry>>& m_x_old,
+    std::optional<MultigridInterpolationScheme> interpolation_scheme) {
+  // INTERPOLATE R,Z AND LAMBDA ON FULL GRID
+  // (EXTRAPOLATE M=1 MODES,OVER SQRT(S), TO ORIGIN)
+  // ON ENTRY, XOLD = X(COARSE MESH) * SCALXC(COARSE MESH)
+  // ON EXIT,  XNEW = X(NEW MESH)   [ NOT SCALED BY 1/SQRTS ]
+
+  const double hs_old = 1.0 / (ns_old - 1.0);
+
+  const int num_threads_new = static_cast<int>(r_new.size());
+  const int num_threads_old = static_cast<int>(r_old.size());
+
+  // ------------------------
+  // extrapolation to axis for odd-m modes (?)
+
+  int thread_with_ns_0 = 0;
+  int thread_with_ns_1 = 0;
+  int thread_with_ns_2 = 0;
+  for (int thread_id = 0; thread_id < num_threads_old; ++thread_id) {
+    const int nsMinF = r_old[thread_id]->nsMinF;
+    const int nsMaxFIncludingLcfs = r_old[thread_id]->nsMaxFIncludingLcfs;
+    if (nsMinF <= 0 && 0 < nsMaxFIncludingLcfs) {
+      thread_with_ns_0 = thread_id;
+    }
+    if (nsMinF <= 1 && 1 < nsMaxFIncludingLcfs) {
+      thread_with_ns_1 = thread_id;
+    }
+    if (nsMinF <= 2 && 2 < nsMaxFIncludingLcfs) {
+      thread_with_ns_2 = thread_id;
+    }
+  }  // thread_id
+
+  // only odd m
+  for (int m = 1; m < s_.mpol; m += 2) {
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_fc_0 =
+          ((0 - m_x_old[thread_with_ns_0]->nsMin()) * s_.mpol + m) *
+              (s_.ntor + 1) +
+          n;
+      const int idx_fc_1 =
+          ((1 - m_x_old[thread_with_ns_1]->nsMin()) * s_.mpol + m) *
+              (s_.ntor + 1) +
+          n;
+      const int idx_fc_2 =
+          ((2 - m_x_old[thread_with_ns_2]->nsMin()) * s_.mpol + m) *
+              (s_.ntor + 1) +
+          n;
+
+      m_x_old[thread_with_ns_0]->rmncc[idx_fc_0] =
+          2.0 * m_x_old[thread_with_ns_1]->rmncc[idx_fc_1] -
+          m_x_old[thread_with_ns_2]->rmncc[idx_fc_2];
+      m_x_old[thread_with_ns_0]->zmnsc[idx_fc_0] =
+          2.0 * m_x_old[thread_with_ns_1]->zmnsc[idx_fc_1] -
+          m_x_old[thread_with_ns_2]->zmnsc[idx_fc_2];
+      m_x_old[thread_with_ns_0]->lmnsc[idx_fc_0] =
+          2.0 * m_x_old[thread_with_ns_1]->lmnsc[idx_fc_1] -
+          m_x_old[thread_with_ns_2]->lmnsc[idx_fc_2];
+      if (s_.lthreed) {
+        m_x_old[thread_with_ns_0]->rmnss[idx_fc_0] =
+            2.0 * m_x_old[thread_with_ns_1]->rmnss[idx_fc_1] -
+            m_x_old[thread_with_ns_2]->rmnss[idx_fc_2];
+        m_x_old[thread_with_ns_0]->zmncs[idx_fc_0] =
+            2.0 * m_x_old[thread_with_ns_1]->zmncs[idx_fc_1] -
+            m_x_old[thread_with_ns_2]->zmncs[idx_fc_2];
+        m_x_old[thread_with_ns_0]->lmncs[idx_fc_0] =
+            2.0 * m_x_old[thread_with_ns_1]->lmncs[idx_fc_1] -
+            m_x_old[thread_with_ns_2]->lmncs[idx_fc_2];
+      }
+      if (s_.lasym) {
+        m_x_old[thread_with_ns_0]->rmnsc[idx_fc_0] =
+            2.0 * m_x_old[thread_with_ns_1]->rmnsc[idx_fc_1] -
+            m_x_old[thread_with_ns_2]->rmnsc[idx_fc_2];
+        m_x_old[thread_with_ns_0]->zmncc[idx_fc_0] =
+            2.0 * m_x_old[thread_with_ns_1]->zmncc[idx_fc_1] -
+            m_x_old[thread_with_ns_2]->zmncc[idx_fc_2];
+        m_x_old[thread_with_ns_0]->lmncc[idx_fc_0] =
+            2.0 * m_x_old[thread_with_ns_1]->lmncc[idx_fc_1] -
+            m_x_old[thread_with_ns_2]->lmncc[idx_fc_2];
+        if (s_.lthreed) {
+          m_x_old[thread_with_ns_0]->rmncs[idx_fc_0] =
+              2.0 * m_x_old[thread_with_ns_1]->rmncs[idx_fc_1] -
+              m_x_old[thread_with_ns_2]->rmncs[idx_fc_2];
+          m_x_old[thread_with_ns_0]->zmnss[idx_fc_0] =
+              2.0 * m_x_old[thread_with_ns_1]->zmnss[idx_fc_1] -
+              m_x_old[thread_with_ns_2]->zmnss[idx_fc_2];
+          m_x_old[thread_with_ns_0]->lmnss[idx_fc_0] =
+              2.0 * m_x_old[thread_with_ns_1]->lmnss[idx_fc_1] -
+              m_x_old[thread_with_ns_2]->lmnss[idx_fc_2];
+        }
+      }
+    }  // n
+  }  // m
+
+  // ------------------------
+  // radial interpolation from old, coarse state vector to new, finer state
+  // vector
+  std::vector<std::span<double> FourierGeometry::*> coefficient_members = {
+      &FourierGeometry::rmncc, &FourierGeometry::zmnsc,
+      &FourierGeometry::lmnsc};
+  if (s_.lthreed) {
+    coefficient_members.push_back(&FourierGeometry::rmnss);
+    coefficient_members.push_back(&FourierGeometry::zmncs);
+    coefficient_members.push_back(&FourierGeometry::lmncs);
+  }
+  if (s_.lasym) {
+    coefficient_members.push_back(&FourierGeometry::rmnsc);
+    coefficient_members.push_back(&FourierGeometry::zmncc);
+    coefficient_members.push_back(&FourierGeometry::lmncc);
+    if (s_.lthreed) {
+      coefficient_members.push_back(&FourierGeometry::rmncs);
+      coefficient_members.push_back(&FourierGeometry::zmnss);
+      coefficient_members.push_back(&FourierGeometry::lmnss);
+    }
+  }
+
+  const MultigridInterpolationScheme scheme =
+      interpolation_scheme.value_or(MultigridInterpolationScheme::kLinear);
+
+  for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
+    for (int jNew = r_new[thread_id]->nsMinF1; jNew < r_new[thread_id]->nsMaxF1;
+         ++jNew) {
+      const double sj = jNew / (ns_new - 1.0);
+
+      // old-grid interval [js1, js2] around the new radial position
+      const int js1 = (jNew * (ns_old - 1)) / (ns_new - 1);
+      const int js2 = std::min(js1 + 1, ns_old - 1);
+
+      // interpolation stencil on the old radial grid and its weights
+      std::array<int, 4> stencil{};
+      std::array<double, 4> weight{};
+      int stencil_size = 0;
+
+      if (scheme == MultigridInterpolationScheme::kLinear || ns_old < 4) {
+        double xint = (sj - js1 * hs_old) / hs_old;
+        xint = std::min(1.0, std::max(0.0, xint));
+        stencil = {js1, js2, 0, 0};
+        weight = {1.0 - xint, xint, 0.0, 0.0};
+        stencil_size = 2;
+      } else {
+        // 4-point Lagrange stencil around [js1, js2], shifted inward at the
+        // radial-domain ends; reproduces old-grid values exactly when the new
+        // position coincides with an old grid point (e.g. at the LCFS).
+        const int base = std::min(std::max(js1 - 1, 0), ns_old - 4);
+        std::array<double, 4> node{};
+        double target = sj;
+        for (int k = 0; k < 4; ++k) {
+          stencil[k] = base + k;
+          node[k] = stencil[k] * hs_old;
+        }
+        if (scheme == MultigridInterpolationScheme::kCubicRho) {
+          target = std::sqrt(sj);
+          for (int k = 0; k < 4; ++k) {
+            node[k] = std::sqrt(node[k]);
+          }
+        }
+        for (int k = 0; k < 4; ++k) {
+          double w = 1.0;
+          for (int l = 0; l < 4; ++l) {
+            if (l != k) {
+              w *= (target - node[l]) / (node[k] - node[l]);
+            }
+          }
+          weight[k] = w;
+        }
+        stencil_size = 4;
+      }
+
+      // owning old-partitioning thread for every stencil point
+      std::array<int, 4> source_thread{};
+      for (int k = 0; k < stencil_size; ++k) {
+        for (int old_thread_id = 0; old_thread_id < num_threads_old;
+             ++old_thread_id) {
+          if (r_old[old_thread_id]->nsMinF1 <= stencil[k] &&
+              stencil[k] < r_old[old_thread_id]->nsMaxF1) {
+            source_thread[k] = old_thread_id;
+          }
+        }  // old_thread_id
+      }  // k
+
+      // now can actually perform interpolation
+      for (int m = 0; m < s_.mpol; ++m) {
+        const int m_parity = m % 2;
+        const double scalxc =
+            p[thread_id]
+                ->scalxc[(jNew - r_new[thread_id]->nsMinF1) * 2 + m_parity];
+
+        for (int n = 0; n < s_.ntor + 1; ++n) {
+          const int idx_fc_jNew =
+              ((jNew - m_x_new[thread_id]->nsMin()) * s_.mpol + m) *
+                  (s_.ntor + 1) +
+              n;
+
+          for (const auto member : coefficient_members) {
+            double value = 0.0;
+            for (int k = 0; k < stencil_size; ++k) {
+              const FourierGeometry& source = *m_x_old[source_thread[k]];
+              const int idx_fc_k =
+                  ((stencil[k] - source.nsMin()) * s_.mpol + m) *
+                      (s_.ntor + 1) +
+                  n;
+              value += weight[k] * (source.*member)[idx_fc_k];
+            }  // k
+            ((*m_x_new[thread_id]).*member)[idx_fc_jNew] = value / scalxc;
+          }  // member
+        }  // n
+      }  // m
+    }  // jNew
+  }  // thread_id
+
+  // ------------------------
+  // Zero M=1 modes at origin
+
+  // Actually, all odd-m modes are zeroed!
+  // odd m only
+  for (int m = 1; m < s_.mpol; m += 2) {
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_fc_0 =
+          ((0 - m_x_old[thread_with_ns_0]->nsMin()) * s_.mpol + m) *
+              (s_.ntor + 1) +
+          n;
+
+      m_x_new[thread_with_ns_0]->rmncc[idx_fc_0] = 0.0;
+      m_x_new[thread_with_ns_0]->zmnsc[idx_fc_0] = 0.0;
+      m_x_new[thread_with_ns_0]->lmnsc[idx_fc_0] = 0.0;
+      if (s_.lthreed) {
+        m_x_new[thread_with_ns_0]->rmnss[idx_fc_0] = 0.0;
+        m_x_new[thread_with_ns_0]->zmncs[idx_fc_0] = 0.0;
+        m_x_new[thread_with_ns_0]->lmncs[idx_fc_0] = 0.0;
+      }
+      if (s_.lasym) {
+        m_x_new[thread_with_ns_0]->rmnsc[idx_fc_0] = 0.0;
+        m_x_new[thread_with_ns_0]->zmncc[idx_fc_0] = 0.0;
+        m_x_new[thread_with_ns_0]->lmncc[idx_fc_0] = 0.0;
+        if (s_.lthreed) {
+          m_x_new[thread_with_ns_0]->rmncs[idx_fc_0] = 0.0;
+          m_x_new[thread_with_ns_0]->zmnss[idx_fc_0] = 0.0;
+          m_x_new[thread_with_ns_0]->lmnss[idx_fc_0] = 0.0;
+        }
+      }
+    }  // n
+  }  // m
+}  // InterpolateToNextMultigridStep
+
+}  // namespace vmecpp

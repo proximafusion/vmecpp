@@ -1,0 +1,105 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#ifndef VMECPP_VMEC_FOURIER_COEFFICIENTS_FOURIER_COEFFICIENTS_H_
+#define VMECPP_VMEC_FOURIER_COEFFICIENTS_FOURIER_COEFFICIENTS_H_
+
+#include <Eigen/Dense>
+#include <cstdio>
+#include <optional>
+#include <vector>
+
+#include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
+
+namespace vmecpp {
+
+class FourierCoeffs {
+ public:
+  FourierCoeffs(const Sizes* s, const RadialPartitioning* r, int nsMin,
+                int nsMax, int ns);
+  FourierCoeffs(const FourierCoeffs& other) = default;
+  FourierCoeffs(FourierCoeffs&& other) noexcept = default;
+  FourierCoeffs& operator=(const FourierCoeffs& other);
+  FourierCoeffs& operator=(FourierCoeffs&& other) noexcept;
+
+  void setZero();
+
+  void decomposeInto(FourierCoeffs& m_x, const Eigen::VectorXd& scalxc) const;
+  // m = 1 polar constraint: rss <- f (rss + sigma zcs), zcs <- f (sigma rss -
+  // zcs), and rsc, zcc alike, with sigma = -sign_of_jacobian; self-inverse up
+  // to f.
+  void m1Constraint(double scalingFactor, int sign_of_jacobian,
+                    std::optional<int> jMax = std::nullopt);
+
+  // Zero R and Z coefficients with m >= mpolGeom or n > ntorGeom; lambda is
+  // left untouched. On the force, this holds geometry at mpolGeom/ntorGeom
+  // while lambda keeps the full mpol/ntor resolution.
+  void maskGeometryAbove(int mpolGeom, int ntorGeom);
+
+  // Get the sum of squared coefficients for R and Z.
+  // If includeOffset is false, the (0,0)-coefficients for cos(mu)*cos(nv) are
+  // left out. The range of flux surface to count in is specified as [nsMinHere,
+  // nsMaxHere[ in order to allow to not count stuff twice at the borders in
+  // different threads.
+  double rzNorm(bool includeOffset, int nsMinHere, int nsMaxHere) const;
+
+  double GetXcElement(int rzl, int basis_index, int j, int n, int m) const;
+
+  int nsMin() const;
+  int nsMax() const;
+
+ protected:
+  const Sizes& s_;
+  const RadialPartitioning& r_;
+
+  const int nsMin_;
+  const int nsMax_;
+  const int ns;
+
+  // [ns x numFC] R ~ cos(m*theta)*cos(n*zeta)
+  Eigen::VectorXd rcc;
+
+  // [ns x numFC] R ~ sin(m*theta)*sin(n*zeta)
+  Eigen::VectorXd rss;
+
+  // [ns x numFC] R ~ sin(m*theta)*cos(n*zeta)
+  Eigen::VectorXd rsc;
+
+  // [ns x numFC] R ~ cos(m*theta)*sin(n*zeta)
+  Eigen::VectorXd rcs;
+
+  //***************/
+
+  // [ns x numFC] Z ~ sin(m*theta)*cos(n*zeta)
+  Eigen::VectorXd zsc;
+
+  // [ns x numFC] Z ~ cos(m*theta)*sin(n*zeta)
+  Eigen::VectorXd zcs;
+
+  // [ns x numFC] Z ~ cos(m*theta)*cos(n*zeta)
+  Eigen::VectorXd zcc;
+
+  // [ns x numFC] Z ~ sin(m*theta)*sin(n*zeta)
+  Eigen::VectorXd zss;
+
+  //***************/
+
+  // [ns x numFC] lambda ~ sin(m*theta)*cos(n*zeta)
+  Eigen::VectorXd lsc;
+
+  // [ns x numFC] lambda ~ cos(m*theta)*sin(n*zeta)
+  Eigen::VectorXd lcs;
+
+  // [ns x numFC] lambda ~ cos(m*theta)*cos(n*zeta)
+  Eigen::VectorXd lcc;
+
+  // [ns x numFC] lambda ~ sin(m*theta)*sin(n*zeta)
+  Eigen::VectorXd lss;
+};
+
+}  // namespace vmecpp
+
+#endif  // VMECPP_VMEC_FOURIER_COEFFICIENTS_FOURIER_COEFFICIENTS_H_

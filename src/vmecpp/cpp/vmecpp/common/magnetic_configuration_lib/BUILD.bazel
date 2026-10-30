@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "magnetic_configuration_lib",
+    visibility = ["//visibility:public"],
+    srcs = ["magnetic_configuration_lib.cc"],
+    hdrs = ["magnetic_configuration_lib.h"],
+    deps = [
+        "//vmecpp/common/magnetic_configuration_definition:magnetic_configuration",
+        "//vmecpp/common/composed_types_lib:composed_types_lib",
+        "//util/file_io",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings:strings",
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/status:statusor",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "magnetic_configuration_lib_test",
+    srcs = ["magnetic_configuration_lib_test.cc"],
+    deps = [
+        ":magnetic_configuration_lib",
+        "@googletest//:gtest_main",
+        "//util/testing:numerical_comparison_lib",
+    ],
+)

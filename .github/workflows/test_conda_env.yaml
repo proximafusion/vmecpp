@@ -1,0 +1,43 @@
+name: Test conda forge env creation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Cancel currently running job if a new one comes along for the same branch or tag.
+# From https://stackoverflow.com/a/72408109.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+# CI-only dependency workarounds, see .github/constraints.txt and .github/uv.toml
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  PIP_ONLY_BINARY: netCDF4
+  UV_CONFIG_FILE: ${{ github.workspace }}/.github/uv.toml
+
+jobs:
+  test-conda-env:
+    name: Test conda env
+    runs-on: ubuntu-22.04
+    container:
+      image: continuumio/miniconda3
+    steps:
+      - uses: actions/checkout@v4
+      # This container does not have git-lfs installed
+      - name: Create conda env
+        run: |
+          conda env create --yes --quiet --file environment.yml
+      - name: Test conda env
+        run: |
+          . "/opt/conda/etc/profile.d/conda.sh"
+          conda activate vmecpp
+          conda install --yes --quiet pytest
+          # exclude test that requires VMEC2000 to be installed:
+          # it's not available as a conda package, and skip test
+          # that requires mgrid file from git-lfs
+          # (LFS not available in this container image)
+          python -m pytest -k 'not test_ensure_vmec2000_input_from_vmecpp_input and not test_against_reference_wout' tests/

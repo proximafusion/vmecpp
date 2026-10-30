@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "laplace_solver",
+    srcs = ["laplace_solver.cc"],
+    hdrs = ["laplace_solver.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    ],
+)
+
+cc_test(
+    name = "laplace_solver_test",
+    srcs = ["laplace_solver_test.cc"],
+    deps = [
+        ":laplace_solver",
+        "@googletest//:gtest_main",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    ],
+    size = "small",
+)
+
+cc_binary(
+    name = "laplace_solver_bench",
+    srcs = ["laplace_solver_bench.cc"],
+    deps = [
+        ":laplace_solver",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@google_benchmark//:benchmark_main",
+    ],
+)

@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+  name="magnetic_configuration",
+  visibility = ["//visibility:public"],
+  hdrs=["magnetic_configuration.h"],
+  deps = [
+    "//vmecpp/common/composed_types_definition:composed_types",
+  ],
+)

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "vmec_constants",
+    srcs = ["vmec_constants.cc"],
+    hdrs = ["vmec_constants.h", "vmec_algorithm_constants.h"],
+    visibility = ["//vmecpp:__subpackages__", "//vmecpp_large_cpp_tests:__subpackages__"],
+    deps = [],
+)

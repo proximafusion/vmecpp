@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "mgrid_provider",
+    srcs = ["mgrid_provider.cc"],
+    hdrs = ["mgrid_provider.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/strings:str_format",
+        "//util/netcdf_io:netcdf_io",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/makegrid_lib",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    ],
+)

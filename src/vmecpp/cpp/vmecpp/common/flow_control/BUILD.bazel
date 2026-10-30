@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "flow_control",
+    srcs = ["flow_control.cc"],
+    hdrs = ["flow_control.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "@abseil-cpp//absl/log:check",
+    ]
+)

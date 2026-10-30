@@ -1,0 +1,203 @@
+[build-system]
+requires = ["scikit-build-core~=0.11.0", "pybind11", "numpy"] # numpy is needed for some scikit-build-core features.
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "vmecpp"
+dynamic = ["version"]
+description = "Proxima Fusion's reimplementation of the Variational Moments Equilibrium Code (VMEC), a free-boundary ideal-MHD equilibrium solver for stellarators and Tokamaks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+keywords = []
+authors = [
+  { name = "Jonathan Schilling", email = "jons@proximafusion.com" },
+  { name = "Enrico Guiraud", email = "eguiraud@proximafusion.com" },
+  { name = "Philipp Jurasic", email = "jurasic@proximafusion.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+  "netCDF4",
+  "numpy",
+  "scipy",
+  "pydantic>=2.11", # Introduced support for by_alias validation
+  "jaxtyping>=0.2.6",
+  "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
+  "jax!=0.5.1", # To prevent a circular import bug in jax on arch Linux
+  "simsopt>=1.8.1",
+]
+
+[project.scripts]
+# Allow vmecpp to be run as vmecpp instead of just python -m vmecpp
+vmecpp = "vmecpp.__main__:main"
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+benchmark = [
+  "pytest<9",
+  "pytest-benchmark",
+]
+docs = [
+  "furo",
+  "myst_parser >=0.13",
+  "sphinx >=4.0",
+  "sphinx-copybutton",
+  "sphinx-autodoc-typehints",
+]
+
+[project.urls]
+Documentation = "https://github.com/proximafusion/vmecpp#readme"
+Issues = "https://github.com/proximafusion/vmecpp/issues"
+Source = "https://github.com/proximafusion/vmecpp"
+
+[tool.pytest.ini_options]
+# Long-running integration tests are deselected by default; run them explicitly
+# with `pytest -m slow`.
+addopts = "-m 'not slow'"
+markers = [
+  "slow: long-running integration tests (run with '-m slow')",
+]
+
+[tool.scikit-build]
+# To build with debug symbols, change this to "RelWithDebInfo".
+cmake.build-type = "Release" # "RelWithDebInfo"
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+sdist.exclude = [
+    "src/vmecpp/cpp/vmecpp/test_data/",
+    "src/vmecpp/cpp/vmecpp/common/makegrid_lib/test_data/",
+    "src/vmecpp/cpp/vmecpp_large_cpp_tests/",
+    "docs/",
+    ".github/",
+    "tests/",
+    "examples/",
+]
+wheel.exclude = [
+    # Eigen's own CMake install rules copy its headers to <prefix>/include/eigen3
+    # as a side effect of FetchContent_MakeAvailable(eigen); nothing in vmecpp
+    # ships or uses them at runtime.
+    "include/eigen3/",
+]
+build.verbose = false
+# Caching directory for wheel builds; one per Python tag, so that virtual environments
+# with different interpreters do not overwrite each other's CMake cache.
+build-dir = "build/{wheel_tag}"
+# When vmecpp is installed in editable mode
+# pip install -e .
+# it will check if the C++ sources have changed on each package import and rebuild individual files as needed
+editable.rebuild = true
+
+[tool.setuptools_scm]
+version_file = "src/vmecpp/__about__.py"
+
+
+[tool.cibuildwheel]
+archs = ["native"]
+# jaxlib, a transitive dependency of simsopt, publishes no macOS x86_64 wheels
+# for CPython 3.14, so installing the built wheel to test it cannot resolve
+# there. Skip both the GIL and free-threaded variants. Intel macOS still builds
+# and tests CPython 3.10-3.13.
+skip = ["*-musllinux*", "cp314*-macosx_x86_64"]
+build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
+test-requires = "pytest"
+test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
+
+[tool.cibuildwheel.linux]
+before-build = "yum install -y zlib-devel epel-release && yum install -y ccache"
+
+[tool.cibuildwheel.macos]
+before-build = "brew install gcc libomp ccache"
+# simsopt builds from source in the test environment where it has no wheel
+# (CPython 3.14). Without OpenMP_ROOT it builds without OpenMP, as its wheels
+# are, and the test process loads one libomp, the one in the vmecpp wheel.
+test-environment = { OpenMP_ROOT = "" }
+
+[tool.coverage.run]
+source_pkgs = ["vmecpp", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/vmecpp/__about__.py",
+]
+
+[tool.coverage.paths]
+vmecpp = ["src/vmecpp", "*/vmecpp/src/vmecpp"]
+tests = ["tests", "*/vmecpp/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+extend-select = [
+  "ARG",      # flake8-unused-arguments
+  "B",        # flake8-bugbear
+  "C4",       # flake8-comprehensions
+  "EM",       # flake8-errmsg
+  "EXE",      # flake8-executable
+  "FURB",     # refurb
+  "G",        # flake8-logging-format
+  "I",        # isort
+  "ICN",      # flake8-import-conventions
+  "NPY",      # NumPy specific rules
+  "PD",       # pandas-vet
+  "PGH",      # pygrep-hooks
+  "PIE",      # flake8-pie
+  "PL",       # pylint
+  "PT",       # flake8-pytest-style
+  "PTH",      # flake8-use-pathlib
+  "PYI",      # flake8-pyi
+  "RET",      # flake8-return
+  "RUF",      # Ruff-specific
+  "SIM",      # flake8-simplify
+  "T20",      # flake8-print
+  "UP",       # pyupgrade
+  "YTT",      # flake8-2020
+]
+ignore = [
+  "ISC001",   # Conflicts with formatter
+  "PLR09",    # Too many <...>
+  "PLR2004",  # Magic value used in comparison
+  "F722",     # Disable 'forward-annotation-syntax-error' for jaxtyping compatibility, see https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
+  "UP037",    # Incompatible with jaxtyping type annotations
+  "PGH003",   # We don't want to use specific code rules in `pyright: ignore`, too much of a hassle
+  "PTH123",   # We don't want to substitute `open("fname")` with `Path("fname").open()`
+  "PTH107",   # We don't want to substitute `os.remove("foo")` with `Path("foo").unlink().`
+  "G004",     # We are ok with f-strings as logging messages
+  "RET504",   # We are ok with assignments before returns (as a way to document what we are returning)
+  "F821",     # We are ok with undefined dimension names
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T20"]
+"**/*_test.py" = ["T20"]
+"examples/**" = ["T201"]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["build", "**/__pycache__", "src/vmecpp/cpp/bazel-cpp/"]
+pythonVersion = "3.10"
+venvPath = "."
+venv = ".venv"
+
+[tool.docformatter]
+black = true  # Enables mode that plays nice with black, e.g. sets line length to 88.

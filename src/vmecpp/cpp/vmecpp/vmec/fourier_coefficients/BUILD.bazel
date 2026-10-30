@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "fourier_coefficients",
+    srcs = ["fourier_coefficients.cc"],
+    hdrs = ["fourier_coefficients.h"],
+    visibility = ["//vmecpp/vmec:__subpackages__"],
+    deps = [
+        "@abseil-cpp//absl/log:log",
+        "@abseil-cpp//absl/algorithm:container",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+        "//vmecpp/vmec/handover_storage:handover_storage",
+    ],
+)

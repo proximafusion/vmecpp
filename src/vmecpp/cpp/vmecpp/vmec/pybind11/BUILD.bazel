@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+load("@rules_python//python:defs.bzl", "py_test")
+load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
+
+# NOTE: the important target produced by pybind_extension is ":{name}.so".
+pybind_extension(
+    name = "_vmecpp",
+    srcs = ["pybind_vmec.cc"],
+    deps = [
+        "//vmecpp/common/util",
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/common/magnetic_configuration_lib",
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
+        "//vmecpp/vmec/output_quantities",
+        "//vmecpp/vmec/vmec",
+    ],
+)

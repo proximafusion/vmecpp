@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+filegroup(
+    name = "test_data",
+    srcs = ["lcfs.SurfaceRZFourier.csv"],
+)
+
+cc_library(
+  name = "surface_geometry_mockup",
+  srcs = ["surface_geometry_mockup.cc"],
+  hdrs = ["surface_geometry_mockup.h"],
+  visibility = ["//visibility:public"],
+  data = [
+    ":test_data",
+  ],
+  deps = [
+    "//util/file_io:file_io",
+    "//vmecpp/common/sizes:sizes",
+    "//vmecpp/common/fourier_basis_fast_toroidal",
+    "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+    "//vmecpp/free_boundary/surface_geometry:surface_geometry",
+    "//vmecpp/common/composed_types_lib:composed_types_lib",
+    "@abseil-cpp//absl/log:log",
+  ],
+)

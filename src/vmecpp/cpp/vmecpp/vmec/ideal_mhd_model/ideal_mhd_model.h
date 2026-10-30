@@ -1,0 +1,669 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
+#define VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_
+
+#include <Eigen/Dense>
+#include <climits>
+#include <memory>
+#include <span>
+#include <vector>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
+#include "absl/status/statusor.h"
+#include "vmecpp/common/flow_control/flow_control.h"
+#include "vmecpp/common/fourier_basis_fast_poloidal/fourier_basis_fast_poloidal.h"
+#include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/util/util.h"
+#include "vmecpp/free_boundary/free_boundary_base/free_boundary_base.h"
+#include "vmecpp/vmec/boundaries/boundaries.h"
+#include "vmecpp/vmec/fourier_forces/fourier_forces.h"
+#include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
+#include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/ideal_mhd_model/dft_toroidal.h"
+#include "vmecpp/vmec/ideal_mhd_model/local_force_composition.h"
+#ifdef VMECPP_USE_FFTX
+#include "vmecpp/vmec/ideal_mhd_model/fft_toroidal.h"
+#endif
+#include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
+#include "vmecpp/vmec/radial_profiles/radial_profiles.h"
+#include "vmecpp/vmec/thread_local_storage/thread_local_storage.h"
+#include "vmecpp/vmec/vmec_constants/vmec_constants.h"
+
+namespace vmecpp {
+
+// Implemented as a free function for easier testing and benchmarking.
+void deAliasConstraintForce(const RadialPartitioning& rp,
+                            const FourierBasisFastPoloidal& fb, const Sizes& s_,
+                            const Eigen::VectorXd& faccon,
+                            const Eigen::VectorXd& tcon,
+                            const Eigen::VectorXd& gConEff,
+                            Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
+                            Eigen::VectorXd& m_gCon);
+void deAliasConstraintForce(const RadialPartitioning& rp,
+                            const FourierBasisFastPoloidal& fb, const Sizes& s_,
+                            const Eigen::VectorXd& faccon,
+                            const Eigen::VectorXd& tcon,
+                            const Eigen::VectorXd& gConEff,
+                            Eigen::VectorXd& m_gsc, Eigen::VectorXd& m_gcs,
+                            Eigen::VectorXd& m_gcc, Eigen::VectorXd& m_gss,
+                            Eigen::VectorXd& m_gConAsym,
+                            Eigen::VectorXd& m_refl, Eigen::VectorXd& m_gCon);
+
+class IdealMhdModel {
+ public:
+  IdealMhdModel(FlowControl* m_fc, const Sizes* s,
+                const FourierBasisFastPoloidal* t, RadialProfiles* m_p,
+                const VmecConstants* constants, ThreadLocalStorage* m_ls,
+                HandoverStorage* m_h, const RadialPartitioning* r,
+                const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac,
+                int signOfJacobian, int nvacskip,
+                VacuumPressureState* m_vacuum_pressure_state);
+
+  void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
+                     bool lforbal, double lambda_preconditioner_scale,
+                     double lambda_precondition_checkerboard_terms);
+
+  // Compute the invariant (i.e., not preconditioned yet) force residuals.
+  // Will put them into the provided array as { fsqr, fsqz, fsql }.
+  void evalFResInvar(const Eigen::Vector3d& localFResInvar);
+
+  // Compute the preconditioned force residuals.
+  // Will put them into the provided array as { fsqr1, fsqz1, fsql1 }.
+  void evalFResPrecd(const Eigen::Vector3d& localFResPrecd);
+
+  // Return true/false depending on whether the VmecCheckpoint was reached,
+  // or an error status if something went wrong.
+  absl::StatusOr<bool> update(
+      FourierGeometry& m_decomposed_x, FourierGeometry& m_physical_x,
+      FourierForces& m_decomposed_f, FourierForces& m_physical_f,
+      bool& m_need_restart, int& m_last_preconditioner_update,
+      int& m_last_full_update_nestor, FlowControl& m_fc, const int iter1,
+      const int iter2, const VmecCheckpoint& checkpoint = VmecCheckpoint::NONE,
+      const int iterations_before_checkpointing = INT_MAX, bool verbose = true,
+      bool always_fix_m1_gauge = false);
+  std::int64_t forceEvaluationCount() const { return force_evaluation_count_; }
+  void resetForceEvaluationCount() { force_evaluation_count_ = 0; }
+
+  // Coordinates which inverse-DFT routine to call for computing
+  // the flux surface geometry and lambda on it from the provided Fourier
+  // coefficients. Also computes the net dR/dTheta and dZ/dTheta, without the
+  // even-m/odd-m split. Also computes the radial extent and geometric offset of
+  // the flux surface geometry.
+  void geometryFromFourier(const FourierGeometry& physical_x);
+
+  // Inverse-DFT for flux surface geometry and lambda, 3D (Stellarator) case
+  // Dispatching dft_FourierToReal_3d_symm
+  void dft_FourierToReal_3d_symm(const FourierGeometry& physical_x);
+
+  // Inverse-DFT of the non-stellarator-symmetric (lasym) contributions, 3D
+  // case. Accumulates the antisymmetric-parity pieces into the *_asym arrays.
+  void dft_FourierToReal_3d_asymm(const FourierGeometry& physical_x);
+
+  // Inverse-DFT for flux surface geometry and lambda, 2D axisymmetric (Tokamak)
+  // case
+  void dft_FourierToReal_2d_symm(const FourierGeometry& physical_x);
+
+  // Inverse-DFT of the non-stellarator-symmetric (lasym) contributions to flux
+  // surface geometry and lambda, 2D axisymmetric case. Accumulates the
+  // antisymmetric-parity pieces into the *_asym scratch arrays on the reduced
+  // poloidal interval [0, pi].
+  void dft_FourierToReal_2d_asymm(const FourierGeometry& physical_x);
+
+  // Combine the symmetric and antisymmetric real-space geometry contributions
+  // over the full poloidal interval [0, 2pi[ (educational_VMEC symrzl).
+  void symrzl();
+
+  // Extrapolates ingredients for the spectral condensation force
+  // from the LCFS into the plasma volume.
+  void rzConIntoVolume();
+
+  // Computes the Jacobian sqrt(g) and its ingredients.
+  void computeJacobian();
+
+  // Computes the metric elements g_uu, g_uv, g_vv.
+  void computeMetricElements();
+
+  // Computes the differential volume profile dV/ds.
+  void updateDifferentialVolume();
+
+  // Computes the plasma volume of the initial guess, i.e.,
+  // assuming the LCFS geometry provided in the input file.
+  void computeInitialVolume();
+
+  // Computes the plasma volume during the iterations.
+  void updateVolume();
+
+  // Computes the contravariant magnetic field components B^theta and B^zeta.
+  // This also applies the toroidal current profile constraint if `ncurr==1` in
+  // the input.
+  void computeBContra();
+
+  // Computes the covariant magnetic field components
+  // from the contravariant magnetic field components and the metric elements.
+  void computeBCo();
+
+  // Computes total pressure (kinetic plus magnetic) as well as the
+  // kinetic/thermal and magnetic energy.
+  void pressureAndEnergies();
+
+  // Computes the radial force balance (or better: residual imbalance)
+  void radialForceBalance();
+
+  // Computes the force on the lambda state variable (which is the covariant
+  // magnetic field on the full-grid) using a mixture of two different numerical
+  // approaches for increased numerical accuracy.
+  void hybridLambdaForce();
+
+  // Computes normalizing factors for the force residuals.
+  void computeForceNorms(const FourierGeometry& decomposed_x);
+
+  // Computes the MHD forces in realspace.
+  void computeMHDForces();
+
+  // Computes a radial profile of a scaling factor for the constraint force.
+  // Current working hypothesis: This is used to make the constraint force "look
+  // similar" to the MHD forces for improved numerical stability.
+  absl::Status constraintForceMultiplier();
+  // The ns-dependent scale of the constraint force multiplier, shared with the
+  // local force composition that recomputes tcon from the geometry.
+  double constraintMultiplierScale() const;
+
+  // Computes the effective constraint force that actually enters the iterative
+  // scheme.
+  void effectiveConstraintForce();
+
+  // De-aliases the effective constraint force by bandpass filtering in Fourier
+  // space. Think of aliasing in terms of Fourier components higher than the
+  // Nyquist frequency.
+  void deAliasConstraintForce();
+
+  // Assembles the total forces (MHD, spectral constraint, free-boundary).
+  void assembleTotalForces();
+
+  // Coordinates the forward-DFT to transform the total force in realspace into
+  // Fourier space.
+  void forcesToFourier(FourierForces& m_physical_f);
+
+  // Exact Hessian-vector product of the local force chain. Given the packed
+  // real-space geometry primal geomP and a geometry tangent dgeom (each
+  // geom_stride doubles per block, see local_force_composition.h),
+  // differentiate the force density (MHD, hybrid lambda, and spectral-
+  // condensation constraint force) by one Enzyme forward pass, then apply the
+  // linear forward transform and preconditioner decomposition to obtain the
+  // decomposed force tangent in m_decomposed_hv. The constraint multiplier tcon
+  // is recomputed from the geometry inside the composition, as the raw force
+  // recomputes it from the state, so the product is the derivative of the
+  // force the iteration drives to zero. Used by the exact internal
+  // Newton-Krylov Hessian-vector product. This low-level
+  // kernel does not differentiate the state-dependent LFORBAL replacement;
+  // public callers must reject lforbal=true.
+  void applyExactForceJacobian(const double* geomP, const double* dgeom,
+                               int geom_stride, FourierForces& m_physical_f,
+                               FourierForces& m_decomposed_hv,
+                               bool fix_m1_gauge);
+
+  // Linear pre-chain decomposed -> real-space geometry (decomposeInto,
+  // m1Constraint, extrapolate, geometryFromFourier) packed into the 20-block
+  // layout of local_force_composition.h, with the computeBContra lambda
+  // normalization. Applied to a state (primal=true, adds phipF on lu_e) it
+  // gives the geometry; applied to a tangent (primal=false) it gives the exact
+  // geometry tangent, no finite difference. Uses m_physical_scratch as scratch.
+  void packGeometry(FourierGeometry& m_decomposed,
+                    FourierGeometry& m_physical_scratch, double* out, int gS,
+                    bool primal);
+
+  // Diagnostic: max |composed force density - production force density| at the
+  // current state, to isolate composition bugs from the transform/tangent path.
+  double composedForceResidual(const double* geomP, int geom_stride);
+
+  // Raw force-density tangent (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is chi' for ncurr==1, see
+  // local_force_composition.h) from one Enzyme forward pass, no transform. For
+  // isolating the JVP from the spectral-transform wrapping.
+  void exactForceDensityTangent(const double* geomP, const double* dgeom,
+                                int geom_stride, double* dforce_out);
+
+  // Reverse-mode force-density cotangent: J_g^T applied to the force-density
+  // cotangent force_bar (kLocalForceBlocks blocks of
+  // (nsMaxFIncludingLcfs-nsMinF)*nZnT; block 20 is the chi' cotangent),
+  // accumulated into geom_bar_out (20 blocks of geom_stride, zeroed by caller),
+  // by one Enzyme reverse pass. The transpose of exactForceDensityTangent.
+  void exactForceDensityCotangent(const double* geomP, const double* force_bar,
+                                  int geom_stride, double* geom_bar_out);
+
+  // Fill the local force-density composition descriptor shared by the exact
+  // forward/reverse force-density passes (geom_stride sized blocks).
+  LocalForceComposition makeLocalForceComposition(int geom_stride);
+
+  // Transpose of applyExactForceJacobian: H^T w. Given a decomposed-force
+  // cotangent (the space applyExactForceJacobian writes), apply C^T (transpose
+  // of the output transform), the reverse-mode force-density kernel J_g^T, and
+  // B^T (transpose of packGeometry's pre-chain), yielding the state cotangent
+  // in m_decomposed_out. The two spectral transforms are reused as each other's
+  // adjoint with the poloidal integration weight; the rest of the linear chain
+  // (decomposeInto, m1Constraint, zeroZForceForM1, extrapolateTowardsAxis,
+  // ruFull/zuFull, lamscale) is transposed analytically. This low-level kernel
+  // does not transpose the state-dependent LFORBAL replacement; public callers
+  // must reject lforbal=true.
+  void applyExactForceJacobianTranspose(const double* geomP, int geom_stride,
+                                        FourierForces& m_decomposed_in,
+                                        FourierForces& m_physical_f,
+                                        FourierGeometry& m_physical_scratch,
+                                        FourierGeometry& m_decomposed_out,
+                                        bool fix_m1_gauge);
+
+  // (dchi'/dx)^T chip_bar for ncurr==1, in the decomposed internal basis.
+  // chip_bar holds one entry per half surface (index jH-nsMinH, the space
+  // chipH occupies). Reuses the reverse-mode force-density kernel seeded on
+  // its chi' output block alone, and the geometry-side (B^T) half of
+  // applyExactForceJacobianTranspose, since chi' depends on the same geometry
+  // blocks (r1, ru, zu, lu, lv) the force densities do.
+  void chipStateVjp(const double* geomP, int geom_stride,
+                    const double* chip_bar, FourierGeometry& m_physical_scratch,
+                    FourierGeometry& m_decomposed_out);
+
+  // C^T of applyExactForceJacobianTranspose: a decomposed-force cotangent to
+  // the flat force-density cotangent of local_force_composition.h (block 20
+  // zero). Overwrites m_decomposed_in and m_physical_f.
+  std::vector<double> forceDensityCotangentFromDecomposed(
+      FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+      bool fix_m1_gauge);
+
+  // Cotangents of the half-grid profiles presH, chipH and currH (index
+  // jH-nsMinH, zeroed by the caller) at fixed geometry, from a
+  // decomposed-force cotangent m_decomposed_in and a cotangent chip_bar of
+  // the half-grid chi'. With ncurr==1 chip_bar seeds the chi' output of the
+  // composition, which depends on currH; otherwise chi' is chipH itself and
+  // chip_bar adds to m_chipH_bar.
+  void profileVjp(const double* geomP, int geom_stride,
+                  FourierForces& m_decomposed_in, FourierForces& m_physical_f,
+                  const double* chip_bar, double* m_presH_bar,
+                  double* m_chipH_bar, double* m_currH_bar);
+
+  // Transposes of the spectral transforms, for the transposed exact Hessian.
+  // dft_ForcesToFourierTranspose: (forcesToFourier)^T, decomposed-force coeff
+  // cotangent -> real-space force-density member cotangents (armn_e ..
+  // fzcon_o). dft_FourierToRealTranspose: (geometryFromFourier)^T, real-space
+  // geometry member cotangents (r1_e .. zCon) -> Fourier coeff cotangent.
+  void dft_ForcesToFourierTranspose_2d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_2d_symm(FourierGeometry& m_coeff_bar_out);
+  void dft_ForcesToFourierTranspose_3d_symm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_3d_symm(FourierGeometry& m_coeff_bar_out);
+
+  // Computes the forward-DFT of forces for the 3D (Stellarator) case.
+  // Dispatching dft_ForcesToFourier_3d_symm
+  void dft_ForcesToFourier_3d_symm(FourierForces& m_physical_f);
+
+  // Forward-DFT of the non-stellarator-symmetric (lasym) force contributions,
+  // 3D case. Projects the antisymmetric-parity halves onto frsc/frcs/fzcc/etc.
+  void dft_ForcesToFourier_3d_asymm(FourierForces& m_physical_f);
+
+  // Computes the forward-DFT of forces for the 2D axisymmetric (Tokamak) case.
+  void dft_ForcesToFourier_2d_symm(FourierForces& m_physical_f);
+
+  // Split the real-space forces into their standard- and reversed-parity halves
+  // on the reduced poloidal interval, storing the reversed-parity halves in the
+  // *_asym scratch arrays (educational_VMEC symforce).
+  void symforce();
+
+  // Forward-DFT of the non-stellarator-symmetric (lasym) force contributions,
+  // 2D axisymmetric case. Projects the antisymmetric-parity halves onto the
+  // frsc / fzcc / flcc coefficients.
+  void dft_ForcesToFourier_2d_asymm(FourierForces& m_physical_f);
+
+  // Checks if the radial preconditioner matrix elements should be updated.
+  // They don't change so much during iterations, so one can get away with
+  // computing them only ever so often (as of now: every 25 iterations).
+  bool shouldUpdateRadialPreconditioner(int iter1, int iter2) const;
+
+  // Computes the radial preconditioner matrix elements for R and Z.
+  void updateRadialPreconditioner();
+
+  // Computes the radial preconditioner matrix elements for lambda.
+  void updateLambdaPreconditioner();
+
+  // Support function for computing the radial preconditioner matrix elements
+  // for R and Z.
+  void computePreconditioningMatrix(
+      const Eigen::VectorXd& xs, const Eigen::VectorXd& xu12,
+      const Eigen::VectorXd& xu_e, const Eigen::VectorXd& xu_o,
+      const Eigen::VectorXd& x1_o, Eigen::VectorXd& m_axm,
+      Eigen::VectorXd& m_axd, Eigen::VectorXd& m_bxm, Eigen::VectorXd& m_bxd,
+      Eigen::VectorXd& m_cxd, const Eigen::VectorXd& trigmult,
+      Eigen::VectorXd& m_eqfactor);
+
+  // Applies the radial preconditioner for the m=1 Fourier coefficients of R and
+  // Z.
+  void applyM1Preconditioner(FourierForces& m_decomposed_f);
+
+  // Assembles the preconditioner matrix elements for R and Z into the actual
+  // preconditioner matrix.
+  void assembleRZPreconditioner();
+
+  // Applies the radial preconditioner for R and Z (solves a tri-diagonal system
+  // of equations).
+  absl::Status applyRZPreconditioner(FourierForces& m_decomposed_f);
+
+  // Applies the radial preconditioner for lambda.
+  void applyLambdaPreconditioner(FourierForces& m_decomposed_f);
+
+  // Computes the mismatch in |B|^2 at the LCFS.
+  double get_delbsq() const;
+
+  // `ivacskip` is the current counter that controls whether a full update or a
+  // partial update of the Nestor free boundary force contribution is computed.
+  int get_ivacskip() const;
+
+  /**********************************************/
+
+  // R on full-grid
+  Eigen::VectorXd r1_e;
+  Eigen::VectorXd r1_o;
+
+  // dRdTheta on full-grid
+  Eigen::VectorXd ru_e;
+  Eigen::VectorXd ru_o;
+
+  // dRdZeta on full-grid
+  Eigen::VectorXd rv_e;
+  Eigen::VectorXd rv_o;
+
+  // Z on full-grid
+  Eigen::VectorXd z1_e;
+  Eigen::VectorXd z1_o;
+
+  // dZdTheta on full-grid
+  Eigen::VectorXd zu_e;
+  Eigen::VectorXd zu_o;
+
+  // dZdZeta on full-grid
+  Eigen::VectorXd zv_e;
+  Eigen::VectorXd zv_o;
+
+  // d(lambda)dTheta on full-grid
+  Eigen::VectorXd lu_e;
+  Eigen::VectorXd lu_o;
+
+  // d(lambda)dZeta on full-grid
+  Eigen::VectorXd lv_e;
+  Eigen::VectorXd lv_o;
+
+  // constraint force contribution X on full-grid
+  Eigen::VectorXd rCon;
+
+  // constraint force contribution Y on full-grid
+  // In free-boundary this starts as a large value and is slowly reduced to zero
+  // to gradually increase the vacuum pressure constraint (force felt from the
+  // B^2 contribution).
+  Eigen::VectorXd zCon;
+
+  // initial constraint force contribution X on full-grid.
+  // In free-boundary this starts as a large value and is slowly reduced to zero
+  // to gradually increase the vacuum pressure constraint (force felt from the
+  // B^2 contribution).
+  Eigen::VectorXd rCon0;
+
+  // initial constraint force contribution Y on full-grid
+  Eigen::VectorXd zCon0;
+
+  // Non-stellarator-symmetric (lasym) real-space geometry scratch. These hold
+  // the antisymmetric-parity contributions on the reduced poloidal interval
+  // [0, pi]; symrzl combines them with the symmetric arrays above to fill the
+  // full interval [0, 2pi[. Only allocated when lasym is enabled.
+  Eigen::VectorXd r1_asym_e, r1_asym_o;
+  Eigen::VectorXd ru_asym_e, ru_asym_o;
+  Eigen::VectorXd rv_asym_e, rv_asym_o;
+  Eigen::VectorXd z1_asym_e, z1_asym_o;
+  Eigen::VectorXd zu_asym_e, zu_asym_o;
+  Eigen::VectorXd zv_asym_e, zv_asym_o;
+  Eigen::VectorXd lu_asym_e, lu_asym_o;
+  Eigen::VectorXd lv_asym_e, lv_asym_o;
+  Eigen::VectorXd rCon_asym;
+  Eigen::VectorXd zCon_asym;
+
+  // dRdTheta combined on full-grid
+  Eigen::VectorXd ruFull;
+
+  // dRdZeta combined on full-grid
+  Eigen::VectorXd zuFull;
+
+  /**********************************************/
+
+  // R on half-grid
+  Eigen::VectorXd r12;
+
+  // dRdTheta on half-grid
+  Eigen::VectorXd ru12;
+
+  // dZdTheta on half-grid
+  Eigen::VectorXd zu12;
+
+  // dRdS on half-grid (without 0.5/sqrt(s) contrib)
+  Eigen::VectorXd rs;
+
+  // dZdS on half-grid (without 0.5/sqrt(s) contrib)
+  Eigen::VectorXd zs;
+
+  // sqrt(g)/R on half-grid
+  Eigen::VectorXd tau;
+
+  /**********************************************/
+
+  // sqrt(g) == Jacobian on half-grid
+  Eigen::VectorXd gsqrt;
+
+  // metric elements
+  Eigen::VectorXd guu;
+  Eigen::VectorXd guv;
+  Eigen::VectorXd gvv;
+
+  /**********************************************/
+
+  // contravariant magnetic field components
+  Eigen::VectorXd bsupu;
+  Eigen::VectorXd bsupv;
+
+  /**********************************************/
+
+  // covariant magnetic field components
+  Eigen::VectorXd bsubu;
+  Eigen::VectorXd bsubv;
+
+  /**********************************************/
+
+  // |B|^2/(2 mu_0) + p
+  Eigen::VectorXd totalPressure;
+
+  // r * |B_vac|^2 at LCFS
+  Eigen::VectorXd rBSq;
+
+  // (|B|^2/(2 mu_0) + p) on inside of LCFS
+  Eigen::VectorXd insideTotalPressure;
+
+  // mismatch in |B|^2 between plasma and vacuum regions at LCFS
+  Eigen::VectorXd delBSq;
+
+  /**********************************************/
+
+  // real-space forces
+  Eigen::VectorXd armn_e;
+  Eigen::VectorXd armn_o;
+  Eigen::VectorXd brmn_e;
+  Eigen::VectorXd brmn_o;
+  Eigen::VectorXd crmn_e;
+  Eigen::VectorXd crmn_o;
+  // ---------
+  Eigen::VectorXd azmn_e;
+  Eigen::VectorXd azmn_o;
+  Eigen::VectorXd bzmn_e;
+  Eigen::VectorXd bzmn_o;
+  Eigen::VectorXd czmn_e;
+  Eigen::VectorXd czmn_o;
+  // ---------
+  Eigen::VectorXd blmn_e;
+  Eigen::VectorXd blmn_o;
+  Eigen::VectorXd clmn_e;
+  Eigen::VectorXd clmn_o;
+
+  // Non-stellarator-symmetric (lasym) real-space force scratch: the
+  // reversed-parity halves produced by symforce. Only allocated when lasym is
+  // enabled.
+  Eigen::VectorXd armn_asym_e, armn_asym_o;
+  Eigen::VectorXd brmn_asym_e, brmn_asym_o;
+  Eigen::VectorXd crmn_asym_e, crmn_asym_o;
+  Eigen::VectorXd azmn_asym_e, azmn_asym_o;
+  Eigen::VectorXd bzmn_asym_e, bzmn_asym_o;
+  Eigen::VectorXd czmn_asym_e, czmn_asym_o;
+  Eigen::VectorXd blmn_asym_e, blmn_asym_o;
+  Eigen::VectorXd clmn_asym_e, clmn_asym_o;
+
+  /**********************************************/
+
+  // lambda preconditioner
+  Eigen::VectorXd bLambda;
+  Eigen::VectorXd dLambda;
+  Eigen::VectorXd cLambda;
+  Eigen::VectorXd lambdaPreconditioner;
+  double lambda_preconditioner_scale_ = 0.5;
+  double lambda_precondition_checkerboard_terms_ = 1e-3;
+
+  // R,Z preconditioner
+  Eigen::VectorXd ax;
+  Eigen::VectorXd bx;
+  Eigen::VectorXd cx;
+
+  Eigen::VectorXd arm;
+  Eigen::VectorXd ard;
+  Eigen::VectorXd brm;
+  Eigen::VectorXd brd;
+  Eigen::VectorXd azm;
+  Eigen::VectorXd azd;
+  Eigen::VectorXd bzm;
+  Eigen::VectorXd bzd;
+  // crd == czd --> cxd
+  Eigen::VectorXd cxd;
+
+  // lforbal: when set, the flux-averaged radial force balance evolves the
+  // m=1,n=0 R,Z components (non-variational). cos01/sin01 are the m=1 trig
+  // weights; rzu_fac/rru_fac/frcc_fac/fzsc_fac are the force-balance factors
+  // derived from the R,Z preconditioner diagonals. All unused when lforbal off.
+  bool lforbal = false;
+  Eigen::VectorXd cos01;
+  Eigen::VectorXd sin01;
+  Eigen::VectorXd rzu_fac;
+  Eigen::VectorXd rru_fac;
+  Eigen::VectorXd frcc_fac;
+  Eigen::VectorXd fzsc_fac;
+
+  Eigen::VectorXd ar;
+  Eigen::VectorXd dr;
+  Eigen::VectorXd br;
+  Eigen::VectorXd az;
+  Eigen::VectorXd dz;
+  Eigen::VectorXd bz;
+
+  /**********************************************/
+
+  // constraint force ingredients
+  Eigen::VectorXd xmpq;
+  Eigen::VectorXd faccon;
+
+  // radial profile of constraint force multiplier
+  Eigen::VectorXd tcon;
+
+  // effective constraint force - still to be de-aliased
+  Eigen::VectorXd gConEff;
+
+  // Fourier coefficients of constraint force - used during de-aliasing
+  Eigen::VectorXd gsc;
+  Eigen::VectorXd gcs;
+  Eigen::VectorXd gcc;
+  Eigen::VectorXd gss;
+  Eigen::VectorXd gConAsym;
+  Eigen::VectorXd refl;
+
+  // de-aliased constraint force - what enters the Fourier coefficients of the
+  // forces
+  Eigen::VectorXd gCon;
+
+  // Fourier coefficients of constraint force, de-aliased
+  Eigen::VectorXd frcon_e;
+  Eigen::VectorXd frcon_o;
+  Eigen::VectorXd fzcon_e;
+  Eigen::VectorXd fzcon_o;
+
+  // lasym reversed-parity constraint-force halves (symforce).
+  Eigen::VectorXd frcon_asym_e, frcon_asym_o;
+  Eigen::VectorXd fzcon_asym_e, fzcon_asym_o;
+
+ private:
+  FlowControl& m_fc_;
+  const Sizes& s_;
+  const FourierBasisFastPoloidal& t_;
+  RadialProfiles& m_p_;
+  const VmecConstants& constants_;
+  ThreadLocalStorage& m_ls_;
+  HandoverStorage& m_h_;
+  const RadialPartitioning& r_;
+  // Free-boundary vacuum solvers, shared across all radial threads and sized to
+  // the radial team. In update(), every radial thread invokes
+  // (*m_fb_vac_)[r_.get_thread_id()]->update() on its tangential slice. Owned
+  // by Vmec; may be nullptr / empty for fixed-boundary runs.
+  const std::vector<std::unique_ptr<FreeBoundaryBase>>* m_fb_vac_;
+  VacuumPressureState& m_vacuum_pressure_state_;
+  std::int64_t force_evaluation_count_ = 0;
+
+#ifdef VMECPP_USE_FFTX
+  // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
+  // Created once at construction and reused across iterations. Execution is
+  // thread-safe.
+  ToroidalFftPlans fft_plans_;
+#endif  // VMECPP_USE_FFTX
+
+  int signOfJacobian;
+
+  // 1/4: 1/2 from d(sHalf)/ds and 1/2 from interpolation
+  static constexpr double dSHalfDsInterp = 0.25;
+
+  // from INDATA: flag to select between constrained-iota and
+  // constrained-toroidal-current
+  int ncurr;
+
+  // from INDATA: adiabatic index == gamma
+  double adiabaticIndex;
+
+  // from INDATA: constraint force scaling parameter; between 0 and 1
+  // 0 -- no spectral condensation constraint force
+  // 1 (default) -- full spectral condensation constraint force
+  double tcon0;
+
+  // [mnsize] minimum flux surface index for which to apply radial
+  // preconditioner for R and Z
+  Eigen::VectorXi jMin;
+
+  // ****** IDENTICAL THREAD LOCALS *******
+  // In multi-thread runs, the following data members
+  // will take identical values in all instances of
+  // IdealMHDModel.
+  //
+  // Having one copy of the data member per thread has
+  // a negligible memory cost and removes the need of
+  // synchronization around a single global copy.
+
+  // on-the-fly adjusted (--> <= nvskip0) nvacskip
+  int nvacskip;
+
+  // counter how many vacuum iterations have passed since last full update
+  // --> counts modulo nvacskip
+  int ivacskip;
+};
+
+}  // namespace vmecpp
+
+#endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_IDEAL_MHD_MODEL_H_

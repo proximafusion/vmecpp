@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+
+# This package exists so that //third_party:non_module_deps.bzl is loadable as a
+# module extension from MODULE.bazel. The actual third-party builds live in the
+# subpackages (//third_party/hdf5, //third_party/netcdf4, ...).

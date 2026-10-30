@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "free_boundary_base",
+    hdrs = ["free_boundary_base.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:statusor",
+        "//vmecpp/common/fourier_basis_fast_toroidal:fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/util:util",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "//vmecpp/free_boundary/external_magnetic_field:external_magnetic_field",
+    ],
+)

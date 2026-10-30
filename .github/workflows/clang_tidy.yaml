@@ -1,0 +1,43 @@
+name: clang-tidy-review
+
+on:
+  # clang-tidy-review only works on PRs, not direct commits to main.
+  pull_request:
+    paths:
+      - 'src/vmecpp/cpp/vmecpp/**/*.h'
+      - 'src/vmecpp/cpp/vmecpp/**/*.cc'
+
+# Cancel currently running job if a new one comes along for the same branch or tag.
+# From https://stackoverflow.com/a/72408109.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  clang-tidy:
+    permissions:
+      checks: write
+      pull-requests: write
+      packages: read
+      contents: read
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ZedThree/clang-tidy-review@v0.20.1
+        name: Run clang-tidy review
+        id: review
+        with:
+          config_file: ".clang-tidy"
+          apt_packages: zlib1g-dev, gfortran, python3-dev, libomp-dev
+          build_dir: build
+          cmake_command: cmake -B build && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS:STRING=ON build
+          # bazel-built test and benchmark files have no cmake compile_commands
+          # entry, so clang-tidy cannot resolve <gtest/gtest.h> /
+          # <benchmark/benchmark.h> (both are Bazel-only deps); exclude them
+          # from review
+          exclude: "./src/vmecpp/cpp/bazel-*,./src/vmecpp/cpp/external,./src/vmecpp/cpp/third_party,*_test.cc,*_bench.cc,*test_helpers.h"
+          # turn off "LGTM" comments: we only want pings about warnings/errors
+          lgtm_comment_body: ""
+        # If there are any comments, fail the check
+      - if: steps.review.outputs.total_comments > 0
+        run: exit 1

@@ -1,0 +1,1332 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/vmec/vmec.h"
+
+#include <algorithm>
+#include <fstream>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "vmecpp/common/flow_control/flow_control.h"
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
+#include "vmecpp/vmec/geometry/vmec_geometry.h"
+#include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/output_quantities/output_quantities.h"
+#include "vmecpp/vmec/output_quantities/test_helpers.h"
+#include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
+#include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
+#include "util/file_io/file_io.h"
+#include "util/testing/numerical_comparison_lib.h"
+#include "vmecpp/common/util/util.h"
+
+using nlohmann::json;
+
+using file_io::ReadFile;
+using testing::IsCloseRelAbs;
+
+using ::testing::DoubleNear;
+using ::testing::ElementsAreArray;
+using ::testing::Pointwise;
+using ::testing::TestWithParam;
+using ::testing::Values;
+
+using vmecpp::FlowControl;
+using vmecpp::HandoverStorage;
+using vmecpp::RadialPartitioning;
+using vmecpp::Sizes;
+using vmecpp::Vmec;
+using vmecpp::VmecCheckpoint;
+using vmecpp::VmecINDATA;
+
+namespace fs = std::filesystem;
+
+// used to specify case-specific tolerances
+// and which iterations to test
+struct DataSource {
+  std::string identifier;
+  double tolerance = 0.0;
+  std::vector<int> iter2_to_test = {1, 2};
+};
+
+TEST(TestVmec, CheckErrorOnNonConvergence) {
+  // make sure VMEC++ reports an error if the run couldn't converge
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  // allow only 1 iteration - not enough to let VMEC converge
+  indata->niter_array[0] = 1;
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+
+  const absl::StatusOr<bool> status = vmec.run();
+
+  CHECK(!status.ok());
+  CHECK(
+      absl::StrContains(status.status().message(), "VMEC++ did not converge"));
+}  // CheckErrorOnNonConvergence
+
+// The thread count a run uses is a property of that run: a coarse run must
+// not cap the thread budget that a later run, or another OpenMP user in the
+// process, reads from the runtime.
+TEST(TestVmec, RunLeavesTheProcessThreadCountUnchanged) {
+#ifndef _OPENMP
+  GTEST_SKIP() << "a process-wide thread count exists only in an OpenMP build";
+#else
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // five surfaces admit two radial threads, fewer than most machines have
+  indata.ns_array.setConstant(5);
+  indata.niter_array.setConstant(3);
+  indata.return_outputs_even_if_not_converged = true;
+
+  const int process_thread_count = omp_get_max_threads();
+
+  ASSERT_TRUE(vmecpp::run(indata).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+
+  ASSERT_TRUE(vmecpp::run(indata, std::nullopt, /*max_threads=*/1).ok());
+  EXPECT_EQ(omp_get_max_threads(), process_thread_count);
+#endif  // _OPENMP
+}  // RunLeavesTheProcessThreadCountUnchanged
+
+TEST(TestVmec, CheckNoErrorOnNonConvergenceIfDesired) {
+  // make sure VMEC++ returns the outputs without an error
+  // if explicitly instructed to do so
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  // allow only 1 iteration - not enough to let VMEC converge
+  indata->niter_array[0] = 1;
+
+  // instruct VMEC++ to return its outputs, even if it did not converge
+  indata->return_outputs_even_if_not_converged = true;
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+
+  const absl::StatusOr<bool> status = vmec.run();
+
+  CHECK(status.ok());
+}  // CheckNoErrorOnNonConvergenceIfDesired
+
+// A run that runs out of iterations advances its state after the last force
+// evaluation. Its output carries the force residuals and the energies of the
+// state it returns, which a run given one more iteration computes in its last
+// evaluation. Fortran VMEC recomputes the fields at that state in fileout but
+// writes the residuals of the state before the last step.
+TEST(TestVmec, OutputAtTheIterationLimitDescribesTheReturnedState) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.return_outputs_even_if_not_converged = true;
+
+  // cth_like_fixed_bdy converges in 119 iterations
+  indata.niter_array[0] = 59;
+  const auto stopped = vmecpp::run(indata);
+  ASSERT_TRUE(stopped.ok()) << stopped.status();
+  ASSERT_EQ(stopped->wout.ier_flag, 0);
+
+  // halted after its 60th evaluation, which is at the returned state
+  indata.niter_array[0] = 60;
+  auto maybe_vmec = Vmec::FromIndata(indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& continued = **maybe_vmec;
+  const absl::StatusOr<bool> reached_checkpoint = continued.run(
+      VmecCheckpoint::EVOLVE, /*iterations_before_checkpointing=*/60);
+  ASSERT_TRUE(reached_checkpoint.ok()) << reached_checkpoint.status();
+  ASSERT_TRUE(*reached_checkpoint);
+
+  const vmecpp::WOutFileContents& wout = stopped->wout;
+  EXPECT_EQ(wout.fsqr, continued.fc_.fsqr);
+  EXPECT_EQ(wout.fsqz, continued.fc_.fsqz);
+  EXPECT_EQ(wout.fsql, continued.fc_.fsql);
+  EXPECT_EQ(wout.wb, continued.h_.magneticEnergy);
+  EXPECT_EQ(wout.wp, continued.h_.thermalEnergy);
+}  // OutputAtTheIterationLimitDescribesTheReturnedState
+
+// A time step that makes the flux surfaces cross leaves a returned state whose
+// Jacobian changes sign, which the output of a run out of iterations reports.
+TEST(TestVmec, OutputAtTheIterationLimitReportsABadJacobian) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  indata.return_outputs_even_if_not_converged = true;
+  indata.niter_array[0] = 1;
+  indata.delt = 5.0;
+
+  const auto output = vmecpp::run(indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_EQ(output->wout.ier_flag,
+            vmecpp::VmecStatusCode(vmecpp::VmecStatus::BAD_JACOBIAN));
+}  // OutputAtTheIterationLimitReportsABadJacobian
+
+// With ncurr = 1 the current profile is scaled to curtor by its value at the
+// boundary, so a profile that encloses no net current there cannot be imposed
+// and used to run silently with zero current.
+TEST(TestVmec, RejectsACurrentProfileWithoutEdgeCurrent) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA indata = *maybe_indata;
+  // I'(s) = 1 - 2 s integrates to zero at the boundary
+  indata.pcurr_type = "power_series";
+  indata.ac = Eigen::VectorXd(2);
+  indata.ac << 1.0, -2.0;
+  const auto output = vmecpp::run(indata);
+  ASSERT_FALSE(output.ok());
+  EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(output.status().message()),
+              ::testing::HasSubstr("encloses no net current"));
+}
+
+TEST(TestVmec, CheckFromIndataReturnsErrorForInvalidMgridPath) {
+  // Verify that FromIndata returns an error status (rather than throwing)
+  // when a free-boundary run specifies a non-existent mgrid file.
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA& indata = maybe_indata.value();
+
+  indata.mgrid_file = "/does/not/exist/mgrid.nc";
+
+  auto maybe_vmec = Vmec::FromIndata(indata);
+  EXPECT_FALSE(maybe_vmec.ok());
+}  // CheckFromIndataReturnsErrorForInvalidMgridPath
+
+// FromIndata sets the external magnetic field, which InitializeRadial hands to
+// the vacuum solvers without Vmec::run, as VmecModel does.
+TEST(TestVmec, CheckFromIndataSetsMagneticField) {
+  absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok()) << maybe_vmec.status();
+  EXPECT_TRUE(static_cast<bool>((*maybe_vmec)->magnetic_field_));
+}  // CheckFromIndataSetsMagneticField
+
+// A thread count below 1 is an error status, not a failed check in FlowControl.
+TEST(TestVmec, CheckRunRejectsAThreadCountBelowOne) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  for (const int max_threads : {0, -2}) {
+    const auto output = vmecpp::run(*indata, std::nullopt, max_threads);
+    ASSERT_FALSE(output.ok()) << max_threads;
+    EXPECT_EQ(output.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(output.status().message()),
+                ::testing::HasSubstr("number of threads must be >= 1"));
+  }
+}  // CheckRunRejectsAThreadCountBelowOne
+
+TEST(TestVmec, CheckInMemoryMgrid) {
+  // test the constructor that takes an in-memory mgrid
+
+  // LOAD INDATA FILE
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> maybe_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  VmecINDATA& indata = maybe_indata.value();
+
+  // LOAD COILS FILE
+  const std::string coils_filename = "vmecpp/test_data/coils.cth_like";
+  const auto maybe_magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(coils_filename);
+  ASSERT_TRUE(maybe_magnetic_configuration.ok());
+  const auto& magnetic_configuration = *maybe_magnetic_configuration;
+
+  // load makegrid params
+  const auto maybe_makegrid_params = makegrid::ImportMakegridParametersFromFile(
+      "vmecpp/test_data/makegrid_parameters_cth_like.json");
+  ASSERT_TRUE(maybe_makegrid_params.ok());
+  const auto& makegrid_params = *maybe_makegrid_params;
+
+  // compute magnetic field response tables
+  const auto maybe_magnetic_response_table =
+      makegrid::ComputeMagneticFieldResponseTable(makegrid_params,
+                                                  magnetic_configuration);
+  ASSERT_TRUE(maybe_magnetic_response_table.ok());
+  const auto& magnetic_response_table = *maybe_magnetic_response_table;
+
+  // RUNS
+  // using the mgrid file on disk
+  // NOTE: we assume the mgrid file was produced with our C++ version of
+  // makegrid. If it's re-generated using a different makegrid implementation,
+  // this test might fail.
+  const auto original_output = vmecpp::run(indata);
+  ASSERT_TRUE(original_output.ok());
+
+  // using the in-memory mgrid
+  const auto output_with_inmemory_mgrid =
+      vmecpp::run(indata, magnetic_response_table);
+  ASSERT_TRUE(output_with_inmemory_mgrid.ok());
+
+  // compare wout contents
+  CompareWOut(output_with_inmemory_mgrid->wout, original_output->wout,
+              /*tolerance=*/1e-7);
+}  // CheckInMemoryMgrid
+
+// The iteration callback receives every force iteration of the multigrid run:
+// the residuals the solver records, in order, plus the converged iteration
+// that closes each stage, whose geometry is the one the outputs are built
+// from. Returning false stops the run with the state reached.
+TEST(TestVmec, IterationCallbackSeesEveryIterationAndCanStop) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  std::vector<vmecpp::SolverState> states;
+  const auto output = vmecpp::run(*indata, std::nullopt, std::nullopt,
+                                  vmecpp::OutputMode::kSilent, nullptr,
+                                  [&states](const vmecpp::SolverState& state) {
+                                    states.push_back(state);
+                                    return true;
+                                  });
+  ASSERT_TRUE(output.ok());
+  const vmecpp::WOutFileContents& wout = output->wout;
+
+  const int num_stages = static_cast<int>(indata->ns_array.size());
+  int recorded = 0;
+  int stage_ends = 0;
+  for (std::size_t i = 0; i < states.size(); ++i) {
+    const vmecpp::SolverState& state = states[i];
+    const bool last_of_stage =
+        i + 1 == states.size() ||
+        states[i + 1].multigrid_step != state.multigrid_step;
+    if (last_of_stage) {
+      ++stage_ends;
+      EXPECT_EQ(state.ns, indata->ns_array[state.multigrid_step]);
+      EXPECT_LE(std::max({state.fsqr, state.fsqz, state.fsql}), state.ftol);
+      continue;
+    }
+    if (state.restart_reason != vmecpp::RestartReason::NO_RESTART) {
+      continue;
+    }
+    ASSERT_LT(recorded, wout.force_residual_r.size());
+    EXPECT_EQ(state.fsqr, wout.force_residual_r[recorded]);
+    EXPECT_EQ(state.fsqz, wout.force_residual_z[recorded]);
+    EXPECT_EQ(state.fsql, wout.force_residual_lambda[recorded]);
+    ++recorded;
+  }
+  EXPECT_EQ(stage_ends, num_stages);
+  EXPECT_EQ(recorded, static_cast<int>(wout.fsqt.size()));
+
+  const vmecpp::Geometry final_geometry =
+      vmecpp::MakeGeometry(output->indata, output->vmec_internal_results,
+                           vmecpp::GeometryCoefficientState::kPhysical);
+  EXPECT_EQ(states.back().geometry.coefficients.r_cc,
+            final_geometry.coefficients.r_cc);
+  EXPECT_EQ(states.back().geometry.coefficients.z_sc,
+            final_geometry.coefficients.z_sc);
+  EXPECT_EQ(states.back().geometry.coefficients.lambda_sc,
+            final_geometry.coefficients.lambda_sc);
+
+  int seen = 0;
+  const auto stopped = vmecpp::run(*indata, std::nullopt, std::nullopt,
+                                   vmecpp::OutputMode::kSilent, nullptr,
+                                   [&seen](const vmecpp::SolverState& state) {
+                                     ++seen;
+                                     return state.iteration < 20;
+                                   });
+  ASSERT_TRUE(stopped.ok());
+  EXPECT_EQ(seen, 20);
+  EXPECT_EQ(stopped->wout.ns, indata->ns_array[0]);
+  EXPECT_EQ(stopped->wout.ier_flag,
+            vmecpp::VmecStatusCode(vmecpp::VmecStatus::MORE_ITERATIONS_NEEDED));
+  EXPECT_EQ(stopped->wout.fsqt.size(), 20);
+}
+
+// A stellarator-symmetric, axisymmetric equilibrium (solovev) must converge to
+// the same result whether run with lasym=false or with lasym=true and zero
+// antisymmetric content. This exercises the 2D non-stellarator-symmetric
+// inverse/forward DFTs, symrzl, and symforce against the known symmetric
+// answer: the antisymmetric pieces stay zero, and symrzl / symforce must
+// reconstruct the full poloidal range so the converged wout is unchanged.
+TEST(TestVmec, LasymAxisymmetricDegeneratesToSymmetric) {
+  const std::string filename = "vmecpp/test_data/solovev.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_FALSE(indata->lasym);
+
+  // symmetric baseline
+  const auto symmetric_output = vmecpp::run(*indata);
+  ASSERT_TRUE(symmetric_output.ok());
+
+  // same equilibrium, run through the lasym code path with zero antisymmetric
+  // boundary and axis coefficients
+  VmecINDATA asym_indata = *indata;
+  asym_indata.lasym = true;
+  auto zero_rbs = indata->rbc;
+  zero_rbs.setZero();
+  auto zero_zbc = indata->zbs;
+  zero_zbc.setZero();
+  asym_indata.rbs = zero_rbs;
+  asym_indata.zbc = zero_zbc;
+  auto zero_raxis_s = indata->raxis_c;
+  zero_raxis_s.setZero();
+  auto zero_zaxis_c = indata->zaxis_s;
+  zero_zaxis_c.setZero();
+  asym_indata.raxis_s = zero_raxis_s;
+  asym_indata.zaxis_c = zero_zaxis_c;
+
+  const auto asymmetric_output = vmecpp::run(asym_indata);
+  ASSERT_TRUE(asymmetric_output.ok());
+
+  // CompareWOut cannot be used directly because it requires identical lasym
+  // flags, so compare the converged physics: the key scalar quantities and the
+  // symmetric Fourier coefficients must match, and the antisymmetric
+  // coefficients of the lasym run must stay at zero.
+  const auto& sym = symmetric_output->wout;
+  const auto& asym = asymmetric_output->wout;
+  const double kTol = 1.0e-10;
+
+  ASSERT_EQ(asym.ns, sym.ns);
+
+  // Integrated scalars, including b0 (it agrees to ~1e-14, not the 1e-3 a
+  // previous normalization gap suggested).
+  EXPECT_TRUE(IsCloseRelAbs(sym.wb, asym.wb, kTol)) << "wb";
+  EXPECT_TRUE(IsCloseRelAbs(sym.wp, asym.wp, kTol)) << "wp";
+  EXPECT_TRUE(IsCloseRelAbs(sym.volume, asym.volume, kTol)) << "volume";
+  EXPECT_TRUE(IsCloseRelAbs(sym.aspect, asym.aspect, kTol)) << "aspect";
+  EXPECT_TRUE(IsCloseRelAbs(sym.betatotal, asym.betatotal, kTol))
+      << "betatotal";
+  EXPECT_TRUE(IsCloseRelAbs(sym.b0, asym.b0, kTol)) << "b0";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Aminor_p, asym.Aminor_p, kTol)) << "Aminor_p";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Rmajor_p, asym.Rmajor_p, kTol)) << "Rmajor_p";
+
+  // Peak-normalized max difference between two coefficient arrays.
+  auto rel_max = [](const auto& a, const auto& b) -> double {
+    const double peak = a.cwiseAbs().maxCoeff();
+    return (a - b).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+  };
+  // Max magnitude of an array that must vanish, normalized by its symmetric
+  // companion's peak.
+  auto rel_zero = [](const auto& a, const auto& companion) -> double {
+    const double peak = companion.cwiseAbs().maxCoeff();
+    return a.cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+  };
+
+  // Symmetric geometry and the derived Nyquist-grid spectra (field magnitude,
+  // Jacobian, covariant/contravariant field, and B_s) reproduce the symmetric
+  // run to machine precision. These are the arrays a lasym output-normalization
+  // error would have doubled.
+  EXPECT_LT(rel_max(sym.rmnc, asym.rmnc), kTol) << "rmnc";
+  EXPECT_LT(rel_max(sym.zmns, asym.zmns), kTol) << "zmns";
+  EXPECT_LT(rel_max(sym.lmns_full, asym.lmns_full), kTol) << "lmns_full";
+  EXPECT_LT(rel_max(sym.bmnc, asym.bmnc), kTol) << "bmnc";
+  EXPECT_LT(rel_max(sym.gmnc, asym.gmnc), kTol) << "gmnc";
+  EXPECT_LT(rel_max(sym.bsubumnc, asym.bsubumnc), kTol) << "bsubumnc";
+  EXPECT_LT(rel_max(sym.bsubvmnc, asym.bsubvmnc), kTol) << "bsubvmnc";
+  EXPECT_LT(rel_max(sym.bsupumnc, asym.bsupumnc), kTol) << "bsupumnc";
+  EXPECT_LT(rel_max(sym.bsupvmnc, asym.bsupvmnc), kTol) << "bsupvmnc";
+  EXPECT_LT(rel_max(sym.bsubsmns, asym.bsubsmns), kTol) << "bsubsmns";
+
+  // currumnc/currvmnc are radial finite differences of bsubu/vmnc and so carry
+  // more cancellation noise; a looser but still tight bound.
+  EXPECT_LT(rel_max(sym.currumnc, asym.currumnc), 1.0e-8) << "currumnc";
+  EXPECT_LT(rel_max(sym.currvmnc, asym.currvmnc), 1.0e-8) << "currvmnc";
+
+  // The lasym run carries no asymmetry, so every antisymmetric coefficient set
+  // vanishes to machine precision.
+  EXPECT_LT(rel_zero(asym.rmns, sym.rmnc), kTol) << "rmns";
+  EXPECT_LT(rel_zero(asym.zmnc, sym.zmns), kTol) << "zmnc";
+  EXPECT_LT(rel_zero(asym.bmns, sym.bmnc), kTol) << "bmns";
+  EXPECT_LT(rel_zero(asym.gmns, sym.gmnc), kTol) << "gmns";
+  EXPECT_LT(rel_zero(asym.bsubumns, sym.bsubumnc), kTol) << "bsubumns";
+  EXPECT_LT(rel_zero(asym.bsubvmns, sym.bsubvmnc), kTol) << "bsubvmns";
+  EXPECT_LT(rel_zero(asym.bsupumns, sym.bsupumnc), kTol) << "bsupumns";
+  EXPECT_LT(rel_zero(asym.bsupvmns, sym.bsupvmnc), kTol) << "bsupvmns";
+  EXPECT_LT(rel_zero(asym.bsubsmnc, sym.bsubsmns), kTol) << "bsubsmnc";
+}  // LasymAxisymmetricDegeneratesToSymmetric
+
+// ---- the (lasym, lthreed, ncurr, lfreeb) matrix ----------------------------
+//
+// vmecpp_large_cpp_tests/test_data/README.md asks for every combination of
+// free boundary, constrained current, three-dimensionality and
+// non-stellarator-symmetry to be covered. The cases below fill in four
+// fixed-boundary cells that had none. Each was run through educational_VMEC
+// (VMEC 8.52) to convergence with no Jacobian resets, and the scalars here are
+// that run's output.
+
+namespace {
+
+struct FlagCombinationCase {
+  const char* filename;
+  bool lasym;
+  bool lthreed;
+  int ncurr;
+  double aspect;
+  double volume;
+  double Rmajor_p;
+  double Aminor_p;
+  double rbtor;
+  double rbtor0;
+  double volavgB;
+};
+
+void CheckFlagCombinationAgainstEducationalVmec(const FlagCombinationCase& c) {
+  absl::StatusOr<std::string> indata_json = ReadFile(c.filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  // The case is only worth anything if it really sits in the cell it claims.
+  ASSERT_EQ(indata->lasym, c.lasym);
+  ASSERT_EQ(indata->ntor > 0, c.lthreed);
+  ASSERT_EQ(indata->ncurr, c.ncurr);
+  ASSERT_FALSE(indata->lfreeb);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  const auto& w = output->wout;
+
+  const double tol = 1.0e-5;
+  EXPECT_TRUE(IsCloseRelAbs(c.aspect, w.aspect, tol)) << "aspect=" << w.aspect;
+  EXPECT_TRUE(IsCloseRelAbs(c.volume, w.volume, tol)) << "volume=" << w.volume;
+  EXPECT_TRUE(IsCloseRelAbs(c.Rmajor_p, w.Rmajor_p, tol))
+      << "Rmajor=" << w.Rmajor_p;
+  EXPECT_TRUE(IsCloseRelAbs(c.Aminor_p, w.Aminor_p, tol))
+      << "Aminor=" << w.Aminor_p;
+  EXPECT_TRUE(IsCloseRelAbs(c.rbtor, w.rbtor, tol)) << "rbtor=" << w.rbtor;
+  EXPECT_TRUE(IsCloseRelAbs(c.rbtor0, w.rbtor0, tol)) << "rbtor0=" << w.rbtor0;
+  EXPECT_TRUE(IsCloseRelAbs(c.volavgB, w.volavgB, tol))
+      << "volavgB=" << w.volavgB;
+
+  EXPECT_EQ(w.lasym, c.lasym);
+  if (c.lasym) {
+    EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-3) << "rmns must be non-zero";
+    EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-3) << "zmnc must be non-zero";
+  }
+}
+
+// With ncurr = 0 the rotational transform is prescribed rather than solved for,
+// so the half-grid profile has to be the ai polynomial evaluated at the
+// half-grid flux positions. Index 0 of iotas is unused.
+void CheckPrescribedIotaProfile(const vmecpp::WOutFileContents& w,
+                                const Eigen::VectorXd& ai) {
+  ASSERT_GT(w.ns, 1);
+  ASSERT_EQ(w.iotas.size(), w.ns);
+  const double delta_s = 1.0 / (w.ns - 1.0);
+  for (int j = 1; j < w.ns; ++j) {
+    const double s = (j - 0.5) * delta_s;
+    double expected = 0.0;
+    for (Eigen::Index i = ai.size() - 1; i >= 0; --i) {
+      expected = s * expected + ai[i];
+    }
+    EXPECT_NEAR(w.iotas[j], expected, 1.0e-12) << "iotas at j=" << j;
+  }
+}
+
+}  // namespace
+
+// A run without toroidal modes gives the same equilibrium on a toroidal grid
+// as on a single plane: the 2D transforms fill and sum every plane, as totzsps
+// and tomnsps do for nzeta > 1 with ntor = 0.
+TEST(TestVmec, AxisymmetricRunIsIndependentOfNzeta) {
+  struct Case {
+    std::string filename;
+    int nzeta;
+  };
+  for (const Case& c : {Case{"vmecpp/test_data/solovev.json", 8},
+                        Case{"vmecpp/test_data/up_down_asym.json", 6}}) {
+    absl::StatusOr<std::string> indata_json = ReadFile(c.filename);
+    ASSERT_TRUE(indata_json.ok());
+    absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(indata.ok());
+    ASSERT_EQ(indata->ntor, 0);
+
+    const auto single_plane = vmecpp::run(*indata);
+    ASSERT_TRUE(single_plane.ok()) << c.filename;
+
+    VmecINDATA indata_planes = *indata;
+    indata_planes.nzeta = c.nzeta;
+    const auto planes = vmecpp::run(indata_planes);
+    ASSERT_TRUE(planes.ok()) << c.filename << ": " << planes.status();
+
+    const auto& a = single_plane->wout;
+    const auto& b = planes->wout;
+
+    // The sum over identical planes changes the round-off, which the descent
+    // carries into lambda at the 1e-9 level.
+    const double kTol = 2.0e-8;
+    auto rel_max = [](const auto& x, const auto& y) -> double {
+      const double peak = x.cwiseAbs().maxCoeff();
+      return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+    };
+    EXPECT_TRUE(IsCloseRelAbs(a.wb, b.wb, kTol)) << c.filename;
+    EXPECT_TRUE(IsCloseRelAbs(a.volume, b.volume, kTol)) << c.filename;
+    EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.zmns, b.zmns), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.lmns_full, b.lmns_full), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.iotaf, b.iotaf), kTol) << c.filename;
+    EXPECT_LT(rel_max(a.jcurv, b.jcurv), kTol) << c.filename;
+    if (indata->lasym) {
+      EXPECT_LT(rel_max(a.rmns, b.rmns), kTol) << c.filename;
+      EXPECT_LT(rel_max(a.zmnc, b.zmnc), kTol) << c.filename;
+      EXPECT_LT(rel_max(a.lmnc_full, b.lmnc_full), kTol) << c.filename;
+    }
+
+    // The Nyquist spectrum grows with nzeta: its n = 0 rows follow the
+    // single-plane spectrum in order, and the other rows stay at zero.
+    const double b_peak = a.bmnc.cwiseAbs().maxCoeff();
+    int mn_single = 0;
+    for (int mn = 0; mn < b.mnmax_nyq; ++mn) {
+      if (b.xn_nyq[mn] != 0) {
+        EXPECT_LT(b.bmnc.row(mn).cwiseAbs().maxCoeff() / b_peak, kTol)
+            << c.filename;
+        continue;
+      }
+      ASSERT_LT(mn_single, a.mnmax_nyq);
+      ASSERT_EQ(b.xm_nyq[mn], a.xm_nyq[mn_single]);
+      EXPECT_LT((a.bmnc.row(mn_single) - b.bmnc.row(mn)).cwiseAbs().maxCoeff() /
+                    b_peak,
+                kTol)
+          << c.filename;
+      mn_single++;
+    }
+    EXPECT_EQ(mn_single, a.mnmax_nyq);
+  }
+}
+
+// lasym = F, lthreed = T, ncurr = 0, lfreeb = F.
+// Every other three-dimensional case in the suite constrains the current, so
+// this is the only place the constrained-iota path runs in 3D.
+TEST(TestVmec, ThreeDimensionalConstrainedIotaMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/cth_like_fixed_bdy_iota.json",
+      /*lasym=*/false,
+      /*lthreed=*/true,
+      /*ncurr=*/0,
+      /*aspect=*/5.48582995348779,
+      /*volume=*/0.315396710123312,
+      /*Rmajor_p=*/0.783436919078514,
+      /*Aminor_p=*/0.142811010498132,
+      /*rbtor=*/-0.451317819328199,
+      /*rbtor0=*/-0.461019928760768,
+      /*volavgB=*/0.5666316420317945};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+
+  absl::StatusOr<std::string> indata_json = ReadFile(kCase.filename);
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  CheckPrescribedIotaProfile(output->wout, indata->ai);
+}
+
+// lasym = T, lthreed = F, ncurr = 1, lfreeb = F.
+TEST(TestVmec, AsymmetricTokamakConstrainedCurrentMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/up_down_asym_current.json",
+      /*lasym=*/true,
+      /*lthreed=*/false,
+      /*ncurr=*/1,
+      /*aspect=*/10.1,
+      /*volume=*/43.0630579228331,
+      /*Rmajor_p=*/6.06,
+      /*Aminor_p=*/0.6,
+      /*rbtor=*/31.9581912180759,
+      /*rbtor0=*/32.0674722883524,
+      /*volavgB=*/5.29648456676457};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+}
+
+// lasym = T, lthreed = T, ncurr = 1, lfreeb = F.
+TEST(TestVmec, AsymmetricStellaratorConstrainedCurrentMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/cth_like_fixed_bdy_asym.json",
+      /*lasym=*/true,
+      /*lthreed=*/true,
+      /*ncurr=*/1,
+      /*aspect=*/5.51459955489889,
+      /*volume=*/0.311959643944142,
+      /*Rmajor_p=*/0.783307369710139,
+      /*Aminor_p=*/0.142042475054111,
+      /*rbtor=*/-0.456903029831871,
+      /*rbtor0=*/-0.466702565409973,
+      /*volavgB=*/0.573224626419241};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+}
+
+// lasym = T, lthreed = T, ncurr = 0, lfreeb = F.
+TEST(TestVmec, AsymmetricStellaratorConstrainedIotaMatchesEducationalVmec) {
+  const FlagCombinationCase kCase = {
+      /*filename=*/"vmecpp/test_data/cth_like_fixed_bdy_asym_iota.json",
+      /*lasym=*/true,
+      /*lthreed=*/true,
+      /*ncurr=*/0,
+      /*aspect=*/5.51459955489889,
+      /*volume=*/0.311959643944142,
+      /*Rmajor_p=*/0.783307369710139,
+      /*Aminor_p=*/0.142042475054111,
+      /*rbtor=*/-0.456526156320673,
+      /*rbtor0=*/-0.466540212041614,
+      /*volavgB=*/0.573164827790394};
+  CheckFlagCombinationAgainstEducationalVmec(kCase);
+}
+
+// A genuinely up-down-asymmetric tokamak (lasym=true with nonzero rbs): the
+// converged equilibrium must match a VMEC 8.52 (educational_VMEC) reference for
+// the same input. The reference scalars are taken from threed1.up_down_asym,
+// produced by running xvmec on the equivalent INDATA file. This is the
+// non-degenerate validation of the antisymmetric physics: the axis is pushed
+// off the midplane by the asymmetry, which a symmetric run could not produce.
+TEST(TestVmec, LasymAxisymmetricTokamakMatchesEducationalVmec) {
+  const std::string filename = "vmecpp/test_data/up_down_asym.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lasym);
+
+  // This genuinely up-down-asymmetric equilibrium converges to the 1e-11 force
+  // tolerance with no accept-unconverged escape hatch, and the converged result
+  // is identical across 1..N OpenMP threads. Validate it against the VMEC 8.52
+  // (educational_VMEC) reference on three fronts: the integrated scalars, the
+  // antisymmetric Fourier content that only an up-down-asymmetric equilibrium
+  // produces, and the magnetic axis pushed off the midplane by that asymmetry.
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+  const auto& w = output->wout;
+  ASSERT_TRUE(w.lasym);
+
+  // educational_VMEC (VMEC 8.52) golden scalars. The reference run converges to
+  // the same 1e-11 tolerance; VMEC++ reproduces these to <= 1e-5 (an order
+  // tighter than the previous 1e-4 bound), the largest residual being rbtor at
+  // ~5e-6.
+  const double tol = 1.0e-5;
+  EXPECT_TRUE(IsCloseRelAbs(10.100000, w.aspect, tol)) << "aspect=" << w.aspect;
+  EXPECT_TRUE(IsCloseRelAbs(43.063058, w.volume, tol)) << "volume=" << w.volume;
+  EXPECT_TRUE(IsCloseRelAbs(6.060000, w.Rmajor_p, tol))
+      << "Rmajor=" << w.Rmajor_p;
+  EXPECT_TRUE(IsCloseRelAbs(0.600000, w.Aminor_p, tol))
+      << "Aminor=" << w.Aminor_p;
+  EXPECT_TRUE(IsCloseRelAbs(31.958251, w.rbtor, tol)) << "rbtor=" << w.rbtor;
+  EXPECT_TRUE(IsCloseRelAbs(32.071235, w.rbtor0, tol)) << "rbtor0=" << w.rbtor0;
+  EXPECT_TRUE(IsCloseRelAbs(5.296540, w.volavgB, tol))
+      << "volavgB=" << w.volavgB;
+
+  // The field on axis must be the physical on-axis value F/R = rbtor0 / Raxis,
+  // not the doubled lasym Nyquist normalization. This guards the tmult = 0.5
+  // output normalization: a regression to the doubled value would put b0 at ~2x
+  // and fail here.
+  ASSERT_GT(w.raxis_cc.size(), 0);
+  EXPECT_TRUE(IsCloseRelAbs(w.rbtor0 / w.raxis_cc[0], w.b0, 1.0e-3))
+      << "b0=" << w.b0 << " rbtor0/Raxis=" << (w.rbtor0 / w.raxis_cc[0]);
+
+  // Genuine asymmetry: every antisymmetric wout array is sized and carries
+  // content. A stellarator-symmetric run leaves all of them empty, so the size
+  // and the floor together pin each array to the asymmetric solve. The floors
+  // sit one to two orders below the values this equilibrium produces.
+  auto expect_asym = [&w](const vmecpp::RowMatrixXd& a, int rows, double floor,
+                          const char* name) {
+    EXPECT_EQ(a.rows(), rows) << name;
+    EXPECT_EQ(a.cols(), w.ns) << name;
+    if (a.size() > 0) {
+      EXPECT_GT(a.cwiseAbs().maxCoeff(), floor) << name << " must be non-zero";
+    }
+  };
+  expect_asym(w.rmns, w.mnmax, 1.0e-3, "rmns");
+  expect_asym(w.zmnc, w.mnmax, 1.0e-3, "zmnc");
+  expect_asym(w.lmnc_full, w.mnmax, 1.0e-2, "lmnc_full");
+  expect_asym(w.lmnc, w.mnmax, 1.0e-2, "lmnc");
+  expect_asym(w.gmns, w.mnmax_nyq, 1.0e-2, "gmns");
+  expect_asym(w.bmns, w.mnmax_nyq, 1.0e-2, "bmns");
+  expect_asym(w.bsubumns, w.mnmax_nyq, 1.0e-2, "bsubumns");
+  // B_zeta is the near-vacuum 1/R field of a tokamak and so is almost up-down
+  // symmetric; its antisymmetric half is four orders below the rest.
+  expect_asym(w.bsubvmns, w.mnmax_nyq, 1.0e-6, "bsubvmns");
+  expect_asym(w.bsubsmnc, w.mnmax_nyq, 1.0e-3, "bsubsmnc");
+  expect_asym(w.bsupumns, w.mnmax_nyq, 1.0e-2, "bsupumns");
+  expect_asym(w.bsupvmns, w.mnmax_nyq, 1.0e-3, "bsupvmns");
+  expect_asym(w.currumns, w.mnmax_nyq, 1.0, "currumns");
+  expect_asym(w.currvmns, w.mnmax_nyq, 1.0, "currvmns");
+
+  // raxis_cs multiplies sin(n * zeta) and this case has ntor = 0, so it is
+  // structurally zero rather than merely small.
+  ASSERT_EQ(w.raxis_cs.size(), 1);
+  EXPECT_EQ(w.raxis_cs[0], 0.0) << "raxis_cs is sin(0 * zeta)";
+
+  // The asymmetry pushes the magnetic axis off the midplane: zaxis_cc is the
+  // cos(n*zeta) (here n=0) antisymmetric axis amplitude, exactly zero for a
+  // symmetric equilibrium. educational_VMEC places it at Z = 0.078295; VMEC++
+  // agrees to better than 1%.
+  ASSERT_GT(w.zaxis_cc.size(), 0);
+  EXPECT_GT(w.zaxis_cc[0], 0.05) << "axis must be off-midplane";
+  EXPECT_TRUE(IsCloseRelAbs(0.0782953, w.zaxis_cc[0], 5.0e-2))
+      << "zaxis_cc[0]=" << w.zaxis_cc[0];
+}  // LasymAxisymmetricTokamakMatchesEducationalVmec
+
+// A stellarator-symmetric 3D equilibrium (cth_like_fixed_bdy) run through the
+// lasym path with zero antisymmetric content must reproduce the symmetric
+// equilibrium. This exercises the 3D antisymmetric inverse/forward DFTs and the
+// toroidal (zeta) reflection in symrzl / symforce, the 3D analog of the
+// axisymmetric degenerate test above.
+TEST(TestVmec, Lasym3DDegeneratesToSymmetric) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_FALSE(indata->lasym);
+
+  const auto symmetric_output = vmecpp::run(*indata);
+  ASSERT_TRUE(symmetric_output.ok());
+
+  VmecINDATA asym_indata = *indata;
+  asym_indata.lasym = true;
+  auto zero_rbs = indata->rbc;
+  zero_rbs.setZero();
+  auto zero_zbc = indata->zbs;
+  zero_zbc.setZero();
+  asym_indata.rbs = zero_rbs;
+  asym_indata.zbc = zero_zbc;
+  auto zero_raxis_s = indata->raxis_c;
+  zero_raxis_s.setZero();
+  auto zero_zaxis_c = indata->zaxis_s;
+  zero_zaxis_c.setZero();
+  asym_indata.raxis_s = zero_raxis_s;
+  asym_indata.zaxis_c = zero_zaxis_c;
+
+  const auto asymmetric_output = vmecpp::run(asym_indata);
+  ASSERT_TRUE(asymmetric_output.ok());
+
+  const auto& sym = symmetric_output->wout;
+  const auto& asym = asymmetric_output->wout;
+  const double tol = 1.0e-9;
+  ASSERT_EQ(asym.ns, sym.ns);
+  EXPECT_TRUE(IsCloseRelAbs(sym.wb, asym.wb, tol)) << "wb";
+  EXPECT_TRUE(IsCloseRelAbs(sym.volume, asym.volume, tol)) << "volume";
+  EXPECT_TRUE(IsCloseRelAbs(sym.aspect, asym.aspect, tol)) << "aspect";
+  EXPECT_TRUE(IsCloseRelAbs(sym.betatotal, asym.betatotal, tol)) << "betatotal";
+  EXPECT_TRUE(IsCloseRelAbs(sym.b0, asym.b0, 1.0e-3)) << "b0";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Aminor_p, asym.Aminor_p, tol)) << "Aminor_p";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Rmajor_p, asym.Rmajor_p, tol)) << "Rmajor_p";
+
+  // The converged Fourier geometry must reproduce the symmetric run; the
+  // antisymmetric arrays remain at the null-space noise floor.
+  EXPECT_LT((asym.rmnc - sym.rmnc).cwiseAbs().maxCoeff(), 1.0e-9) << "rmnc";
+  EXPECT_LT((asym.zmns - sym.zmns).cwiseAbs().maxCoeff(), 1.0e-9) << "zmns";
+}  // Lasym3DDegeneratesToSymmetric
+
+// Free-boundary 3D analog: the non-stellarator-symmetric (lasym=true) path with
+// zero antisymmetric content must reproduce the symmetric free-boundary
+// equilibrium. This exercises the antisymmetric free-boundary NESTOR vacuum
+// solver over the full poloidal range: the singular-integral boundary source,
+// the cos-basis matrix projection, and the real-space vacuum field used for the
+// free-boundary pressure balance.
+TEST(TestVmec, Lasym3DFreeBoundaryDegeneratesToSymmetric) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_FALSE(indata->lasym);
+  ASSERT_TRUE(indata->lfreeb);
+
+  const auto symmetric_output = vmecpp::run(*indata);
+  ASSERT_TRUE(symmetric_output.ok());
+
+  VmecINDATA asym_indata = *indata;
+  asym_indata.lasym = true;
+  auto zero_rbs = indata->rbc;
+  zero_rbs.setZero();
+  auto zero_zbc = indata->zbs;
+  zero_zbc.setZero();
+  asym_indata.rbs = zero_rbs;
+  asym_indata.zbc = zero_zbc;
+  auto zero_raxis_s = indata->raxis_c;
+  zero_raxis_s.setZero();
+  auto zero_zaxis_c = indata->zaxis_s;
+  zero_zaxis_c.setZero();
+  asym_indata.raxis_s = zero_raxis_s;
+  asym_indata.zaxis_c = zero_zaxis_c;
+
+  const auto asymmetric_output = vmecpp::run(asym_indata);
+  ASSERT_TRUE(asymmetric_output.ok());
+
+  const auto& sym = symmetric_output->wout;
+  const auto& asym = asymmetric_output->wout;
+  // The free-boundary lasym path runs the vacuum solve through the doubled
+  // (sin/cos) response matrix and the symrzl full-range fold, which accumulate
+  // more round-off than the fixed-boundary degenerate case (1e-9): the
+  // degenerate equilibrium reproduces the symmetric one to ~5e-9. The tolerance
+  // is 1e-7, matching the free-boundary mgrid comparison in CheckInMemoryMgrid
+  // and three orders below the genuinely-asymmetric physics validation (1e-4).
+  const double tol = 1.0e-7;
+  ASSERT_EQ(asym.ns, sym.ns);
+  EXPECT_TRUE(IsCloseRelAbs(sym.wb, asym.wb, tol)) << "wb";
+  EXPECT_TRUE(IsCloseRelAbs(sym.volume, asym.volume, tol)) << "volume";
+  EXPECT_TRUE(IsCloseRelAbs(sym.aspect, asym.aspect, tol)) << "aspect";
+  EXPECT_TRUE(IsCloseRelAbs(sym.betatotal, asym.betatotal, tol)) << "betatotal";
+  EXPECT_TRUE(IsCloseRelAbs(sym.b0, asym.b0, 1.0e-3)) << "b0";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Aminor_p, asym.Aminor_p, tol)) << "Aminor_p";
+  EXPECT_TRUE(IsCloseRelAbs(sym.Rmajor_p, asym.Rmajor_p, tol)) << "Rmajor_p";
+
+  // The converged Fourier geometry must reproduce the symmetric run; the
+  // antisymmetric arrays remain at the null-space noise floor.
+  EXPECT_LT((asym.rmnc - sym.rmnc).cwiseAbs().maxCoeff(), tol) << "rmnc";
+  EXPECT_LT((asym.zmns - sym.zmns).cwiseAbs().maxCoeff(), tol) << "zmns";
+}  // Lasym3DFreeBoundaryDegeneratesToSymmetric
+
+// A genuinely up-down-asymmetric free-boundary equilibrium validated against
+// educational_VMEC (VMEC 8.52). The stellarator-symmetric cth_like external
+// field (mgrid_cth_like) is perturbed by a small up-down-asymmetry-breaking
+// vacuum field built from the flux psi = c (R^4 Z - 4/3 R^2 Z^3 - Rc^2 R^2 Z),
+// which is divergence- and curl-free (Delta* psi = 0) and a shaping (not
+// vertical-shift) term, so the free-boundary equilibrium stays vertically
+// stable. The same perturbed mgrid (mgrid_cth_like_asym) was run through xvmec;
+// the reference scalars below are from that run. This is the non-degenerate
+// validation of the antisymmetric NESTOR free-boundary path: the vacuum solver
+// runs with genuinely non-zero antisymmetric content.
+TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
+  const std::string filename = "vmecpp/test_data/cth_like_free_bdy_asym.json";
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lasym);
+  ASSERT_TRUE(indata->lfreeb);
+
+  // The antisymmetric free-boundary force residual limit-cycles near the 1e-8
+  // tolerance; accept the equilibrium at that level (as the axisymmetric
+  // reference test does) and validate the physics against the reference
+  // scalars.
+  indata->return_outputs_even_if_not_converged = true;
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+  const auto& w = output->wout;
+  ASSERT_TRUE(w.lasym);
+
+  // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
+  // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
+  // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
+  // way as in SingularIntegrals::update.
+  const double tol = 1.0e-4;
+  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
+      << "aspect=" << w.aspect;
+  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
+      << "volume=" << w.volume;
+  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
+      << "Rmajor=" << w.Rmajor_p;
+  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
+      << "Aminor=" << w.Aminor_p;
+  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
+      << "beta=" << w.betatotal;
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
+      << "rbtor=" << w.rbtor;
+  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
+      << "volavgB=" << w.volavgB;
+
+  // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
+  EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-4) << "rmns must be non-zero";
+  EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-4) << "zmnc must be non-zero";
+}  // LasymFreeBoundaryMatchesEducationalVmec
+
+// A multi-grid free-boundary equilibrium (cth_like_free_bdy with an added grid
+// step) must converge. The free-boundary (Nestor) solver, together with its
+// accumulated vacuum response matrix and right-hand side, is kept in memory
+// across the multi-grid steps (reproducing Fortran VMEC's persistent vacuum
+// state), so this also exercises that the reused solver state stays valid
+// across a grid-size change. The step-by-step agreement against the Fortran
+// reference is exercised in vmecpp_large_cpp_tests.
+TEST(TestVmec, MultiGridFreeBoundary) {
+  const std::string filename =
+      "vmecpp/test_data/cth_like_free_bdy_multigrid.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_EQ(indata->ns_array.size(), 2u);
+
+  const auto output = vmecpp::run(*indata, std::nullopt, 1);
+  ASSERT_TRUE(output.ok());
+
+  // Regression guard for issue #330/#640 and other changes to the multigrid
+  // convergence path. 344 with the historical unbalanced stage entry; 321
+  // since the vacuum state is seeded across multigrid transitions (the
+  // second stage enters force-balanced instead of kicking the boundary); 328
+  // with the corrected cross-term sign in NESTOR's analytic add-back; 329 with
+  // restart backups of the last evaluated state.
+  EXPECT_LE(output->wout.niter, 329);
+  ASSERT_EQ(output->wout.delbsq.size(), output->wout.fsqt.size());
+  ASSERT_EQ(output->wout.lcfs_force.size(), output->wout.fsqt.size());
+  EXPECT_GT(output->wout.lcfs_force.maxCoeff(), 0.0);
+}  // MultiGridFreeBoundary
+
+// The free-boundary threed1 section covers the poloidal range the run is solved
+// on, which is the full one for an asymmetric equilibrium, so the boundary it
+// reports must reproduce the wout Fourier series at every point of that range.
+TEST(TestVmec, Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lasym);
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  ASSERT_TRUE(vmec.run().ok());
+
+  const Sizes& s = vmec.s_;
+  const vmecpp::Threed1FreeBoundary& free_boundary =
+      vmec.output_quantities_.threed1_free_boundary;
+  ASSERT_EQ(free_boundary.rb.rows(), s.nZeta);
+  ASSERT_EQ(free_boundary.rb.cols(), s.nThetaEff);
+  ASSERT_GT(s.nThetaEff, s.nThetaReduced);
+
+  const vmecpp::WOutFileContents& wout = vmec.output_quantities_.wout;
+  const int boundary = wout.ns - 1;
+  for (int k = 0; k < s.nZeta; ++k) {
+    const double zeta = 2.0 * M_PI * k / (s.nZeta * s.nfp);
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const double theta = 2.0 * M_PI * l / s.nThetaEff;
+      double r = 0.0;
+      double z = 0.0;
+      for (int mn = 0; mn < wout.mnmax; ++mn) {
+        const double angle = wout.xm[mn] * theta - wout.xn[mn] * zeta;
+        r += wout.rmnc(mn, boundary) * std::cos(angle) +
+             wout.rmns(mn, boundary) * std::sin(angle);
+        z += wout.zmns(mn, boundary) * std::sin(angle) +
+             wout.zmnc(mn, boundary) * std::cos(angle);
+      }  // mn
+      EXPECT_TRUE(IsCloseRelAbs(r, free_boundary.rb(k, l), 1.0e-10))
+          << "zeta index " << k << ", theta index " << l;
+      EXPECT_TRUE(IsCloseRelAbs(z, free_boundary.zb(k, l), 1.0e-10))
+          << "zeta index " << k << ", theta index " << l;
+    }  // l
+  }  // k
+}  // Threed1FreeBoundaryCoversTheAsymmetricPoloidalRange
+
+// The enclosed toroidal flux is the integral of the aphi polynomial, normalized
+// to phiedge at the boundary. A linear dphi/ds is integrated exactly.
+TEST(TestVmec, ToroidalFluxFollowsTheAphiPolynomial) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  const int ns = 9;
+  indata->ns_array = Eigen::VectorXi::Constant(1, ns);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 4000);
+  // phi(s) = phiedge * (s + s^2 / 2) / (3 / 2)
+  indata->aphi = Eigen::VectorXd(2);
+  indata->aphi << 1.0, 0.5;
+
+  const auto output = vmecpp::run(*indata, std::nullopt, 1);
+  ASSERT_TRUE(output.ok());
+
+  const Eigen::VectorXd& phi = output->wout.phi;
+  ASSERT_EQ(phi.size(), ns);
+  for (int jF = 0; jF < ns; ++jF) {
+    const double s = static_cast<double>(jF) / (ns - 1);
+    const double expected = indata->phiedge * (s + 0.5 * s * s) / 1.5;
+    EXPECT_TRUE(IsCloseRelAbs(expected, phi[jF], 1.0e-13)) << "jF = " << jF;
+  }
+}  // ToroidalFluxFollowsTheAphiPolynomial
+
+// The lambda preconditioner scale multiplies an already assembled force, so it
+// cannot move the invariant residual of the first step.
+TEST(TestVmec, LambdaPreconditionerScaleLeavesTheFirstForceResidual) {
+  for (const std::string& case_name :
+       {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/" + case_name + ".json");
+    ASSERT_TRUE(indata_json.ok()) << case_name;
+    const absl::StatusOr<VmecINDATA> base_indata =
+        VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok()) << case_name;
+    const double ftol =
+        base_indata->ftol_array(base_indata->ftol_array.size() - 1);
+
+    VmecINDATA damped = *base_indata;
+    damped.lambda_preconditioner_scale = 0.5;
+    const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
+    ASSERT_TRUE(damped_output.ok()) << case_name;
+
+    VmecINDATA undamped = *base_indata;
+    undamped.lambda_preconditioner_scale = 1.0;
+    const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
+    ASSERT_TRUE(undamped_output.ok()) << case_name;
+
+    const auto& a = damped_output->wout;
+    const auto& b = undamped_output->wout;
+    ASSERT_GT(a.itfsq, 0) << case_name;
+    ASSERT_GT(b.itfsq, 0) << case_name;
+    EXPECT_EQ(a.fsqt(0), b.fsqt(0)) << case_name;
+    // fsqt sums the three force components that convergence tests one by one,
+    // so it lands within a factor of three of the tolerance.
+    EXPECT_LT(a.fsqt(a.itfsq - 1), 3.0 * ftol) << case_name;
+    EXPECT_LT(b.fsqt(b.itfsq - 1), 3.0 * ftol) << case_name;
+  }
+}  // LambdaPreconditionerScaleLeavesTheFirstForceResidual
+
+// Both runs are held to ftol 1e-12 because the residual fixes how closely they
+// agree; what remains there is the spectral-condensation angle gauge, which
+// moves the poloidal spectrum without moving the flux surfaces. The bounds are
+// five times the measured deviation.
+TEST(TestVmec, LambdaPreconditionerScaleConvergesToTheSameEquilibrium) {
+  for (const std::string& case_name :
+       {"solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"}) {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/" + case_name + ".json");
+    ASSERT_TRUE(indata_json.ok()) << case_name;
+    absl::StatusOr<VmecINDATA> base_indata = VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(base_indata.ok()) << case_name;
+    base_indata->ftol_array =
+        Eigen::VectorXd::Constant(base_indata->ftol_array.size(), 1.0e-12);
+
+    VmecINDATA damped = *base_indata;
+    damped.lambda_preconditioner_scale = 0.5;
+    const auto damped_output = vmecpp::run(damped, std::nullopt, 1);
+    ASSERT_TRUE(damped_output.ok()) << case_name;
+
+    VmecINDATA undamped = *base_indata;
+    undamped.lambda_preconditioner_scale = 1.0;
+    const auto undamped_output = vmecpp::run(undamped, std::nullopt, 1);
+    ASSERT_TRUE(undamped_output.ok()) << case_name;
+
+    const auto& a = damped_output->wout;
+    const auto& b = undamped_output->wout;
+    ASSERT_EQ(a.ns, b.ns) << case_name;
+
+    auto rel_max = [](const auto& x, const auto& y) -> double {
+      const double peak = x.cwiseAbs().maxCoeff();
+      return (x - y).cwiseAbs().maxCoeff() / (peak > 0.0 ? peak : 1.0);
+    };
+    EXPECT_LT(rel_max(a.rmnc, b.rmnc), 2.2e-4) << case_name << " rmnc";
+    EXPECT_LT(rel_max(a.zmns, b.zmns), 1.5e-3) << case_name << " zmns";
+    EXPECT_LT(rel_max(a.iotaf, b.iotaf), 2.6e-5) << case_name << " iotaf";
+    EXPECT_TRUE(IsCloseRelAbs(a.wb, b.wb, 1.2e-7)) << case_name << " wb";
+  }
+}  // UndampedLambdaPreconditionerConvergesToTheSameEquilibrium
+
+// An inconsistent VmecINDATA must come back as a status from the factory:
+// constructing first ends the process instead of reporting the input error.
+TEST(TestVmec, InconsistentIndataIsRejectedBeforeConstruction) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  for (const auto& [description, mutate] :
+       std::vector<std::pair<std::string, std::function<void(VmecINDATA&)>>>{
+           {"nfp = 0", [](VmecINDATA& indata) { indata.nfp = 0; }},
+           {"nfp = -1", [](VmecINDATA& indata) { indata.nfp = -1; }},
+           {"mpol = 0", [](VmecINDATA& indata) { indata.mpol = 0; }},
+           {"mpol = 1", [](VmecINDATA& indata) { indata.mpol = 1; }},
+           {"nvacskip = -1",
+            [](VmecINDATA& indata) { indata.nvacskip = -1; }}}) {
+    VmecINDATA indata = *base_indata;
+    mutate(indata);
+    const absl::StatusOr<std::unique_ptr<Vmec>> maybe_vmec =
+        Vmec::FromIndata(indata);
+    EXPECT_FALSE(maybe_vmec.ok()) << description;
+    if (!maybe_vmec.ok()) {
+      EXPECT_EQ(maybe_vmec.status().code(), absl::StatusCode::kInvalidArgument)
+          << description;
+    }
+  }
+}  // InconsistentIndataIsRejectedBeforeConstruction
+
+// The nvacskip cadence only starts once the R and Z force residuals have
+// settled, so two free-boundary runs that differ only in nvacskip share the
+// same force-residual history up to that evaluation.
+TEST(TestVmec, VacuumUpdateCadenceStartsWhenResidualsSettle) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // a single grid step, to keep the multi-grid transitions out of it
+  auto solve = [&](int nvacskip) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 16);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-10);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 5000);
+    indata.nvacskip = nvacskip;
+    return vmecpp::run(indata, std::nullopt, 1);
+  };
+
+  const auto every_iteration = solve(1);
+  ASSERT_TRUE(every_iteration.ok());
+  const auto strided = solve(24);
+  ASSERT_TRUE(strided.ok());
+
+  const Eigen::VectorXd& fsqr = every_iteration->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz = every_iteration->wout.force_residual_z;
+  const Eigen::VectorXd& fsqr_strided = strided->wout.force_residual_r;
+  const Eigen::VectorXd& fsqz_strided = strided->wout.force_residual_z;
+
+  // The vacuum pressure is switched on at the first evaluation below the
+  // threshold; the cadence can first take effect at the second one.
+  int below_threshold = 0;
+  int settled = -1;
+  for (int i = 0; i < fsqr.size(); ++i) {
+    if (fsqr(i) + fsqz(i) < 1.0e-3) {
+      ++below_threshold;
+      if (below_threshold == 2) {
+        settled = i;
+        break;
+      }
+    }
+  }
+  ASSERT_GE(settled, 20) << "the free-boundary transient is too short to "
+                            "distinguish the two cadences";
+  ASSERT_LE(settled, fsqr_strided.size());
+
+  for (int i = 0; i < settled; ++i) {
+    EXPECT_EQ(fsqr(i), fsqr_strided(i)) << "evaluation " << i;
+    EXPECT_EQ(fsqz(i), fsqz_strided(i)) << "evaluation " << i;
+  }
+}  // VacuumUpdateCadenceStartsWhenResidualsSettle
+
+// The bloating factor scales the enclosed toroidal flux, so the edge value of
+// phi comes out as phiedge * bloat.
+TEST(TestVmec, BloatScalesTheEnclosedToroidalFlux) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> base_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(base_indata.ok());
+
+  // bloat is only accepted for a constrained toroidal current
+  ASSERT_EQ(base_indata->ncurr, 1);
+
+  for (const double bloat : {1.0, 1.5, 0.5}) {
+    VmecINDATA indata = *base_indata;
+    indata.ns_array = Eigen::VectorXi::Constant(1, 9);
+    indata.ftol_array = Eigen::VectorXd::Constant(1, 1.0e-8);
+    indata.niter_array = Eigen::VectorXi::Constant(1, 4000);
+    indata.bloat = bloat;
+
+    const auto output = vmecpp::run(indata, std::nullopt, 1);
+    ASSERT_TRUE(output.ok()) << "bloat = " << bloat;
+
+    const Eigen::VectorXd& phi = output->wout.phi;
+    EXPECT_TRUE(
+        IsCloseRelAbs(indata.phiedge * bloat, phi[phi.size() - 1], 1.0e-14))
+        << "bloat = " << bloat;
+  }
+}  // BloatScalesTheEnclosedToroidalFlux
+
+// A multigrid step count below one solves nothing and is rejected.
+TEST(TestVmec, ZeroMaximumMultiGridStepIsRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  Vmec vmec(*indata);
+  const absl::StatusOr<bool> reached =
+      vmec.run(VmecCheckpoint::NONE, INT_MAX, /*maximum_multi_grid_step=*/0);
+  ASSERT_FALSE(reached.ok());
+  EXPECT_EQ(reached.status().code(), absl::StatusCode::kInvalidArgument);
+}  // ZeroMaximumMultiGridStepIsRejected
+
+// At ns == 3 the axis entry is also the third-from-last entry, so both ends of
+// the current density come from the single interior surface.
+TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array = Eigen::VectorXi::Constant(1, 3);
+  indata->ftol_array = Eigen::VectorXd::Constant(1, 1.0e-12);
+  indata->niter_array = Eigen::VectorXi::Constant(1, 2000);
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+
+  const auto& wout = output->wout;
+  ASSERT_EQ(wout.ns, 3);
+  for (int mn = 0; mn < wout.mnmax_nyq; ++mn) {
+    const double interior_u = wout.currumnc(mn, 1);
+    const double interior_v = wout.currvmnc(mn, 1);
+
+    if (wout.xm_nyq[mn] <= 1) {
+      EXPECT_EQ(wout.currumnc(mn, 0), interior_u) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), interior_v) << "mn = " << mn;
+    } else {
+      EXPECT_EQ(wout.currumnc(mn, 0), 0.0) << "mn = " << mn;
+      EXPECT_EQ(wout.currvmnc(mn, 0), 0.0) << "mn = " << mn;
+    }
+
+    EXPECT_EQ(wout.currumnc(mn, 2), interior_u) << "mn = " << mn;
+    EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
+  }
+}  // CurrentDensityEndsAtTheSmallestRadialResolution

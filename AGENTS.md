@@ -1,0 +1,274 @@
+# AGENTS.md
+
+## Development Commands
+
+### Building and Installation
+```bash
+# Install as editable Python package (rebuilds C++ automatically on changes)
+pip install -e .
+
+# Build C++ core with CMake manually
+cmake -B build
+cmake --build build --parallel
+```
+
+### Testing
+```bash
+# Run Python tests
+pytest
+
+# Run specific test file
+pytest tests/test_simsopt_compat.py
+```
+
+### Code Quality
+```bash
+ruff check
+ruff format
+pyright
+pre-commit run --all-files
+```
+
+### C++ Development (Bazel)
+```bash
+# Build C++ core with Bazel (from src/vmecpp/cpp/)
+bazel build //...
+
+# Run C++ tests
+bazel test //vmecpp/...
+
+# Build specific target
+bazel build //vmecpp/vmec/vmec:vmec
+```
+
+### Running VMEC++
+```bash
+# Command line usage
+python -m vmecpp examples/data/input.w7x
+python -m vmecpp examples/data/w7x.json
+
+# Run C++ standalone executable
+./build/vmec_standalone examples/data/solovev.json
+```
+
+## High-Level Architecture
+
+VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibrium solver with a Python interface.
+
+### Core Components
+
+**C++ Core Computations** (`src/vmecpp/cpp/vmecpp/`):
+- **VMEC Solver** (`vmec/vmec/`): Main iterative equilibrium solver using multigrid methods
+- **Ideal MHD Model** (`vmec/ideal_mhd_model/`): Physics equations and force calculations
+- **Fourier Transforms** (`common/fourier_basis_fast_*`): Fast transforms for spectral decomposition
+- **Free Boundary Solver** (`free_boundary/`): NESTOR/BIEST methods for plasma-vacuum interface
+- **Geometry Engine** (`vmec/fourier_geometry/`): Flux surface geometry and coordinate transformations
+
+**Python Interface Layer** (`src/vmecpp/`):
+- **VmecInput**: Pydantic model for input validation (profiles, boundary, parameters)
+- **VmecOutput/VmecWOut**: Output data structures with equilibrium results
+- **run()**: Primary entry point for computations
+- **Free Boundary Support**: External magnetic field handling
+
+**Python-C++ Bridge** (`src/vmecpp/cpp/vmecpp/vmec/pybind11/`):
+- Automatic NumPy <-> Eigen conversion
+- Exception translation from C++ to Python
+- In-Memory data sharing
+
+**SIMSOPT Compatibility** (`src/vmecpp/simsopt_compat.py`):
+- Drop-in replacement for SIMSOPT's Vmec class
+- Optimization workflow integration
+- Hot restart support for parameter scans
+
+### Data Flow
+
+1. **Input**: JSON (VMEC++) or INDATA (Fortran) formats -> VmecInput validation -> C++ VmecINDATA
+2. **Computation**: Multigrid setup -> Fourier decomposition -> Force balance iteration -> Convergence
+3. **Output**: C++ results -> Python data structures -> Multiple formats (HDF5, NetCDF, JSON)
+
+### Key Features
+
+- **Zero-crash policy**: All errors reported as Python exceptions
+- **Hot restart**: Initialize from previous converged state for efficient parameter scans
+- **OpenMP parallelization**: Multi-threaded force calculations
+- **Dual input formats**: Classic INDATA and modern JSON
+- **SIMSOPT integration**: Seamless optimization workflow support
+
+## Coding Standards and Guidelines
+
+### C++ Code (Google Style with Physics Domain Adaptations)
+
+**Naming Conventions**:
+- **Namespaces**: `snake_case` (e.g., `vmec_algorithm_constants`)
+- **Classes**: `CamelCase` (e.g., `IdealMhdModel`)
+- **Functions**: `CamelCase` (e.g., `ComputeGeometry()`)
+- **Constants**: `kCamelCase` (e.g., `kSignOfJacobian`)
+- **Member variables**: `snake_case_` with trailing underscore
+- **Physics variables**: Preserve traditional names (e.g., `bsupu_`, `iotaf_`, `presf_`)
+
+**Function Parameters**:
+- Use `m_` prefix for parameters that **will be modified** by the function
+- Example: `void UpdateForces(const RadialProfiles& profiles, FourierGeometry& m_geometry)`
+
+**Modern C++ Practices**:
+- Use `std::array<>` instead of C-style arrays
+- Include `<array>` header when using `std::array<>`
+- Follow clang-format Google style
+
+**Pre-commit Validation**:
+- All C++ code must pass `clang-format` (Google style)
+- Files must end with newline (`end-of-file-fixer`)
+
+**clang-tidy Review** (pull requests that change `.h` or `.cc` files under `src/vmecpp/cpp/vmecpp/`, tests and benchmarks excluded; any finding fails the check):
+- Must pass `readability-identifier-naming` checks
+- Must pass `modernize-avoid-c-arrays` checks
+
+**Incremental development**: Make small, focused changes that can be validated independently
+
+## Contribution Principles
+
+**Scope**:
+- VMEC++ is an ideal-MHD equilibrium solver with minimal dependencies; optimization, coordinate transforms, profile self-consistency and stability diagnostics belong in downstream libraries or examples
+- Build on the public API where possible; functionality that can live outside the solver does not go inside it
+- Propose a new numerical method with measurements: iteration counts, runtime share, behavior across a range of configurations, and the failure modes it resolves
+- Reuse validated components before writing new ones
+
+**Validation**:
+- VMEC++ reproduces VMEC 8.52; the reference files are educational_VMEC output, which reports `version_ = 8.52`; VMEC++ writes the full-grid `bsubsmns` of PARVMEC instead of the half-grid one; PARVMEC 10.0 differs in documented conventions such as the `chipf` endpoints
+- Keep historical behavior for compatibility; fix a confirmed bug of the original and mark the deviation in the tests
+- Fix a Fortran-side bug in educational_VMEC first, with a test that fails before and passes after, then regenerate the reference files
+- A symmetric equilibrium run through the asymmetric code paths must reproduce the symmetric result to machine precision (`tests/test_lasym.py`)
+- Match tolerances to the numerics; compare Fourier coefficients directly, a scalar such as the volume is not a physics check
+- Keep the existing tolerances through a refactoring; compare results that should agree at tight tolerances
+- Validate changes to the iteration on the force-residual progression, not on the converged state
+- Axisymmetric cases alone do not establish correctness; include asymmetric, three-dimensional and high-beta cases.
+
+**Tests**:
+- Turn derived invariants into unit tests
+- Keep coverage proportionate; simple, already verified logic is not tested separately
+- Put shared setup in pytest fixtures and compare arrays with `np.testing.assert_allclose`
+- Keep tests free of `__main__` blocks, `ImportError` fallbacks and guards for required dependencies such as simsopt
+- Do not assert timings in tests; track performance in the benchmark suite
+
+**Code**:
+- Use Eigen types where the file uses Eigen; keep fixed-size locals on the stack
+- Reuse existing logic rather than duplicating it
+- Add no guards for constructed edge cases or for conditions handled elsewhere
+
+**Comments**:
+- Describe the code as it is, briefly; history and rationale go in the pull request description
+- Keep a TODO or explanatory comment unless the change resolves it
+- Explain a constant by its physical or numerical meaning, not by its origin in Fortran VMEC
+
+**Prose**:
+- Comments and pull request descriptions do not pre-empt objections; they state what is and stop
+- Comments carry the change or the measurement, without praise, deference, or defensive justification
+- Pull request descriptions and review replies open with the content, with no pleasantries, acknowledgements or other social filler
+- They are concise: each point is made once, in the fewest words that carry it
+
+**Configuration and errors**:
+- Toggle features through fields of `VmecInput`, not environment variables
+- Warn on transient conditions; error on a result that would be wrong at convergence (the zero-crash policy at the level of a single check)
+
+**Process**:
+- One concern per pull request; unrelated changes, including CI, go separately
+- Address review comments before merge
+- Back performance claims with local measurements; the benchmark job is part of review
+- Put benchmark results and experiment write-ups in the pull request description, not the repository; `docs/` holds long-lived user documentation, and large binary files go in Git LFS
+- When an issue already has linked work, state why a different approach is taken
+
+## Physics Domain Knowledge
+
+**Essential Reading for Fourier Operations**: `docs/fourier_basis_implementation.md` provides comprehensive coverage of DFT implementation, basis conversions, and mathematical foundations. Required reading before working with any Fourier-related code.
+
+### Fourier Basis Architecture
+
+VMEC++ uses **two different Fourier representations**:
+
+**Internal Product Basis** (Computational efficiency):
+- `rmncc_`: R \times cos(m\theta) \times cos(n\zeta) coefficients
+- `rmnss_`: R \times sin(m\theta) \times sin(n\zeta) coefficients
+- Enables separable DFT operations using pre-computed basis arrays
+
+**External Combined Basis** (Researcher interface):
+- `rmnc`: R \times cos(m\theta - n\zeta) coefficients (traditional VMEC format)
+- `zmns`: Z \times sin(m\theta - n\zeta) coefficients
+- Compatible with research literature and SIMSOPT
+
+**Key Physics Variables** (preserve traditional names):
+- `bsupu_`: B^\theta contravariant magnetic field component
+- `bsupv_`: B^\zeta contravariant magnetic field component
+- `iotaf_`: Rotational transform on full grid
+- `presf_`: Pressure on full grid
+
+**Localized domain docs**: deeper notes on the solver control flow live next to the code:
+- `src/vmecpp/cpp/vmecpp/vmec/vmec/AGENTS.md` -- multigrid iteration, descent algorithm,
+  restart/hot-restart logic, convergence.
+- `src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/AGENTS.md` -- staggered full/half radial grid,
+  the forward/inverse DFT/FFT and de-alias hot kernels, post-processing boundary.
+
+## Development Notes
+
+- Uses **scikit-build-core** for Python packaging with CMake backend
+- **Editable installs** (`pip install -e .`) automatically rebuild C++ on changes
+- **Multi-threading**: OpenMP parallelization, not MPI (unlike Fortran VMEC)
+- **Dependencies**: Eigen (linear algebra), abseil (utilities), pybind11 (Python binding)
+- **Input validation**: Pydantic ensures type safety and automatic validation
+- **Hot restart**: Pass previous VmecOutput as `restart_from` parameter to run()
+
+## Common Workflows
+
+**Fixed Boundary Run**:
+```python
+import vmecpp
+
+input = vmecpp.VmecInput.from_file("input.w7x")
+output = vmecpp.run(input)
+output.wout.save("wout_result.nc")
+```
+
+**Free Boundary Run**:
+```python
+# Requires mgrid file for external magnetic field
+input = vmecpp.VmecInput.from_file("free_boundary_config.json")
+output = vmecpp.run(input)  # Automatically detects free boundary mode
+```
+
+**Hot Restart**:
+```python
+base_output = vmecpp.run(base_input)
+# Modify input parameters
+perturbed_input.rbc[0, 0] *= 1.1
+# Must use single multigrid step for hot restart
+perturbed_input.ns_array = perturbed_input.ns_array[-1:]
+hot_output = vmecpp.run(perturbed_input, restart_from=base_output)
+```
+
+**SIMSOPT Optimization**:
+```python
+import vmecpp.simsopt_compat
+
+vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
+# Use in SIMSOPT optimization workflows
+```
+
+## Naming and Conventions
+
+**For Code Changes**:
+1. **MANDATORY: Always check compliance with VMECPP_NAMING_GUIDE.md before proposing ANY changes**
+   - Verify naming conventions: classes, functions, variables, constants
+   - Ensure physics variable names are preserved (e.g., `bsupu_`, `iotaf_`, `presf_`)
+   - Check function parameter conventions (`m_` prefix for mutable parameters)
+   - Validate against Google C++ Style Guide adaptations
+2. **MANDATORY: Only use ASCII characters in ALL changes**
+   - Never use Unicode, special symbols, or non-ASCII characters in code,comments or documentation
+   - Use LaTeX notation for mathematics (e.g., `\nabla p`, `\sum_{m,n}`, `\lambda`)
+3. Always validate changes with pre-commit hooks before suggesting commits
+4. Use incremental development approach (small, testable changes)
+5. Respect the physics domain knowledge embedded in variable names
+6. Follow the naming guide strictly for new code
+
+**For Testing**:
+1. Always build and test C++ changes: `bazel build //... && bazel test //vmecpp/...`
+2. Run pre-commit checks: `pre-commit run --files <modified_files>`
+3. Test Python integration when modifying C++ interfaces

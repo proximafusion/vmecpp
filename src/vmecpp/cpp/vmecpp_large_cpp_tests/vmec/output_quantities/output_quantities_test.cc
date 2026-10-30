@@ -1,0 +1,1638 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/output_quantities/output_quantities.h"
+
+#include <netcdf.h>
+
+#include <filesystem>
+#include <fstream>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/strings/str_format.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
+#include "util/file_io/file_io.h"
+#include "util/netcdf_io/netcdf_io.h"
+#include "util/testing/numerical_comparison_lib.h"
+#include "vmecpp/common/util/util.h"
+#include "vmecpp/vmec/vmec/vmec.h"
+
+using nlohmann::json;
+
+using file_io::ReadFile;
+using netcdf_io::NetcdfReadArray1D;
+using netcdf_io::NetcdfReadArray2D;
+using netcdf_io::NetcdfReadBool;
+using netcdf_io::NetcdfReadChar;
+using netcdf_io::NetcdfReadDouble;
+using netcdf_io::NetcdfReadInt;
+using netcdf_io::NetcdfReadString;
+using testing::IsCloseRelAbs;
+
+using ::testing::ElementsAreArray;
+using ::testing::TestWithParam;
+using ::testing::Values;
+
+namespace fs = std::filesystem;
+
+namespace vmecpp {
+
+// used to specify case-specific tolerances
+//
+// Each tolerance is set from the worst deviation actually observed for that
+// case, rounded up to at least five times it. The measurement covers the opt,
+// asan and ubsan builds this repository tests in CI, which agree bit-for-bit
+// with each other, and one built with -march=native, which shifts individual
+// comparisons by up to a factor of four.
+struct DataSource {
+  std::string identifier;
+  double tolerance = 0.0;
+};
+
+class GatherDataFromThreadsTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(GatherDataFromThreadsTest, CheckGatherDataFromThreads) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::BCOVAR_FILEOUT).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/bcovar_fileout/"
+      "bcovar_fileout_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_bcovar_fileout(filename);
+  ASSERT_TRUE(ifs_bcovar_fileout.is_open())
+      << "failed to open reference file: " << filename;
+  json bcovar_fileout = json::parse(ifs_bcovar_fileout);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bcovar_fileout["lv_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsupu(idx_kl), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            bcovar_fileout["lu_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsupv(idx_kl), tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bcovar_fileout["bsubu_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsubu(idx_kl), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            bcovar_fileout["bsubv_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsubv(idx_kl), tolerance));
+      }  // l
+    }  // k
+
+    EXPECT_TRUE(IsCloseRelAbs(bcovar_fileout["fpsi"][jH],
+                              output_quantities.vmec_internal_results.bvcoH[jH],
+                              tolerance));
+  }  // jH
+}  // CheckGatherDataFromThreads
+
+// Same as the test above, but we check the matrix elements in bsupu with 2D
+// index access instead of linear access. This can go wrong (even if all other
+// tests pass) in case output_quantities.cc mixes up the storage order of the
+// Eigen matrix (ask me how I know).
+TEST_P(GatherDataFromThreadsTest, CheckMatrixElementOrder) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::BCOVAR_FILEOUT).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/bcovar_fileout/"
+      "bcovar_fileout_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_bcovar_fileout(filename);
+  ASSERT_TRUE(ifs_bcovar_fileout.is_open())
+      << "failed to open reference file: " << filename;
+  json bcovar_fileout = json::parse(ifs_bcovar_fileout);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int kl = k * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bcovar_fileout["lv_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsupu(jH, kl), tolerance));
+      }  // l
+    }  // k
+  }  // jH
+}  // CheckMatrixElementOrder
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, GatherDataFromThreadsTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-12},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-11},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-11}));
+
+class BSSRoutineOutputsTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(BSSRoutineOutputsTest, CheckBSSRoutineOutputs) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::BSS).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/bss/bss_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_bss(filename);
+  ASSERT_TRUE(ifs_bss.is_open())
+      << "failed to open reference file: " << filename;
+  json bss = json::parse(ifs_bss);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["rv12"][jH + 1][k][l],
+            output_quantities.remaining_metric.rv12(idx_kl), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["zv12"][jH + 1][k][l],
+            output_quantities.remaining_metric.zv12(idx_kl), tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["rs12"][jH + 1][k][l],
+            output_quantities.remaining_metric.rs12(idx_kl), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["zs12"][jH + 1][k][l],
+            output_quantities.remaining_metric.zs12(idx_kl), tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["gsu"][jH + 1][k][l],
+            output_quantities.remaining_metric.gsu(idx_kl), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["gsv"][jH + 1][k][l],
+            output_quantities.remaining_metric.gsv(idx_kl), tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            bss["bsubs"][jH + 1][k][l],
+            output_quantities.bsubs_half.bsubs_half(idx_kl), tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(bss["br"][jH + 1][k][l],
+                                  output_quantities.b_cylindrical.b_r(idx_kl),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(bss["bphi"][jH + 1][k][l],
+                                  output_quantities.b_cylindrical.b_phi(idx_kl),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(bss["bz"][jH + 1][k][l],
+                                  output_quantities.b_cylindrical.b_z(idx_kl),
+                                  tolerance));
+      }  // l
+    }  // k
+  }  // jH
+}  // CheckBSSRoutineOutputs
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, BSSRoutineOutputsTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 5.0e-11},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 5.0e-11},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-13},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 5.0e-13},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-11},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 2.0e-11}));
+
+class LowpassFilterBSubsSTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(LowpassFilterBSubsSTest, CheckLowpassFilterBSubsS) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint =
+      vmec.run(VmecCheckpoint::LOWPASS_BCOVARIANT).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/jxbforce_bsub_lowpass/"
+      "jxbforce_bsub_lowpass_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_jxbforce_bsub_lowpass(filename);
+  ASSERT_TRUE(ifs_jxbforce_bsub_lowpass.is_open())
+      << "failed to open reference file: " << filename;
+  json jxbforce_bsub_lowpass = json::parse(ifs_jxbforce_bsub_lowpass);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbforce_bsub_lowpass["bsubu_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsubu(idx_kl), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbforce_bsub_lowpass["bsubv_e"][jH + 1][k][l],
+            output_quantities.vmec_internal_results.bsubv(idx_kl), tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbforce_bsub_lowpass["bsubuv"][jH + 1][k][l],
+            output_quantities.covariant_b_derivatives.bsubuv(idx_kl),
+            tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbforce_bsub_lowpass["bsubvu"][jH + 1][k][l],
+            output_quantities.covariant_b_derivatives.bsubvu(idx_kl),
+            tolerance));
+      }  // l
+    }  // k
+  }  // jH
+
+  // bsubs was only available on the iterior full-grid points during
+  // filtering/derivative computation
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jF * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbforce_bsub_lowpass["bsubsu_e"][jF][k][l],
+            output_quantities.covariant_b_derivatives.bsubsu(idx_kl),
+            tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbforce_bsub_lowpass["bsubsv_e"][jF][k][l],
+            output_quantities.covariant_b_derivatives.bsubsv(idx_kl),
+            tolerance));
+      }  // l
+    }  // k
+  }  // jH
+}  // CheckLowpassFilterBSubsS
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, LowpassFilterBSubsSTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-12},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-10},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 2.0e-11}));
+
+class ExtrapolateBSubsSTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(ExtrapolateBSubsSTest, CheckExtrapolateBSubsS) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::EXTRAPOLATE_BSUBS).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/jxbout/"
+      "jxbout_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_jxbout(filename);
+  ASSERT_TRUE(ifs_jxbout.is_open())
+      << "failed to open reference file: " << filename;
+  json jxbout = json::parse(ifs_jxbout);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jF * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(
+            jxbout["bsubs3"][jF][k][l],
+            output_quantities.bsubs_full.bsubs_full(idx_kl), tolerance));
+      }  // l
+    }  // k
+  }  // jH
+}  // CheckExtrapolateBSubsS
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, ExtrapolateBSubsSTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 2.0e-14},
+           // the deviation is 2e-15 to 5e-15 depending on the compiler, so this
+           // case carries the same tolerance as the one above it
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 2.0e-14},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-11},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-12}));
+
+class JxBOutputContentsTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(JxBOutputContentsTest, CheckJxBOutputContents) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::JXBOUT).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/jxbout/"
+      "jxbout_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_jxbout(filename);
+  ASSERT_TRUE(ifs_jxbout.is_open())
+      << "failed to open reference file: " << filename;
+  json jxbout = json::parse(ifs_jxbout);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jF * s.nZeta + k) * s.nThetaEff + l;
+
+        // NOTE: catastrophic cancellation leads to a bad mismatch in itheta and
+        // izeta
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["itheta"][jF][k][l],
+                                  output_quantities.jxbout.itheta(idx_kl),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["izeta"][jF][k][l],
+                                  output_quantities.jxbout.izeta(idx_kl),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["bdotk"][jF][k][l],
+                                  output_quantities.jxbout.bdotk(idx_kl),
+                                  tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["jsupu3"][jF][k][l],
+                                  output_quantities.jxbout.jsupu3(idx_kl),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["jsupv3"][jF][k][l],
+                                  output_quantities.jxbout.jsupv3(idx_kl),
+                                  tolerance));
+      }  // l
+    }  // k
+  }  // jF
+
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["amaxfor"][jF],
+                              output_quantities.jxbout.amaxfor[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["aminfor"][jF],
+                              output_quantities.jxbout.aminfor[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["avforce"][jF],
+                              output_quantities.jxbout.avforce[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["pprim"][jF],
+                              output_quantities.jxbout.pprim[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["jdotb"][jF],
+                              output_quantities.jxbout.jdotb[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["bdotb"][jF],
+                              output_quantities.jxbout.bdotb[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["bdotgradv"][jF],
+                              output_quantities.jxbout.bdotgradv[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["jpar2"][jF],
+                              output_quantities.jxbout.jpar2[jF], tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(jxbout["jperp2"][jF],
+                              output_quantities.jxbout.jperp2[jF], tolerance));
+  }  // jF
+
+  // The loop in jxbforce.f90:594 goes over js=2,ns1,
+  // which means that the last half-grid point is not touched.
+  for (int jH = 0; jH < fc.ns - 2; ++jH) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const int idx_kl = (jH * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["jsups3"][jH + 1][k][l],
+                                  output_quantities.jxbout.jsups3(idx_kl),
+                                  tolerance));
+
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["bsubu3"][jH + 1][k][l],
+                                  output_quantities.jxbout.bsubu3(idx_kl),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(jxbout["bsubv3"][jH + 1][k][l],
+                                  output_quantities.jxbout.bsubv3(idx_kl),
+                                  tolerance));
+      }  // l
+    }  // k
+  }  // jF
+}  // CheckJxBOutputContents
+
+// The tolerances track beta rather than the toroidal current. From the
+// reference wout files: cma carries no current at all (ctor = -6e-11) and
+// betator = 0, and needs the loosest tolerance; solovev has the largest current
+// of the three (ctor = -4.4e5) but betator = 4.1e-6, and sits in between;
+// cth_like_fixed_bdy has the smallest current (ctor = 4.3e4) and the largest
+// betator = 2.1e-3, and takes the tightest. J x B is what is being compared,
+// and it needs a pressure gradient as much as a current, so it is beta that
+// orders these.
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, JxBOutputContentsTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 2.0e-5},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 2.0e-5},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-5},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-5},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-4},
+           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 1.0e-5}));
+
+class MercierStabilityTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(MercierStabilityTest, CheckMercierStability) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::MERCIER).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/mercier/"
+      "mercier_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_mercier(filename);
+  ASSERT_TRUE(ifs_mercier.is_open())
+      << "failed to open reference file: " << filename;
+  json mercier = json::parse(ifs_mercier);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const MercierStabilityIntermediateQuantities& mercier_intermediate =
+      vmec.output_quantities_.mercier_intermediate;
+
+  EXPECT_EQ(output_quantities.vmec_internal_results.sign_of_jacobian,
+            mercier["sign_jac"]);
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(mercier["phip_real"][jF],
+                              mercier_intermediate.phip_realF[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["sj"][jF], mercier_intermediate.s[jF],
+                              tolerance));
+  }  // jF
+
+  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+    EXPECT_TRUE(IsCloseRelAbs(mercier["vp_real"][jH],
+                              mercier_intermediate.vp_real[jH], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["torcur"][jH],
+                              mercier_intermediate.torcur[jH], tolerance));
+  }  // jH
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(mercier["shear"][jF - 1],
+                              mercier_intermediate.shear[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["vpp"][jF - 1],
+                              mercier_intermediate.vpp[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["presp"][jF - 1],
+                              mercier_intermediate.d_pressure_d_phi[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["ip"][jF - 1],
+                              mercier_intermediate.d_toroidal_current_d_phi[jF],
+                              tolerance));
+  }  // jF
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      for (int k = 0; k < s.nZeta; ++k) {
+        const int index_full = (jF * s.nZeta + k) * s.nThetaEff + l;
+
+        EXPECT_TRUE(IsCloseRelAbs(mercier["gsqrt_full"][jF - 1][k][l],
+                                  mercier_intermediate.gsqrt_full(index_full),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(mercier["bdotj"][jF][k][l],
+                                  mercier_intermediate.bdotj(index_full),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(mercier["gpp"][jF - 1][k][l],
+                                  mercier_intermediate.gpp(index_full),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(mercier["b2"][jF][k][l],
+                                  mercier_intermediate.b2(index_full),
+                                  tolerance));
+      }  // k
+    }  // l
+  }  // jF
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(mercier["tpp"][jF - 1],
+                              mercier_intermediate.tpp[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["tbb"][jF - 1],
+                              mercier_intermediate.tbb[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["tjb"][jF - 1],
+                              mercier_intermediate.tjb[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["tjj"][jF - 1],
+                              mercier_intermediate.tjj[jF], tolerance));
+  }  // jF
+
+  const MercierFileContents& mercier_file_contents =
+      vmec.output_quantities_.mercier;
+
+  // first table in Mercier output file
+  //
+  // The reference carries the intermediate quantities rather than the table
+  // itself, so what is checked here is the assembly: the half-grid to
+  // full-grid averaging, the running sum for the toroidal flux, the divisions
+  // by dV/ds, and the sign on the magnetic well.
+  const VmecInternalResults& internal_results =
+      output_quantities.vmec_internal_results;
+  const int sign_of_jacobian = internal_results.sign_of_jacobian;
+
+  double toroidal_flux_reference = 0.0;
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    const int jHi = jF - 1;
+    const int jHo = jF;
+
+    const double vp_full = (static_cast<double>(mercier["vp_real"][jHo]) +
+                            static_cast<double>(mercier["vp_real"][jHi])) /
+                           2.0 * sign_of_jacobian;
+
+    // The running sum advances even on surfaces the assembly skips, and is
+    // scaled by deltaS only at the end, as the assembly does.
+    toroidal_flux_reference += static_cast<double>(mercier["phip_real"][jF]);
+
+    EXPECT_TRUE(IsCloseRelAbs(mercier["sj"][jF], mercier_file_contents.s[jF],
+                              tolerance))
+        << "s at jF = " << jF;
+
+    if (vp_full == 0.0) {
+      // dV/ds vanishes here, so the assembly leaves this surface at zero.
+      continue;
+    }
+
+    EXPECT_TRUE(IsCloseRelAbs(toroidal_flux_reference * fc.deltaS,
+                              mercier_file_contents.toroidal_flux[jF],
+                              tolerance))
+        << "toroidal_flux at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(vp_full, mercier_file_contents.d_volume_d_phi[jF],
+                              tolerance))
+        << "d_volume_d_phi at jF = " << jF;
+
+    EXPECT_TRUE(
+        IsCloseRelAbs(static_cast<double>(mercier["shear"][jF - 1]) / vp_full,
+                      mercier_file_contents.shear[jF], tolerance))
+        << "shear at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        -static_cast<double>(mercier["vpp"][jF - 1]) * sign_of_jacobian,
+        mercier_file_contents.well[jF], tolerance))
+        << "well at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs((static_cast<double>(mercier["torcur"][jHo]) +
+                               static_cast<double>(mercier["torcur"][jHi])) /
+                                  2.0,
+                              mercier_file_contents.toroidal_current[jF],
+                              tolerance))
+        << "toroidal_current at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        static_cast<double>(mercier["ip"][jF - 1]) / vp_full,
+        mercier_file_contents.d_toroidal_current_d_volume[jF], tolerance))
+        << "d_toroidal_current_d_volume at jF = " << jF;
+
+    EXPECT_TRUE(
+        IsCloseRelAbs(static_cast<double>(mercier["presp"][jF - 1]) / vp_full,
+                      mercier_file_contents.d_pressure_d_volume[jF], tolerance))
+        << "d_pressure_d_volume at jF = " << jF;
+
+    // iota and pressure are averaged from half-grid profiles that the
+    // reference does not carry, so only the averaging itself is checked.
+    EXPECT_TRUE(IsCloseRelAbs(
+        (internal_results.iotaH[jHo] + internal_results.iotaH[jHi]) / 2.0,
+        mercier_file_contents.iota[jF], tolerance))
+        << "iota at jF = " << jF;
+
+    EXPECT_TRUE(IsCloseRelAbs(
+        (internal_results.presH[jHo] + internal_results.presH[jHi]) / 2.0,
+        mercier_file_contents.pressure[jF], tolerance))
+        << "pressure at jF = " << jF;
+  }  // jF
+
+  // second table in Mercier output file
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(mercier["Dshear"][jF - 1],
+                              mercier_file_contents.Dshear[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["Dcurr"][jF - 1],
+                              mercier_file_contents.Dcurr[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["Dwell"][jF - 1],
+                              mercier_file_contents.Dwell[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["Dgeod"][jF - 1],
+                              mercier_file_contents.Dgeod[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(mercier["DMerc"][jF - 1],
+                              mercier_file_contents.DMerc[jF], tolerance));
+  }  // jF
+}  // CheckMercierStability
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, MercierStabilityTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-9},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-9},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-9},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-9},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-9},
+           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 2.0e-9}));
+
+class Threed1FirstTableTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1FirstTableTest, CheckThreed1FirstTable) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint =
+      vmec.run(VmecCheckpoint::THREED1_FIRST_TABLE).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/threed1_firstTable/"
+      "threed1_firstTable_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_threed1_firstTable(filename);
+  ASSERT_TRUE(ifs_threed1_firstTable.is_open())
+      << "failed to open reference file: " << filename;
+  json threed1_firstTable = json::parse(ifs_threed1_firstTable);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const Threed1FirstTableIntermediate& threed1_first_table_intermediate =
+      output_quantities.threed1_first_table_intermediate;
+  const Threed1FirstTable& threed1_first_table =
+      output_quantities.threed1_first_table;
+
+  for (int jH = 0; jH < fc.ns - 1; ++jH) {
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["beta_vol"][jH],
+                              threed1_first_table_intermediate.beta_vol[jH],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["overr"][jH],
+                              threed1_first_table_intermediate.overr[jH],
+                              tolerance));
+  }  // jH
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["betaxis"],
+                            threed1_first_table_intermediate.beta_axis,
+                            tolerance));
+
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["presf"][jF],
+                              threed1_first_table_intermediate.presf[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["phipf_loc"][jF],
+                              threed1_first_table_intermediate.phipf_loc[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["phi1"][jF],
+                              threed1_first_table_intermediate.phi1[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["chi1"][jF],
+                              threed1_first_table_intermediate.chi1[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["chi"][jF],
+                              threed1_first_table_intermediate.chi[jF],
+                              tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["iotaf"][jF],
+                              threed1_first_table.iota[jF], tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["specw"][jF],
+                              threed1_first_table.spectral_width[jF],
+                              tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["equif"][jF],
+                              threed1_first_table_intermediate.equif[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["equif"][jF],
+                              threed1_first_table.radial_force[jF], tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["bucof"][jF],
+                              threed1_first_table_intermediate.bucof[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["bucof"][jF],
+                              threed1_first_table.buco_full[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["bvcof"][jF],
+                              threed1_first_table_intermediate.bvcof[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["bvcof"][jF],
+                              threed1_first_table.bvco_full[jF], tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["jcurv"][jF],
+                              threed1_first_table_intermediate.jcurv[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["jcuru"][jF],
+                              threed1_first_table_intermediate.jcuru[jF],
+                              tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["presgrad"][jF],
+                              threed1_first_table_intermediate.presgrad[jF],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["vpphi"][jF],
+                              threed1_first_table_intermediate.vpphi[jF],
+                              tolerance));
+
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["jdotb"][jF],
+                              threed1_first_table.j_dot_b[jF], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_firstTable["bdotb"][jF],
+                              threed1_first_table.b_dot_b[jF], tolerance));
+  }  // jF
+}  // CheckThreed1FirstTable
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1FirstTableTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-9},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-9},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-8},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-8},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-6},
+           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 2.0e-8}));
+
+class Threed1GeometricMagneticQuantitiesTest
+    : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1GeometricMagneticQuantitiesTest,
+       CheckThreed1GeometricMagneticQuantities) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::THREED1_GEOMAG).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/threed1_geomag/"
+      "threed1_geomag_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_threed1_geomag(filename);
+  ASSERT_TRUE(ifs_threed1_geomag.is_open())
+      << "failed to open reference file: " << filename;
+  json threed1_geomag = json::parse(ifs_threed1_geomag);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const Threed1GeometricAndMagneticQuantitiesIntermediate& intermediate =
+      output_quantities.threed1_geometric_magnetic_intermediate;
+  const Threed1GeometricAndMagneticQuantities& result =
+      output_quantities.threed1_geometric_magnetic;
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["anorm"], intermediate.anorm, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["vnorm"], intermediate.vnorm, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["toroidal_flux"],
+                            result.toroidal_flux, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["circum_p"], result.circum_p, tolerance));
+
+  for (int k = 0; k < s.nZeta; ++k) {
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const int kl = k * s.nThetaEff + l;
+
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["surf_area"][k][l],
+                                intermediate.surf_area[kl], tolerance));
+    }  // k
+  }  // l
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["surf_area_p"], result.surf_area_p,
+                            tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["volume_p"], result.volume_p, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["cross_area_p"], result.cross_area_p,
+                            tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["Rmajor_p"], result.Rmajor_p, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["Aminor_p"], result.Aminor_p, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["aspect"], result.aspect, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["kappa_p"], result.kappa_p, tolerance));
+
+  // intermediate:
+  // TODO(jons): rcenin (not used anywhere?)
+  // TODO(jons): aminr2in (not used anywhere?)
+  // TODO(jons): bminz2in (not used anywhere?)
+  // TODO(jons): bminz2 (not used anywhere?)
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["rcen"], result.rcen, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["aminr1"], result.aminr1, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["sump"], intermediate.sump, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["pavg"], result.pavg, tolerance));
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["delphid_exact"],
+                            intermediate.delphid_exact, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["musubi"], intermediate.musubi, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["rshaf1"], intermediate.rshaf1, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["rshaf2"], intermediate.rshaf2, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["rshaf"], intermediate.rshaf, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["fpsi0"], intermediate.fpsi0, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["b0"], result.b0, tolerance));
+
+  for (int k = 0; k < s.nZeta; ++k) {
+    for (int l = 0; l < s.nThetaEff; ++l) {
+      const int kl = k * s.nThetaEff + l;
+
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["redge"][k][l],
+                                intermediate.redge[kl], tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["phat"][k][l],
+                                intermediate.phat[kl], tolerance));
+    }  // k
+  }  // l
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["rmax_surf"], result.rmax_surf, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["rmin_surf"], result.rmin_surf, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["zmax_surf"], result.zmax_surf, tolerance));
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["bmin_1_ns"],
+                            result.bmin((fc.ns - 2) * s.nThetaEff + 0),
+                            tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["bmax_1_ns"],
+                            result.bmax((fc.ns - 2) * s.nThetaEff + 0),
+                            tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(
+      threed1_geomag["bmin_ntheta2_ns"],
+      result.bmin((fc.ns - 2) * s.nThetaEff + (s.nThetaReduced - 1)),
+      tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(
+      threed1_geomag["bmax_ntheta2_ns"],
+      result.bmax((fc.ns - 2) * s.nThetaEff + (s.nThetaReduced - 1)),
+      tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["waist"][0], result.waist[0], tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["height"][0], result.height[0], tolerance));
+  if (s.ntor > 1) {
+    EXPECT_TRUE(
+        IsCloseRelAbs(threed1_geomag["waist"][1], result.waist[1], tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["height"][1], result.height[1],
+                              tolerance));
+  }
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["sumbtot"], intermediate.sumbtot,
+                            tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["sumbtor"], intermediate.sumbtor,
+                            tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["sumbpol"], intermediate.sumbpol,
+                            tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["sump20"], intermediate.sump20, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["sump2"], intermediate.sump2, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["betapol"], result.betapol, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["betatot"], result.betatot, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["betator"], result.betator, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["VolAvgB"], result.VolAvgB, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["IonLarmor"], result.IonLarmor, tolerance));
+
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["jPS2"][jF - 1],
+                              intermediate.jPS2[jF], tolerance));
+  }  // jF
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["s2"], intermediate.s2, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_geomag["jpar_perp"], result.jpar_perp, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["jparPS_perp"], result.jparPS_perp,
+                            tolerance));
+
+  for (int jF = 0; jF < fc.ns; ++jF) {
+    EXPECT_TRUE(
+        IsCloseRelAbs(threed1_geomag["psi"][jF], result.psi[jF], tolerance));
+  }  // jF
+
+  for (int nplanes = 0; nplanes < 2; ++nplanes) {
+    for (int jF = 0; jF < fc.ns; ++jF) {
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["ygeo"][nplanes][jF],
+                                result.ygeo[nplanes * fc.ns + jF], tolerance));
+    }
+    for (int jF = 1; jF < fc.ns; ++jF) {
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["yinden"][nplanes][jF - 1],
+                                result.yinden[nplanes * fc.ns + jF],
+                                tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["yellip"][nplanes][jF - 1],
+                                result.yellip[nplanes * fc.ns + jF],
+                                tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["ytrian"][nplanes][jF - 1],
+                                result.ytrian[nplanes * fc.ns + jF],
+                                tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(threed1_geomag["yshift"][nplanes][jF - 1],
+                                result.yshift[nplanes * fc.ns + jF],
+                                tolerance));
+    }
+  }  // nplanes
+}  // CheckThreed1GeometricMagneticQuantities
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1GeometricMagneticQuantitiesTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-5},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-5},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-9},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 5.0e-9},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-06},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 5.0e-06}));
+
+class Threed1VolumetricsTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1VolumetricsTest, CheckThreed1Volumetrics) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint =
+      vmec.run(VmecCheckpoint::THREED1_VOLUMETRICS).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/threed1_volquant/"
+      "threed1_volquant_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_threed1_volquant(filename);
+  ASSERT_TRUE(ifs_threed1_volquant.is_open())
+      << "failed to open reference file: " << filename;
+  json threed1_volquant = json::parse(ifs_threed1_volquant);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const Threed1Volumetrics& result = output_quantities.threed1_volumetrics;
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["int_p"], result.int_p, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["avg_p"], result.avg_p, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["int_bpol"], result.int_bpol, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["avg_bpol"], result.avg_bpol, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["int_btor"], result.int_btor, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["avg_btor"], result.avg_btor, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["int_modb"], result.int_modb, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["avg_modb"], result.avg_modb, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["int_ekin"], result.int_ekin, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_volquant["avg_ekin"], result.avg_ekin, tolerance));
+}  // CheckThreed1Volumetrics
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1VolumetricsTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-12},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 1.0e-10}));
+
+class Threed1AxisTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1AxisTest, CheckThreed1Axis) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const Sizes& s = vmec.s_;
+  const FlowControl& fc = vmec.fc_;
+
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::THREED1_AXIS).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/threed1_axis/"
+      "threed1_axis_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_threed1_axis(filename);
+  ASSERT_TRUE(ifs_threed1_axis.is_open())
+      << "failed to open reference file: " << filename;
+  json threed1_axis = json::parse(ifs_threed1_axis);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const Threed1AxisGeometry& axis = output_quantities.threed1_axis;
+
+  for (int n = 0; n <= s.ntor; ++n) {
+    EXPECT_TRUE(IsCloseRelAbs(threed1_axis["rax_symm"][n], axis.raxis_symm[n],
+                              tolerance));
+    EXPECT_TRUE(IsCloseRelAbs(threed1_axis["zax_symm"][n], axis.zaxis_symm[n],
+                              tolerance));
+    if (s.lasym) {
+      EXPECT_TRUE(IsCloseRelAbs(threed1_axis["rax_asym"][n], axis.raxis_asym[n],
+                                tolerance));
+      EXPECT_TRUE(IsCloseRelAbs(threed1_axis["zax_asym"][n], axis.zaxis_asym[n],
+                                tolerance));
+    }
+  }  // n
+}  // CheckThreed1Axis
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1AxisTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-12},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-11},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 2.0e-11}));
+
+class Threed1BetasTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1BetasTest, CheckThreed1Betas) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run(VmecCheckpoint::THREED1_BETAS).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/threed1_beta/"
+      "threed1_beta_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_threed1_beta(filename);
+  ASSERT_TRUE(ifs_threed1_beta.is_open())
+      << "failed to open reference file: " << filename;
+  json threed1_beta = json::parse(ifs_threed1_beta);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const Threed1Betas& result = output_quantities.threed1_betas;
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_beta["betatot"], result.betatot, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_beta["betapol"], result.betapol, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_beta["betator"], result.betator, tolerance));
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_beta["rbtor"], result.rbtor, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_beta["betaxis"], result.betaxis, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_beta["betstr"], result.betstr, tolerance));
+}  // CheckThreed1Betas
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1BetasTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-12},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-12},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-12},
+           DataSource{.identifier = "cth_like_free_bdy",
+                      .tolerance = 1.0e-11}));
+
+class Threed1ShafranovIntegralsTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(Threed1ShafranovIntegralsTest, CheckThreed1ShafranovIntegrals) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+  const FlowControl& fc = vmec.fc_;
+
+  // run until convergence
+  bool reached_checkpoint =
+      vmec.run(VmecCheckpoint::THREED1_SHAFRANOV_INTEGRALS).value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/threed1_shafrint/"
+      "threed1_shafrint_%05d_000000_01.%s.json",
+      data_source_.identifier, fc.ns, data_source_.identifier);
+
+  std::ifstream ifs_threed1_shafrint(filename);
+  ASSERT_TRUE(ifs_threed1_shafrint.is_open())
+      << "failed to open reference file: " << filename;
+  json threed1_shafrint = json::parse(ifs_threed1_shafrint);
+
+  const OutputQuantities& output_quantities = vmec.output_quantities_;
+
+  const Threed1ShafranovIntegrals& result =
+      output_quantities.threed1_shafranov_integrals;
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["scaling_ratio"],
+                            result.scaling_ratio, tolerance));
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["rlao"], result.r_lao, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["flao"], result.f_lao, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["fgeo"], result.f_geo, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["smaleli"], result.smaleli, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["betai"], result.betai, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["musubi"], result.musubi, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["lambda"], result.lambda, tolerance));
+
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["s11"], result.s11, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["s12"], result.s12, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["s13"], result.s13, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["s2"], result.s2, tolerance));
+  EXPECT_TRUE(IsCloseRelAbs(threed1_shafrint["s3"], result.s3, tolerance));
+
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["delta1"], result.delta1, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["delta2"], result.delta2, tolerance));
+  EXPECT_TRUE(
+      IsCloseRelAbs(threed1_shafrint["delta3"], result.delta3, tolerance));
+}  // CheckThreed1GeometricMagneticQuantities
+
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, Threed1ShafranovIntegralsTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-11},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-11},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 5.0e-10},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 5.0e-10},
+           DataSource{.identifier = "cma", .tolerance = 5.0e-10},
+           DataSource{.identifier = "cth_like_free_bdy", .tolerance = 5.0e-5})
+    // NOTE: vacuum_b_phi likely largest influence here!
+);
+
+class CurrentDensityTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(CurrentDensityTest, CheckCurrentDensityFourierCoefficients) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+
+  Vmec vmec(*vmec_indata);
+
+  // run until convergence
+  bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  // Read reference currumnc/currvmnc from Fortran wout file
+  std::string ref_wout_filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/wout_%s.nc", data_source_.identifier);
+
+  int ncid = 0;
+  ASSERT_EQ(nc_open(ref_wout_filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR)
+      << "Failed to open reference wout file: " << ref_wout_filename;
+
+  // Read 2D arrays: Fortran stores as (ns, mnmax_nyq), C++ as (mnmax_nyq, ns)
+  const std::vector<std::vector<double>> ref_currumnc =
+      NetcdfReadArray2D(ncid, "currumnc").value();
+  const std::vector<std::vector<double>> ref_currvmnc =
+      NetcdfReadArray2D(ncid, "currvmnc").value();
+  nc_close(ncid);
+
+  const int ns = static_cast<int>(ref_currumnc.size());
+  ASSERT_EQ(ns, wout.ns);
+  ASSERT_GT(ns, 0);
+  const int mnmax_nyq = static_cast<int>(ref_currumnc[0].size());
+  ASSERT_EQ(mnmax_nyq, wout.mnmax_nyq);
+
+  for (int jF = 0; jF < ns; ++jF) {
+    for (int mn = 0; mn < mnmax_nyq; ++mn) {
+      // Deviation from VMEC 8.52: odd m use the full-grid bsubsmns instead of
+      // the sqrt(s)-weighted average of the half-grid one.
+      if (wout.xm_nyq[mn] % 2 == 1) {
+        continue;
+      }
+      // ref_currumnc[jF][mn] is Fortran ordering (ns, mnmax_nyq)
+      // wout.currumnc(mn, jF) is C++ ordering (mnmax_nyq, ns)
+      EXPECT_TRUE(
+          IsCloseRelAbs(ref_currumnc[jF][mn], wout.currumnc(mn, jF), tolerance))
+          << "currumnc mismatch at jF=" << jF << " mn=" << mn
+          << " ref=" << ref_currumnc[jF][mn]
+          << " test=" << wout.currumnc(mn, jF);
+      EXPECT_TRUE(
+          IsCloseRelAbs(ref_currvmnc[jF][mn], wout.currvmnc(mn, jF), tolerance))
+          << "currvmnc mismatch at jF=" << jF << " mn=" << mn
+          << " ref=" << ref_currvmnc[jF][mn]
+          << " test=" << wout.currvmnc(mn, jF);
+    }  // mn
+  }  // jF
+}  // CheckCurrentDensityFourierCoefficients
+
+// NOTE: Tolerances are larger than for other output quantities because
+// the current density is computed via finite differences of the covariant B
+// field Fourier coefficients, which amplifies the differences between the
+// Fortran and C++ equilibria.
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantities, CurrentDensityTest,
+    Values(DataSource{.identifier = "solovev", .tolerance = 1.0e-4},
+           DataSource{.identifier = "solovev_no_axis", .tolerance = 1.0e-4},
+           DataSource{.identifier = "cth_like_fixed_bdy", .tolerance = 1.0e-4},
+           DataSource{.identifier = "cth_like_fixed_bdy_nzeta_37",
+                      .tolerance = 1.0e-4},
+           DataSource{.identifier = "cma", .tolerance = 1.0e-4}));
+
+// Nestor's converged scalar magnetic potential is reported as wout `potvac`.
+TEST(TestOutputQuantities, CheckVacuumPotential) {
+  static constexpr double kTolerance = 1.0e-11;
+  const std::string identifier = "cth_like_free_bdy";
+
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+  // The reference restarts from the advanced state.
+  vmec_indata->backup_evaluated_state = false;
+  ASSERT_TRUE(vmec_indata->lfreeb);
+
+  Vmec vmec(*vmec_indata);
+  const bool reached_checkpoint = vmec.run().value();
+  ASSERT_FALSE(reached_checkpoint);
+
+  const WOutFileContents& wout = vmec.output_quantities_.wout;
+
+  int ncid = 0;
+  const std::string reference_filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/wout_%s.nc", identifier);
+  ASSERT_EQ(nc_open(reference_filename.c_str(), NC_NOWRITE, &ncid), NC_NOERR)
+      << "failed to open reference file: " << reference_filename;
+  const std::vector<double> reference_potvac =
+      NetcdfReadArray1D(ncid, "potvac").value();
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  ASSERT_EQ(static_cast<int>(reference_potvac.size()), wout.potvac.size());
+  for (int i = 0; i < wout.potvac.size(); ++i) {
+    EXPECT_TRUE(IsCloseRelAbs(reference_potvac[i], wout.potvac[i], kTolerance))
+        << "potvac index " << i;
+  }
+
+  // Fortran VMEC does not write the potvac mode numbers, so they are checked
+  // against Nestor's ordering rather than against the reference file.
+  const int nfp = vmec_indata->nfp;
+  const int nf = vmec_indata->ntor;
+  const int mf = vmec_indata->mpol + 1;
+  const int mnpd = (2 * nf + 1) * (mf + 1);
+  ASSERT_EQ(wout.potvac.size(), 2 * mnpd);
+  ASSERT_EQ(wout.xmpot.size(), mnpd);
+  ASSERT_EQ(wout.xnpot.size(), mnpd);
+
+  // A stellarator-symmetric run solves only the sin(mu - nv) half.
+  for (int i = mnpd; i < wout.potvac.size(); ++i) {
+    EXPECT_EQ(wout.potvac[i], 0.0) << "potvac cos half, index " << i;
+  }
+
+  // Each (m, n) of the rectangle m in [0, mf], n in [-nf, nf] appears once.
+  std::set<std::pair<int, int>> modes;
+  for (int mn = 0; mn < mnpd; ++mn) {
+    EXPECT_EQ(wout.xnpot[mn] % nfp, 0) << "xnpot index " << mn;
+    modes.insert({wout.xmpot[mn], wout.xnpot[mn] / nfp});
+  }
+  EXPECT_EQ(static_cast<int>(modes.size()), mnpd);
+  for (int m = 0; m <= mf; ++m) {
+    for (int n = -nf; n <= nf; ++n) {
+      EXPECT_EQ(modes.count({m, n}), 1U) << "missing m=" << m << " n=" << n;
+    }
+  }
+
+  // m advances fastest, so the first mf + 1 entries all carry n = -nf.
+  for (int m = 0; m <= mf; ++m) {
+    EXPECT_EQ(wout.xmpot[m], m);
+    EXPECT_EQ(wout.xnpot[m], -nf * nfp);
+  }
+}
+
+// freeb_data in Fortran VMEC: the boundary geometry, the plasma-side and
+// vacuum-side pressures as first established and as converged, and the
+// cylindrical field on either side of the boundary.
+TEST(Threed1FreeBoundary, MatchesEducationalVmec) {
+  const std::string identifier = "cth_like_free_bdy";
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile(absl::StrFormat("vmecpp/test_data/%s.json", identifier));
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  // The reference restarts from the advanced state.
+  indata->backup_evaluated_state = false;
+  ASSERT_TRUE(indata->lfreeb);
+
+  auto maybe_vmec = Vmec::FromIndata(*indata);
+  ASSERT_TRUE(maybe_vmec.ok());
+  Vmec& vmec = **maybe_vmec;
+  ASSERT_TRUE(vmec.run().ok());
+
+  const std::string filename = absl::StrFormat(
+      "vmecpp_large_cpp_tests/test_data/%s/freeb_data/"
+      "freeb_data_%05d_000000_01.%s.json",
+      identifier, vmec.fc_.ns, identifier);
+  std::ifstream ifs(filename);
+  ASSERT_TRUE(ifs.is_open()) << "failed to open reference file: " << filename;
+  const json reference = json::parse(ifs);
+
+  const Threed1FreeBoundary& threed1_free_boundary =
+      vmec.output_quantities_.threed1_free_boundary;
+  const Sizes& s = vmec.s_;
+  ASSERT_EQ(threed1_free_boundary.rb.rows(), s.nZeta);
+  ASSERT_EQ(threed1_free_boundary.rb.cols(), s.nThetaReduced);
+
+  static constexpr double kTolerance = 1.0e-10;
+  const auto compare = [&](const char* name, const RowMatrixXd& value) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaReduced; ++l) {
+        EXPECT_TRUE(IsCloseRelAbs(static_cast<double>(reference[name][k][l]),
+                                  value(k, l), kTolerance))
+            << name << " at zeta index " << k << ", theta index " << l;
+      }  // l
+    }  // k
+  };
+
+  compare("rb", threed1_free_boundary.rb);
+  compare("phib", threed1_free_boundary.phib);
+  compare("zb", threed1_free_boundary.zb);
+  compare("bsqmhdi", threed1_free_boundary.bsqmhdi);
+  compare("bsqvaci", threed1_free_boundary.bsqvaci);
+  compare("bsqmhdf", threed1_free_boundary.bsqmhdf);
+  compare("bsqvacf", threed1_free_boundary.bsqvacf);
+  compare("bredge", threed1_free_boundary.bredge);
+  compare("bpedge", threed1_free_boundary.bpedge);
+  compare("bzedge", threed1_free_boundary.bzedge);
+  compare("brv", threed1_free_boundary.brv);
+  compare("bphiv", threed1_free_boundary.bphiv);
+  compare("bzv", threed1_free_boundary.bzv);
+}
+
+}  // namespace vmecpp

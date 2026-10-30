@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+filegroup(
+    name = "solovev",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev.json",
+        "input.solovev",
+        "wout_solovev.nc",
+    ],
+)
+
+filegroup(
+    name = "circular_tokamak",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "circular_tokamak.json",
+    ],
+)
+
+filegroup(
+    name = "up_down_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.up_down_asym_current",
+        "up_down_asym.json",
+        "up_down_asym_current.json",
+    ],
+)
+
+filegroup(
+    name = "solovev_analytical",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev_analytical.json",
+        "input.solovev_analytical",
+        "wout_solovev_analytical.nc",
+    ],
+)
+
+filegroup(
+    name = "solovev_no_axis",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev_no_axis.json",
+        "input.solovev_no_axis",
+        "wout_solovev_no_axis.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_fixed_bdy",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_fixed_bdy.json",
+        "cth_like_fixed_bdy_asym.json",
+        "cth_like_fixed_bdy_asym_iota.json",
+        "cth_like_fixed_bdy_iota.json",
+        "cth_like_fixed_bdy_spline_pressure.json",
+        "input.cth_like_fixed_bdy_spline_pressure",
+        "wout_cth_like_fixed_bdy_spline_pressure.nc",
+        "input.cth_like_fixed_bdy",
+        "input.cth_like_fixed_bdy_asym",
+        "input.cth_like_fixed_bdy_asym_iota",
+        "input.cth_like_fixed_bdy_iota",
+        "wout_cth_like_fixed_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_fixed_bdy_nzeta_37",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_fixed_bdy_nzeta_37.json",
+        "input.cth_like_fixed_bdy_nzeta_37",
+        "wout_cth_like_fixed_bdy_nzeta_37.nc",
+    ],
+)
+
+filegroup(
+    name = "cma",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cma.json",
+        "input.cma",
+        "jxbout_cma.nc",
+        "wout_cma.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "coils.cth_like",
+        "makegrid_parameters_cth_like.json",
+        "mgrid_cth_like.nc",
+        "cth_like_free_bdy.json",
+        "input.cth_like_free_bdy",
+        "wout_cth_like_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy_asym",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_free_bdy_asym.json",
+        "mgrid_cth_like_asym.nc",
+    ],
+)
+
+filegroup(
+    name = "solovev_free_bdy",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "coils.solovev",
+        "makegrid_parameters_solovev.json",
+        "solovev_free_bdy.json",
+        "input.solovev_free_bdy",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "solovev_free_bdy_lforbal",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "solovev_free_bdy_lforbal.json",
+        "mgrid_solovev.nc",
+        "wout_solovev_free_bdy_T.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy_multigrid",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "mgrid_cth_like.nc",
+        "cth_like_free_bdy_multigrid.json",
+    ],
+)
+
+filegroup(
+    name = "li383_low_res",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "li383_low_res.json",
+    ],
+)

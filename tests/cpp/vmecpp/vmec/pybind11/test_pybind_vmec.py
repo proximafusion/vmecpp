@@ -1,0 +1,655 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+"""Tests for VMEC++ pybind11 Python bindings."""
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+from netCDF4 import Dataset
+
+from vmecpp.cpp import _vmecpp as vmec  # type: ignore[import]
+
+# We don't want to install tests and test data as part of the package,
+# but scikit-build-core + hatchling does not support editable installs,
+# so the tests live in the sources but the vmecpp module lives in site_packages.
+# Therefore, in order to find the test data we use the relative path to this file.
+# I'm very open to alternative solutions :)
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent.parent
+TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+
+# The threed1 reference dumps written by educational_VMEC live with the large
+# C++ tests rather than next to the netCDF references above.
+THREED1_DATA_DIR = (
+    REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp_large_cpp_tests" / "test_data"
+)
+
+MU_0 = 4.0e-7 * np.pi
+
+
+def load_threed1(case_name, subdirectory):
+    """Load the single threed1 reference dump held in the given subdirectory."""
+    (path,) = (THREED1_DATA_DIR / case_name / subdirectory).glob(f"*.{case_name}.json")
+    with open(path) as f:
+        return json.load(f)
+
+
+def is_close_ra(actual, expected, tolerance, context=""):
+    all_good = True
+
+    actual_shape = np.shape(actual)
+    expected_shape = np.shape(expected)
+    if len(actual_shape) != len(expected_shape):
+        print(
+            f"rank mismatch: actual is rank-{len(actual_shape)}, expected is rank-{len(expected_shape)}"
+        )
+        return False
+
+    if len(actual_shape) > 0:
+        if not np.array_equal(actual_shape, expected_shape):
+            print(f"size mismatch: actual: {actual_shape}, expected :{expected_shape}")
+            return False
+
+        for i, a in enumerate(actual):
+            e = expected[i]
+            all_good &= is_close_ra(a, e, tolerance, f" at {i}")
+    else:
+        # This is the actual test, on scalars.
+        ra_err = (actual - expected) / (1.0 + abs(expected))
+        if abs(ra_err) > tolerance:
+            print(
+                (
+                    "mismatch%s:\n"
+                    + "    actual = % .12e\n"
+                    + "  expected = % .12e\n"
+                    + "     error = % .12e\n"
+                )
+                % (context, actual, expected, ra_err),
+                flush=True,
+            )
+            all_good = False
+
+    return all_good
+
+
+def test_indata_readwrite():
+    """Test that we can read in an VmecINDATA object and then modify its contents."""
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / "solovev.json")
+    assert indata.ntor == 0
+    assert indata.mpol == 6
+    assert len(indata.ns_array) == 3
+    assert len(indata.rbc) == 6  # mpol * (2 * ntor + 1)
+
+    # Read/write whole arrays
+    # Only permitted on some of indata's arrays (see below).
+    indata.ns_array = np.array((1, 2, 3))
+    assert np.all(indata.ns_array == (1, 2, 3))
+
+    # Read/write array elements
+    # These checks might seem trivial, but depending on how the pybind11 bindings
+    # are done, assignments like these can break silently.
+    indata.ns_array[0] = 6
+    assert indata.ns_array[0] == 6
+    indata.raxis_c[0] = 8.0
+    assert indata.raxis_c[0] == 8.0
+
+    # Read/write matrix elements
+    indata.rbc[2, 0] = 42.0
+    assert indata.rbc[2, 0] == 42.0
+
+    # Read/write enum
+    indata.free_boundary_method = vmec.FreeBoundaryMethod.BIEST
+    assert indata.free_boundary_method == vmec.FreeBoundaryMethod.BIEST
+
+    # Assignments like these would break VmecINDATA's invariants:
+    # make sure they are not allowed
+    with pytest.raises(AttributeError):
+        indata.mpol = 0
+
+    with pytest.raises(AttributeError):
+        indata.raxis_c = np.array([])
+
+    with pytest.raises(AttributeError):
+        indata.rbc = np.array([])
+
+
+def test_indata_from_json():
+    """Test that VmecINDATA.from_json returns the input that from_file reads."""
+    indata_file = TEST_DATA_DIR / "cth_like_fixed_bdy.json"
+    indata = vmec.VmecINDATA.from_json(indata_file.read_text())
+    indata_from_file = vmec.VmecINDATA.from_file(indata_file)
+    assert json.loads(indata.to_json()) == json.loads(indata_from_file.to_json())
+
+    # an inconsistent input is reported as an exception
+    with pytest.raises(ValueError, match="ncurr"):
+        vmec.VmecINDATA.from_json('{"ncurr": 2}')
+
+
+def test_output_quantities():
+    case_name = "cma"
+
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
+    output_quantities = vmec.run(indata)
+
+    # jxbout
+    jxbout = Dataset(TEST_DATA_DIR / f"jxbout_{case_name}.nc", "r")
+    assert is_close_ra(output_quantities.jxbout.phin, jxbout["phin"][()], 1.0e-12)
+    assert is_close_ra(output_quantities.jxbout.avforce, jxbout["avforce"][()], 1.0e-6)
+    assert is_close_ra(
+        output_quantities.jxbout.jdotb, jxbout["surf_av_jdotb"][()], 1.0e-5
+    )
+    assert is_close_ra(
+        output_quantities.jxbout.bdotgradv, jxbout["bdotgradv"][()], 1.0e-6
+    )
+    assert is_close_ra(output_quantities.jxbout.pprim, jxbout["pprime"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.jxbout.aminfor, jxbout["aminfor"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.jxbout.amaxfor, jxbout["amaxfor"][()], 1.0e-6)
+    (n_theta, n_zeta, ns) = np.shape(jxbout["sqrt_g__bdotk"][()])
+    jkl_shape = (ns, n_zeta, n_theta)
+    assert is_close_ra(
+        np.reshape(
+            output_quantities.jxbout.jdotb_sqrtg,
+            jkl_shape,
+        ).T,
+        jxbout["sqrt_g__bdotk"][()],
+        1.0e-3,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.sqrtg3, jkl_shape).T,
+        jxbout["sqrt_g_"][()],
+        1.0e-3,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.jsupu3, jkl_shape).T,
+        jxbout["jsupu"][()],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.jsupv3, jkl_shape).T,
+        jxbout["jsupv"][()],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(
+            output_quantities.jxbout.jsups3,
+            [ns - 1, n_zeta, n_theta],
+        ).T,
+        jxbout["jsups"][()][:, :, 1:],
+        1.0e-3,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.bsupu3, jkl_shape).T,
+        jxbout["bsupu"][()],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.bsupv3, jkl_shape).T,
+        jxbout["bsupv"][()],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.jcrossb, jkl_shape).T,
+        jxbout["jcrossb"][()],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.jxb_gradp, jkl_shape).T,
+        jxbout["jxb_gradp"][()],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(
+            output_quantities.jxbout.bsubu3,
+            [ns - 1, n_zeta, n_theta],
+        ).T,
+        jxbout["bsubu"][()][:, :, 1:],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(
+            output_quantities.jxbout.bsubv3,
+            [ns - 1, n_zeta, n_theta],
+        ).T,
+        jxbout["bsubv"][()][:, :, 1:],
+        1.0e-4,
+    )
+    assert is_close_ra(
+        np.reshape(output_quantities.jxbout.bsubs3, jkl_shape).T,
+        jxbout["bsubs"][()],
+        1.0e-4,
+    )
+
+    jxbout.close()
+
+    wout = Dataset(TEST_DATA_DIR / f"wout_{case_name}.nc", "r")
+
+    # mercier
+    # The Mercier stability outputs are also written in the wout file,
+    # so we take the reference from there
+    # instead of trying to parse the text output file.
+    #
+    # only check Mercier outputs for now
+    # if they are fine, the intermediate quantities will be as well...
+    assert is_close_ra(output_quantities.mercier.DMerc, wout["DMerc"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.mercier.Dshear, wout["DShear"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.mercier.Dwell, wout["DWell"][()], 1.0e-9)
+    assert is_close_ra(output_quantities.mercier.Dcurr, wout["DCurr"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.mercier.Dgeod, wout["DGeod"][()], 1.0e-8)
+
+    # wout
+    assert output_quantities.wout.signgs == wout["signgs"][()]
+    assert output_quantities.wout.gamma == wout["gamma"][()]
+
+    assert (
+        output_quantities.wout.pcurr_type
+        == wout["pcurr_type"][()].tobytes().decode().strip()
+    )
+    assert (
+        output_quantities.wout.pmass_type
+        == wout["pmass_type"][()].tobytes().decode().strip()
+    )
+    assert (
+        output_quantities.wout.piota_type
+        == wout["piota_type"][()].tobytes().decode().strip()
+    )
+
+    # mass profile: am, am_aux_s, am_aux_f
+    assert is_close_ra(output_quantities.wout.am, wout["am"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.am_aux_s, wout["am_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.am_aux_f, wout["am_aux_f"][()], 1.0e-15)
+
+    # current profile: ac, ac_aux_s, ac_aux_f
+    assert is_close_ra(output_quantities.wout.ac, wout["ac"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ac_aux_s, wout["ac_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ac_aux_f, wout["ac_aux_f"][()], 1.0e-15)
+
+    # iota profile: ai, ai_aux_s, ai_aux_f
+    assert is_close_ra(output_quantities.wout.ai, wout["ai"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ai_aux_s, wout["ai_aux_s"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.ai_aux_f, wout["ai_aux_f"][()], 1.0e-15)
+
+    assert output_quantities.wout.nfp == wout["nfp"][()]
+    assert output_quantities.wout.mpol == wout["mpol"][()]
+    assert output_quantities.wout.ntor == wout["ntor"][()]
+    assert output_quantities.wout.lasym == (wout["lasym__logical__"][()] != 0)
+
+    assert output_quantities.wout.ns == wout["ns"][()]
+    assert output_quantities.wout.ftolv == wout["ftolv"][()]
+    assert output_quantities.wout.niter == wout["niter"][()]
+
+    assert output_quantities.wout.lfreeb == (wout["lfreeb__logical__"][()] != 0)
+    assert (
+        output_quantities.wout.mgrid_file
+        == wout["mgrid_file"][()].tobytes().decode().strip()
+    )
+    # extcur is scalar in a fixed-boundary VMEC wout file -> don't test here...
+    assert output_quantities.wout.mgrid_file, (
+        wout["mgrid_file"][()].tobytes().decode().strip()
+    )
+
+    # -------------------
+    # scalar quantities
+
+    assert is_close_ra(output_quantities.wout.wb, wout["wb"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.wp, wout["wp"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.rmax_surf, wout["rmax_surf"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.rmin_surf, wout["rmin_surf"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.zmax_surf, wout["zmax_surf"][()], 1.0e-11)
+
+    mnmax = output_quantities.wout.mnmax
+    assert mnmax == wout["mnmax"][()]
+
+    mnmax_nyq = output_quantities.wout.mnmax_nyq
+    assert mnmax_nyq == wout["mnmax_nyq"][()]
+
+    assert output_quantities.wout.ier_flag == wout["ier_flag"][()]
+
+    assert is_close_ra(output_quantities.wout.aspect, wout["aspect"][()], 1.0e-11)
+
+    assert is_close_ra(output_quantities.wout.betatotal, wout["betatotal"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.betapol, wout["betapol"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.betator, wout["betator"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.betaxis, wout["betaxis"][()], 1.0e-11)
+
+    assert is_close_ra(output_quantities.wout.b0, wout["b0"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.rbtor0, wout["rbtor0"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.rbtor, wout["rbtor"][()], 1.0e-11)
+
+    assert is_close_ra(output_quantities.wout.IonLarmor, wout["IonLarmor"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.volavgB, wout["volavgB"][()], 1.0e-11)
+
+    assert is_close_ra(output_quantities.wout.ctor, wout["ctor"][()], 1.0e-6)
+
+    assert is_close_ra(output_quantities.wout.Aminor_p, wout["Aminor_p"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.Rmajor_p, wout["Rmajor_p"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.volume, wout["volume_p"][()], 1.0e-11)
+
+    assert is_close_ra(output_quantities.wout.fsqr, wout["fsqr"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.fsqz, wout["fsqz"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.fsql, wout["fsql"][()], 1.0e-11)
+
+    # -------------------
+    # one-dimensional array quantities
+
+    assert is_close_ra(output_quantities.wout.iotaf, wout["iotaf"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.wout.q_factor, wout["q_factor"][()], 1.0e-10)
+    assert is_close_ra(output_quantities.wout.presf, wout["presf"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phi, wout["phi"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phipf, wout["phipf"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.chi, wout["chi"][()], 1.0e-8)
+    # The axis and the boundary entries of chipf follow PARVMEC rather than the
+    # 8.52 lineage the references come from; see computeBContra.
+    assert is_close_ra(
+        output_quantities.wout.chipf[1:-1], wout["chipf"][()][1:-1], 1.0e-8
+    )
+    assert is_close_ra(output_quantities.wout.jcuru, wout["jcuru"][()], 1.0e-6)
+    assert is_close_ra(output_quantities.wout.jcurv, wout["jcurv"][()], 1.0e-6)
+
+    assert is_close_ra(output_quantities.wout.iotas, wout["iotas"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.mass, wout["mass"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.pres, wout["pres"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.beta_vol, wout["beta_vol"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.buco, wout["buco"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.bvco, wout["bvco"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.vp, wout["vp"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.specw, wout["specw"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.phips, wout["phips"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.over_r, wout["over_r"][()], 1.0e-8)
+
+    assert is_close_ra(output_quantities.wout.jdotb, wout["jdotb"][()], 1.0e-5)
+    assert is_close_ra(output_quantities.wout.bdotgradv, wout["bdotgradv"][()], 1.0e-8)
+
+    assert is_close_ra(output_quantities.wout.DMerc, wout["DMerc"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DShear, wout["DShear"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DWell, wout["DWell"][()], 1.0e-9)
+    assert is_close_ra(output_quantities.wout.DCurr, wout["DCurr"][()], 1.0e-8)
+    assert is_close_ra(output_quantities.wout.DGeod, wout["DGeod"][()], 1.0e-8)
+
+    # Fortran VMEC defines equif over all flux surfaces,
+    # but then skips the axis and boundary during writing.
+    assert is_close_ra(output_quantities.wout.equif, wout["equif"][()], 1.0e-6)
+
+    # TODO(jons): test curlabel, once implemented
+
+    # TODO(jons): test potvac, once implemented
+
+    # -------------------
+    # mode numbers for Fourier coefficient arrays below
+
+    assert is_close_ra(output_quantities.wout.xm, wout["xm"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.xn, wout["xn"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.xm_nyq, wout["xm_nyq"][()], 1.0e-15)
+    assert is_close_ra(output_quantities.wout.xn_nyq, wout["xn_nyq"][()], 1.0e-15)
+
+    # -------------------
+    # stellarator-symmetric Fourier coefficients
+
+    assert is_close_ra(output_quantities.wout.raxis_cc, wout["raxis_cc"][()], 1.0e-11)
+    assert is_close_ra(output_quantities.wout.zaxis_cs, wout["zaxis_cs"][()], 1.0e-11)
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.rmnc, [mnmax, ns], order="C").T,
+        wout["rmnc"][()],
+        1.0e-11,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.zmns, [mnmax, ns], order="C").T,
+        wout["zmns"][()],
+        1.0e-11,
+    )
+
+    # NOTE: lmns_full is not available from Fortran VMEC
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.lmns, [mnmax, ns], order="C").T,
+        wout["lmns"][()],
+        1.0e-10,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.gmnc, [mnmax_nyq, ns], order="C").T,
+        wout["gmnc"][()],
+        1.0e-11,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.bmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bmnc"][()],
+        1.0e-11,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.bsubumnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsubumnc"][()],
+        1.0e-11,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.bsubvmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsubvmnc"][()],
+        1.0e-11,
+    )
+
+    # Deviation from VMEC 8.52: bsubsmns is on the full grid; the reference holds the
+    # half grid, averaged here to the interior full-grid surfaces.
+    reference_bsubsmns = wout["bsubsmns"][()]
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.bsubsmns, [mnmax_nyq, ns], order="C").T[1:-1],
+        0.5 * (reference_bsubsmns[1:-1] + reference_bsubsmns[2:]),
+        1.0e-11,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.bsupumnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsupumnc"][()],
+        1.0e-10,
+    )
+
+    assert is_close_ra(
+        np.reshape(output_quantities.wout.bsupvmnc, [mnmax_nyq, ns], order="C").T,
+        wout["bsupvmnc"][()],
+        1.0e-11,
+    )
+
+    # -------------------
+    # non-stellarator-symmetric Fourier coefficients
+
+    # cma and every reference wout file shipped with the tests are
+    # stellarator-symmetric, so there is no Fortran output here to compare the
+    # antisymmetric arrays against. Those are checked against educational_VMEC
+    # in vmecpp/vmec/vmec:vmec_test and against the exact rigid-rotation law in
+    # tests/test_lasym.py. What a symmetric case does pin down is the other
+    # side of the contract: with lasym false each antisymmetric array must be
+    # empty rather than a zero-filled array of the symmetric size.
+    for name in (
+        "raxis_cs",
+        "zaxis_cc",
+        "rmns",
+        "zmnc",
+        "lmnc_full",
+        "lmnc",
+        "gmns",
+        "bmns",
+        "bsubumns",
+        "bsubvmns",
+        "bsubsmnc",
+        "bsupumns",
+        "bsupvmns",
+        "currumns",
+        "currvmns",
+    ):
+        assert np.size(getattr(output_quantities.wout, name)) == 0, name
+
+    wout.close()
+
+
+def _threed1_dumps_available(case_name="cma"):
+    """Whether the threed1 reference dumps have their git-lfs content."""
+    paths = list(
+        (THREED1_DATA_DIR / case_name / "threed1_axis").glob(f"*.{case_name}.json")
+    )
+    if len(paths) != 1:
+        return False
+    with open(paths[0]) as f:
+        return not f.read(64).startswith("version https://git-lfs.github.com/spec/")
+
+
+@pytest.mark.skipif(
+    not _threed1_dumps_available(),
+    reason="the threed1 reference dumps are stored in git-lfs",
+)
+def test_threed1_output_quantities():
+    """Check the threed1 structures the module exposes against educational_VMEC.
+
+    These quantities are compared member by member against the same dumps in
+    vmecpp_large_cpp_tests/vmec/output_quantities. What is checked here is that the
+    pybind11 layer exposes each structure and carries its values through, so a few
+    members of each are enough.
+    """
+    case_name = "cma"
+
+    indata = vmec.VmecINDATA.from_file(TEST_DATA_DIR / f"{case_name}.json")
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
+    output_quantities = vmec.run(indata)
+
+    # The first table stores some columns in the form they are printed in, so
+    # pressure is compared against presf / mu_0, following
+    # ComputeThreed1FirstTable in output_quantities.cc.
+    first_table = load_threed1(case_name, "threed1_firstTable")
+    t1 = output_quantities.threed1_first_table
+    assert is_close_ra(t1.iota, first_table["iotaf"], 1.0e-6)
+    assert is_close_ra(t1.j_dot_b, first_table["jdotb"], 1.0e-6)
+    assert is_close_ra(t1.pressure, np.asarray(first_table["presf"]) / MU_0, 1.0e-6)
+
+    geometric_magnetic = load_threed1(case_name, "threed1_geomag")
+    gm = output_quantities.threed1_geometric_magnetic
+    for member in ["volume_p", "aspect", "b0", "VolAvgB"]:
+        assert is_close_ra(getattr(gm, member), geometric_magnetic[member], 1.0e-6), (
+            member
+        )
+
+    # ygeo is stored flat over (number of cross sections, ns) and nested in the
+    # reference.
+    ns = output_quantities.wout.ns
+    assert is_close_ra(
+        np.reshape(np.asarray(gm.ygeo), (-1, ns)),
+        np.asarray(geometric_magnetic["ygeo"]),
+        1.0e-6,
+    )
+
+    volumetrics = load_threed1(case_name, "threed1_volquant")
+    vq = output_quantities.threed1_volumetrics
+    for member in ["int_modb", "avg_modb"]:
+        assert is_close_ra(getattr(vq, member), volumetrics[member], 1.0e-6), member
+
+    betas = load_threed1(case_name, "threed1_beta")
+    assert is_close_ra(output_quantities.threed1_betas.rbtor, betas["rbtor"], 1.0e-6)
+
+    shafranov = load_threed1(case_name, "threed1_shafrint")
+    si = output_quantities.threed1_shafranov_integrals
+    for member in ["smaleli", "musubi"]:
+        assert is_close_ra(getattr(si, member), shafranov[member], 1.0e-6), member
+
+    axis = load_threed1(case_name, "threed1_axis")
+    ax = output_quantities.threed1_axis
+    assert is_close_ra(ax.raxis_symm, axis["rax_symm"], 1.0e-6)
+    assert is_close_ra(ax.zaxis_symm, axis["zax_symm"], 1.0e-6)
+    # cma is stellarator-symmetric, so the antisymmetric axis arrays are empty
+    # where the reference carries explicit zeros.
+    assert np.size(ax.raxis_asym) == 0
+    assert np.size(ax.zaxis_asym) == 0
+
+
+def test_vmecpp_run_from_inmemory_mgrid():
+    indata_fname = TEST_DATA_DIR / "cth_like_free_bdy.json"
+    coils_fname = TEST_DATA_DIR / "coils.cth_like"
+    makegrid_params_fname = TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+
+    indata = vmec.VmecINDATA.from_file(indata_fname)
+    indata.niter_array = np.array([1])  # to speed up the test
+
+    mgrid_params = vmec.MakegridParameters.from_file(makegrid_params_fname)
+    magnetic_configuration = vmec.MagneticConfiguration.from_file(coils_fname)
+    magnetic_response_table = vmec.compute_magnetic_field_response_table(
+        mgrid_params, magnetic_configuration
+    )
+
+    # we expect that with a single iteration VMEC++ complains about non-convergence
+    with pytest.raises(RuntimeError) as vmecpp_error:
+        vmec.run(indata, magnetic_response_table)
+    assert "VMEC++ did not converge" in str(vmecpp_error.value)
+
+
+def test_makegridparameters_constructor():
+    makegrid_parameters = vmec.MakegridParameters(
+        normalize_by_currents=True,
+        assume_stellarator_symmetry=True,
+        number_of_field_periods=1,
+        r_grid_minimum=-1.0,
+        r_grid_maximum=1.0,
+        number_of_r_grid_points=100,
+        z_grid_minimum=-1.0,
+        z_grid_maximum=1.0,
+        number_of_z_grid_points=100,
+        number_of_phi_grid_points=10,
+    )
+
+    assert makegrid_parameters.normalize_by_currents
+    assert makegrid_parameters.assume_stellarator_symmetry
+    assert makegrid_parameters.number_of_field_periods == 1
+    assert makegrid_parameters.r_grid_minimum == -1.0
+    assert makegrid_parameters.r_grid_maximum == 1.0
+    assert makegrid_parameters.number_of_r_grid_points == 100
+    assert makegrid_parameters.z_grid_minimum == -1.0
+    assert makegrid_parameters.z_grid_maximum == 1.0
+    assert makegrid_parameters.number_of_z_grid_points == 100
+    assert makegrid_parameters.number_of_phi_grid_points == 10
+
+
+def test_magneticfieldresponsetable_constructor():
+    makegrid_parameters = vmec.MakegridParameters(
+        normalize_by_currents=True,
+        assume_stellarator_symmetry=True,
+        number_of_field_periods=1,
+        r_grid_minimum=-1.0,
+        r_grid_maximum=1.0,
+        number_of_r_grid_points=10,
+        z_grid_minimum=-1.0,
+        z_grid_maximum=1.0,
+        number_of_z_grid_points=10,
+        number_of_phi_grid_points=10,
+    )
+
+    n_coil_groups = 10
+    magnetic_field_shape = (
+        n_coil_groups,
+        makegrid_parameters.number_of_r_grid_points
+        * makegrid_parameters.number_of_z_grid_points
+        * makegrid_parameters.number_of_phi_grid_points,
+    )
+    magnetic_field_component = np.arange(
+        magnetic_field_shape[0] * magnetic_field_shape[1], dtype=float
+    ).reshape(10, -1)
+
+    magnetic_field_response_table = vmec.MagneticFieldResponseTable(
+        parameters=makegrid_parameters,
+        b_r=magnetic_field_component,
+        b_p=magnetic_field_component,
+        b_z=magnetic_field_component,
+    )
+
+    np.testing.assert_allclose(
+        magnetic_field_response_table.b_r, magnetic_field_component
+    )
+    np.testing.assert_allclose(
+        magnetic_field_response_table.b_p, magnetic_field_component
+    )
+    np.testing.assert_allclose(
+        magnetic_field_response_table.b_z, magnetic_field_component
+    )

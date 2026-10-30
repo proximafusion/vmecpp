@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "makegrid_lib",
+    srcs = ["makegrid_lib.cc"],
+    hdrs = ["makegrid_lib.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/strings:str_format",
+        "@nlohmann_json//:json",
+        "//third_party/netcdf4",
+        "//util/json_io",
+        "//util/file_io",
+        "//vmecpp/common/composed_types_lib",
+        "//vmecpp/common/magnetic_configuration_lib",
+        "//vmecpp/common/magnetic_field_provider:magnetic_field_provider_lib",
+        "//vmecpp/common/util:util",
+    ],
+)
+
+cc_test(
+    name = "makegrid_lib_test",
+    srcs = ["makegrid_lib_test.cc"],
+    data = [
+        "//vmecpp/common/makegrid_lib/test_data:mgrid_non_symmetric",
+        "//vmecpp/common/makegrid_lib/test_data:mgrid_symmetric_even",
+        "//vmecpp/common/makegrid_lib/test_data:mgrid_symmetric_odd",
+    ],
+    deps = [
+        ":makegrid_lib",
+        "@abseil-cpp//absl/status:status",
+        "@googletest//:gtest_main",
+        "//util/file_io",
+        "//util/netcdf_io",
+        "//util/testing:numerical_comparison_lib",
+    ],
+    size = "small",
+)

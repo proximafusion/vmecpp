@@ -1,0 +1,5 @@
+# Hold pytest below 9.2, whose test items lack the _nodeid that pytest-benchmark 5.3.0
+# reads (ionelmc/pytest-benchmark#321).
+pytest<9.2
+# Block simsopt 1.11.0 wheels with unsupported AVX-512 instructions.
+simsopt!=1.11.0

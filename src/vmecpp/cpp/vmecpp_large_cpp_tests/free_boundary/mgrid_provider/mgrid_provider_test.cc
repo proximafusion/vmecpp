@@ -1,0 +1,694 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <fstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif  // _OPENMP
+
+#include <netcdf.h>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
+#include "util/file_io/file_io.h"
+#include "util/netcdf_io/netcdf_io.h"
+#include "util/testing/numerical_comparison_lib.h"
+#include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
+#include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
+#include "vmecpp/common/makegrid_lib/makegrid_lib.h"
+#include "vmecpp/common/util/util.h"
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
+
+namespace {
+using nlohmann::json;
+
+using file_io::ReadFile;
+using netcdf_io::NetcdfReadArray3D;
+using netcdf_io::NetcdfReadBool;
+using netcdf_io::NetcdfReadDouble;
+using netcdf_io::NetcdfReadInt;
+using testing::IsCloseRelAbs;
+
+using magnetics::ImportMagneticConfigurationFromMakegrid;
+using magnetics::MagneticConfiguration;
+using magnetics::MagneticField;
+
+using ::testing::HasSubstr;
+using ::testing::Not;
+using ::testing::TestWithParam;
+using ::testing::Values;
+}  // namespace
+
+namespace vmecpp {
+
+// used to specify case-specific tolerances
+struct DataSource {
+  std::string identifier;
+  double tolerance = 0.0;
+  std::string coils_file = "";
+};
+
+class LoadMGridTest : public TestWithParam<DataSource> {
+ protected:
+  void SetUp() override { data_source_ = GetParam(); }
+  DataSource data_source_;
+};
+
+TEST_P(LoadMGridTest, CheckLoadMGrid) {
+  const double tolerance = data_source_.tolerance;
+
+  std::string filename =
+      absl::StrFormat("vmecpp/test_data/%s.json", data_source_.identifier);
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  const absl::StatusOr<VmecINDATA> vmec_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(vmec_indata.ok());
+
+  // This test is only meaningful in case of a free-boundary run
+  ASSERT_TRUE(vmec_indata->lfreeb);
+
+  // make sure the mgrid file is available
+  std::ifstream mgrid_file(vmec_indata->mgrid_file);
+  ASSERT_TRUE(mgrid_file.is_open());
+  mgrid_file.close();
+
+  MGridProvider mgrid;
+  absl::Status load_status =
+      mgrid.LoadFile(vmec_indata->mgrid_file, vmec_indata->extcur);
+  ASSERT_TRUE(load_status.ok()) << load_status;
+
+  // The reference calculation for comparison is done using
+  // //magnetics/magnetic_field_provider (which internally uses ABSCAB).
+  std::filesystem::path makegrid_coils_file =
+      "vmecpp/test_data/" + data_source_.coils_file;
+
+  // load MagneticConfiguration from coils file
+  absl::StatusOr<MagneticConfiguration> magnetic_configuration =
+      magnetics::ImportMagneticConfigurationFromCoilsFile(makegrid_coils_file);
+  ASSERT_TRUE(magnetic_configuration.ok());
+
+  // get coil currents in A from INDATA and put them into the
+  // MagneticConfiguration
+  absl::Status status_set_currents = magnetics::SetCircuitCurrents(
+      vmec_indata->extcur, *magnetic_configuration);
+  ASSERT_TRUE(status_set_currents.ok());
+
+  // get dimensions of mgrid file
+  int ncid = 0;
+  ASSERT_EQ(nc_open(vmec_indata->mgrid_file.c_str(), NC_NOWRITE, &ncid),
+            NC_NOERR);
+
+  const int number_of_field_periods = NetcdfReadInt(ncid, "nfp").value();
+
+  const int number_of_r_grid_points = NetcdfReadInt(ncid, "ir").value();
+  const double r_grid_minimum = NetcdfReadDouble(ncid, "rmin").value();
+  const double r_grid_maximum = NetcdfReadDouble(ncid, "rmax").value();
+  const double r_grid_increment =
+      (r_grid_maximum - r_grid_minimum) / (number_of_r_grid_points - 1.0);
+
+  const int number_of_z_grid_points = NetcdfReadInt(ncid, "jz").value();
+  const double z_grid_minimum = NetcdfReadDouble(ncid, "zmin").value();
+  const double z_grid_maximum = NetcdfReadDouble(ncid, "zmax").value();
+  const double z_grid_increment =
+      (z_grid_maximum - z_grid_minimum) / (number_of_z_grid_points - 1.0);
+
+  const int number_of_phi_grid_points = NetcdfReadInt(ncid, "kp").value();
+  const double phi_grid_increment =
+      2.0 * M_PI / (number_of_phi_grid_points * number_of_field_periods);
+
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  // The mgrid file does not record whether it was computed assuming
+  // stellarator symmetry, so the point-wise comparison below covers the first
+  // half field period, where the stored field is an independent evaluation.
+  // The assumption itself is checked further down against the stored data.
+  const int num_phi_effective = number_of_phi_grid_points / 2 + 1;
+
+  // Build the cylindrical grid based on mgrid dimensions.
+  // The loop setup is re-used to also allocate the magnetic_field vectors.
+  const int number_of_grid_points =
+      number_of_r_grid_points * number_of_z_grid_points * num_phi_effective;
+  std::vector<std::vector<double> > evaluation_locations(number_of_grid_points);
+  std::vector<std::vector<double> > magnetic_field(number_of_grid_points);
+  for (int index_phi = 0; index_phi < num_phi_effective; ++index_phi) {
+    const double phi = index_phi * phi_grid_increment;
+    const double cos_phi = std::cos(phi);
+    const double sin_phi = std::sin(phi);
+    for (int index_z = 0; index_z < number_of_z_grid_points; ++index_z) {
+      const double z = z_grid_minimum + index_z * z_grid_increment;
+      for (int index_r = 0; index_r < number_of_r_grid_points; ++index_r) {
+        const double r = r_grid_minimum + index_r * r_grid_increment;
+
+        const double x = r * cos_phi;
+        const double y = r * sin_phi;
+
+        const int linear_index =
+            (index_phi * number_of_z_grid_points + index_z) *
+                number_of_r_grid_points +
+            index_r;
+        evaluation_locations[linear_index].resize(3);
+        magnetic_field[linear_index].resize(3);
+
+        evaluation_locations[linear_index][0] = x;
+        evaluation_locations[linear_index][1] = y;
+        evaluation_locations[linear_index][2] = z;
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+
+  // evaluate magnetic field on grid
+  absl::Status status = MagneticField(*magnetic_configuration,
+                                      evaluation_locations, magnetic_field);
+  ASSERT_TRUE(status.ok());
+
+  // compare magnetic field point-wise
+  for (int index_phi = 0; index_phi < num_phi_effective; ++index_phi) {
+    const double phi = index_phi * phi_grid_increment;
+    const double cos_phi = std::cos(phi);
+    const double sin_phi = std::sin(phi);
+    for (int index_z = 0; index_z < number_of_z_grid_points; ++index_z) {
+      for (int index_r = 0; index_r < number_of_r_grid_points; ++index_r) {
+        const int linear_index =
+            (index_phi * number_of_z_grid_points + index_z) *
+                number_of_r_grid_points +
+            index_r;
+
+        // ABSCAB computes the Cartesian components of the magnetic field,
+        // so we need to convert the x and y componets into r and phi
+        // (cylindrical) components for comparison against the cylindrical
+        // components in the mgrid file.
+        const double b_x = magnetic_field[linear_index][0];
+        const double b_y = magnetic_field[linear_index][1];
+        const double b_z = magnetic_field[linear_index][2];
+
+        const double b_r = b_x * cos_phi + b_y * sin_phi;
+        const double b_p = b_y * cos_phi - b_x * sin_phi;
+
+        EXPECT_TRUE(IsCloseRelAbs(b_r, mgrid.bR[linear_index], tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(b_p, mgrid.bP[linear_index], tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(b_z, mgrid.bZ[linear_index], tolerance));
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+
+  // What makes the planes past the half field period redundant is that the
+  // stored field is stellarator-symmetric, so check that rather than take it on
+  // trust: reflecting a plane onto (2 pi / nfp - phi, R, -Z) has to leave B_phi
+  // and B_Z alone and flip the sign of B_R. The measured residual is 4.7e-11 of
+  // the largest field component, on the mid-period plane, which is the only one
+  // that is not a mirror copy of the first half period.
+  double largest_field_component = 0.0;
+  for (int linear_index = 0; linear_index < mgrid.bR.size(); ++linear_index) {
+    largest_field_component = std::max(
+        {largest_field_component, std::abs(mgrid.bR[linear_index]),
+         std::abs(mgrid.bP[linear_index]), std::abs(mgrid.bZ[linear_index])});
+  }
+  ASSERT_GT(largest_field_component, 0.0);
+  const double symmetry_tolerance = 1.0e-9 * largest_field_component;
+
+  for (int index_phi = 0; index_phi < mgrid.numPhi; ++index_phi) {
+    const int reflected_phi = (mgrid.numPhi - index_phi) % mgrid.numPhi;
+    for (int index_z = 0; index_z < mgrid.numZ; ++index_z) {
+      const int reflected_z = mgrid.numZ - 1 - index_z;
+      for (int index_r = 0; index_r < mgrid.numR; ++index_r) {
+        const int linear_index =
+            (index_phi * mgrid.numZ + index_z) * mgrid.numR + index_r;
+        const int reflected_index =
+            (reflected_phi * mgrid.numZ + reflected_z) * mgrid.numR + index_r;
+
+        EXPECT_NEAR(mgrid.bR[reflected_index], -mgrid.bR[linear_index],
+                    symmetry_tolerance)
+            << "B_R at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+        EXPECT_NEAR(mgrid.bP[reflected_index], mgrid.bP[linear_index],
+                    symmetry_tolerance)
+            << "B_phi at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+        EXPECT_NEAR(mgrid.bZ[reflected_index], mgrid.bZ[linear_index],
+                    symmetry_tolerance)
+            << "B_Z at phi = " << index_phi << ", z = " << index_z
+            << ", r = " << index_r;
+      }  // index_r
+    }  // index_z
+  }  // index_phi
+}  // CheckLoadMGrid
+
+INSTANTIATE_TEST_SUITE_P(TestVmec, LoadMGridTest,
+                         Values(DataSource{.identifier = "cth_like_free_bdy",
+                                           .tolerance = 1.0e-12,
+                                           .coils_file = "coils.cth_like"}));
+
+// Number of tangential grid points used by the interpolation tests below.
+static constexpr int kNumTangentialPoints = 8;
+
+// Toroidal angles of points cycling through the mgrid's toroidal grid planes.
+Eigen::VectorXd GridPhi(int num_points, const MGridProvider& mgrid) {
+  Eigen::VectorXd phi(num_points);
+  for (int index = 0; index < num_points; ++index) {
+    phi[index] =
+        2.0 * M_PI * (index % mgrid.numPhi) / (mgrid.nfp * mgrid.numPhi);
+  }
+  return phi;
+}
+
+class MGridInterpolationTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const absl::StatusOr<std::string> indata_json =
+        ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+    ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+
+    const absl::StatusOr<VmecINDATA> vmec_indata =
+        VmecINDATA::FromJson(*indata_json);
+    ASSERT_TRUE(vmec_indata.ok()) << vmec_indata.status();
+
+    const absl::Status load_status =
+        mgrid_.LoadFile(vmec_indata->mgrid_file, vmec_indata->extcur);
+    ASSERT_TRUE(load_status.ok()) << load_status;
+  }
+
+  // A closed contour that stays well inside the vacuum field grid.
+  void FillInsideGrid(int num_points, Eigen::VectorXd& m_r,
+                      Eigen::VectorXd& m_z) const {
+    const double r_center = 0.5 * (mgrid_.minR + mgrid_.maxR);
+    const double z_center = 0.5 * (mgrid_.minZ + mgrid_.maxZ);
+    const double r_amplitude = 0.25 * (mgrid_.maxR - mgrid_.minR);
+    const double z_amplitude = 0.25 * (mgrid_.maxZ - mgrid_.minZ);
+
+    m_r.resize(num_points);
+    m_z.resize(num_points);
+    for (int index = 0; index < num_points; ++index) {
+      const double theta = 2.0 * M_PI * index / num_points;
+      m_r[index] = r_center + r_amplitude * std::cos(theta);
+      m_z[index] = z_center + z_amplitude * std::sin(theta);
+    }
+  }
+
+  // How far outside the grid the deliberately out-of-bounds points are put.
+  double OutsideR() const {
+    return mgrid_.maxR + 0.1 * (mgrid_.maxR - mgrid_.minR);
+  }
+  double OutsideZ() const {
+    return mgrid_.minZ - 0.1 * (mgrid_.maxZ - mgrid_.minZ);
+  }
+
+  MGridProvider mgrid_;
+};
+
+TEST_F(MGridInterpolationTest, BoundaryInsideGridIsAccepted) {
+  Eigen::VectorXd r;
+  Eigen::VectorXd z;
+  FillInsideGrid(kNumTangentialPoints, r, z);
+
+  Eigen::VectorXd b_r(kNumTangentialPoints);
+  Eigen::VectorXd b_p(kNumTangentialPoints);
+  Eigen::VectorXd b_z(kNumTangentialPoints);
+  const absl::Status status = mgrid_.interpolate(
+      r, GridPhi(kNumTangentialPoints, mgrid_), z, b_r, b_p, b_z);
+
+  EXPECT_TRUE(status.ok()) << status;
+  for (int index = 0; index < kNumTangentialPoints; ++index) {
+    EXPECT_TRUE(std::isfinite(b_r[index]));
+    EXPECT_TRUE(std::isfinite(b_p[index]));
+    EXPECT_TRUE(std::isfinite(b_z[index]));
+  }
+}
+
+// The reported extents are those of the points passed in.
+TEST_F(MGridInterpolationTest, BoundaryOutsideGridIsAnError) {
+  Eigen::VectorXd r;
+  Eigen::VectorXd z;
+  FillInsideGrid(kNumTangentialPoints, r, z);
+  r[kNumTangentialPoints - 1] = OutsideR();
+  z[kNumTangentialPoints - 2] = OutsideZ();
+
+  Eigen::VectorXd b_r(kNumTangentialPoints);
+  Eigen::VectorXd b_p(kNumTangentialPoints);
+  Eigen::VectorXd b_z(kNumTangentialPoints);
+  const absl::Status status = mgrid_.interpolate(
+      r, GridPhi(kNumTangentialPoints, mgrid_), z, b_r, b_p, b_z);
+
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  const std::string message(status.message());
+  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", r.minCoeff())));
+  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", r.maxCoeff())));
+  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", z.minCoeff())));
+  EXPECT_THAT(message, HasSubstr(absl::StrFormat("% .6e", z.maxCoeff())));
+}
+
+#ifdef _OPENMP
+// Concurrent calls on slices report only their own points.
+TEST_F(MGridInterpolationTest, OnlyTheOutOfGridSliceReportsAnError) {
+  constexpr int kNumThreads = 4;
+  const int num_points = kNumThreads * kNumTangentialPoints;
+
+  Eigen::VectorXd r;
+  Eigen::VectorXd z;
+  FillInsideGrid(num_points, r, z);
+  // Only the slice owned by the last thread leaves the grid.
+  r[num_points - 1] = OutsideR();
+  const Eigen::VectorXd phi = GridPhi(num_points, mgrid_);
+
+  std::vector<absl::Status> per_thread_status(kNumThreads);
+  int team_size = 0;
+
+#pragma omp parallel num_threads(kNumThreads)
+  {
+    const int thread_id = omp_get_thread_num();
+#pragma omp single
+    {
+      team_size = omp_get_num_threads();
+    }
+
+    const int zt_min = thread_id * kNumTangentialPoints;
+
+    Eigen::VectorXd b_r(kNumTangentialPoints);
+    Eigen::VectorXd b_p(kNumTangentialPoints);
+    Eigen::VectorXd b_z(kNumTangentialPoints);
+    per_thread_status[thread_id] = mgrid_.interpolate(
+        r.segment(zt_min, kNumTangentialPoints),
+        phi.segment(zt_min, kNumTangentialPoints),
+        z.segment(zt_min, kNumTangentialPoints), b_r, b_p, b_z);
+  }
+
+  ASSERT_EQ(team_size, kNumThreads);
+  for (int thread_id = 0; thread_id < kNumThreads - 1; ++thread_id) {
+    EXPECT_TRUE(per_thread_status[thread_id].ok())
+        << per_thread_status[thread_id];
+  }
+  EXPECT_EQ(per_thread_status[kNumThreads - 1].code(),
+            absl::StatusCode::kFailedPrecondition);
+}
+#endif  // _OPENMP
+
+// LoadFile and LoadFields each reject a coil-current count that disagrees with
+// the number of response tables they hold. VmecINDATA::IsConsistent cannot make
+// this check, because it never sees the mgrid.
+TEST(MGridProviderValidation, LoadFileRejectsWrongNumberOfCurrents) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  MGridProvider mgrid;
+
+  // one too few
+  Eigen::VectorXd too_few = indata->extcur.head(indata->extcur.size() - 1);
+  const absl::Status short_status = mgrid.LoadFile(indata->mgrid_file, too_few);
+  EXPECT_EQ(short_status.code(), absl::StatusCode::kInvalidArgument);
+
+  // one too many
+  Eigen::VectorXd too_many(indata->extcur.size() + 1);
+  too_many.head(indata->extcur.size()) = indata->extcur;
+  too_many[indata->extcur.size()] = 1.0;
+  const absl::Status long_status = mgrid.LoadFile(indata->mgrid_file, too_many);
+  EXPECT_EQ(long_status.code(), absl::StatusCode::kInvalidArgument);
+
+  // the matching count still loads
+  EXPECT_TRUE(mgrid.LoadFile(indata->mgrid_file, indata->extcur).ok());
+}
+
+// LoadFile sizes the field tables from the grid and the coil count the file
+// declares, and rejects values that describe no usable grid.
+TEST(MGridProviderValidation, LoadFileRejectsAnUnusableHeader) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  MGridProvider reference;
+  ASSERT_TRUE(reference.LoadFile(indata->mgrid_file, indata->extcur).ok());
+
+  struct HeaderEdit {
+    std::string variable;
+    double value;
+    std::string message;
+  };
+  const std::vector<HeaderEdit> edits = {
+      {"nfp", 0.0, "nfp must be > 0, but is 0"},
+      {"nextcur", -1.0, "nextcur must be > 0, but is -1"},
+      {"ir", 1.0, "ir must be > 1, but is 1"},
+      {"jz", 1.0, "jz must be > 1, but is 1"},
+      {"kp", 0.0, "kp must be > 0, but is 0"},
+      {"rmax", reference.minR, "R grid extent must be positive"},
+      {"zmax", reference.minZ, "Z grid extent must be positive"}};
+  for (const HeaderEdit& edit : edits) {
+    const std::string path =
+        ::testing::TempDir() + "/mgrid_header_" + edit.variable + ".nc";
+    std::filesystem::copy_file(
+        indata->mgrid_file, path,
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::permissions(path, std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::add);
+    // NetCDF converts the value to the type the file declares
+    int ncid = 0;
+    int varid = 0;
+    ASSERT_EQ(nc_open(path.c_str(), NC_WRITE, &ncid), NC_NOERR);
+    ASSERT_EQ(nc_inq_varid(ncid, edit.variable.c_str(), &varid), NC_NOERR);
+    ASSERT_EQ(nc_put_var_double(ncid, varid, &edit.value), NC_NOERR);
+    ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+    MGridProvider mgrid;
+    const absl::Status status = mgrid.LoadFile(path, indata->extcur);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument)
+        << edit.variable;
+    EXPECT_THAT(std::string(status.message()),
+                ::testing::HasSubstr(edit.message));
+  }
+}
+
+TEST(MGridProviderValidation, LoadFieldsRejectsWrongNumberOfCurrents) {
+  // A response table with two circuits on a small grid; only the shapes matter
+  // here, not the field values.
+  makegrid::MagneticFieldResponseTable response_table;
+  response_table.parameters = {.normalize_by_currents = false,
+                               .assume_stellarator_symmetry = false,
+                               .number_of_field_periods = 1,
+                               .r_grid_minimum = 1.0,
+                               .r_grid_maximum = 2.0,
+                               .number_of_r_grid_points = 3,
+                               .z_grid_minimum = -1.0,
+                               .z_grid_maximum = 1.0,
+                               .number_of_z_grid_points = 3,
+                               .number_of_phi_grid_points = 2};
+  const int num_grid_points = 2 * 3 * 3;
+  response_table.b_r = RowMatrixXd::Zero(2, num_grid_points);
+  response_table.b_p = RowMatrixXd::Zero(2, num_grid_points);
+  response_table.b_z = RowMatrixXd::Zero(2, num_grid_points);
+
+  MGridProvider mgrid;
+  EXPECT_EQ(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(1)).code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(3)).code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(mgrid.LoadFields(response_table, Eigen::VectorXd::Ones(2)).ok());
+}
+
+// The coil group names MAKEGRID writes into the mgrid file are what wout
+// reports as curlabel. mgrid_cth_like.nc carries two of them.
+TEST(MGridProviderValidation, LoadFileReadsCoilGroupNames) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok()) << indata_json.status();
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  MGridProvider mgrid;
+  ASSERT_TRUE(mgrid.LoadFile(indata->mgrid_file, indata->extcur).ok());
+
+  ASSERT_EQ(static_cast<int>(mgrid.coil_group_names.size()), mgrid.nextcur);
+  for (const std::string& name : mgrid.coil_group_names) {
+    EXPECT_FALSE(name.empty());
+    EXPECT_EQ(name.find_last_not_of(' '), name.size() - 1)
+        << "name '" << name << "' still carries padding";
+  }
+}
+
+// A file may declare more coil groups than nextcur. The names are read into a
+// buffer sized for the coil_group variable the file declares, and the first
+// nextcur are kept.
+TEST(MGridProviderValidation, LoadFileReadsMoreCoilGroupsThanNextcur) {
+  constexpr int kNumR = 3;
+  constexpr int kNumZ = 3;
+  constexpr int kNumPhi = 2;
+  constexpr int kWidth = 30;
+  const std::vector<std::string> names = {"first", "second", "third"};
+  const std::string filename =
+      ::testing::TempDir() + "/mgrid_three_coil_groups.nc";
+
+  int ncid = 0;
+  ASSERT_EQ(nc_create(filename.c_str(), NC_CLOBBER, &ncid), NC_NOERR);
+  int dim_groups = 0;
+  int dim_width = 0;
+  int dim_one = 0;
+  std::array<int, 3> dim_grid = {0, 0, 0};
+  ASSERT_EQ(nc_def_dim(ncid, "external_coil_groups", names.size(), &dim_groups),
+            NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "stringsize", kWidth, &dim_width), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "dim_00001", 1, &dim_one), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "phi", kNumPhi, &dim_grid[0]), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "zee", kNumZ, &dim_grid[1]), NC_NOERR);
+  ASSERT_EQ(nc_def_dim(ncid, "rad", kNumR, &dim_grid[2]), NC_NOERR);
+
+  const std::vector<std::pair<std::string, int> > int_scalars = {
+      {"ir", kNumR},
+      {"jz", kNumZ},
+      {"kp", kNumPhi},
+      {"nfp", 1},
+      {"nextcur", 1}};
+  const std::vector<std::pair<std::string, double> > double_scalars = {
+      {"rmin", 1.0}, {"rmax", 2.0}, {"zmin", -0.5}, {"zmax", 0.5}};
+  std::vector<int> int_ids(int_scalars.size());
+  std::vector<int> double_ids(double_scalars.size());
+  for (size_t i = 0; i < int_scalars.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, int_scalars[i].first.c_str(), NC_INT, 0, nullptr,
+                         &int_ids[i]),
+              NC_NOERR);
+  }
+  for (size_t i = 0; i < double_scalars.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, double_scalars[i].first.c_str(), NC_DOUBLE, 0,
+                         nullptr, &double_ids[i]),
+              NC_NOERR);
+  }
+  const std::array<int, 2> dim_coil_group = {dim_groups, dim_width};
+  int id_coil_group = 0;
+  int id_mgrid_mode = 0;
+  ASSERT_EQ(nc_def_var(ncid, "coil_group", NC_CHAR, 2, dim_coil_group.data(),
+                       &id_coil_group),
+            NC_NOERR);
+  ASSERT_EQ(
+      nc_def_var(ncid, "mgrid_mode", NC_CHAR, 1, &dim_one, &id_mgrid_mode),
+      NC_NOERR);
+  const std::array<std::string, 3> field_names = {"br_001", "bp_001", "bz_001"};
+  std::array<int, 3> field_ids = {0, 0, 0};
+  for (size_t i = 0; i < field_names.size(); ++i) {
+    ASSERT_EQ(nc_def_var(ncid, field_names[i].c_str(), NC_DOUBLE, 3,
+                         dim_grid.data(), &field_ids[i]),
+              NC_NOERR);
+  }
+  ASSERT_EQ(nc_enddef(ncid), NC_NOERR);
+
+  for (size_t i = 0; i < int_scalars.size(); ++i) {
+    ASSERT_EQ(nc_put_var_int(ncid, int_ids[i], &int_scalars[i].second),
+              NC_NOERR);
+  }
+  for (size_t i = 0; i < double_scalars.size(); ++i) {
+    ASSERT_EQ(nc_put_var_double(ncid, double_ids[i], &double_scalars[i].second),
+              NC_NOERR);
+  }
+  std::string padded_names;
+  for (const std::string& name : names) {
+    padded_names += name + std::string(kWidth - name.size(), ' ');
+  }
+  ASSERT_EQ(nc_put_var_text(ncid, id_coil_group, padded_names.data()),
+            NC_NOERR);
+  const char mgrid_mode = 'R';
+  ASSERT_EQ(nc_put_var_text(ncid, id_mgrid_mode, &mgrid_mode), NC_NOERR);
+  const std::vector<double> field(kNumPhi * kNumZ * kNumR, 0.0);
+  for (const int field_id : field_ids) {
+    ASSERT_EQ(nc_put_var_double(ncid, field_id, field.data()), NC_NOERR);
+  }
+  ASSERT_EQ(nc_close(ncid), NC_NOERR);
+
+  MGridProvider mgrid;
+  ASSERT_TRUE(mgrid.LoadFile(filename, Eigen::VectorXd::Ones(1)).ok());
+  EXPECT_THAT(mgrid.coil_group_names, ::testing::ElementsAre("first"));
+}
+
+TEST(MGridPolynomialInterpolation,
+     ReproducesTensorPolynomialsOnAvailableStencil) {
+  for (const int num_r : {2, 3, 4, 7}) {
+    for (const int num_z : {2, 3, 4, 8}) {
+      for (const int degree : {1, 2, 3}) {
+        makegrid::MagneticFieldResponseTable table;
+        auto& parameters = table.parameters;
+        parameters.normalize_by_currents = false;
+        parameters.number_of_field_periods = 3;
+        parameters.r_grid_minimum = 1.0;
+        parameters.r_grid_maximum = 3.0;
+        parameters.z_grid_minimum = -0.7;
+        parameters.z_grid_maximum = 0.9;
+        parameters.number_of_r_grid_points = num_r;
+        parameters.number_of_z_grid_points = num_z;
+        parameters.number_of_phi_grid_points = 5;
+        const int num_cells = num_r * num_z * 5;
+        table.b_r.resize(2, num_cells);
+        table.b_p.resize(2, num_cells);
+        table.b_z.resize(2, num_cells);
+        const auto polynomial = [degree](double r, double z, int k) {
+          return std::pow(r, degree) + 2 * std::pow(z, degree) +
+                 std::pow(r * z, degree) + 0.3 * r * z + k;
+        };
+        for (int k = 0; k < 5; ++k) {
+          for (int j = 0; j < num_z; ++j) {
+            for (int i = 0; i < num_r; ++i) {
+              const double value = polynomial(1.0 + 2.0 * i / (num_r - 1),
+                                              -0.7 + 1.6 * j / (num_z - 1), k);
+              const int index = (k * num_z + j) * num_r + i;
+              table.b_r(0, index) = value;
+              table.b_p(0, index) = 2 * value;
+              table.b_z(0, index) = -value;
+              table.b_r(1, index) = 3 * value;
+              table.b_p(1, index) = 6 * value;
+              table.b_z(1, index) = -3 * value;
+            }
+          }
+        }
+        Eigen::VectorXd currents(2);
+        currents << 2.0, -0.25;
+        SCOPED_TRACE(
+            absl::StrFormat("nr=%d nz=%d polynomial=%d", num_r, num_z, degree));
+        MGridProvider provider;
+        ASSERT_TRUE(provider.LoadFields(table, currents).ok());
+        Eigen::VectorXd r(205), z(205), br(205), bp(205), bz(205);
+        for (int i = 0; i < 205; ++i) {
+          r[i] = 1.0 + 2.0 * (((i * 37) % 205) + 0.5) / 205.0;
+          z[i] = -0.7 + 1.6 * (((i * 71) % 205) + 0.5) / 205.0;
+        }
+        r[0] = 1.0;
+        z[0] = -0.7;
+        r[1] = 3.0;
+        z[1] = 0.9;
+        r[2] = 3.0;
+        z[2] = -0.7;
+        r[3] = 1.0;
+        z[3] = 0.9;
+        ASSERT_TRUE(
+            provider.interpolate(r, GridPhi(205, provider), z, br, bp, bz)
+                .ok());
+        double error = 0.0;
+        for (int i = 0; i < 205; ++i) {
+          const double expected = 1.25 * polynomial(r[i], z[i], i % 5);
+          error = std::max({error, std::abs(br[i] - expected),
+                            std::abs(bp[i] - 2 * expected),
+                            std::abs(bz[i] + expected)});
+        }
+        const bool exact = num_r > degree && num_z > degree;
+        if (exact) {
+          EXPECT_LT(error, 1e-11);
+        } else {
+          EXPECT_GT(error, 1e-4);
+        }
+      }
+    }
+  }
+}
+
+}  // namespace vmecpp

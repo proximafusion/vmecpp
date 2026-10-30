@@ -1,0 +1,185 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/vmec/fourier_forces/fourier_forces.h"
+
+#include <algorithm>
+#include <utility>
+#include <vector>
+
+namespace vmecpp {
+
+FourierForces::FourierForces(const Sizes* s, const RadialPartitioning* r,
+                             int ns)
+    : FourierCoeffs(s, r, r->nsMinF, r->nsMaxF, ns),
+      frcc(rcc.data(), rcc.size()),
+      frss(rss.data(), rss.size()),
+      frsc(rsc.data(), rsc.size()),
+      frcs(rcs.data(), rcs.size()),
+      fzsc(zsc.data(), zsc.size()),
+      fzcs(zcs.data(), zcs.size()),
+      fzcc(zcc.data(), zcc.size()),
+      fzss(zss.data(), zss.size()),
+      flsc(lsc.data(), lsc.size()),
+      flcs(lcs.data(), lcs.size()),
+      flcc(lcc.data(), lcc.size()),
+      flss(lss.data(), lss.size()) {}
+
+FourierForces::FourierForces(const FourierForces& other)
+    : FourierCoeffs(other),
+      frcc(rcc),
+      frss(rss),
+      frsc(rsc),
+      frcs(rcs),
+      fzsc(zsc),
+      fzcs(zcs),
+      fzcc(zcc),
+      fzss(zss),
+      flsc(lsc),
+      flcs(lcs),
+      flcc(lcc),
+      flss(lss) {}
+
+void FourierForces::BindSpans() {
+  frcc = rcc;
+  frss = rss;
+  frsc = rsc;
+  frcs = rcs;
+  fzsc = zsc;
+  fzcs = zcs;
+  fzcc = zcc;
+  fzss = zss;
+  flsc = lsc;
+  flcs = lcs;
+  flcc = lcc;
+  flss = lss;
+}
+
+FourierForces& FourierForces::operator=(const FourierForces& other) {
+  if (this != &other) {
+    FourierCoeffs::operator=(other);
+    BindSpans();
+  }
+  return *this;
+}
+
+FourierForces::FourierForces(FourierForces&& other) noexcept
+    : FourierCoeffs(std::move(other)),
+      frcc(rcc),
+      frss(rss),
+      frsc(rsc),
+      frcs(rcs),
+      fzsc(zsc),
+      fzcs(zcs),
+      fzcc(zcc),
+      fzss(zss),
+      flsc(lsc),
+      flcs(lcs),
+      flcc(lcc),
+      flss(lss) {}
+
+FourierForces& FourierForces::operator=(FourierForces&& other) noexcept {
+  if (this != &other) {
+    FourierCoeffs::operator=(std::move(other));
+    BindSpans();
+  }
+  return *this;
+}
+
+void FourierForces::zeroZForceForM1() {
+  for (int jF = nsMin_; jF < nsMax_; ++jF) {
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      int m = 1;
+      int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      if (s_.lthreed) {
+        fzcs[idx_fc] = 0.0;
+      }
+      if (s_.lasym) {
+        fzcc[idx_fc] = 0.0;
+      }
+    }  // n
+  }  // j
+}
+
+/** Compute the force residuals and write them into the provided [3] array. */
+void FourierForces::residuals(Eigen::Vector3d& fRes,
+                              bool includeEdgeRZForces) const {
+  int jMaxRZ = std::min(nsMax_, ns - 1);
+  if (includeEdgeRZForces && r_.nsMaxF1 == ns) {
+    jMaxRZ = ns;
+  }
+
+  int jMaxIncludeBoundary = nsMax_;
+  if (r_.nsMaxF1 == ns) {
+    jMaxIncludeBoundary = ns;
+  }
+
+  double local_fResR = 0.0;
+  double local_fResZ = 0.0;
+  double local_fResL = 0.0;
+  for (int jF = nsMin_; jF < jMaxIncludeBoundary; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      for (int n = 0; n < s_.ntor + 1; ++n) {
+        int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+
+        if (jF < jMaxRZ) {
+          local_fResR += frcc[idx_fc] * frcc[idx_fc];
+          local_fResZ += fzsc[idx_fc] * fzsc[idx_fc];
+        }
+        local_fResL += flsc[idx_fc] * flsc[idx_fc];
+        if (s_.lthreed) {
+          if (jF < jMaxRZ) {
+            local_fResR += frss[idx_fc] * frss[idx_fc];
+            local_fResZ += fzcs[idx_fc] * fzcs[idx_fc];
+          }
+          local_fResL += flcs[idx_fc] * flcs[idx_fc];
+        }
+        if (s_.lasym) {
+          if (jF < jMaxRZ) {
+            local_fResR += frsc[idx_fc] * frsc[idx_fc];
+            local_fResZ += fzcc[idx_fc] * fzcc[idx_fc];
+          }
+          local_fResL += flcc[idx_fc] * flcc[idx_fc];
+          if (s_.lthreed) {
+            if (jF < jMaxRZ) {
+              local_fResR += frcs[idx_fc] * frcs[idx_fc];
+              local_fResZ += fzss[idx_fc] * fzss[idx_fc];
+            }
+            local_fResL += flss[idx_fc] * flss[idx_fc];
+          }
+        }
+      }  // n
+    }  // m
+  }  // j
+
+  fRes[0] = local_fResR;
+  fRes[1] = local_fResZ;
+  fRes[2] = local_fResL;
+}
+
+double FourierForces::lcfsRZResidual() const {
+  if (nsMax_ != ns) {
+    return 0.0;
+  }
+
+  double residual = 0.0;
+  const int num_mn = s_.mpol * (s_.ntor + 1);
+  const int offset = (ns - 1 - nsMin_) * num_mn;
+  for (int idx_mn = 0; idx_mn < num_mn; ++idx_mn) {
+    const int idx = offset + idx_mn;
+    residual += frcc[idx] * frcc[idx] + fzsc[idx] * fzsc[idx];
+    if (s_.lthreed) {
+      residual += frss[idx] * frss[idx] + fzcs[idx] * fzcs[idx];
+    }
+    if (s_.lasym) {
+      residual += frsc[idx] * frsc[idx] + fzcc[idx] * fzcc[idx];
+      if (s_.lthreed) {
+        residual += frcs[idx] * frcs[idx] + fzss[idx] * fzss[idx];
+      }
+    }
+  }
+  return residual;
+}
+
+}  // namespace vmecpp

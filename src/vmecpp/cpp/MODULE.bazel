@@ -1,0 +1,41 @@
+# Find available modules at https://registry.bazel.build
+
+# NOTE: if updating the version, must also update src/vmecpp/__about__.py
+module(name = "vmecpp", version = "0.4.2")
+
+bazel_dep(name = "abseil-cpp", version = "20260107.1")
+bazel_dep(name = "eigen", version = "5.0.1")
+bazel_dep(name = "google_benchmark", version = "1.8.2")
+bazel_dep(name = "googletest", version = "1.14.0")
+
+bazel_dep(name = "nlohmann_json", version = "3.11.3")
+
+# Pybind11: see https://github.com/pybind/pybind11_bazel#bzlmod
+bazel_dep(name = "pybind11_bazel", version = "3.0.0")
+
+python_configure = use_extension("@pybind11_bazel//:python_configure.bzl", "extension")
+use_repo(python_configure, "local_config_python", "pybind11")
+
+bazel_dep(name = "rules_cc", version = "0.0.9")
+bazel_dep(name = "rules_foreign_cc", version = "0.12.0")
+
+
+bazel_dep(name = "rules_python", version = "0.34.0")
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    configure_coverage_tool = True,
+    # Only set when you have multiple toolchain versions.
+    is_default = True,
+    python_version = "3.10",
+    ignore_root_user_error = True,
+)
+
+# zlib is needed for NetCDF4's version of HDF5
+bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
+
+# Dependencies not yet available as Bazel modules (abscab-cpp, HDF5, NetCDF).
+# Exposed through a module extension rather than WORKSPACE.bazel so that modules
+# depending on vmecpp resolve them automatically (WORKSPACE repositories do not
+# propagate to downstream modules).
+non_module_deps = use_extension("//third_party:non_module_deps.bzl", "non_module_deps")
+use_repo(non_module_deps, "abscab_cpp", "hdf5", "netcdf4")

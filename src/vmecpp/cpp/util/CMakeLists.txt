@@ -1,0 +1,6 @@
+add_subdirectory(file_io)
+add_subdirectory(hdf5_io)
+add_subdirectory(json_io)
+add_subdirectory(netcdf_io)
+add_subdirectory(testing)
+set (vmecpp_sources "${vmecpp_sources}" PARENT_SCOPE)

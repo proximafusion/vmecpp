@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "radial_partitioning",
+    srcs = ["radial_partitioning.cc"],
+    hdrs = ["radial_partitioning.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/vmec_indata:vmec_indata",
+        "@abseil-cpp//absl/log",
+    ],
+)
+
+cc_test(
+    name = "radial_partitioning_test",
+    srcs = ["radial_partitioning_test.cc"],
+    deps = [
+        ":radial_partitioning",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

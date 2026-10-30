@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "file_io",
+    srcs = ["file_io.cc"],
+    hdrs = ["file_io.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "file_io_test",
+    srcs = ["file_io_test.cc"],
+    deps = [
+        ":file_io",
+        "@googletest//:gtest_main",
+    ],
+    data = [
+        "//util/test_data:test_files"
+    ],
+)

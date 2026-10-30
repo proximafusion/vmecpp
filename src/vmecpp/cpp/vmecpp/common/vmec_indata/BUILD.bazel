@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+  name = "boundary_from_json",
+  srcs = ["boundary_from_json.cc"],
+  hdrs = ["boundary_from_json.h"],
+  visibility = ["//visibility:public"],
+  deps = [
+    "//util/json_io:json_io",
+    "@abseil-cpp//absl/log",
+    "@abseil-cpp//absl/log:check",
+    "@abseil-cpp//absl/strings:str_format",
+    "@abseil-cpp//absl/status:statusor",
+  ],
+)
+
+cc_library(
+    name = "vmec_indata",
+    srcs = ["vmec_indata.cc"],
+    hdrs = ["vmec_indata.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":boundary_from_json",
+        "//vmecpp/common/util:util",
+        "//vmecpp/vmec/profile_parameterization_data",
+        "//util/hdf5_io",
+        "//util/file_io",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/log:log",
+        "@abseil-cpp//absl/status:status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:strings",
+
+    ],
+)
+
+cc_test(
+    name = "vmec_indata_test",
+    srcs = ["vmec_indata_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:solovev_analytical",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp/test_data:up_down_asym",
+    ],
+    deps = [
+        ":vmec_indata",
+        ":boundary_from_json",
+        "@googletest//:gtest_main",
+        "@bazel_tools//tools/cpp/runfiles",
+        "//util/file_io:file_io",
+        "//vmecpp/common/composed_types_lib:composed_types_lib",
+    ],
+    size = "small",
+)

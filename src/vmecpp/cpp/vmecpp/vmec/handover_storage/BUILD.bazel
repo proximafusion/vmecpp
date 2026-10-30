@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "handover_storage",
+    srcs = ["handover_storage.cc"],
+    hdrs = ["handover_storage.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status:status",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/common/flow_control:flow_control",
+        "//vmecpp/vmec/radial_partitioning:radial_partitioning",
+    ],
+)

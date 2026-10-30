@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "tangential_partitioning",
+    srcs = ["tangential_partitioning.cc"],
+    hdrs = ["tangential_partitioning.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+    ],
+)

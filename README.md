@@ -1,0 +1,407 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/978b76bc-cd9b-4af8-b1f3-18efde7c079f">
+  <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/ec4e391a-9044-44ae-93f0-9dd8bed70001">
+  <img alt="A dark Proxima logo in light color mode and a light one in dark color mode." src="https://github.com/user-attachments/assets/ec4e391a-9044-44ae-93f0-9dd8bed70001" width=400px>
+</picture>
+
+# VMEC++
+
+<!--
+[![PyPI - Version](https://img.shields.io/pypi/v/vmecpp.svg)](https://pypi.org/project/vmecpp)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vmecpp.svg)](https://pypi.org/project/vmecpp)
+-->
+
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
+![Python version](https://img.shields.io/badge/python-3.10-blue)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14800158.svg)](https://doi.org/10.5281/zenodo.14800158)
+
+[![CI](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/tests.yaml)
+[![C++ core tests](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/test_bazel.yaml)
+[![Full V&V against reference VMEC](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml)
+[![Publish wheels to PyPI](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml/badge.svg)](https://github.com/proximafusion/vmecpp/actions/workflows/pypi_publish.yml)
+
+VMEC++ is a Python-friendly, from-scratch reimplementation in C++ of the Variational Moments Equilibrium Code (VMEC),
+a free-boundary ideal-MHD equilibrium solver for stellarators and tokamaks.
+
+The original version was written by Steven P. Hirshman and colleagues in the 1980s and 1990s.
+The latest version of the original code is called `PARVMEC` and is available [here](https://github.com/ORNL-Fusion/PARVMEC).
+
+Compared to its Fortran predecessors, VMEC++:
+- has a zero-crash policy and reports issues via standard Python exceptions
+- allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
+- supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
+- runs faster in the majority of cases
+- comes with [substantial documentation of its internal numerics](https://github.com/proximafusion/vmecpp/blob/main/docs/the_numerics_of_vmecpp.pdf)
+
+VMEC++ can run on a laptop, but it is a suitable component for large-scale stellarator optimization pipelines.
+
+On the other hand, some features of the original Fortran VMEC are intentionally omitted from VMEC++ to reduce complexity.
+See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
+
+<!-- NOTE: if you change the intro above, remember to also adapt docs/index.md! -->
+
+-----
+
+## Table of Contents
+
+- [Usage](#usage)
+  - [As a Python package](#as-a-python-package)
+  - [With SIMSOPT](#with-simsopt)
+  - [With JAX for gradients](#differentiable-runs)
+  - [As a command line tool](#as-a-command-line-tool)
+  - [As a Docker image](#as-a-docker-image)
+- [Installation](#installation)
+  - [Ubuntu](#ubuntudebian)
+  - [Arch](#arch-linux)
+  - [Fedora](#fedora)
+  - [MacOS](#macos)
+  - [With Nix](#with-nix)
+  - [As part of a conda environment](#as-part-of-a-conda-environment)
+  - [C++ build from source](#c-build-from-source)
+- [Hot restart](#hot-restart)
+- [Differences with respect to PARVMEC/VMEC2000](#differences-with-respect-to-parvmecvmec2000)
+- [Roadmap](#roadmap)
+- [Related repositories](#related-repositories)
+- [License](#license)
+
+<!-- SPHINX-START1 -->
+
+## Usage
+
+This is a quick overview of the three main ways in which you can use VMEC++.
+See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for some actual example scripts.
+Suitable input files are found in [`examples/data`](https://github.com/proximafusion/vmecpp/blob/main/examples/data).
+If unsure where to start, we suggest giving the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
+
+For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs VMEC++ and plots the force residual convergence. It defaults to the fixed-boundary W7-X case; pass a free-boundary input file to include the vacuum-boundary traces.
+<!-- SPHINX-END1 -->
+![W7-X force residual convergence](docs/w7x_force_convergence.png)
+<!-- SPHINX-START2 -->
+
+### As a Python package
+
+VMEC++ offers a simple Python API:
+
+```python
+import vmecpp
+
+# Construct a VmecInput object, e.g. from a classic Fortran input file
+vmec_input = vmecpp.VmecInput.from_file("input.w7x")  # or VMEC++'s w7x.json format
+# This is a normal Python object: it can be constructed and modified programmatically
+vmec_input.rbc[0, 0] *= 1.1
+
+# Run VMEC++
+vmec_output = vmecpp.run(vmec_input)
+
+# Inspect the results programmatically or save them as a classic wout file
+print(vmec_output.mercier.iota)
+vmec_output.wout.save("wout_w7x.nc")
+```
+
+All other output files are accessible via members of the `vmec_output` object called `threed1_volumetrics`, `jxbout` and `mercier`.
+
+An optional `iteration_callback` is available to investigate the progress of the solver. It can be used to interactively debug
+and interact with `vmecpp`'s state from a Python repl, or generate animations of the convergence progress like in
+[`examples/watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py).
+
+### With SIMSOPT
+
+[SIMSOPT](https://simsopt.readthedocs.io) is a popular stellarator optimization framework.
+VMEC++ implements a SIMSOPT-friendly wrapper that makes it easy to use it with SIMSOPT.
+
+```python
+import vmecpp.simsopt_compat
+
+vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
+print(f"Computed plasma volume: {vmec.volume()}")
+```
+
+## Differentiable runs
+
+> [!NOTE]
+> The autodiff API is not yet stable. We are planning to make autodiff the default
+> behaviour and to release a suitable pip wheel in the upcoming weeks.
+
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
+
+Leaves that change shape depending on iteration progress (`fsqt` trace for example)
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
+tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
+and diagnostics are `None`.
+
+```python
+import jax
+import jax.numpy as jnp
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
+
+
+def aspect(rbc, zbs):
+    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
+    return vmecpp.run(boundary, verbose=False).wout.aspect
+
+
+rbc = jnp.asarray(vmec_input.rbc)
+zbs = jnp.asarray(vmec_input.zbs)
+d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
+```
+### As a command line tool
+
+You can use VMEC++ directly as a CLI tool.
+In a terminal in which Python has access to the VMEC++ package:
+
+```console
+# run on a given input file -> produce corresponding wout_w7x.nc
+# vmecpp is a python module and can be either run with `python -m` or directly as a script
+vmecpp examples/data/input.w7x
+
+vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
+vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
+vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fortran VMEC
+
+# convert a classic Fortran indata file to VMEC++'s JSON format -> examples/data/w7x.json
+vmecpp convert examples/data/input.w7x
+
+# compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
+# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
+vmecpp mgrid makegrid_parameters.json coils.<name>
+
+# print the version, or check all options
+vmecpp --version
+vmecpp --help
+```
+
+### As a Docker image
+
+A pre-built Docker image is available at https://github.com/proximafusion/vmecpp/pkgs/container/vmecpp.
+Note that at present it is only updated occasionally.
+
+See [docker/README.md](https://github.com/proximafusion/vmecpp/blob/main/docker/README.md) for
+more information and instructions on how to build a new image.
+
+## Installation
+
+The easiest method for installing `vmecpp` is using pip:
+```shell
+pip install vmecpp
+```
+
+For usage as part of MPI-parallelized SIMSOPT applications, you might want to also install MPI on your machine and `pip install mpi4py`.
+
+Alternatively you can build the latest `vmecpp` directly from source according to the appropriate instructions below.
+
+### Ubuntu/Debian
+
+Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
+
+1. Install required system packages:
+```shell
+sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev python3-dev
+```
+
+2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
+
+```shell
+pip install git+https://github.com/proximafusion/vmecpp
+```
+
+The procedure will take a few minutes as it will build VMEC++ and some dependencies from source.
+
+A common issue on Ubuntu is a build failure due to no `python` executable being available in PATH, since on Ubuntu the executable is called `python3`.
+When installing in a virtual environment (which is always a good idea anyways) `python` will be present.
+Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
+
+### Arch Linux
+
+1. Install required system packages:
+
+```shell
+pacman -Sy --noconfirm python-pip gcc openmp zlib cmake
+```
+
+2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
+
+```shell
+python -m pip install git+https://github.com/proximafusion/vmecpp
+```
+
+### Fedora
+
+[Fedora 41](https://docs.fedoraproject.org/en-US/fedora/f41/release-notes/) is officially supported.
+
+1. Install required system packages:
+
+```shell
+dnf install -y python3.10-devel cmake g++ zlib-devel libomp-devel
+```
+
+2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
+
+```shell
+# If you are installing with MPI support, remember to source the mpi compiler first
+. /etc/profile.d/modules.sh
+python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
+```
+
+
+### MacOS
+
+1. Install dependencies via [Homebrew](https://brew.sh/):
+
+```shell
+brew install python@3.10 ninja libomp netcdf-cxx git
+# And if they aren't pre-installed already:
+brew install gcc cmake
+```
+
+2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
+
+```shell
+# tell cmake where to find gfortran and gcc as they have non-standard names
+export FC=$(which gfortran-14)
+# OpenMP headers live under a different path on newer OS-X versions, so CMake can't find them
+export OpenMP_ROOT=$(brew --prefix)/opt/libomp
+export HDF5_ROOT=$(brew --prefix hdf5)
+python3.10 -m pip install git+https://github.com/proximafusion/vmecpp
+```
+
+### With Nix (Community support)
+
+For a Linux development shell with the latest supported Python version:
+
+```shell
+nix develop
+python --version
+python -m pip install -e .[test]
+```
+
+The shell provides Python 3.13 together with the native build dependencies needed
+to build and test VMEC++, including CMake, GCC, GFortran, HDF5, NetCDF,
+OpenMPI, and Git LFS.
+
+### As part of a conda environment
+
+VMEC++ is currently not packaged for conda, but all its dependencies are and VMEC++
+can be installed inside a conda environment. An example `environment.yml` file is
+provided [here](https://github.com/proximafusion/vmecpp/blob/main/environment.yml) that
+can be used, after cloning the `vmecpp` repository, as:
+
+```shell
+git clone https://github.com/proximafusion/vmecpp.git
+cd vmecpp
+# this creates a "vmecpp" conda environment
+conda env create --file environment.yml
+# use the environment as usual
+conda activate vmecpp
+```
+
+### C++ build from source
+
+After having installed the build dependencies as shown above, you can compile
+the C++ core of VMEC++ via CMake or Bazel. E.g. with CMake:
+
+```shell
+git clone https://github.com/proximafusion/vmecpp.git
+cd vmecpp
+cmake -B build  # create and configure build directory
+cmake --build build --parallel  # build VMEC++
+# you can now use the vmec_standalone C++ executable to run VMEC on a VMEC++ input JSON file, e.g.
+./build/vmec_standalone ./examples/data/solovev.json
+```
+
+The main C++ source code tree is located at [`src/vmecpp/cpp/vmecpp`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp).
+
+## Hot restart
+
+By passing the output of a VMEC++ run as initial state for a subsequent one,
+VMEC++ is initialized using the previously converged equilibrium.
+This can dramatically decrease the number of iterations to convergence when running
+VMEC++ on a configuration that is very similar to the converged equilibrium.
+
+### Example
+
+```python
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("examples/data/w7x.json")
+
+# Base run
+vmec_output = vmecpp.run(vmec_input)
+
+# Now let's perturb the plasma boundary a little bit...
+ntor = vmec_input.ntor
+vmec_input.rbc[0, ntor+0] *= 1.0 + 1.0e-6 # m=0, n=0
+vmec_input.rbc[1, ntor+0] *= 1.0 - 1.0e-6 # m=1, n=0
+# ...and fix up the multigrid steps: hot-restarted runs only allow a single step
+vmec_input.ns_array = vmec_input.ns_array[-1:]
+vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+vmec_input.niter_array = vmec_input.niter_array[-1:]
+
+# We can now run with hot restart:
+# passing the previously obtained vmec_output ensures that
+# the run starts already close to the equilibrium, so it will take
+# very few iterations to converge this time!
+hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
+```
+
+## Full tests and validation against the reference Fortran VMEC v8.52
+
+When developing the C++ core, it's advisable to locally run the full C++ tests for debugging or to validate changes before submitting them.
+The full C++ tests live in [`src/vmecpp/cpp/vmecpp_large_cpp_tests`](https://github.com/proximafusion/vmecpp/blob/main/src/vmecpp/cpp/vmecpp_large_cpp_tests) and use [Git LFS](https://git-lfs.com/) for large test data files.
+To run them locally (after cloning with `git lfs pull` to fetch the LFS objects):
+
+```shell
+cd src/vmecpp/cpp
+bazel test --config=opt //vmecpp/... //vmecpp_large_cpp_tests/...
+```
+
+The CI of this repo runs these tests automatically.
+
+The single-thread runtimes as well as the contents of the "wout" file produced by VMEC++ can be compared with those of Fortran VMEC v8.52.
+The full validation test can be found at https://github.com/proximafusion/vmecpp-validation, including a set of sensible input configurations,
+parameter scan values and tolerances that make the comparison pass. See that repo for more information.
+
+This full validation (~219 input configurations) is run against every commit to `main` and can also be triggered
+on demand from the [Full V&V against reference VMEC](https://github.com/proximafusion/vmecpp/actions/workflows/full_validation.yaml) workflow
+(click "Run workflow"). It builds `vmecpp` from the corresponding commit rather than using the version pinned by `vmecpp-validation`.
+
+## Differences with respect to PARVMEC/VMEC2000
+
+VMEC++:
+- reports issues via standard Python exceptions and has a zero crash policy
+- allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
+- supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
+- The Fortran version falls back to fixed-boundary computation if the `mgrid` file cannot be found; VMEC++ (gracefully) errors out instead.
+- The Fortran version accepts both the full path or filename of the input file as well as the "extension", i.e., the part after `input.`; VMEC++ only supports a valid filename or full path to an existing input file.
+- employs the same parallelization strategy as Fortran VMEC, but VMEC++ leverages OpenMP for a multi-thread implementation rather than Fortran VMEC's MPI parallelization: as a consequence it cannot parallelize over multiple nodes, but can utilize shared caches between threads
+- Reduces the force spikes between multi-grid stages in free-boundary, which should lead to faster and more robust free-boundary convergence (for details see https://github.com/proximafusion/vmecpp/releases/tag/v0.7.0)
+- Stable recurrence for Neumann kernel integrals enables convergence of free-boundary solves at high mpol, ntor (see https://github.com/proximafusion/vmecpp/releases/tag/v0.5.3)
+- Uses FFT kernels optimized for small mode numbers [generated using FFTX](https://github.com/spiral-software/fftx) instead of DFT for supported resolutions. They give a 10-20% speedup relative to the DFT counterparts.
+- implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
+
+### Limitations with respect to the Fortran implementations
+- `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
+- several profile parameterizations are not fully implemented yet:
+   * `sum_cossq_s`
+   * `sum_cossq_sqrts`
+   * `sum_cossq_s_free`
+- 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
+  neither are the associated input fields `precon_type` and `prec2d_threshold`
+- VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
+
+## Related repositories
+
+* [`proximafusion/vmecpp-validation`](https://github.com/proximafusion/vmecpp-validation) - Validation tests for VMEC++
+* [`proximafusion/the_numerics_of_vmecpp`](https://github.com/proximafusion/the_numerics_of_vmecpp) - Documentation of the numerical details of VMEC++
+* [`proximafusion/vmecpp-benchmarks`](https://github.com/proximafusion/vmecpp-benchmarks) - Performance benchmarks comparing VMEC++ and VMEC2000
+
+## License
+
+`vmecpp` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.

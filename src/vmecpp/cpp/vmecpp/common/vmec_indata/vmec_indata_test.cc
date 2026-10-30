@@ -1,0 +1,991 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
+
+#include <H5File.h>
+
+#include <filesystem>
+#include <initializer_list>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_split.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "util/file_io/file_io.h"
+#include "vmecpp/common/composed_types_lib/composed_types_lib.h"
+#include "vmecpp/common/vmec_indata/boundary_from_json.h"
+
+namespace fs = std::filesystem;
+
+namespace vmecpp {
+
+using file_io::ReadFile;
+
+using composed_types::CoefficientsRCos;
+using composed_types::CoefficientsRSin;
+using composed_types::CoefficientsZCos;
+using composed_types::CoefficientsZSin;
+using composed_types::CurveRZFourier;
+using composed_types::CurveRZFourierFromCsv;
+using composed_types::SurfaceRZFourier;
+using composed_types::SurfaceRZFourierFromCsv;
+
+using nlohmann::json;
+
+using testing::DoubleEq;
+using testing::ElementsAre;
+using testing::ElementsAreArray;
+using testing::Pointwise;
+
+TEST(TestVmecINDATA, CheckParseJsonBoundary) {
+  json j =
+      R"({"rbc":[{"m":0,"n":0,"value":3.999},{"m":1,"n":0,"value":1.026},{"m":2,"n":0,"value":-0.068}],"string_variable":"test string"})"_json;
+
+  std::vector<BoundaryCoefficient> expected_coefficients = {
+      {.m = 0, .n = 0, .value = 3.999},
+      {.m = 1, .n = 0, .value = 1.026},
+      {.m = 2, .n = 0, .value = -0.068}};
+
+  // test check for correct type
+  auto read_string_as_boundary =
+      BoundaryCoefficient::FromJson(j, "string_variable");
+  ASSERT_FALSE(read_string_as_boundary.ok());
+
+  // test check for presence
+  auto read_non_existent = BoundaryCoefficient::FromJson(j, "i_dont_exist");
+  ASSERT_TRUE(read_non_existent.ok());
+  ASSERT_FALSE(read_non_existent->has_value());
+
+  // check reading a set of BoundaryCoefficients
+  auto boundary = BoundaryCoefficient::FromJson(j, "rbc");
+  ASSERT_TRUE(boundary.ok());
+  ASSERT_TRUE(boundary->has_value());
+  // NOTE: testing::ElementsAreArray does not seems to work for a vector of
+  // structs, so resort to testing element-by-element here
+  ASSERT_EQ(boundary->value().size(), expected_coefficients.size());
+  for (size_t i = 0; i < expected_coefficients.size(); ++i) {
+    const BoundaryCoefficient& coefficient = boundary->value()[i];
+    EXPECT_EQ(coefficient.n, expected_coefficients[i].n);
+    EXPECT_EQ(coefficient.m, expected_coefficients[i].m);
+    EXPECT_EQ(coefficient.value, expected_coefficients[i].value);
+  }
+}  // CheckParseJsonBoundary
+
+// A misspelled key is an error that names the entry, not an entry to skip.
+TEST(TestVmecINDATA, CheckParseJsonBoundaryRejectsIncompleteEntries) {
+  const json misspelled =
+      R"({"rbc":[{"m":0,"n":0,"value":3.999},{"m":1,"n":0,"valeu":1.026}]})"_json;
+  const auto read_misspelled = BoundaryCoefficient::FromJson(misspelled, "rbc");
+  ASSERT_FALSE(read_misspelled.ok());
+  EXPECT_THAT(std::string(read_misspelled.status().message()),
+              testing::HasSubstr("'rbc'[1] has no 'value'"));
+
+  const json negative_m = R"({"rbc":[{"m":-1,"n":0,"value":0.5}]})"_json;
+  EXPECT_FALSE(BoundaryCoefficient::FromJson(negative_m, "rbc").ok());
+}  // CheckParseJsonBoundaryRejectsIncompleteEntries
+
+// check that all options stay present
+TEST(TestVmecINDATA, CheckFreeBoundaryMethodCases) {
+  FreeBoundaryMethod free_boundary_method = FreeBoundaryMethod::NESTOR;
+  EXPECT_EQ(free_boundary_method, FreeBoundaryMethod::NESTOR);
+
+  free_boundary_method = FreeBoundaryMethod::BIEST;
+  EXPECT_EQ(free_boundary_method, FreeBoundaryMethod::BIEST);
+}  // CheckFreeBoundaryMethodCases
+
+TEST(TestVmecINDATA, CheckFreeBoundaryMethodFromString) {
+  absl::StatusOr<FreeBoundaryMethod> status_or_free_boundary_method =
+      FreeBoundaryMethodFromString("nestor");
+  ASSERT_TRUE(status_or_free_boundary_method.ok());
+  EXPECT_EQ(*status_or_free_boundary_method, FreeBoundaryMethod::NESTOR);
+
+  status_or_free_boundary_method = FreeBoundaryMethodFromString("only_coils");
+  ASSERT_TRUE(status_or_free_boundary_method.ok());
+  EXPECT_EQ(*status_or_free_boundary_method, FreeBoundaryMethod::ONLY_COILS);
+
+  status_or_free_boundary_method = FreeBoundaryMethodFromString("biest");
+  ASSERT_TRUE(status_or_free_boundary_method.ok());
+  EXPECT_EQ(*status_or_free_boundary_method, FreeBoundaryMethod::BIEST);
+
+  status_or_free_boundary_method = FreeBoundaryMethodFromString("blablubb");
+  EXPECT_FALSE(status_or_free_boundary_method.ok());
+}  // CheckFreeBoundaryMethodFromString
+
+TEST(TestVmecINDATA, CheckFreeBoundaryMethodToString) {
+  EXPECT_EQ(ToString(FreeBoundaryMethod::NESTOR), "nestor");
+  EXPECT_EQ(ToString(FreeBoundaryMethod::ONLY_COILS), "only_coils");
+  EXPECT_EQ(ToString(FreeBoundaryMethod::BIEST), "biest");
+}  // CheckFreeBoundaryMethodToString
+
+TEST(TestVmecINDATA, CheckDefaults) {
+  VmecINDATA indata;
+
+  // numerical resolution, symmetry assumption
+  EXPECT_EQ(indata.lasym, false);
+  EXPECT_EQ(indata.nfp, 1);
+  EXPECT_EQ(indata.mpol, 6);
+  EXPECT_EQ(indata.ntor, 0);
+  EXPECT_EQ(indata.ntheta, 0);
+  EXPECT_EQ(indata.nzeta, 0);
+
+  // multi-grid steps
+  EXPECT_THAT(indata.ns_array, ElementsAre(31));
+  EXPECT_THAT(indata.ftol_array, ElementsAre(1.0e-10));
+  EXPECT_THAT(indata.niter_array, ElementsAre(100));
+
+  // global physics parameters
+  EXPECT_EQ(indata.phiedge, 1.0);
+  EXPECT_EQ(indata.ncurr, 0);
+
+  // mass / pressure profile
+  EXPECT_EQ(indata.pmass_type, "power_series");
+  EXPECT_EQ(indata.am.size(), 0);
+  EXPECT_EQ(indata.am_aux_s.size(), 0);
+  EXPECT_EQ(indata.am_aux_f.size(), 0);
+  EXPECT_EQ(indata.pres_scale, 1.0);
+  EXPECT_EQ(indata.gamma, 0.0);
+  EXPECT_EQ(indata.spres_ped, 1.0);
+
+  // (initial guess for) iota profile
+  EXPECT_EQ(indata.piota_type, "power_series");
+  EXPECT_EQ(indata.ai.size(), 0);
+  EXPECT_EQ(indata.ai_aux_s.size(), 0);
+  EXPECT_EQ(indata.ai_aux_f.size(), 0);
+
+  // enclosed toroidal current profile
+  EXPECT_EQ(indata.pcurr_type, "power_series");
+  EXPECT_EQ(indata.ac.size(), 0);
+  EXPECT_EQ(indata.ac_aux_s.size(), 0);
+  EXPECT_EQ(indata.ac_aux_f.size(), 0);
+  EXPECT_EQ(indata.curtor, 0.0);
+  EXPECT_EQ(indata.bloat, 1.0);
+
+  // free-boundary parameters
+  EXPECT_EQ(indata.lfreeb, false);
+  EXPECT_EQ(indata.mgrid_file, "NONE");
+  EXPECT_EQ(indata.extcur.size(), 0);
+  EXPECT_EQ(indata.nvacskip, 1);
+
+  // tweaking parameters
+  EXPECT_EQ(indata.nstep, 10);
+  EXPECT_THAT(indata.aphi, ElementsAre(1.0));
+  EXPECT_EQ(indata.delt, 1.0);
+  EXPECT_EQ(indata.tcon0, 1.0);
+  EXPECT_EQ(indata.lforbal, false);
+  EXPECT_EQ(indata.lbsubs, false);
+  EXPECT_EQ(indata.backup_evaluated_state, true);
+  EXPECT_EQ(indata.always_fix_m1_gauge, false);
+
+  // initial guess for magnetic axis
+  EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
+  EXPECT_EQ(indata.zaxis_s.size(), indata.ntor + 1);
+  if (indata.lasym) {
+    EXPECT_EQ(indata.raxis_s->size(), indata.ntor + 1);
+    EXPECT_EQ(indata.zaxis_c->size(), indata.ntor + 1);
+  } else {
+    EXPECT_FALSE(indata.raxis_s.has_value());
+    EXPECT_FALSE(indata.zaxis_c.has_value());
+  }
+
+  // (initial guess for) boundary shape
+  const int bdy_size = indata.mpol * (2 * indata.ntor + 1);
+  EXPECT_EQ(indata.rbc.size(), bdy_size);
+  EXPECT_EQ(indata.zbs.size(), bdy_size);
+  if (indata.lasym) {
+    EXPECT_EQ(indata.rbs->size(), indata.lasym ? bdy_size : 0);
+    EXPECT_EQ(indata.zbc->size(), indata.lasym ? bdy_size : 0);
+  } else {
+    EXPECT_FALSE(indata.rbs.has_value());
+    EXPECT_FALSE(indata.zbc.has_value());
+  }
+}  // CheckDefaults
+
+TEST(TestVmecINDATA, CheckDeltBounds) {
+  // delt may exceed 1 (the descent formulas are scale-invariant in delt and
+  // the runtime control walks an unstable step down); only delt <= 0 and the
+  // typo-guard upper bound are rejected.
+  VmecINDATA indata;
+  indata.delt = 2.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = 10.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = 10.5;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = 0.0;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.delt = -0.5;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// An unusable profile parameterization silently evaluates to zero in the
+// solver, so it has to be rejected here instead.
+TEST(TestVmecINDATA, CheckProfileParameterizationNames) {
+  VmecINDATA indata;
+  ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // unknown name
+  indata.pmass_type = "power_serise";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // known, but not applicable to the pressure profile
+  indata.pmass_type = "sum_atan";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pmass_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // All three are checked for either ncurr: piota is the initial guess for the
+  // iota profile even when the run is current-constrained.
+  for (const int ncurr : {0, 1}) {
+    indata.ncurr = ncurr;
+    ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+
+    indata.piota_type = "power_series_i";  // current-only
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+    indata.piota_type = "power_series";
+
+    indata.pcurr_type = "two_lorentz";  // pressure-only
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << "ncurr=" << ncurr;
+    indata.pcurr_type = "power_series";
+  }
+
+  indata.ncurr = 1;
+  indata.pcurr_type = "power_series";
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// A spline profile cannot be evaluated without its knots. The polynomial
+// coefficient arrays, by contrast, are zero-padded on read, so an empty one is
+// a valid way to ask for a zero profile.
+TEST(TestVmecINDATA, CheckSplineProfilesNeedKnots) {
+  VmecINDATA indata;
+  indata.pmass_type = "cubic_spline";
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.am_aux_s = Eigen::VectorXd::LinSpaced(4, 0.0, 1.0);
+  indata.am_aux_f = Eigen::VectorXd::Zero(3);
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.am_aux_f = Eigen::VectorXd::Zero(4);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // empty polynomial coefficients stay acceptable
+  indata.pmass_type = "power_series";
+  indata.am = Eigen::VectorXd();
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// The sum_cossq current profiles read their hump layout from ac: a hump count
+// in ac[0] for the equidistant forms and a half-width per hump for the free
+// form.
+TEST(TestVmecINDATA, CheckSumCossqProfilesNeedAValidHumpLayout) {
+  VmecINDATA indata;
+  indata.ncurr = 1;
+  for (const std::string type : {"sum_cossq_s", "sum_cossq_sqrts"}) {
+    indata.pcurr_type = type;
+    for (double num_humps : {1.0, 2.5, 21.0}) {
+      indata.ac = Eigen::VectorXd::Constant(4, 1.0);
+      indata.ac[0] = num_humps;
+      EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+                absl::StatusCode::kInvalidArgument)
+          << type << " with ac[0] = " << num_humps;
+    }
+    indata.ac[0] = 3.0;
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << type;
+  }
+
+  indata.pcurr_type = "sum_cossq_s_free";
+  indata.ac = Eigen::VectorXd(3);
+  indata.ac << 1.0, 0.5, 0.0;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ac << 1.0, 0.5, 0.1;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  // a hump of zero amplitude may have zero width
+  indata.ac << 0.0, 0.5, 0.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// Below its knot count a spline evaluator returns zero for every s, so the run
+// converges to an equilibrium without the requested profile. The cubic and
+// Akima families need four knots, the line segments two.
+TEST(TestVmecINDATA, CheckSplineProfilesNeedEnoughKnots) {
+  struct Case {
+    std::string name;
+    int minimum;
+  };
+  for (const Case& c : {Case{"akima_spline", 4}, Case{"cubic_spline", 4},
+                        Case{"line_segment", 2}}) {
+    VmecINDATA indata;
+    indata.pmass_type = c.name;
+
+    indata.am_aux_s = Eigen::VectorXd::LinSpaced(c.minimum - 1, 0.0, 1.0);
+    indata.am_aux_f = Eigen::VectorXd::Zero(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+
+    indata.am_aux_s = Eigen::VectorXd::LinSpaced(c.minimum, 0.0, 1.0);
+    indata.am_aux_f = Eigen::VectorXd::Zero(c.minimum);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  // the current and iota profiles are held to the same counts
+  for (const Case& c :
+       {Case{"akima_spline_ip", 4}, Case{"line_segment_i", 2}}) {
+    VmecINDATA indata;
+    indata.ncurr = 1;
+    indata.pcurr_type = c.name;
+    indata.ac_aux_s = Eigen::VectorXd::LinSpaced(c.minimum - 1, 0.0, 1.0);
+    indata.ac_aux_f = Eigen::VectorXd::Zero(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  VmecINDATA iota_indata;
+  iota_indata.piota_type = "cubic_spline";
+  iota_indata.ai_aux_s = Eigen::VectorXd::LinSpaced(3, 0.0, 1.0);
+  iota_indata.ai_aux_f = Eigen::VectorXd::Zero(3);
+  EXPECT_FALSE(IsConsistent(iota_indata, /*enable_info_messages=*/false).ok());
+}
+
+// Below its coefficient count a closed-form evaluator returns zero for every
+// s, so the run converges to an equilibrium without the requested profile.
+// gauss_trunc needs 2 coefficients and two_lorentz 8; the power series and
+// two_power, which read a missing coefficient as zero, accept any count.
+TEST(TestVmecINDATA, CheckClosedFormProfilesNeedEnoughCoefficients) {
+  struct Case {
+    std::string name;
+    int minimum;
+  };
+  for (const Case& c : {Case{"gauss_trunc", 2}, Case{"two_lorentz", 8}}) {
+    VmecINDATA indata;
+    indata.pmass_type = c.name;
+    indata.am = Eigen::VectorXd::Ones(c.minimum - 1);
+    EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+    indata.am = Eigen::VectorXd::Ones(c.minimum);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << c.name;
+  }
+
+  // the current profile is held to the same counts
+  VmecINDATA current_indata;
+  current_indata.ncurr = 1;
+  current_indata.pcurr_type = "gauss_trunc";
+  current_indata.ac = Eigen::VectorXd::Ones(1);
+  EXPECT_FALSE(
+      IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+  current_indata.ac = Eigen::VectorXd::Ones(2);
+  EXPECT_TRUE(
+      IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+}
+
+// indata2json drops the trailing zeros of the coefficient arrays, so
+// AM = 1, 2, 0 arrives as [1, 2]; two_power reads the missing exponent as zero.
+TEST(TestVmecINDATA, CheckTwoPowerProfilesAcceptMissingCoefficients) {
+  for (const char* name : {"two_power", "two_power_gs"}) {
+    VmecINDATA indata;
+    indata.pmass_type = name;
+    indata.am = Eigen::VectorXd::Zero(0);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << name;
+    indata.am = Eigen::VectorXd::Ones(2);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << name;
+
+    VmecINDATA current_indata;
+    current_indata.ncurr = 1;
+    current_indata.pcurr_type = name;
+    current_indata.ac = Eigen::VectorXd::Ones(2);
+    EXPECT_TRUE(
+        IsConsistent(current_indata, /*enable_info_messages=*/false).ok())
+        << name;
+  }
+}
+
+// The spline evaluators walk the knots in order and, for the Akima and cubic
+// families, return zero outside them where Fortran VMEC stops; the line
+// segments continue their end segments and may stop short of the radius.
+TEST(TestVmecINDATA, CheckSplineKnotsIncreaseAndSpanTheRadius) {
+  const auto knots = [](std::initializer_list<double> values) {
+    Eigen::VectorXd v(static_cast<Eigen::Index>(values.size()));
+    Eigen::Index i = 0;
+    for (double value : values) v[i++] = value;
+    return v;
+  };
+  VmecINDATA indata;
+  indata.pmass_type = "cubic_spline";
+  indata.am_aux_f = Eigen::VectorXd::Zero(5);
+  indata.am_aux_s = knots({0.0, 0.25, 0.5, 0.75, 1.0});
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.5, 0.25, 0.75, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.25, 0.25, 0.75, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.0, 0.2, 0.4, 0.6, 0.9});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.1, 0.3, 0.5, 0.7, 1.0});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pmass_type = "line_segment";
+  indata.am_aux_f = Eigen::VectorXd::Zero(3);
+  indata.am_aux_s = knots({0.1, 0.5, 0.9});
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.am_aux_s = knots({0.1, 0.9, 0.5});
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// The vacuum potential's cutoffs default to the plasma's, may only exceed
+// them, and the toroidal grid has to carry the toroidal one.
+TEST(TestVmecINDATA, VacuumCutoffsStayAboveThePlasmaResolution) {
+  const absl::StatusOr<std::string> json =
+      file_io::ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(json.ok());
+  absl::StatusOr<VmecINDATA> maybe = VmecINDATA::FromJson(*json);
+  ASSERT_TRUE(maybe.ok());
+  VmecINDATA indata = *maybe;  // mpol 5, ntor 4, nzeta 36
+  EXPECT_EQ(indata.vacuum_mpol, 0);
+  EXPECT_EQ(indata.vacuum_ntor, 0);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.vacuum_mpol = 4;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.vacuum_mpol = 8;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.vacuum_ntor = 3;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  // 2 * 16 + 4 = 36 planes fit, 2 * 17 + 4 = 38 do not
+  indata.vacuum_ntor = 16;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.vacuum_ntor = 17;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.vacuum_ntor = 8;
+  const absl::StatusOr<std::string> round_trip_json = indata.ToJson();
+  ASSERT_TRUE(round_trip_json.ok());
+  const absl::StatusOr<VmecINDATA> round_trip =
+      VmecINDATA::FromJson(*round_trip_json);
+  ASSERT_TRUE(round_trip.ok());
+  EXPECT_EQ(round_trip->vacuum_mpol, 8);
+  EXPECT_EQ(round_trip->vacuum_ntor, 8);
+}
+
+TEST(TestVmecINDATA, CheckRationalProfilesNeedADenominator) {
+  // evalRational reads coefficients 0 to 9 as the numerator and 10 and above as
+  // the denominator, so the profile is only evaluable from eleven coefficients
+  // on, with a non-zero one past index 9.
+  VmecINDATA indata;
+  indata.pmass_type = "rational";
+
+  indata.am = Eigen::VectorXd::Zero(10);
+  indata.am[0] = 0.125;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.am = Eigen::VectorXd::Zero(11);
+  indata.am[0] = 0.125;
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  indata.am[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // the same for the iota and current profiles
+  indata.pmass_type = "power_series";
+  indata.piota_type = "rational";
+  indata.ai = Eigen::VectorXd::Zero(10);
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ai = Eigen::VectorXd::Zero(11);
+  indata.ai[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  indata.pcurr_type = "rational";
+  indata.ac = Eigen::VectorXd::Zero(10);
+  EXPECT_EQ(IsConsistent(indata, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+  indata.ac = Eigen::VectorXd::Zero(11);
+  indata.ac[10] = 1.0;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  // the other parameterizations keep accepting a short coefficient array
+  indata.pmass_type = "power_series";
+  indata.piota_type = "power_series";
+  indata.pcurr_type = "power_series";
+  indata.am = Eigen::VectorXd::Zero(2);
+  indata.ai = Eigen::VectorXd::Zero(2);
+  indata.ac = Eigen::VectorXd::Zero(2);
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+// FromJson reports malformed JSON through its status, as it does any other
+// unusable input.
+TEST(TestVmecINDATA, MalformedJsonIsRejected) {
+  for (const std::string malformed : {"{not json", "{\"mpol\": 6", ""}) {
+    const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(malformed);
+    ASSERT_FALSE(indata.ok()) << malformed;
+    EXPECT_EQ(indata.status().code(), absl::StatusCode::kInvalidArgument);
+    EXPECT_THAT(std::string(indata.status().message()),
+                testing::HasSubstr("not valid JSON"));
+  }
+}  // MalformedJsonIsRejected
+
+TEST(TestVmecINDATA, ToJson) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata_ = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata_.ok());
+  auto& indata = indata_.value();
+  ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  const absl::StatusOr<std::string> indata_as_json = indata.ToJson();
+  ASSERT_TRUE(indata_as_json.ok());
+
+  const auto indata_as_json_object = json::parse(*indata_as_json);
+  const auto original_as_json_object = json::parse(*indata_json);
+  const auto default_indata_as_json_object =
+      json::parse(VmecINDATA().ToJson().value());
+
+  for (auto& element : indata_as_json_object.items()) {
+    const std::string& key = element.key();
+    if (original_as_json_object.contains(key)) {
+      if (key == "rbc" || key == "zbs") {
+        const std::vector<double> original_bdy = BoundaryFromJson(
+            original_as_json_object, key, indata.mpol, indata.ntor);
+        const std::vector<double> out_bdy = BoundaryFromJson(
+            original_as_json_object, key, indata.mpol, indata.ntor);
+        EXPECT_THAT(out_bdy, ElementsAreArray(original_bdy));
+      } else {
+        EXPECT_EQ(element.value(), original_as_json_object.at(key));
+      }
+    } else {
+      // this is a key from the new json that was not contained in the original
+      // one: we expect the default value
+      EXPECT_EQ(element.value(), default_indata_as_json_object.at(key));
+    }
+  }
+}  // ToJson
+
+TEST(TestVmecINDATA, ShortAxisArraysArePadded) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("ntor"), 4);
+
+  // Drop the two trailing coefficients from each axis array; the omitted
+  // coefficients should be silently zero-padded back to length ntor+1.
+  const std::vector<double> short_raxis_c = {
+      0.786037734951267, -0.0302978726119071, 0.000915258048528683};
+  const std::vector<double> short_zaxis_s = {0.0, 0.0273158409510113,
+                                             -0.000937096584979097};
+  j["raxis_c"] = short_raxis_c;
+  j["zaxis_s"] = short_zaxis_s;
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  ASSERT_EQ(indata->raxis_c.size(), indata->ntor + 1);
+  ASSERT_EQ(indata->zaxis_s.size(), indata->ntor + 1);
+  EXPECT_THAT(indata->raxis_c, ElementsAre(DoubleEq(0.786037734951267),
+                                           DoubleEq(-0.0302978726119071),
+                                           DoubleEq(0.000915258048528683),
+                                           DoubleEq(0.0), DoubleEq(0.0)));
+  EXPECT_THAT(indata->zaxis_s,
+              ElementsAre(DoubleEq(0.0), DoubleEq(0.0273158409510113),
+                          DoubleEq(-0.000937096584979097), DoubleEq(0.0),
+                          DoubleEq(0.0)));
+
+  EXPECT_TRUE(IsConsistent(*indata, /*enable_info_messages=*/false).ok());
+}  // ShortAxisArraysArePadded
+
+TEST(TestVmecINDATA, OverlongAxisArraysAreRejected) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("ntor"), 4);
+
+  // Append an extra coefficient beyond ntor+1: this must be rejected rather
+  // than silently truncated, since truncation would drop user-provided data.
+  std::vector<double> long_raxis_c = j.at("raxis_c").get<std::vector<double>>();
+  long_raxis_c.push_back(1.0e-7);
+  j["raxis_c"] = long_raxis_c;
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_FALSE(indata.ok());
+  EXPECT_THAT(std::string(indata.status().message()),
+              testing::HasSubstr("exceeds ntor+1"));
+}  // OverlongAxisArraysAreRejected
+
+// An absent raxis_s or zaxis_c is a zero one, as an absent raxis_c or zaxis_s
+// is.
+TEST(TestVmecINDATA, AbsentAsymmetricAxisArraysAreZero) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+
+  json j = json::parse(*indata_json);
+  ASSERT_EQ(j.at("lasym"), true);
+  ASSERT_TRUE(j.contains("raxis_s"));
+  ASSERT_TRUE(j.contains("zaxis_c"));
+  j.erase("raxis_s");
+  j.erase("zaxis_c");
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  ASSERT_TRUE(indata->raxis_s.has_value());
+  ASSERT_TRUE(indata->zaxis_c.has_value());
+  ASSERT_EQ(indata->raxis_s->size(), indata->ntor + 1);
+  ASSERT_EQ(indata->zaxis_c->size(), indata->ntor + 1);
+  EXPECT_THAT(*indata->raxis_s, testing::Each(DoubleEq(0.0)));
+  EXPECT_THAT(*indata->zaxis_c, testing::Each(DoubleEq(0.0)));
+
+  EXPECT_TRUE(IsConsistent(*indata, /*enable_info_messages=*/false).ok());
+}  // AbsentAsymmetricAxisArraysAreZero
+
+// The asymmetric coefficients are only populated when lasym is set, so the
+// round trip has to be checked for both symmetry classes.
+void CheckHdf5RoundTrip(const std::string& filename) {
+  // setup
+  absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  const absl::StatusOr<VmecINDATA> maybe_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok());
+  const auto& indata = maybe_indata.value();
+
+  const fs::path test_dir = std::filesystem::temp_directory_path() /
+                            ("vmecpp_tests_" + std::to_string(getpid()));
+  std::error_code err;
+  fs::create_directory(test_dir, err);
+  ASSERT_FALSE(err) << "Could not create test directory " << test_dir
+                    << ", error was: " << err.message();
+
+  // write out...
+  const fs::path fname = test_dir / "wout_filecontents_test.h5";
+  H5::H5File file(fname, H5F_ACC_TRUNC);
+  absl::Status s = indata.WriteTo(file);
+  ASSERT_TRUE(s.ok()) << s;
+
+  // ...and read back
+  VmecINDATA indata_from_file;
+  s = VmecINDATA::LoadInto(indata_from_file, file);
+  ASSERT_TRUE(s.ok()) << s;
+
+  EXPECT_EQ(indata.lasym, indata_from_file.lasym);
+  EXPECT_EQ(indata.nfp, indata_from_file.nfp);
+  EXPECT_EQ(indata.mpol, indata_from_file.mpol);
+  EXPECT_EQ(indata.ntor, indata_from_file.ntor);
+  EXPECT_EQ(indata.ntheta, indata_from_file.ntheta);
+  EXPECT_EQ(indata.nzeta, indata_from_file.nzeta);
+  EXPECT_EQ(indata.ns_array, indata_from_file.ns_array);
+  EXPECT_EQ(indata.ftol_array, indata_from_file.ftol_array);
+  EXPECT_EQ(indata.niter_array, indata_from_file.niter_array);
+  EXPECT_EQ(indata.phiedge, indata_from_file.phiedge);
+  EXPECT_EQ(indata.ncurr, indata_from_file.ncurr);
+  EXPECT_EQ(indata.pmass_type, indata_from_file.pmass_type);
+  EXPECT_EQ(indata.am, indata_from_file.am);
+  EXPECT_EQ(indata.am_aux_s, indata_from_file.am_aux_s);
+  EXPECT_EQ(indata.am_aux_f, indata_from_file.am_aux_f);
+  EXPECT_EQ(indata.pres_scale, indata_from_file.pres_scale);
+  EXPECT_EQ(indata.gamma, indata_from_file.gamma);
+  EXPECT_EQ(indata.spres_ped, indata_from_file.spres_ped);
+  EXPECT_EQ(indata.piota_type, indata_from_file.piota_type);
+  EXPECT_EQ(indata.ai, indata_from_file.ai);
+  EXPECT_EQ(indata.ai_aux_s, indata_from_file.ai_aux_s);
+  EXPECT_EQ(indata.ai_aux_f, indata_from_file.ai_aux_f);
+  EXPECT_EQ(indata.pcurr_type, indata_from_file.pcurr_type);
+  EXPECT_EQ(indata.ac, indata_from_file.ac);
+  EXPECT_EQ(indata.ac_aux_s, indata_from_file.ac_aux_s);
+  EXPECT_EQ(indata.ac_aux_f, indata_from_file.ac_aux_f);
+  EXPECT_EQ(indata.curtor, indata_from_file.curtor);
+  EXPECT_EQ(indata.bloat, indata_from_file.bloat);
+  EXPECT_EQ(indata.lfreeb, indata_from_file.lfreeb);
+  EXPECT_EQ(indata.mgrid_file, indata_from_file.mgrid_file);
+  EXPECT_EQ(indata.extcur, indata_from_file.extcur);
+  EXPECT_EQ(indata.nvacskip, indata_from_file.nvacskip);
+  EXPECT_EQ(indata.free_boundary_method, indata_from_file.free_boundary_method);
+  EXPECT_EQ(indata.nstep, indata_from_file.nstep);
+  EXPECT_EQ(indata.aphi, indata_from_file.aphi);
+  EXPECT_EQ(indata.delt, indata_from_file.delt);
+  EXPECT_EQ(indata.tcon0, indata_from_file.tcon0);
+  EXPECT_EQ(indata.lforbal, indata_from_file.lforbal);
+  EXPECT_EQ(indata.lbsubs, indata_from_file.lbsubs);
+  EXPECT_EQ(indata.backup_evaluated_state,
+            indata_from_file.backup_evaluated_state);
+  EXPECT_EQ(indata.always_fix_m1_gauge, indata_from_file.always_fix_m1_gauge);
+  EXPECT_EQ(indata.raxis_c, indata_from_file.raxis_c);
+  EXPECT_EQ(indata.zaxis_s, indata_from_file.zaxis_s);
+  EXPECT_EQ(indata.raxis_s, indata_from_file.raxis_s);
+  EXPECT_EQ(indata.zaxis_c, indata_from_file.zaxis_c);
+  EXPECT_EQ(indata.rbc, indata_from_file.rbc);
+  EXPECT_EQ(indata.zbs, indata_from_file.zbs);
+  EXPECT_EQ(indata.rbs, indata_from_file.rbs);
+  EXPECT_EQ(indata.zbc, indata_from_file.zbc);
+}  // CheckHdf5RoundTrip
+
+TEST(TestVmecINDATA, HDF5IO) {
+  CheckHdf5RoundTrip("vmecpp/test_data/cth_like_free_bdy.json");
+}  // HDF5IO
+
+TEST(TestVmecINDATA, HDF5IOAsymmetric) {
+  CheckHdf5RoundTrip("vmecpp/test_data/up_down_asym.json");
+}  // HDF5IOAsymmetric
+
+// ToJson has to emit what FromJson accepts, for both symmetry classes.
+void CheckJsonRoundTrip(const std::string& filename) {
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> maybe_indata =
+      VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(maybe_indata.ok()) << maybe_indata.status();
+  const VmecINDATA& indata = *maybe_indata;
+
+  const absl::StatusOr<std::string> written = indata.ToJson();
+  ASSERT_TRUE(written.ok()) << written.status();
+
+  const absl::StatusOr<VmecINDATA> read_back = VmecINDATA::FromJson(*written);
+  ASSERT_TRUE(read_back.ok()) << read_back.status();
+
+  EXPECT_EQ(indata.lasym, read_back->lasym);
+  EXPECT_EQ(indata.raxis_c, read_back->raxis_c);
+  EXPECT_EQ(indata.zaxis_s, read_back->zaxis_s);
+  EXPECT_EQ(indata.raxis_s, read_back->raxis_s);
+  EXPECT_EQ(indata.zaxis_c, read_back->zaxis_c);
+  EXPECT_EQ(indata.rbc, read_back->rbc);
+  EXPECT_EQ(indata.zbs, read_back->zbs);
+  EXPECT_EQ(indata.rbs, read_back->rbs);
+  EXPECT_EQ(indata.zbc, read_back->zbc);
+}  // CheckJsonRoundTrip
+
+TEST(TestVmecINDATA, JsonRoundTrip) {
+  CheckJsonRoundTrip("vmecpp/test_data/cth_like_free_bdy.json");
+}  // JsonRoundTrip
+
+TEST(TestVmecINDATA, JsonRoundTripAsymmetric) {
+  CheckJsonRoundTrip("vmecpp/test_data/up_down_asym.json");
+}  // JsonRoundTripAsymmetric
+
+TEST(TestVmecINDATA, SetMpolNtor) {
+  VmecINDATA indata =
+      VmecINDATA::FromFile("vmecpp/test_data/cth_like_free_bdy.json");
+
+  const VmecINDATA old_indata = indata;
+  const int old_mpol = indata.mpol;
+  const int old_ntor = indata.ntor;
+
+  // test expanding mpol and ntor
+  indata.SetMpolNtor(indata.mpol + 1, indata.ntor + 1);
+  ASSERT_TRUE(
+      IsConsistent(VmecINDATA(indata), /*enable_info_messages=*/false).ok());
+  EXPECT_EQ(indata.ntor, old_ntor + 1);
+  EXPECT_EQ(indata.mpol, old_mpol + 1);
+
+  // expect same elements as before and plus one zero at the end
+  Eigen::VectorXd expected(old_indata.raxis_c.size() + 1);
+  expected.head(old_indata.raxis_c.size()) = old_indata.raxis_c;
+  expected.tail(1).setZero();
+  EXPECT_THAT(indata.raxis_c, Pointwise(DoubleEq(), expected));
+
+  expected.head(old_indata.zaxis_s.size()) = old_indata.zaxis_s;
+  EXPECT_THAT(indata.zaxis_s, Pointwise(DoubleEq(), expected));
+
+  // check the 2D coefficients have been zero-padded properly, leaving
+  // non-zero elements at the right positions
+  EXPECT_EQ(indata.rbc.rows(), indata.mpol);
+  EXPECT_EQ(indata.rbc.cols(), 2 * indata.ntor + 1);
+  EXPECT_EQ(indata.zbs.rows(), indata.mpol);
+  EXPECT_EQ(indata.zbs.cols(), 2 * indata.ntor + 1);
+  for (int m = 0; m < old_mpol; ++m) {
+    for (int n = -old_ntor; n <= old_ntor; ++n) {
+      EXPECT_DOUBLE_EQ(old_indata.rbc(m, old_ntor + n),
+                       indata.rbc(m, indata.ntor + n));
+      EXPECT_DOUBLE_EQ(old_indata.zbs(m, old_ntor + n),
+                       indata.zbs(m, indata.ntor + n));
+    }
+  }
+
+  // test shrinking mpol and ntor (back to less than the original sizes in
+  // old_indata)
+  indata.SetMpolNtor(old_mpol - 1, old_ntor - 1);
+  ASSERT_TRUE(
+      IsConsistent(VmecINDATA(indata), /*enable_info_messages=*/false).ok());
+  EXPECT_EQ(indata.ntor, old_ntor - 1);
+  EXPECT_EQ(indata.mpol, old_mpol - 1);
+
+  expected = old_indata.raxis_c.head(old_indata.raxis_c.size() - 1);
+  EXPECT_THAT(indata.raxis_c, ElementsAreArray(expected));
+  expected = old_indata.zaxis_s.head(old_indata.zaxis_s.size() - 1);
+  EXPECT_THAT(indata.zaxis_s, ElementsAreArray(expected));
+
+  // check the 2D coefficients have been truncated properly, leaving other
+  // elements at the right positions
+  EXPECT_EQ(indata.rbc.rows(), indata.mpol);
+  EXPECT_EQ(indata.rbc.cols(), 2 * indata.ntor + 1);
+  EXPECT_EQ(indata.zbs.rows(), indata.mpol);
+  EXPECT_EQ(indata.zbs.cols(), 2 * indata.ntor + 1);
+  for (int m = 0; m < indata.mpol; ++m) {
+    for (int n = 0; n < indata.ntor; ++n) {
+      EXPECT_DOUBLE_EQ(old_indata.rbc(m, old_ntor + n),
+                       indata.rbc(m, indata.ntor + n));
+      EXPECT_DOUBLE_EQ(old_indata.zbs(m, old_ntor + n),
+                       indata.zbs(m, indata.ntor + n));
+    }
+  }
+}  // SetMpolNtor
+
+// IsConsistent cannot size the asymmetric arrays of a VmecINDATA that was
+// filled in by hand, so lasym without them has to be rejected.
+TEST(TestVmecINDATA, CheckLasymNeedsTheAsymmetricArrays) {
+  VmecINDATA hand_built;
+  ASSERT_TRUE(IsConsistent(hand_built, /*enable_info_messages=*/false).ok());
+
+  hand_built.lasym = true;
+  const absl::Status hand_built_status =
+      IsConsistent(hand_built, /*enable_info_messages=*/false);
+  EXPECT_EQ(hand_built_status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(std::string(hand_built_status.message()),
+              testing::HasSubstr("'raxis_s' has to be set"));
+
+  // SetMpolNtor sizes all four of them.
+  hand_built.SetMpolNtor(hand_built.mpol, hand_built.ntor);
+  EXPECT_TRUE(IsConsistent(hand_built, /*enable_info_messages=*/false).ok());
+
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  const auto expect_rejected_without = [&indata](const std::string& name,
+                                                 auto reset) {
+    VmecINDATA without = *indata;
+    reset(without);
+    const absl::Status status =
+        IsConsistent(without, /*enable_info_messages=*/false);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << name;
+    EXPECT_THAT(std::string(status.message()),
+                testing::HasSubstr("'" + name + "' has to be set"));
+  };
+  expect_rejected_without(
+      "raxis_s", [](VmecINDATA& m_indata) { m_indata.raxis_s.reset(); });
+  expect_rejected_without(
+      "zaxis_c", [](VmecINDATA& m_indata) { m_indata.zaxis_c.reset(); });
+  expect_rejected_without("rbs",
+                          [](VmecINDATA& m_indata) { m_indata.rbs.reset(); });
+  expect_rejected_without("zbc",
+                          [](VmecINDATA& m_indata) { m_indata.zbc.reset(); });
+}  // CheckLasymNeedsTheAsymmetricArrays
+
+TEST(TestVmecINDATA, CopyMethod) {
+  const VmecINDATA indata =
+      VmecINDATA::FromFile("vmecpp/test_data/cth_like_free_bdy.json");
+
+  const auto copy = indata.Copy();
+
+  // make sure we performed a deep copy
+  EXPECT_NE(&copy.lasym, &indata.lasym);
+  EXPECT_NE(copy.rbc.data(), indata.rbc.data());
+
+  // make sure the copy went well
+  EXPECT_EQ(copy.lasym, indata.lasym);
+  EXPECT_EQ(copy.nfp, indata.nfp);
+  EXPECT_EQ(copy.mpol, indata.mpol);
+  EXPECT_EQ(copy.ntor, indata.ntor);
+  EXPECT_EQ(copy.ntheta, indata.ntheta);
+  EXPECT_EQ(copy.nzeta, indata.nzeta);
+  EXPECT_EQ(copy.ns_array, indata.ns_array);
+  EXPECT_EQ(copy.ftol_array, indata.ftol_array);
+  EXPECT_EQ(copy.niter_array, indata.niter_array);
+  EXPECT_EQ(copy.phiedge, indata.phiedge);
+  EXPECT_EQ(copy.ncurr, indata.ncurr);
+  EXPECT_EQ(copy.pmass_type, indata.pmass_type);
+  EXPECT_EQ(copy.am, indata.am);
+  EXPECT_EQ(copy.am_aux_s, indata.am_aux_s);
+  EXPECT_EQ(copy.am_aux_f, indata.am_aux_f);
+  EXPECT_EQ(copy.pres_scale, indata.pres_scale);
+  EXPECT_EQ(copy.gamma, indata.gamma);
+  EXPECT_EQ(copy.spres_ped, indata.spres_ped);
+  EXPECT_EQ(copy.piota_type, indata.piota_type);
+  EXPECT_EQ(copy.ai, indata.ai);
+  EXPECT_EQ(copy.ai_aux_s, indata.ai_aux_s);
+  EXPECT_EQ(copy.ai_aux_f, indata.ai_aux_f);
+  EXPECT_EQ(copy.pcurr_type, indata.pcurr_type);
+  EXPECT_EQ(copy.ac, indata.ac);
+  EXPECT_EQ(copy.ac_aux_s, indata.ac_aux_s);
+  EXPECT_EQ(copy.ac_aux_f, indata.ac_aux_f);
+  EXPECT_EQ(copy.curtor, indata.curtor);
+  EXPECT_EQ(copy.bloat, indata.bloat);
+  EXPECT_EQ(copy.lfreeb, indata.lfreeb);
+  EXPECT_EQ(copy.mgrid_file, indata.mgrid_file);
+  EXPECT_EQ(copy.extcur, indata.extcur);
+  EXPECT_EQ(copy.nvacskip, indata.nvacskip);
+  EXPECT_EQ(copy.free_boundary_method, indata.free_boundary_method);
+  EXPECT_EQ(copy.nstep, indata.nstep);
+  EXPECT_EQ(copy.aphi, indata.aphi);
+  EXPECT_EQ(copy.delt, indata.delt);
+  EXPECT_EQ(copy.tcon0, indata.tcon0);
+  EXPECT_EQ(copy.lforbal, indata.lforbal);
+  EXPECT_EQ(copy.lbsubs, indata.lbsubs);
+  EXPECT_EQ(copy.backup_evaluated_state, indata.backup_evaluated_state);
+  EXPECT_EQ(copy.always_fix_m1_gauge, indata.always_fix_m1_gauge);
+  EXPECT_EQ(copy.iteration_style, indata.iteration_style);
+  EXPECT_EQ(copy.return_outputs_even_if_not_converged,
+            indata.return_outputs_even_if_not_converged);
+  EXPECT_EQ(copy.raxis_c, indata.raxis_c);
+  EXPECT_EQ(copy.zaxis_s, indata.zaxis_s);
+  EXPECT_EQ(copy.raxis_s, indata.raxis_s);
+  EXPECT_EQ(copy.zaxis_c, indata.zaxis_c);
+  EXPECT_EQ(copy.rbc, indata.rbc);
+  EXPECT_EQ(copy.zbs, indata.zbs);
+  EXPECT_EQ(copy.rbs, indata.rbs);
+  EXPECT_EQ(copy.zbc, indata.zbc);
+}  // CopyMethod
+
+TEST(TestVmecINDATA, CheckOnlyCoilsRejectsCurrentAndPressure) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  ASSERT_TRUE(indata->lfreeb);
+
+  VmecINDATA only_coils = *indata;
+  only_coils.free_boundary_method = FreeBoundaryMethod::ONLY_COILS;
+  only_coils.curtor = 0.0;
+  only_coils.pres_scale = 0.0;
+  EXPECT_TRUE(IsConsistent(only_coils, /*enable_info_messages=*/false).ok());
+
+  only_coils.curtor = 1.0e3;
+  EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  only_coils.curtor = 0.0;
+  only_coils.pres_scale = 1.0;
+  EXPECT_EQ(IsConsistent(only_coils, /*enable_info_messages=*/false).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+}  // namespace vmecpp

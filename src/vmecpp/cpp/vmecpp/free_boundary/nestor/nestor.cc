@@ -1,0 +1,281 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#include "vmecpp/free_boundary/nestor/nestor.h"
+
+#include <cmath>
+
+namespace vmecpp {
+
+Nestor::Nestor(const Sizes* s, const TangentialPartitioning* tp,
+               const MagneticFieldFunction* magnetic_field,
+               std::span<double> matrixShare, std::span<double> bvecShare,
+               std::span<double> bSqVacShare,
+               Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
+               std::span<double> vacuum_b_r_share,
+               std::span<double> vacuum_b_phi_share,
+               std::span<double> vacuum_b_z_share,
+               std::span<double> reduce_slots)
+    : FreeBoundaryBase(s, tp, magnetic_field, bSqVacShare, vacuum_b_r_share,
+                       vacuum_b_phi_share, vacuum_b_z_share),
+      nf(s_.ntor),
+      mf(s_.mpol + 1),
+      si_(s, &fb_, tp, &sg_, nf, mf),
+      ri_(s, tp, &sg_),
+      ls_(s, &fb_, tp, nf, mf, matrixShare, lu_decomposition, bvecShare,
+          reduce_slots),
+      bvecShare(bvecShare),
+      reduce_slots_(reduce_slots) {
+  int numLocal = tp_.ztMax - tp_.ztMin;
+
+  potU.setZero(numLocal);
+  potV.setZero(numLocal);
+
+  bSubU.setZero(numLocal);
+  bSubV.setZero(numLocal);
+}
+
+absl::StatusOr<bool> Nestor::update(
+    const std::span<const double> rCC, const std::span<const double> rSS,
+    const std::span<const double> rSC, const std::span<const double> rCS,
+    const std::span<const double> zSC, const std::span<const double> zCS,
+    const std::span<const double> zCC, const std::span<const double> zSS,
+    int signOfJacobian, const std::span<const double> rAxis,
+    const std::span<const double> zAxis, double* bSubUVac, double* bSubVVac,
+    double netToroidalCurrent, int ivacskip,
+    const VmecCheckpoint& vmec_checkpoint, bool at_checkpoint_iteration) {
+  if (vmec_checkpoint == VmecCheckpoint::VAC1_VACUUM &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+  bool fullUpdate = (ivacskip == 0);
+
+  sg_.update(rCC, rSS, rSC, rCS, zSC, zCS, zCC, zSS, signOfJacobian,
+             fullUpdate);
+  if (vmec_checkpoint == VmecCheckpoint::VAC1_SURFACE &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+  // Carried to the end: collective regions below must be reached by all.
+  const absl::Status external_field_status =
+      ef_.update(rAxis, zAxis, netToroidalCurrent);
+  if (vmec_checkpoint == VmecCheckpoint::VAC1_BEXTERN &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+  si_.update(ef_.bDotN, fullUpdate);
+  if (vmec_checkpoint == VmecCheckpoint::VAC1_ANALYT &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+  if (fullUpdate) {
+    ri_.update(ef_.bDotN);
+    if (vmec_checkpoint == VmecCheckpoint::VAC1_GREENF &&
+        at_checkpoint_iteration) {
+      return true;
+    }
+
+    ls_.TransformGreensFunctionDerivative(ri_.greenp);
+    if (vmec_checkpoint == VmecCheckpoint::VAC1_FOURP &&
+        at_checkpoint_iteration) {
+      return true;
+    }
+
+    ls_.SymmetriseSourceTerm(ri_.gstore);
+    if (vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_SYMM &&
+        at_checkpoint_iteration) {
+      return true;
+    }
+
+    ls_.AccumulateFullGrpmn(si_.grpmn_sin, si_.grpmn_cos);
+    ls_.PerformToroidalFourierTransforms();
+    if (vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_KV_DFT &&
+        at_checkpoint_iteration) {
+      return true;
+    }
+
+    ls_.PerformPoloidalFourierTransforms();
+    ls_.BuildMatrix();
+    if (vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_KU_DFT &&
+        at_checkpoint_iteration) {
+      return true;
+    }
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+    ls_.DecomposeMatrix();
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+  }  // fullUpdate
+
+  // virtual checkpoint, if maximum_iterations before next full Nestor update
+  if ((vmec_checkpoint == VmecCheckpoint::VAC1_GREENF ||
+       vmec_checkpoint == VmecCheckpoint::VAC1_FOURP ||
+       vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_SYMM ||
+       vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_KV_DFT ||
+       vmec_checkpoint == VmecCheckpoint::VAC1_FOURI_KU_DFT ||
+       vmec_checkpoint == VmecCheckpoint::UPDATE_TCON) &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+  // bvec_cos is empty for the stellarator-symmetric case and is ignored by the
+  // solver there, so a single call covers both the symmetric and lasym paths.
+  ls_.SolveForPotential(si_.bvec_sin, si_.bvec_cos);
+
+  if (vmec_checkpoint == VmecCheckpoint::VAC1_SOLVER &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+  // thread-local tangential grid point range
+  const int mnpd = (mf + 1) * (2 * nf + 1);
+
+  potU.setZero();
+  potV.setZero();
+
+  // inv-DFT with tangential derivatives. bvecShare holds [potsin; potcos]
+  // for lasym = true (the top mnpd is the sin(mu-nv) coefficient set, the
+  // bottom mnpd is the cos(mu-nv) coefficient set). potu/potv receive
+  //   m * potsin * cos(mu - nv) - m * potcos * sin(mu - nv)
+  //  -n * nfp * potsin * cos(mu - nv) + n * nfp * potcos * sin(mu - nv)
+  // per Fortran NESTOR/vacuum.f90 lines 162-174.
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    const int l = kl / s_.nZeta;
+    const int k = kl % s_.nZeta;
+    // The poloidal basis cosmu/sinmu is tabulated only on the reduced theta
+    // range [0, nThetaReduced). The lasym free-boundary surface spans the full
+    // theta range, so for l >= nThetaReduced reflect via stellarator symmetry
+    // (theta -> -theta): cos(m*theta) is even, sin(m*theta) is odd.
+    const int lr = (l < s_.nThetaReduced) ? l : (s_.nThetaEven - l);
+    const double sgnmu = (l < s_.nThetaReduced) ? 1.0 : -1.0;
+    for (int mn = 0; mn < mnpd; ++mn) {
+      const int n = mn / (mf + 1) - nf;  // -nf:nf
+      const int m = mn % (mf + 1);
+
+      const int abs_n = std::abs(n);
+      const int sign_n = signum(n);
+
+      const int idx_lm = lr * (s_.mnyq2 + 1) + m;
+      const double cosmu = fb_.cosmu[idx_lm] / fb_.mscale[m];
+      const double sinmu = sgnmu * fb_.sinmu[idx_lm] / fb_.mscale[m];
+
+      const int idx_nk = abs_n * s_.nZeta + k;
+      const double cosnv = fb_.cosnv[idx_nk] / fb_.nscale[abs_n];
+      const double sinnv = fb_.sinnv[idx_nk] / fb_.nscale[abs_n];
+
+      const double cos_mu_nv = cosmu * cosnv + sign_n * sinmu * sinnv;
+
+      potU[kl - tp_.ztMin] += bvecShare[mn] * m * cos_mu_nv;
+      potV[kl - tp_.ztMin] += bvecShare[mn] * (-n * s_.nfp) * cos_mu_nv;
+
+      if (s_.lasym) {
+        const double sin_mu_nv = sinmu * cosnv - sign_n * cosmu * sinnv;
+        const double potcos = bvecShare[mnpd + mn];
+        potU[kl - tp_.ztMin] -= potcos * m * sin_mu_nv;
+        potV[kl - tp_.ztMin] -= potcos * (-n * s_.nfp) * sin_mu_nv;
+      }
+    }  // mn
+  }  // kl
+
+  // compute net covariant magnetic field components on surface
+  double local_bSubUVac = 0.0;
+  double local_bSubVVac = 0.0;
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    bSubU[kl - tp_.ztMin] = potU[kl - tp_.ztMin] + ef_.bSubU[kl - tp_.ztMin];
+    bSubV[kl - tp_.ztMin] = potV[kl - tp_.ztMin] + ef_.bSubV[kl - tp_.ztMin];
+
+    int l = kl / s_.nZeta;
+    local_bSubUVac += bSubU[kl - tp_.ztMin] * s_.wInt[l];
+    local_bSubVVac += bSubV[kl - tp_.ztMin] * s_.wInt[l];
+  }
+  local_bSubUVac *= signOfJacobian * 2.0 * M_PI;
+
+#ifdef _OPENMP
+#pragma omp single
+#endif  // _OPENMP
+  {
+    *bSubUVac = 0.0;
+    *bSubVVac = 0.0;
+  }
+
+  SumOverThreads(&local_bSubUVac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubUVac);
+  SumOverThreads(&local_bSubVVac, 1, tp_.get_thread_id(), tp_.get_num_threads(),
+                 reduce_slots_.data(), bSubVVac);
+
+  // compute magnetic pressure from co- and contravariant B_vac components
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    // metric elements, without the Nestors-specific normalizations
+    double guu = sg_.guu[kl - tp_.ztMin];
+    double guv = sg_.guv[kl - tp_.ztMin] * s_.nfp * 0.5;
+    double gvv = sg_.gvv[kl - tp_.ztMin] * s_.nfp * s_.nfp;
+
+    double det = guu * gvv - guv * guv;
+
+    // compute contravariant magnetic field components
+    // by inverting the inverse transform (as used in VMEC to go from bContra to
+    // bCov)
+    double bSupU =
+        (gvv * bSubU[kl - tp_.ztMin] - guv * bSubV[kl - tp_.ztMin]) / det;
+    double bSupV =
+        (-guv * bSubU[kl - tp_.ztMin] + guu * bSubV[kl - tp_.ztMin]) / det;
+
+    // magnetic pressure from vacuum: |B|^2/2
+    bSqVacShare[kl] =
+        (bSubU[kl - tp_.ztMin] * bSupU + bSubV[kl - tp_.ztMin] * bSupV) * 0.5;
+
+    // cylindrical components of vacuum magnetic field.
+    // rub/rvb/zub/zvb are full-range (offset 0) for lasym, thread-local
+    // otherwise (see SurfaceGeometry::derivedSurfaceQuantities); r1b is
+    // always full-range.
+    const int derivOffset = s_.lasym ? 0 : tp_.ztMin;
+    vacuum_b_r_share_[kl] =
+        sg_.rub[kl - derivOffset] * bSupU + sg_.rvb[kl - derivOffset] * bSupV;
+    vacuum_b_phi_share_[kl] = sg_.r1b[kl] * bSupV;
+    vacuum_b_z_share_[kl] =
+        sg_.zub[kl - derivOffset] * bSupU + sg_.zvb[kl - derivOffset] * bSupV;
+  }  // kl
+
+  // ... done ...
+
+  if (vmec_checkpoint == VmecCheckpoint::VAC1_BSQVAC &&
+      at_checkpoint_iteration) {
+    return true;
+  }
+
+#ifdef _OPENMP
+#pragma omp barrier
+#endif  // _OPENMP
+
+  // TODO(jons): could move bSubUVac, bSubVVac collection here to spare on
+  // barrier
+
+  // All collective regions are done, so it is safe to report now.
+  if (!external_field_status.ok()) {
+    return external_field_status;
+  }
+
+  return false;
+}
+
+const SingularIntegrals& Nestor::GetSingularIntegrals() const {
+  return si_;
+}  // GetSingularIntegrals
+
+const RegularizedIntegrals& Nestor::GetRegularizedIntegrals() const {
+  return ri_;
+}  // GetRegularizedIntegrals
+
+const LaplaceSolver& Nestor::GetLaplaceSolver() const {
+  return ls_;
+}  // GetLaplaceSolver
+
+}  // namespace vmecpp

@@ -1,0 +1,355 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#ifndef VMECPP_COMMON_VMEC_INDATA_VMEC_INDATA_H_
+#define VMECPP_COMMON_VMEC_INDATA_VMEC_INDATA_H_
+
+#include <Eigen/Dense>
+#include <filesystem>
+#include <string>
+
+#include "H5Cpp.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "vmecpp/common/util/util.h"  // RowMatrixXd, ToEigenVector, ToEigenMatrix
+
+namespace vmecpp {
+
+// default number of flux surfaces
+static constexpr int kNsDefault = 31;
+
+// default force tolerance for convergence
+static constexpr double kFTolDefault = 1.0e-10;
+
+// default maximum number of iterations
+static constexpr int kNIterDefault = 100;
+
+enum class FreeBoundaryMethod : std::uint8_t {
+  // use the NEumann Solver for TORoidal systems
+  // for the free-boundary force contribution
+  NESTOR,
+
+  // use just the coils field
+  // for the free-boundary force contribution
+  ONLY_COILS,
+
+  // use the Boundary Integral Equation Solver for Toroidal systems
+  // for the free-boundary force contribution
+  BIEST
+};
+
+int FreeBoundaryMethodCode(FreeBoundaryMethod free_boundary_method);
+absl::StatusOr<FreeBoundaryMethod> FreeBoundaryMethodFromString(
+    const std::string& free_boundary_method_string);
+std::string ToString(FreeBoundaryMethod free_boundary_method);
+
+// Use this to switch the overall program flow/iteration style
+// between VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
+// based on) and PARVMEC (~same as hiddenSymmetries/VMEC2000) - version 9.0.
+enum class IterationStyle : std::uint8_t {
+  // VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is based on)
+  VMEC_8_52,
+
+  // PARVMEC (~same as hiddenSymmetries/VMEC2000) - version 9.0
+  PARVMEC
+};
+
+int IterationStyleCode(IterationStyle iteration_style);
+absl::StatusOr<IterationStyle> IterationStyleFromString(
+    const std::string& iteration_style_string);
+std::string ToString(IterationStyle iteration_style);
+
+// INDATA: user-provided inputs for a stand-alone VMEC run
+class VmecINDATA {
+ public:
+  // ---------------------------------
+  // numerical resolution, symmetry assumption
+
+  // flag to indicate non-stellarator-symmetry
+  bool lasym;
+
+  // number of toroidal field periods (=1 for Tokamak)
+  int nfp;
+
+  // number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1)
+  int mpol;
+
+  // number of toroidal Fourier harmonics; n = -ntor, -ntor+1, ..., -1, 0, 1,
+  // ..., ntor-1, ntor
+  int ntor;
+
+  // Optional reduced resolution for the geometry (R, Z). When in [1, mpol) /
+  // [0, ntor), R and Z modes above it are held fixed while lambda keeps the
+  // full mpol/ntor resolution. < 0 (or >= mpol/ntor) means "use mpol/ntor",
+  // i.e. geometry and lambda share resolution as before.
+  int mpol_geometry;
+  int ntor_geometry;
+
+  // Optional larger Fourier cutoffs for the vacuum potential of a
+  // free-boundary run. NESTOR expands the potential to (mpol, ntor) like
+  // the plasma, which limits the vacuum field on helically excursing
+  // boundaries; a value above mpol / ntor raises the potential's cutoff
+  // alone, with nzeta at least 2 * vacuum_ntor + 4. 0 (default) means
+  // "use mpol / ntor".
+  int vacuum_mpol;
+  int vacuum_ntor;
+
+  // number of poloidal grid points; if odd: is rounded to next smaller even
+  // number
+  int ntheta;
+
+  // number of toroidal grid points, raised to 2 * ntor + 4 when smaller; the
+  // mgrid file must carry the resulting number if using free-boundary
+  int nzeta;
+
+  // ---------------------------------
+  // multi-grid steps
+
+  // [numGrids] number of flux surfaces per multigrid step
+  Eigen::VectorXi ns_array;
+
+  // [numGrids] requested force tolerance for convergence per multigrid step
+  Eigen::VectorXd ftol_array;
+
+  // [numGrids] maximum number of iterations per multigrid step
+  Eigen::VectorXi niter_array;
+
+  // ---------------------------------
+  // global physics parameters
+
+  // total enclosed toroidal magnetic flux in Vs == Wb
+  double phiedge;
+
+  // select constraint on iota or enclosed toroidal current profiles
+  // 0: constrained-iota; 1: constrained-current
+  int ncurr;
+
+  // ---------------------------------
+  // mass / pressure profile
+
+  // parametrization of mass/pressure profile
+  std::string pmass_type;
+
+  // [amLen] mass/pressure profile coefficients
+  Eigen::VectorXd am;
+
+  // [am_auxLen] spline mass/pressure profile: knot locations in s
+  Eigen::VectorXd am_aux_s;
+
+  // [am_auxLen] spline mass/pressure profile: values at knots
+  Eigen::VectorXd am_aux_f;
+
+  // global scaling factor for mass/pressure profile
+  double pres_scale;
+
+  // adiabatic index
+  double gamma;
+
+  // location of pressure pedestal in s
+  double spres_ped;
+
+  // ---------------------------------
+  // (initial guess for) iota profile
+
+  // parametrization of iota profile
+  std::string piota_type;
+
+  // [aiLen] iota profile coefficients
+  Eigen::VectorXd ai;
+
+  // [ai_auxLen] spline iota profile: knot locations in s
+  Eigen::VectorXd ai_aux_s;
+
+  // [ai_auxLen] spline iota profile: values at knots
+  Eigen::VectorXd ai_aux_f;
+
+  // ---------------------------------
+  // enclosed toroidal current profile
+
+  // parametrization of toroidal current profile
+  std::string pcurr_type;
+
+  // enclosed toroidal current profile coefficients
+  Eigen::VectorXd ac;
+
+  // [ac_auxLen] spline toroidal current profile: knot locations in s
+  Eigen::VectorXd ac_aux_s;
+
+  // [ac_auxLen] spline toroidal current profile: values at knots
+  Eigen::VectorXd ac_aux_f;
+
+  // toroidal current in A
+  double curtor;
+
+  // bloating factor (for constrained toroidal current)
+  double bloat;
+
+  // ---------------------------------
+  // free-boundary parameters
+
+  // flag to indicate free-boundary
+  bool lfreeb;
+
+  // full path for vacuum Green's function data
+  std::string mgrid_file;
+
+  // [extcurLen] coil currents in A
+  Eigen::VectorXd extcur;
+
+  // number of iterations between full vacuum calculations
+  int nvacskip;
+
+  // sign of the Jacobian of the (s, theta, zeta) coordinates: -1 for the
+  // left-handed system of Fortran VMEC, +1 for a right-handed one; the input
+  // boundary is flipped in theta to match it
+  int signgs;
+
+  // indicates which method to use
+  // for the free-boundary force contribution
+  FreeBoundaryMethod free_boundary_method;
+
+  // ---------------------------------
+  // tweaking parameters
+
+  // printout interval
+  int nstep;
+
+  // [aphiLen] radial flux zoning profile coefficients
+  Eigen::VectorXd aphi;
+
+  // initial value for artificial time step in iterative solver
+  double delt;
+
+  // constraint force scaling factor for ns --> 0
+  double tcon0;
+
+  // hack: directly compute innermost flux surface geometry from radial force
+  // balance
+  bool lforbal;
+
+  // Scale of the lambda preconditioner, which multiplies the inverse of the
+  // diagonal lambda stiffness. 1.0 applies the undamped inverse, values below
+  // 1.0 damp the lambda step and values above 1.0 accelerate it; the default
+  // 0.5 is the damping of VMEC 8.52.
+  double lambda_preconditioner_scale;
+
+  // Stiffness floor of the radial checkerboard (odd-even) mode of the m = 0
+  // lambda, as a fraction of a smooth mode's: the m = 0 lambda preconditioner
+  // is the tridiagonal radial block M + floor diag(faclam). Negative keeps the
+  // diagonal one of VMEC 8.52.
+  double lambda_precondition_checkerboard_terms;
+
+  // If true, re-compute the full-grid covariant B_s by solving the radial
+  // force balance equation
+  //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
+  // in spectral space at every interior surface (lbsubs flag in Fortran VMEC).
+  // The default (false) keeps B_s as the linear half->full interpolation of
+  // the metric-element B_s plus the axis/edge extrapolation. Affects the
+  // jxbout diagnostic and the bsubsmn{s,c} coefficients in the wout file; the
+  // equilibrium iteration is unchanged.
+  bool lbsubs;
+
+  // If true, restart backups hold the state of the last force evaluation; if
+  // false, they hold the advanced state, as in educational_VMEC.
+  bool backup_evaluated_state;
+
+  // If true, the m=1 gauge of R and Z is set from the boundary at the start of
+  // every multigrid step and its force is zeroed in every iteration; if false,
+  // its force is zeroed only in the first iteration of a multigrid step and
+  // while fsqz < 1e-6, as in VMEC 8.52.
+  bool always_fix_m1_gauge;
+
+  // allows to switch between VMEC 8.52 and PARVMEC iteration style
+  // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
+  // based on)
+  IterationStyle iteration_style;
+
+  // If true, return a wout even if VMEC++ did not converge.
+  // Intended for debugging convergence issues only: the
+  // returned quantities are computed from whatever internal state the solver
+  // was in when it gave up, and can be arbitrarily unphysical.
+  bool return_outputs_even_if_not_converged;
+
+  // Abandon the whole multigrid sequence when a step ends with any residual
+  // still above fgiveup times its tolerance, rather than carrying a state that
+  // far out onto a finer grid. Off by default.
+  bool lgiveup;
+
+  // Multiple of ftol_array a step's residuals must be under for the sequence to
+  // continue when lgiveup is set.
+  double fgiveup;
+
+  // ---------------------------------
+  // initial guess for magnetic axis
+
+  // [ntor+1] magnetic axis coefficients for R ~ cos(n*v); stellarator-symmetric
+  Eigen::VectorXd raxis_c;
+
+  // [ntor+1] magnetic axis coefficients for Z ~ sin(n*v); stellarator-symmetric
+  Eigen::VectorXd zaxis_s;
+
+  // [ntor+1] magnetic axis coefficients for R ~ sin(n*v);
+  // non-stellarator-symmetric
+  std::optional<Eigen::VectorXd> raxis_s;
+
+  // [ntor+1] magnetic axis coefficients for Z ~ cos(n*v);
+  // non-stellarator-symmetric
+  std::optional<Eigen::VectorXd> zaxis_c;
+
+  // ---------------------------------
+  // (initial guess for) boundary shape
+
+  // [mpol, (2*ntor+1)] boundary coefficients for R ~ cos(m*u - n*v);
+  // stellarator-symmetric
+  RowMatrixXd rbc;
+
+  // [mpol, (2*ntor+1)] boundary coefficients for Z ~ sin(m*u - n*v);
+  // stellarator-symmetric
+  RowMatrixXd zbs;
+
+  // [mpol, (2*ntor+1)] boundary coefficients for R ~ sin(m*u - n*v);
+  // non-stellarator-symmetric
+  std::optional<RowMatrixXd> rbs;
+
+  // [mpol, (2*ntor+1)] boundary coefficients for Z ~ cos(m*u - n*v);
+  // non-stellarator-symmetric
+  std::optional<RowMatrixXd> zbc;
+
+  // Construct a VmecINDATA instance with default values, except for profile
+  // coefficients or knot locations/values. Axis geometry coefficients and
+  // boundary geometry coefficients are zero-initialized.
+  VmecINDATA();
+
+  bool operator==(const VmecINDATA&) const = default;
+  bool operator!=(const VmecINDATA& o) const { return !(*this == o); }
+
+  // Set new values for indata's mpol and/or ntor.
+  // Related quantities such as raxis_c and rbc are zero-padded or truncated as
+  // needed.
+  void SetMpolNtor(int new_mpol, int new_ntor);
+
+  // Write object to the specified HDF5 file, under key "indata".
+  absl::Status WriteTo(H5::H5File& file) const;
+
+  // Load contents of `from_file` into the specified instance.
+  // The file is expected to have the same schema as the one produced by
+  // WriteTo.
+  static absl::Status LoadInto(VmecINDATA& m_obj, H5::H5File& from_file);
+
+  static VmecINDATA FromFile(
+      const std::filesystem::path& indata_json_file_path);
+  static absl::StatusOr<VmecINDATA> FromJson(const std::string& indata_json);
+
+  absl::StatusOr<std::string> ToJson() const;
+  std::string ToJsonOrException() const;
+
+  VmecINDATA Copy() const;
+};
+
+absl::Status IsConsistent(const VmecINDATA& vmec_indata,
+                          bool enable_info_messages);
+
+}  // namespace vmecpp
+
+#endif  // VMECPP_COMMON_VMEC_INDATA_VMEC_INDATA_H_

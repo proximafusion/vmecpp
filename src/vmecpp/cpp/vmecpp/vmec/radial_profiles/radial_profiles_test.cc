@@ -1,0 +1,853 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+//
+// Unit tests for the profile evaluators that were ported from educational_VMEC
+// (profile_functions.f, functions.f, spline_akima.f, spline_akima_int.f,
+// spline_cubic.f, spline_cubic_int.f). The checks are hand-derivable invariants
+// of the underlying math: spline node reproduction, polynomial exactness of the
+// splines, integrals of known profiles, the functions.f self-test value for
+// two_power_gs, and the analytic endpoints/limits of the closed-form profiles.
+#include "vmecpp/vmec/radial_profiles/radial_profiles.h"
+
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+
+#include "gtest/gtest.h"
+#include "vmecpp/common/flow_control/flow_control.h"
+#include "vmecpp/common/sizes/sizes.h"
+#include "vmecpp/common/vmec_indata/vmec_indata.h"
+#include "vmecpp/vmec/handover_storage/handover_storage.h"
+#include "vmecpp/vmec/radial_partitioning/radial_partitioning.h"
+
+namespace vmecpp {
+
+namespace {
+Eigen::VectorXd Vec(std::initializer_list<double> xs) {
+  Eigen::VectorXd v(static_cast<Eigen::Index>(xs.size()));
+  Eigen::Index i = 0;
+  for (double x : xs) v[i++] = x;
+  return v;
+}
+constexpr bool kIntegrate = true;
+constexpr bool kDirect = false;
+}  // namespace
+
+// The profile evaluators are pure functions of their arguments, but they are
+// (non-static) members, so the fixture stands up a minimal RadialProfiles to
+// call them through.
+class RadialProfilesTest : public ::testing::Test {
+ protected:
+  RadialProfilesTest()
+      : sizes_(indata_),
+        flow_control_(/*lfreeb=*/false, /*delt=*/0.9,
+                      /*num_grids=*/1),
+        handover_(&sizes_) {
+    partitioning_.adjustRadialPartitioning(/*num_threads=*/1, /*thread_id=*/0,
+                                           /*ns=*/15, /*lfreeb=*/false);
+    profiles_ = std::make_unique<RadialProfiles>(
+        &partitioning_, &handover_, &indata_, &flow_control_,
+        /*signOfJacobian=*/-1, /*pDamp=*/0.05);
+  }
+
+  VmecINDATA indata_;
+  Sizes sizes_;
+  FlowControl flow_control_;
+  HandoverStorage handover_;
+  RadialPartitioning partitioning_;
+  std::unique_ptr<RadialProfiles> profiles_;
+};
+
+// ---- splines: the interpolant must pass through the data exactly -----------
+TEST_F(RadialProfilesTest, SplineNodeReproduction) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  const Eigen::VectorXd values = Vec({0.3, 0.7, 0.55, 0.9, 0.1});
+  for (int i = 0; i < knots.size(); ++i) {
+    EXPECT_NEAR(profiles_->evalAkima(knots, values, knots[i]), values[i], 1e-12)
+        << "akima node " << i;
+    EXPECT_NEAR(profiles_->evalCubic(knots, values, knots[i]), values[i], 1e-12)
+        << "cubic node " << i;
+  }
+}
+
+// ---- splines reproduce a linear profile exactly ----------------------------
+TEST_F(RadialProfilesTest, SplineLinearExactness) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  auto lin = [](double s) { return 2.0 + 3.0 * s; };
+  const Eigen::VectorXd values =
+      Vec({lin(0.0), lin(0.2), lin(0.45), lin(0.7), lin(1.0)});
+  for (double x : {0.1, 0.33, 0.62, 0.88}) {
+    EXPECT_NEAR(profiles_->evalAkima(knots, values, x), lin(x), 1e-9);
+    EXPECT_NEAR(profiles_->evalCubic(knots, values, x), lin(x), 1e-9);
+  }
+}
+
+// ---- integral of a linear profile over [0,1] is a + b/2 --------------------
+TEST_F(RadialProfilesTest, SplineIntegralOfLinearProfile) {
+  const double a = 2.0;
+  const double b = 3.0;
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  const Eigen::VectorXd values =
+      Vec({a + b * 0.0, a + b * 0.2, a + b * 0.45, a + b * 0.7, a + b * 1.0});
+  const double expected = a + b / 2.0;  // 3.5
+  EXPECT_NEAR(profiles_->evalAkimaIntegrated(knots, values, 1.0), expected,
+              1e-9);
+  EXPECT_NEAR(profiles_->evalCubicIntegrated(knots, values, 1.0), expected,
+              1e-9);
+}
+
+// ---- the integrated spline equals the numerical integral of the eval -------
+TEST_F(RadialProfilesTest, IntegratedSplineMatchesNumericIntegral) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  const Eigen::VectorXd values = Vec({0.3, 0.7, 0.55, 0.9, 0.1});
+  const double upper = 0.62;
+  const int kSteps = 100000;
+  auto trapezoid = [&](auto eval) {
+    double acc = 0.0;
+    for (int i = 0; i < kSteps; ++i) {
+      const double xa = upper * i / kSteps;
+      const double xb = upper * (i + 1) / kSteps;
+      acc +=
+          0.5 * (eval(knots, values, xa) + eval(knots, values, xb)) * (xb - xa);
+    }
+    return acc;
+  };
+  EXPECT_NEAR(profiles_->evalAkimaIntegrated(knots, values, upper),
+              trapezoid([&](auto& k, auto& v, double x) {
+                return profiles_->evalAkima(k, v, x);
+              }),
+              1e-5);
+  EXPECT_NEAR(profiles_->evalCubicIntegrated(knots, values, upper),
+              trapezoid([&](auto& k, auto& v, double x) {
+                return profiles_->evalCubic(k, v, x);
+              }),
+              1e-5);
+}
+
+// ---- splines with too few points return 0 (and warn) ----------------------
+TEST_F(RadialProfilesTest, SplineTooFewPointsReturnsZero) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.5, 1.0});
+  const Eigen::VectorXd values = Vec({0.1, 0.2, 0.3});
+  EXPECT_EQ(profiles_->evalAkima(knots, values, 0.5), 0.0);
+  EXPECT_EQ(profiles_->evalCubic(knots, values, 0.5), 0.0);
+  EXPECT_EQ(profiles_->evalAkimaIntegrated(knots, values, 0.5), 0.0);
+  EXPECT_EQ(profiles_->evalCubicIntegrated(knots, values, 0.5), 0.0);
+}
+
+// ---- line_segment: interpolate on the knot interval that brackets x ---------
+// Inside [k_i, k_{i+1}] the value is the linear interpolation between those two
+// knots, the knots themselves are reproduced, and outside the knot range the
+// first and last segments continue.
+TEST_F(RadialProfilesTest, LineSegmentInterpolatesOnBracketingInterval) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.25, 0.5, 0.75, 1.0});
+  const Eigen::VectorXd values = Vec({1.0, 0.9, 0.6, 0.2, 0.0});
+  struct Pt {
+    double x;
+    double expected;
+  };
+  for (const Pt& p : {Pt{0.1, 0.96}, Pt{0.3, 0.84}, Pt{0.6, 0.44},
+                      Pt{0.8, 0.16}, Pt{0.95, 0.04}}) {
+    EXPECT_NEAR(profiles_->evalLineSegment(knots, values, p.x), p.expected,
+                1e-12)
+        << "line_segment x=" << p.x;
+  }
+  for (int i = 0; i < knots.size(); ++i) {
+    EXPECT_NEAR(profiles_->evalLineSegment(knots, values, knots[i]), values[i],
+                1e-12)
+        << "line_segment knot " << i;
+  }
+  // outside the knots the first and last segments continue
+  EXPECT_NEAR(profiles_->evalLineSegment(knots, values, -0.1), 1.04, 1e-12);
+  EXPECT_NEAR(profiles_->evalLineSegment(knots, values, 1.2), -0.16, 1e-12);
+}
+
+// ---- line_segment integral: the integral of that same interpolant ----------
+// evalLineSegmentIntegrated returns the integral from 0 to x of the profile
+// evalLineSegment evaluates, so it carries the piece below the first knot and
+// the continued end segments and agrees with a fine quadrature of that profile.
+TEST_F(RadialProfilesTest, LineSegmentIntegralFollowsTheInterpolant) {
+  // knots reaching neither end of [0, 1], so both continued segments and the
+  // piece below the first knot enter the integral
+  const Eigen::VectorXd knots = Vec({0.2, 0.35, 0.6, 0.8});
+  const Eigen::VectorXd values = Vec({1.0, 0.7, 0.5, 0.2});
+
+  // the first segment continues to y(0) = 1.4, so the integral up to the first
+  // knot is 1.4 * 0.2 - 0.2^2
+  EXPECT_NEAR(profiles_->evalLineSegmentIntegrated(knots, values, 0.2), 0.24,
+              1e-12);
+
+  const auto quadrature = [&](double x) {
+    const int num_panels = 200000;
+    double sum = 0.0;
+    for (int i = 0; i < num_panels; ++i) {
+      const double xa = x * i / num_panels;
+      const double xb = x * (i + 1) / num_panels;
+      sum += 0.5 * (xb - xa) *
+             (profiles_->evalLineSegment(knots, values, xa) +
+              profiles_->evalLineSegment(knots, values, xb));
+    }
+    return sum;
+  };
+
+  for (const double x : {0.05, 0.2, 0.3, 0.35, 0.5, 0.6, 0.7, 0.8, 1.0, 1.3}) {
+    EXPECT_NEAR(profiles_->evalLineSegmentIntegrated(knots, values, x),
+                quadrature(x), 1e-9)
+        << "line_segment integral x=" << x;
+  }
+}
+
+// ---- corrected Akima right edge: the interpolant is reflection-symmetric ---
+// educational_VMEC's spline_akima.f reuses the left-edge curvature on the right
+// edge, so its interpolant depends on the orientation of the data. The
+// corrected right-edge curvature restores reflection symmetry: interpolating
+// the mirror image of the data at mirrored query points reproduces the original
+// interpolant, including in the right-edge region the fix touches. This holds
+// only with the corrected edge; the reused-cl behavior breaks it.
+TEST_F(RadialProfilesTest, AkimaIsReflectionSymmetric) {
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  const Eigen::VectorXd values = Vec({0.3, 0.7, 0.55, 0.9, 0.1});
+  // mirror about the knot span [0, 1]: reverse the nodes and map x -> 1 - x.
+  const int n = static_cast<int>(knots.size());
+  Eigen::VectorXd mirrored_knots(n);
+  Eigen::VectorXd mirrored_values(n);
+  for (int i = 0; i < n; ++i) {
+    mirrored_knots[i] = 1.0 - knots[n - 1 - i];
+    mirrored_values[i] = values[n - 1 - i];
+  }
+  for (double x : {0.05, 0.18, 0.5, 0.83, 0.96}) {
+    EXPECT_NEAR(profiles_->evalAkima(knots, values, x),
+                profiles_->evalAkima(mirrored_knots, mirrored_values, 1.0 - x),
+                1e-12)
+        << "akima reflection mismatch at x=" << x;
+  }
+}
+
+// ---- gauss_trunc -----------------------------------------------------------
+TEST_F(RadialProfilesTest, GaussTruncPressureNormalizedToAxis) {
+  // pressure form is normalized so that p(0) = am(0).
+  const Eigen::VectorXd c = Vec({0.5, 0.3});
+  EXPECT_NEAR(profiles_->evalGaussTrunc(c, 0.0, kDirect), 0.5, 1e-9);
+}
+
+TEST_F(RadialProfilesTest, GaussTruncCurrentIsIntegralOfIprime) {
+  const Eigen::VectorXd c = Vec({0.7, 0.4});
+  const double a0 = c[0];
+  const double a1 = c[1];
+  const double edge = std::exp(-std::pow(1.0 / a1, 2));
+  auto iprime = [&](double s) {
+    return a0 * (std::exp(-std::pow(s / a1, 2)) - edge);
+  };
+  const double upper = 0.7;
+  const int kSteps = 100000;
+  double expected = 0.0;
+  for (int i = 0; i < kSteps; ++i) {
+    expected +=
+        0.5 * (iprime(upper * i / kSteps) + iprime(upper * (i + 1) / kSteps)) *
+        (upper / kSteps);
+  }
+  EXPECT_NEAR(profiles_->evalGaussTrunc(c, upper, kIntegrate), expected, 1e-6);
+}
+
+// ---- two_power_gs ----------------------------------------------------------
+TEST_F(RadialProfilesTest, TwoPowerGsFunctionsDotFSelfTest) {
+  // functions.f: two_power_gs(0.8, {1,1,0,1,0.8,0.1}) == 2.
+  const Eigen::VectorXd c = Vec({1.0, 1.0, 0.0, 1.0, 0.8, 0.1});
+  EXPECT_NEAR(profiles_->evalTwoPowerGs(c, 0.8, kDirect), 2.0, 1e-12);
+}
+
+TEST_F(RadialProfilesTest, TwoPowerGsReducesToTwoPower) {
+  // With no Gaussian terms, two_power_gs == two_power = c0*(1-x^c1)^c2.
+  const Eigen::VectorXd c = Vec({2.0, 3.0, 1.5});
+  const double x = 0.5;
+  const double expected = 2.0 * std::pow(1.0 - std::pow(x, 3.0), 1.5);
+  EXPECT_NEAR(profiles_->evalTwoPowerGs(c, x, kDirect), expected, 1e-12);
+}
+
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a profile evaluates the same whether its trailing zero
+// exponent is written out or left off: 0.7 * (1 - x^2)^0 = 0.7.
+TEST_F(RadialProfilesTest, TwoPowerReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.7, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.7, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    EXPECT_NEAR(profiles_->evalTwoPower(written, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPower(shortened, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(shortened, x, kDirect), 0.7, 1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPower(shortened, x, kIntegrate), 0.7 * x,
+                1e-15);
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(shortened, x, kIntegrate), 0.7 * x,
+                1e-15);
+  }
+}
+
+// ---- nice_quadratic --------------------------------------------------------
+TEST_F(RadialProfilesTest, NiceQuadratic) {
+  const Eigen::VectorXd c = Vec({0.5, 1.5, 0.2});
+  EXPECT_NEAR(profiles_->evalNiceQuadratic(c, 0.0), 0.5, 1e-12);  // a0
+  EXPECT_NEAR(profiles_->evalNiceQuadratic(c, 1.0), 1.5, 1e-12);  // a1
+  // a0*0.5 + a1*0.5 + 4*a2*0.25 = 0.25 + 0.75 + 0.2 = 1.2
+  EXPECT_NEAR(profiles_->evalNiceQuadratic(c, 0.5), 1.2, 1e-12);
+}
+
+// ---- sum_atan --------------------------------------------------------------
+// Each arctangent term carries the factor 2/pi, so with a positive coefficient
+// and a positive exponent of (1 - s) it rises from 0 at s = 0 to its amplitude
+// at s = 1.
+TEST_F(RadialProfilesTest, SumAtanTermsScaledByTwoOverPi) {
+  // iota(s) = a0 + (2/pi) * a1 * atan(a2 * s^a3 / (1 - s)^a4)
+  const Eigen::VectorXd c = Vec({0.3, 0.8, 1.0, 1.0, 1.0});
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 0.0), 0.3, 1e-12);
+  // atan(1) = pi/4: the term is at half its amplitude at s = 1/2
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 0.5), 0.3 + 0.4, 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 0.25),
+              0.3 + 0.8 * 2.0 / M_PI * std::atan(0.25 / 0.75), 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0), 1.1, 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0 - 1e-9), 1.1, 1e-8);
+
+  // two terms with general exponents
+  const Eigen::VectorXd d = Vec({0.1, 0.5, 2.0, 1.5, 0.5, -0.2, 3.0, 2.0, 1.0});
+  const double x = 0.4;
+  const double expected =
+      0.1 + 2.0 / M_PI *
+                (0.5 * std::atan(2.0 * std::pow(x, 1.5) / std::pow(0.6, 0.5)) -
+                 0.2 * std::atan(3.0 * std::pow(x, 2.0) / std::pow(0.6, 1.0)));
+  EXPECT_NEAR(profiles_->evalSumAtan(d, x), expected, 1e-12);
+  EXPECT_NEAR(profiles_->evalSumAtan(d, 1.0), 0.1 + 0.5 - 0.2, 1e-12);
+}
+
+// At s = 1 each term (2/pi) * atan(b * s^p / (1 - s)^q) takes its limit from
+// below, sign(b) for q > 0, (2/pi) * atan(b) for q = 0 and zero for q < 0, so
+// the profile is continuous there. VMEC 8.52 returns c0 plus the amplitudes.
+TEST_F(RadialProfilesTest, SumAtanTakesTheLimitOfEachTermAtTheEdge) {
+  struct EdgeCase {
+    double b;
+    double q;
+    double limit;
+  };
+  for (const EdgeCase& edge_case :
+       {EdgeCase{-2.0, 1.0, -1.0},
+        EdgeCase{2.0, 0.0, 2.0 / M_PI * std::atan(2.0)},
+        EdgeCase{2.0, -1.0, 0.0}, EdgeCase{0.0, 1.0, 0.0}}) {
+    const Eigen::VectorXd c = Vec({0.3, 0.8, edge_case.b, 2.0, edge_case.q});
+    const double edge = 0.3 + 0.8 * edge_case.limit;
+    EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0), edge, 1e-14);
+    EXPECT_NEAR(profiles_->evalSumAtan(c, 1.0 - 1e-9), edge, 1e-8);
+  }
+}
+
+// Coefficients past the end of the array read as zero, as in the (0:20) arrays
+// of Fortran VMEC, so a term evaluates the same whether its trailing zero
+// exponent is written out or left off.
+TEST_F(RadialProfilesTest, SumAtanReadsMissingCoefficientsAsZero) {
+  const Eigen::VectorXd written = Vec({0.3, 0.8, 2.0, 2.0, 0.0});
+  const Eigen::VectorXd shortened = Vec({0.3, 0.8, 2.0, 2.0});
+  for (const double x : {0.0, 0.25, 0.5, 0.9}) {
+    const double expected = 0.3 + 0.8 * 2.0 / M_PI * std::atan(2.0 * x * x);
+    EXPECT_NEAR(profiles_->evalSumAtan(written, x), expected, 1e-14);
+    EXPECT_NEAR(profiles_->evalSumAtan(shortened, x), expected, 1e-14);
+  }
+}
+
+// ---- sum_cossq -------------------------------------------------------------
+
+namespace {
+// Composite Simpson rule for the integral of f from 0 to x.
+double Integrate(const std::function<double(double)>& f, double x) {
+  constexpr int kPanels = 4000;
+  if (x <= 0.0) {
+    return 0.0;
+  }
+  const double h = x / kPanels;
+  double sum = f(0.0) + f(x);
+  for (int i = 1; i < kPanels; ++i) {
+    sum += (i % 2 == 1 ? 4.0 : 2.0) * f(i * h);
+  }
+  return sum * h / 3.0;
+}
+
+// Current density of sum_cossq_s: c[i] cos^2 humps of half-width
+// delta = 1 / (c[0] - 1) centred on (i - 1) delta, cut at 0 and 1. The humps
+// vanish at their edges, so closed intervals do not double count.
+double SumCossqDensity(const Eigen::VectorXd& c, double t) {
+  const int n = static_cast<int>(c[0]);
+  const double delta = 1.0 / (n - 1);
+  double density = 0.0;
+  for (int i = 1; i <= n; ++i) {
+    const double center = (i - 1) * delta;
+    if (t >= std::max(0.0, center - delta) &&
+        t <= std::min(center + delta, 1.0)) {
+      density +=
+          c[i] * std::pow(std::cos(M_PI * (t - center) / (2.0 * delta)), 2);
+    }
+  }
+  return density;
+}
+
+// Current density of sum_cossq_s_free: humps with amplitude c[3 i], centre
+// c[3 i + 1] and half-width c[3 i + 2], cut at 0 and 1.
+double SumCossqFreeDensity(const Eigen::VectorXd& c, double t) {
+  double density = 0.0;
+  for (int i = 0; 3 * i + 2 < c.size(); ++i) {
+    const double center = c[3 * i + 1];
+    const double half_width = c[3 * i + 2];
+    if (c[3 * i] != 0.0 && t >= std::max(0.0, center - half_width) &&
+        t <= std::min(center + half_width, 1.0)) {
+      density +=
+          c[3 * i] *
+          std::pow(std::cos(M_PI * (t - center) / (2.0 * half_width)), 2);
+    }
+  }
+  return density;
+}
+}  // namespace
+
+// The enclosed current of sum_cossq_s is the integral of its humps; the end
+// humps are cut in half by s = 0 and s = 1.
+TEST_F(RadialProfilesTest, SumCossqSIntegratesItsHumps) {
+  // five humps of half-width 1/4
+  const Eigen::VectorXd c = Vec({5.0, 1.0, 0.5, -0.3, 0.8, 0.2});
+  EXPECT_EQ(profiles_->evalSumCossqS(c, 0.0), 0.0);
+  for (double x : {0.1, 0.25, 0.3, 0.5, 0.62, 0.75, 0.9, 1.0}) {
+    EXPECT_NEAR(profiles_->evalSumCossqS(c, x),
+                Integrate([&c](double t) { return SumCossqDensity(c, t); }, x),
+                1e-9)
+        << "x = " << x;
+  }
+  // an interior hump encloses its amplitude times the half-width
+  EXPECT_NEAR(profiles_->evalSumCossqS(c, 1.0),
+              0.25 * (0.5 * 1.0 + 0.5 - 0.3 + 0.8 + 0.5 * 0.2), 1e-12);
+}
+
+// sum_cossq_sqrts places the humps in rho = sqrt(s) and integrates them with
+// the weight rho up to sqrt(s).
+TEST_F(RadialProfilesTest, SumCossqSqrtsIntegratesItsHumpsInRho) {
+  const Eigen::VectorXd c = Vec({5.0, 1.0, 0.5, -0.3, 0.8, 0.2});
+  EXPECT_EQ(profiles_->evalSumCossqSqrts(c, 0.0), 0.0);
+  for (double s : {0.01, 0.0625, 0.2, 0.25, 0.5, 0.64, 0.8, 1.0}) {
+    EXPECT_NEAR(
+        profiles_->evalSumCossqSqrts(c, s),
+        Integrate([&c](double rho) { return SumCossqDensity(c, rho) * rho; },
+                  std::sqrt(s)),
+        1e-9)
+        << "s = " << s;
+  }
+}
+
+// sum_cossq_s_free integrates humps of individual centre and half-width, cut
+// at s = 0 and s = 1, and skips entries with zero amplitude.
+TEST_F(RadialProfilesTest, SumCossqSFreeIntegratesItsHumps) {
+  const Eigen::VectorXd c =
+      Vec({1.0, 0.3, 0.2, -0.5, 0.7, 0.4, 0.8, 0.95, 0.15, 0.0, 0.5, 0.0});
+  EXPECT_EQ(profiles_->evalSumCossqSFree(c, 0.0), 0.0);
+  for (double x : {0.05, 0.1, 0.3, 0.5, 0.8, 0.9, 1.0}) {
+    EXPECT_NEAR(
+        profiles_->evalSumCossqSFree(c, x),
+        Integrate([&c](double t) { return SumCossqFreeDensity(c, t); }, x),
+        1e-9)
+        << "x = " << x;
+  }
+  // a hump inside (0, 1) encloses its amplitude times the half-width
+  const Eigen::VectorXd d = Vec({2.0, 0.5, 0.25});
+  EXPECT_NEAR(profiles_->evalSumCossqSFree(d, 1.0), 0.5, 1e-12);
+}
+
+// ---- rational --------------------------------------------------------------
+TEST_F(RadialProfilesTest, Rational) {
+  // numerator = 1 + 2x (c0,c1), denominator = 3 (c10) -> (1 + 2x)/3.
+  Eigen::VectorXd c = Eigen::VectorXd::Zero(12);
+  c[0] = 1.0;
+  c[1] = 2.0;
+  c[10] = 3.0;
+  EXPECT_NEAR(profiles_->evalRational(c, 0.5), (1.0 + 2.0 * 0.5) / 3.0, 1e-12);
+  EXPECT_NEAR(profiles_->evalRational(c, 0.0), 1.0 / 3.0, 1e-12);
+}
+
+// ---- numerical agreement with compiled educational_VMEC Fortran ------------
+// The golden values below are produced by fref/fref_driver.f90, which links the
+// real educational_VMEC routines (spline_akima.f, spline_akima_int.f,
+// spline_cubic.f, spline_cubic_int.f, functions.f, profile_functions.f) and
+// prints their output at exactly the inputs used here. See that driver (plus
+// fref/stubs.f90, the minimal module shim) to regenerate. The pure-arithmetic
+// splines agree to ~1e-13; the closed-form profiles use exp/pow/tanh whose last
+// ulp differs between the Windows libm (golden) and the Linux libm (this test),
+// so the tolerance is held at 1e-11, still many orders of magnitude tighter
+// than any indexing or formula error would produce.
+//
+// The Akima spline reproduces educational_VMEC once spline_akima.f and
+// spline_akima_int.f carry the same right-edge curvature fix (the upper phantom
+// points use the right-edge curvature cr rather than the left-edge cl).
+// AkimaIsReflectionSymmetric additionally checks the orientation independence
+// that fix restores.
+TEST_F(RadialProfilesTest, MatchesFortranReference) {
+  constexpr double kTol = 1e-11;
+  struct Pt {
+    double x;
+    double golden;
+  };
+
+  // splines through non-uniform, non-monotonic data
+  const Eigen::VectorXd knots = Vec({0.0, 0.2, 0.45, 0.7, 1.0});
+  const Eigen::VectorXd values = Vec({0.3, 0.7, 0.55, 0.9, 0.1});
+
+  for (const Pt& p :
+       {Pt{0.10, 5.71628096527232010e-01}, Pt{0.33, 6.14644817745175098e-01},
+        Pt{0.50, 5.98234681104998223e-01}, Pt{0.62, 8.11570261229004775e-01},
+        Pt{0.88, 6.01700812156143461e-01}}) {
+    EXPECT_NEAR(profiles_->evalCubic(knots, values, p.x), p.golden, kTol)
+        << "cubic x=" << p.x;
+  }
+  for (const Pt& p :
+       {Pt{0.33, 1.96931323531569308e-01}, Pt{0.62, 3.77727303980826490e-01},
+        Pt{1.00, 6.35921583752995900e-01}}) {
+    EXPECT_NEAR(profiles_->evalCubicIntegrated(knots, values, p.x), p.golden,
+                kTol)
+        << "cubic_int x=" << p.x;
+  }
+
+  // akima (corrected right-edge curvature, matching the fixed spline_akima.f)
+  for (const Pt& p :
+       {Pt{0.10, 5.69239130434782581e-01}, Pt{0.33, 6.30549342608695662e-01},
+        Pt{0.50, 5.91685274725274768e-01}, Pt{0.62, 8.16355910329670365e-01},
+        Pt{0.88, 5.86349010989010822e-01}}) {
+    EXPECT_NEAR(profiles_->evalAkima(knots, values, p.x), p.golden, kTol)
+        << "akima x=" << p.x;
+  }
+  for (const Pt& p :
+       {Pt{0.33, 1.97988894504347812e-01}, Pt{0.62, 3.79619151186622039e-01},
+        Pt{1.00, 6.34880554228380301e-01}}) {
+    EXPECT_NEAR(profiles_->evalAkimaIntegrated(knots, values, p.x), p.golden,
+                kTol)
+        << "akima_int x=" << p.x;
+  }
+
+  // gauss_trunc, ac/am = {0.7, 0.4}
+  const Eigen::VectorXd gauss = Vec({0.7, 0.4});
+  for (const Pt& p :
+       {Pt{0.30, 1.76063280436117658e-01}, Pt{0.60, 2.38921959477756629e-01},
+        Pt{0.90, 2.46564389349754637e-01}}) {
+    EXPECT_NEAR(profiles_->evalGaussTrunc(gauss, p.x, kIntegrate), p.golden,
+                kTol)
+        << "gauss_trunc current x=" << p.x;
+  }
+  for (const Pt& p :
+       {Pt{0.00, 6.99999999999999956e-01}, Pt{0.30, 3.98265492683955280e-01},
+        Pt{0.60, 7.25682289356532340e-02}, Pt{0.90, 3.08543920275165763e-03}}) {
+    EXPECT_NEAR(profiles_->evalGaussTrunc(gauss, p.x, kDirect), p.golden, kTol)
+        << "gauss_trunc pressure x=" << p.x;
+  }
+
+  // two_power_gs with two active Gaussian groups
+  const Eigen::VectorXd tpg =
+      Vec({1.2, 2.0, 1.5, 0.5, 0.3, 0.2, 0.4, 0.7, 0.15});
+  for (const Pt& p :
+       {Pt{0.20, 1.56825752881167446e+00}, Pt{0.50, 9.75482824018030881e-01},
+        Pt{0.85, 2.01277370289491664e-01}}) {
+    EXPECT_NEAR(profiles_->evalTwoPowerGs(tpg, p.x, kDirect), p.golden, kTol)
+        << "two_power_gs x=" << p.x;
+  }
+
+  // pedestal current: backbone {0.4, 0.2} plus three active tanh terms
+  Eigen::VectorXd pedCur = Eigen::VectorXd::Zero(21);
+  pedCur[0] = 0.4;
+  pedCur[1] = 0.2;
+  pedCur[8] = 0.3;
+  pedCur[10] = 0.5;
+  pedCur[11] = 0.1;
+  pedCur[13] = 0.15;
+  pedCur[15] = 0.6;
+  pedCur[16] = 0.05;
+  pedCur[17] = 0.1;
+  pedCur[19] = 0.7;
+  pedCur[20] = 0.08;
+  for (const Pt& p :
+       {Pt{0.30, 3.90279651281347062e-01}, Pt{0.55, 5.90587303540200281e-01},
+        Pt{0.80, 1.16872771235070450e+00}}) {
+    EXPECT_NEAR(profiles_->evalPedestal(pedCur, p.x, kIntegrate), p.golden,
+                kTol)
+        << "pedestal current x=" << p.x;
+  }
+
+  // pedestal pressure: backbone {0.1, -0.05, 0.02} plus one active tanh term
+  Eigen::VectorXd pedPrs = Eigen::VectorXd::Zero(21);
+  pedPrs[0] = 0.1;
+  pedPrs[1] = -0.05;
+  pedPrs[2] = 0.02;
+  pedPrs[17] = 0.08;
+  pedPrs[18] = 0.5;
+  pedPrs[19] = 0.1;
+  for (const Pt& p :
+       {Pt{0.30, 9.71283377363868078e-02}, Pt{0.50, 8.00201912648781377e-02},
+        Pt{0.70, 7.48001132593014983e-02}}) {
+    EXPECT_NEAR(profiles_->evalPedestal(pedPrs, p.x, kDirect), p.golden, kTol)
+        << "pedestal pressure x=" << p.x;
+  }
+
+  // rational: numerator 1 + 0.5x + 0.3x^2 over denominator 2 + 0.4x
+  Eigen::VectorXd rat = Eigen::VectorXd::Zero(12);
+  rat[0] = 1.0;
+  rat[1] = 0.5;
+  rat[2] = 0.3;
+  rat[10] = 2.0;
+  rat[11] = 0.4;
+  for (const Pt& p :
+       {Pt{0.00, 5.00000000000000000e-01}, Pt{0.40, 5.77777777777777724e-01},
+        Pt{0.90, 7.17372881355932246e-01}}) {
+    EXPECT_NEAR(profiles_->evalRational(rat, p.x), p.golden, kTol)
+        << "rational x=" << p.x;
+  }
+
+  // nice_quadratic, ai = {0.5, 1.5, 0.2}
+  const Eigen::VectorXd nq = Vec({0.5, 1.5, 0.2});
+  for (const Pt& p :
+       {Pt{0.20, 8.28000000000000069e-01}, Pt{0.50, 1.19999999999999996e+00},
+        Pt{0.80, 1.42800000000000038e+00}}) {
+    EXPECT_NEAR(profiles_->evalNiceQuadratic(nq, p.x), p.golden, kTol)
+        << "nice_quadratic x=" << p.x;
+  }
+}
+
+// ---- pedestal: polynomial backbone with the tanh terms disabled ------------
+TEST_F(RadialProfilesTest, PedestalPressureBackbone) {
+  // am(0..15) polynomial; am(19) <= 0 disables the tanh pedestal term.
+  Eigen::VectorXd c = Eigen::VectorXd::Zero(21);
+  c[0] = 0.1;
+  c[1] = -0.05;
+  c[2] = 0.02;
+  c[19] = -1.0;
+  auto poly = [](double x) { return 0.1 - 0.05 * x + 0.02 * x * x; };
+  EXPECT_NEAR(profiles_->evalPedestal(c, 0.6, kDirect), poly(0.6), 1e-12);
+}
+
+TEST_F(RadialProfilesTest, PedestalCurrentBackbone) {
+  // ac(0..7) integrated polynomial; ac(11) <= 0 and ac(13)=ac(17)=0 leave only
+  // the enclosed-current backbone I(s) = 0.4 s + 0.1 s^2 from I'(s) = 0.4 + 0.2
+  // s.
+  Eigen::VectorXd c = Eigen::VectorXd::Zero(21);
+  c[0] = 0.4;
+  c[1] = 0.2;
+  c[11] = -1.0;
+  auto enclosed = [](double x) { return 0.4 * x + 0.1 * x * x; };
+  EXPECT_NEAR(profiles_->evalPedestal(c, 0.6, kIntegrate), enclosed(0.6),
+              1e-12);
+}
+
+// ---- profiles reach the evaluators through the production dispatch ---------
+// MatchesFortranReference and the other cases call the evaluators directly. The
+// two tests below instead drive the wiring the solver uses: a VmecINDATA
+// profile-type string resolves through findParameterization, and
+// evalMass/Iota/CurrProfile forward the coefficient and spline-aux arrays into
+// evalProfileFunction, which dispatches to the matching evaluator. No leaf test
+// can see this seam, because the leaves are handed their knots and coefficients
+// directly. The spline case in particular confirms that am_aux_s / am_aux_f are
+// passed whole as the spline knots and values (VMEC++ stores them trimmed to
+// the provided knot count, unlike the 101-padded Fortran arrays) and that the
+// current profile takes the integrated-spline branch.
+TEST_F(RadialProfilesTest, SplineProfilesRouteThroughDispatch) {
+  indata_.bloat = 1.0;
+  indata_.pres_scale = 1.0;
+  indata_.pmass_type = "cubic_spline";
+  indata_.am_aux_s = Vec({0.0, 0.25, 0.5, 0.75, 1.0});
+  indata_.am_aux_f = Vec({1.2, 1.0, 0.7, 0.35, 0.05});
+  indata_.piota_type = "cubic_spline";
+  indata_.ai_aux_s = Vec({0.0, 0.25, 0.5, 0.75, 1.0});
+  indata_.ai_aux_f = Vec({0.9, 0.85, 0.7, 0.5, 0.3});
+  indata_.pcurr_type = "akima_spline_ip";
+  indata_.ac_aux_s = Vec({0.0, 0.25, 0.5, 0.75, 1.0});
+  indata_.ac_aux_f = Vec({0.0, 0.3, 0.5, 0.4, 0.1});
+  profiles_->setupInputProfiles();
+
+  for (double x : {0.08, 0.3, 0.55, 0.82, 0.97}) {
+    const double normX = std::min(std::abs(x * indata_.bloat), 1.0);
+    EXPECT_NEAR(
+        profiles_->evalMassProfile(x),
+        profiles_->pressureScalingFactor *
+            profiles_->evalCubic(indata_.am_aux_s, indata_.am_aux_f, normX),
+        1e-12)
+        << "cubic_spline pressure x=" << x;
+    EXPECT_NEAR(profiles_->evalIotaProfile(x),
+                profiles_->evalCubic(indata_.ai_aux_s, indata_.ai_aux_f, x),
+                1e-12)
+        << "cubic_spline iota x=" << x;
+    EXPECT_NEAR(profiles_->evalCurrProfile(x),
+                profiles_->evalAkimaIntegrated(indata_.ac_aux_s,
+                                               indata_.ac_aux_f, normX),
+                1e-12)
+        << "akima_spline_ip current x=" << x;
+  }
+}
+
+TEST_F(RadialProfilesTest, AnalyticProfilesRouteThroughDispatch) {
+  indata_.bloat = 1.0;
+  indata_.pres_scale = 1.0;
+  indata_.pmass_type = "gauss_trunc";
+  indata_.am = Vec({0.7, 0.4});
+  indata_.piota_type = "nice_quadratic";
+  indata_.ai = Vec({0.5, 1.5, 0.2});
+  indata_.pcurr_type = "gauss_trunc";
+  indata_.ac = Vec({0.7, 0.4});
+  profiles_->setupInputProfiles();
+
+  for (double x : {0.1, 0.4, 0.7, 0.95}) {
+    const double normX = std::min(std::abs(x * indata_.bloat), 1.0);
+    EXPECT_NEAR(profiles_->evalMassProfile(x),
+                profiles_->pressureScalingFactor *
+                    profiles_->evalGaussTrunc(indata_.am, normX, kDirect),
+                1e-12)
+        << "gauss_trunc pressure x=" << x;
+    EXPECT_NEAR(profiles_->evalIotaProfile(x),
+                profiles_->evalNiceQuadratic(indata_.ai, x), 1e-12)
+        << "nice_quadratic iota x=" << x;
+    EXPECT_NEAR(profiles_->evalCurrProfile(x),
+                profiles_->evalGaussTrunc(indata_.ac, normX, kIntegrate), 1e-12)
+        << "gauss_trunc current x=" << x;
+  }
+}
+
+// ---- aphi: the radial coordinate reparameterization ------------------------
+//
+// aphi maps the radial coordinate onto enclosed toroidal flux. Every case in
+// the test suite leaves it at its default of {1}, where torflux is the identity
+// and torfluxDeriv is one, so none of the arithmetic below is otherwise
+// exercised.
+
+namespace {
+
+// phi(x) = x * sum_i aphi[i] x^i, the exact integral of TorfluxDerivClosedForm.
+double TorfluxClosedForm(const Eigen::VectorXd& aphi, double x) {
+  double sum = 0.0;
+  for (Eigen::Index i = 0; i < aphi.size(); ++i) {
+    sum += aphi[i] * std::pow(x, static_cast<double>(i));
+  }
+  return x * sum;
+}
+
+// d(phi)/dx = sum_i (i + 1) aphi[i] x^i
+double TorfluxDerivClosedForm(const Eigen::VectorXd& aphi, double x) {
+  double sum = 0.0;
+  for (Eigen::Index i = 0; i < aphi.size(); ++i) {
+    sum += (i + 1) * aphi[i] * std::pow(x, static_cast<double>(i));
+  }
+  return sum;
+}
+
+}  // namespace
+
+TEST_F(RadialProfilesTest, TorfluxMatchesTheClosedFormPolynomial) {
+  for (const Eigen::VectorXd& aphi :
+       {Vec({1.0}), Vec({1.0, 0.5}), Vec({1.0, 0.0, 0.5}),
+        Vec({0.5, 1.0, -0.3, 0.2})}) {
+    indata_.aphi = aphi;
+    for (double x : {0.0, 0.13, 0.5, 0.77, 1.0}) {
+      EXPECT_NEAR(profiles_->torflux(x), TorfluxClosedForm(aphi, x), 1e-14)
+          << "torflux at x=" << x << " for aphi of size " << aphi.size();
+      EXPECT_NEAR(profiles_->torfluxDeriv(x), TorfluxDerivClosedForm(aphi, x),
+                  1e-14)
+          << "torfluxDeriv at x=" << x << " for aphi of size " << aphi.size();
+    }
+  }
+}
+
+// The default leaves the radial coordinate equal to the normalized toroidal
+// flux, which is what the rest of the suite relies on.
+TEST_F(RadialProfilesTest, DefaultAphiLeavesTorfluxAsTheIdentity) {
+  indata_.aphi = Vec({1.0});
+  for (double x : {0.0, 0.25, 0.6, 1.0}) {
+    EXPECT_NEAR(profiles_->torflux(x), x, 1e-15);
+    EXPECT_NEAR(profiles_->torfluxDeriv(x), 1.0, 1e-15);
+  }
+}
+
+// maxToroidalFlux scales torfluxDeriv into phipf, so the enclosed flux at the
+// edge is maxToroidalFlux times the integral of torfluxDeriv over [0, 1].
+// Dividing by torflux(1), which is that integral in closed form, makes it come
+// out at exactly signOfJacobian * phiedge / 2 pi whatever aphi is.
+TEST_F(RadialProfilesTest, MaxToroidalFluxNormalizesTheEdgeFluxToPhiedge) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  indata_.phiedge = 2.7;
+
+  for (const Eigen::VectorXd& aphi :
+       {Vec({1.0}), Vec({1.0, 0.0, 0.5}), Vec({0.5, 1.0, -0.3, 0.2})}) {
+    indata_.aphi = aphi;
+    profiles_->setupInputProfiles();
+
+    const double enclosed_flux_at_edge =
+        profiles_->maxToroidalFlux * TorfluxClosedForm(aphi, 1.0);
+    EXPECT_NEAR(enclosed_flux_at_edge, -indata_.phiedge / (2.0 * M_PI), 1e-14)
+        << "aphi of size " << aphi.size();
+  }
+}
+
+// polfluxDeriv evaluates iota at the enclosed toroidal flux, not at the radial
+// position, and clamps that argument at 1. With aphi = {0, 1} the two differ:
+// torflux(x) = x^2 and torfluxDeriv(x) = 2x.
+TEST_F(RadialProfilesTest, PolfluxDerivEvaluatesIotaAtTheToroidalFlux) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  // iota(t) = t, so a wrong argument shows up directly in the result.
+  indata_.ai = Vec({0.0, 1.0});
+  indata_.aphi = Vec({0.0, 1.0});
+  profiles_->setupInputProfiles();
+
+  for (double x : {0.2, 0.5, 0.9}) {
+    // iota(x^2) * 2x
+    EXPECT_NEAR(profiles_->polfluxDeriv(x), x * x * 2.0 * x, 1e-14)
+        << "polfluxDeriv at x=" << x;
+    // Evaluating iota at x instead would give this, which must not happen.
+    EXPECT_GT(std::abs(profiles_->polfluxDeriv(x) - x * 2.0 * x), 1e-3)
+        << "polfluxDeriv at x=" << x;
+  }
+
+  // At the edge the toroidal flux is 1 as well, so the two arguments coincide
+  // there and only the value can be checked.
+  EXPECT_NEAR(profiles_->polfluxDeriv(1.0), 2.0, 1e-14);
+
+  // Past x = 1 the toroidal flux exceeds 1 and the iota argument is clamped.
+  EXPECT_NEAR(profiles_->polfluxDeriv(1.2), 1.0 * 2.0 * 1.2, 1e-14);
+}
+
+// polflux integrates polfluxDeriv. For a constant iota profile the integrand is
+// iota * torfluxDeriv, so the result is iota * torflux; with aphi of at most
+// two coefficients torfluxDeriv is linear and the trapezoid is exact, which
+// pins the quadrature against a closed form.
+TEST_F(RadialProfilesTest, PolfluxIsIotaTimesTorfluxForConstantIota) {
+  indata_.pmass_type = "power_series";
+  indata_.piota_type = "power_series";
+  indata_.pcurr_type = "power_series";
+  static constexpr double kIota = 0.42;
+  indata_.ai = Vec({kIota});
+
+  for (const Eigen::VectorXd& aphi : {Vec({1.0}), Vec({1.0, 0.5})}) {
+    indata_.aphi = aphi;
+    profiles_->setupInputProfiles();
+
+    for (double x : {0.3, 0.65, 1.0}) {
+      EXPECT_NEAR(profiles_->polflux(x), kIota * TorfluxClosedForm(aphi, x),
+                  1e-12)
+          << "polflux at x=" << x << " for aphi of size " << aphi.size();
+    }
+
+    // maxPoloidalFlux divides maxToroidalFlux by polflux(1), which for a
+    // constant iota profile is iota times the edge toroidal flux.
+    EXPECT_NEAR(
+        profiles_->maxPoloidalFlux,
+        profiles_->maxToroidalFlux / (kIota * TorfluxClosedForm(aphi, 1.0)),
+        1e-12)
+        << "maxPoloidalFlux for aphi of size " << aphi.size();
+  }
+}
+
+// presH is only assigned by IdealMhdModel::update; a model that has not run it
+// must not hand uninitialized memory to the exact adjoint.
+TEST_F(RadialProfilesTest, PressureIsZeroBeforeTheFirstUpdate) {
+  EXPECT_GT(profiles_->presH.size(), 0);
+  EXPECT_TRUE((profiles_->presH.array() == 0.0).all());
+}
+
+}  // namespace vmecpp

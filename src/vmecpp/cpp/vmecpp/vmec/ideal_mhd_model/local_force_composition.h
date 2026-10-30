@@ -1,0 +1,435 @@
+// SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH
+// <info@proximafusion.com>
+//
+// SPDX-License-Identifier: MIT
+#ifndef VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_
+#define VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_
+
+#include <algorithm>
+#include <cmath>
+
+#include "vmecpp/vmec/ideal_mhd_model/bco_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/bcontra_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/constraint_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/jacobian_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/lambda_force_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/metric_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/mhdforce_kernel.h"
+#include "vmecpp/vmec/ideal_mhd_model/pressure_kernel.h"
+
+namespace vmecpp {
+
+// Composition of the local force-density chain as a single allocation-free map
+// g: real-space geometry -> real-space force density. This is the nonlinear
+// core of VMEC's force; the spectral transforms around it are linear and
+// applied separately. Shared between the Enzyme autodiff validation and the
+// exact Hessian-vector product. Covers the MHD force and the hybrid lambda
+// force; when with_constraint is set it also computes the spectral-condensation
+// constraint force (effective force, Fourier bandpass, assembly into the R/Z
+// force) with its multiplier tcon recomputed from the geometry.
+//
+// Geometry layout (each block GeomStride doubles, index (jF-nsMinF1)*nZnT):
+//   r1_e r1_o z1_e z1_o ru_e ru_o zu_e zu_o rv_e rv_o zv_e zv_o lu_e lu_o lv_e
+//   lv_o
+// Force layout (each block ForceStride doubles): the 12 MHD densities then
+//   blmn_e blmn_o clmn_e clmn_o. Block 20 is the ncurr==1 chi' profile
+//   (index jH-nsMinH, the rest of the block unused), differentiated alongside
+//   the force densities so its state derivative comes out of the same Enzyme
+//   pass; ncurr==0 does not populate it (chi' is a fixed input profile).
+struct LocalForceComposition {
+  int nZnT;
+  int geom_stride;   // doubles per geometry block (>= (nsMaxF1-nsMinF1)*nZnT)
+  int force_stride;  // doubles per force block (>=
+                     // (nsMaxFIncludingLcfs-nsMinF)*nZnT)
+  int nsMinF, nsMinF1, nsMinH, nsMaxH;
+  int jMaxRZ;                    // MHD force surfaces: [nsMinF, jMaxRZ)
+  int nsMaxFIncludingLcfs;       // lambda force surfaces: [nsMinF,
+                                 // nsMaxFIncludingLcfs)
+  const double* sqrtSF;          // index jF-nsMinF1
+  const double* sqrtSH;          // index jH-nsMinH
+  const double* chipH;           // index jH-nsMinH (frozen for ncurr==0)
+  const double* presH;           // index jH-nsMinH
+  const double* radialBlending;  // index jF-nsMinF1
+  double deltaS;
+  double dSHalfDsInterp;
+  double lamscale;
+  bool lthreed;
+
+  // Constrained-current profile (ncurr==1): chi' is a function of geometry,
+  // recomputed each step, so it is differentiated in place. ncurr==0 uses the
+  // frozen chipH above.
+  int ncurr = 0;
+  int nThetaEff = 0;
+  const double* currH = nullptr;  // index jH-nsMinH
+  const double* wInt = nullptr;   // index kl % nThetaEff
+
+  // Spectral-condensation constraint force. Enabled only when with_constraint
+  // is set; then geometry blocks 16-19 hold rCon, zCon, ruFull, zuFull and
+  // force blocks 16-19 receive frcon_e/o, fzcon_e/o. The bandpass uses the
+  // Fourier basis arrays and the faccon profile. rCon0/zCon0 and the
+  // multiplier tcon are recomputed in place from the live geometry, so both
+  // are differentiated; tcon needs ns and the ns-dependent scale
+  // tcon_multiplier of constraintForceMultiplier.
+  bool with_constraint = false;
+  bool lasym = false;
+  int ns = 0;
+  int nsMaxF = 0;  // constraint RZ range upper bound
+  int nZeta = 0, nThetaEven = 0, nThetaReduced = 0, mpol = 0, ntor = 0,
+      nnyq2 = 0;
+  double tcon_multiplier = 0.0;
+  const double* rCon0 = nullptr;
+  const double* zCon0 = nullptr;
+  const double* faccon = nullptr;
+  const double* sinmui = nullptr;
+  const double* cosmui = nullptr;
+  const double* cosnv = nullptr;
+  const double* sinnv = nullptr;
+  const double* sinmu = nullptr;
+  const double* cosmu = nullptr;
+};
+
+// Number of force blocks ComputeLocalForceDensity writes: the 12 MHD/lambda
+// densities, 4 constraint densities, and the ncurr==1 chi' block.
+inline constexpr int kLocalForceBlocks = 21;
+
+// Doubles of work that ComputeLocalForceDensity slices for composition c: the
+// half-grid fields and per-point scratch, plus the constraint scratch when
+// with_constraint is set.
+inline int LocalForceWorkSize(const LocalForceComposition& c) {
+  const int nHalf = c.nsMaxH - c.nsMinH;
+  int n = 15 * nHalf * c.nZnT + 30 * c.nZnT;
+  if (c.with_constraint) {
+    const int nFull = c.nsMaxFIncludingLcfs - c.nsMinF;
+    n += 4 * nFull * c.nZnT + 4 * (c.ntor + 1) + c.nZnT + c.nThetaReduced +
+         nFull + 2 * nHalf;
+  }
+  return n;
+}
+
+// ComputeLocalForceDensity with the half-grid profiles passed explicitly
+// instead of read from c->presH, c->chipH and c->currH, so that a reverse pass
+// can mark them active.
+inline void ComputeLocalForceDensityWithProfiles(const double* geom,
+                                                 double* work, double* force,
+                                                 const LocalForceComposition* c,
+                                                 const double* presH,
+                                                 const double* chipH,
+                                                 const double* currH) {
+  const int nZnT = c->nZnT;
+  const int gS = c->geom_stride;
+  const int fS = c->force_stride;
+  const int nH = (c->nsMaxH - c->nsMinH) * nZnT;
+  const double* r1e = geom + 0 * gS;
+  const double* r1o = geom + 1 * gS;
+  const double* z1e = geom + 2 * gS;
+  const double* z1o = geom + 3 * gS;
+  const double* rue = geom + 4 * gS;
+  const double* ruo = geom + 5 * gS;
+  const double* zue = geom + 6 * gS;
+  const double* zuo = geom + 7 * gS;
+  const double* rve = geom + 8 * gS;
+  const double* rvo = geom + 9 * gS;
+  const double* zve = geom + 10 * gS;
+  const double* zvo = geom + 11 * gS;
+  const double* lue = geom + 12 * gS;
+  const double* luo = geom + 13 * gS;
+  const double* lve = geom + 14 * gS;
+  const double* lvo = geom + 15 * gS;
+
+  double* p = work;
+  double* r12 = p;
+  p += nH;
+  double* ru12 = p;
+  p += nH;
+  double* zu12 = p;
+  p += nH;
+  double* rs = p;
+  p += nH;
+  double* zs = p;
+  p += nH;
+  double* tau = p;
+  p += nH;
+  double* gsqrt = p;
+  p += nH;
+  double* guu = p;
+  p += nH;
+  double* guv = p;
+  p += nH;
+  double* gvv = p;
+  p += nH;
+  double* bsupu = p;
+  p += nH;
+  double* bsupv = p;
+  p += nH;
+  double* bsubu = p;
+  p += nH;
+  double* bsubv = p;
+  p += nH;
+  double* tp = p;
+  p += nH;
+  double* s = p;  // 30 * nZnT
+
+  ComputeHalfGridJacobian(r1e, r1o, z1e, z1o, rue, ruo, zue, zuo, c->sqrtSH,
+                          c->deltaS, c->dSHalfDsInterp, nZnT, c->nsMinF1,
+                          c->nsMinH, c->nsMaxH, r12, ru12, zu12, rs, zs, tau);
+  ComputeMetricElements(r1e, r1o, rue, ruo, zue, zuo, rve, rvo, zve, zvo, tau,
+                        r12, c->sqrtSF, c->sqrtSH, c->lthreed, nZnT, c->nsMinF1,
+                        c->nsMinH, c->nsMaxH, gsqrt, guu, guv, gvv);
+  ComputeBsupContra(lue, luo, lve, lvo, gsqrt, c->sqrtSH, c->lthreed, nZnT,
+                    c->nsMinF1, c->nsMinH, c->nsMaxH, bsupu, bsupv);
+  double* chip_out = force + 20 * fS;
+  for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
+    // For a prescribed-current profile (ncurr==1), chi' is recomputed from the
+    // geometry each step (constrained toroidal current), so differentiate it
+    // here rather than freezing it. For ncurr==0 chi' = iota*phi' is a fixed
+    // profile, so use the frozen chipH.
+    double chip = chipH[jH - c->nsMinH];
+    if (c->ncurr == 1) {
+      double jvPlasma = 0.0;
+      double avg_guu_gsqrt = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int ih = (jH - c->nsMinH) * nZnT + kl;
+        const int l = kl % c->nThetaEff;
+        if (c->lthreed) {
+          jvPlasma += (guu[ih] * bsupu[ih] + guv[ih] * bsupv[ih]) * c->wInt[l];
+        } else {
+          jvPlasma += guu[ih] * bsupu[ih] * c->wInt[l];
+        }
+        avg_guu_gsqrt += guu[ih] / gsqrt[ih] * c->wInt[l];
+      }
+      if (avg_guu_gsqrt != 0.0) {
+        chip = (currH[jH - c->nsMinH] - jvPlasma) / avg_guu_gsqrt;
+      }
+      // Expose chi' as its own output block so a cotangent seeded there alone
+      // yields (dchi'/dx)^T through the same reverse pass as the force
+      // cotangent; ncurr==0 leaves this block untouched (chi' is prescribed).
+      chip_out[jH - c->nsMinH] = chip;
+    }
+    for (int kl = 0; kl < nZnT; ++kl) {
+      const int ih = (jH - c->nsMinH) * nZnT + kl;
+      bsupu[ih] += chip / gsqrt[ih];
+    }
+  }
+  ComputeBCo(guu, guv, gvv, bsupu, bsupv, c->lthreed, nH, bsubu, bsubv);
+  ComputeMagneticPressure(bsupu, bsubu, bsupv, bsubv, nH, tp);
+  for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
+    for (int kl = 0; kl < nZnT; ++kl)
+      tp[(jH - c->nsMinH) * nZnT + kl] += presH[jH - c->nsMinH];
+  }
+
+  double* P_i = s;
+  s += nZnT;
+  double* rup_i = s;
+  s += nZnT;
+  double* zup_i = s;
+  s += nZnT;
+  double* rsp_i = s;
+  s += nZnT;
+  double* zsp_i = s;
+  s += nZnT;
+  double* taup_i = s;
+  s += nZnT;
+  double* gbubu_i = s;
+  s += nZnT;
+  double* gbubv_i = s;
+  s += nZnT;
+  double* gbvbv_i = s;
+  s += nZnT;
+  double* P_o = s;
+  s += nZnT;
+  double* rup_o = s;
+  s += nZnT;
+  double* zup_o = s;
+  s += nZnT;
+  double* rsp_o = s;
+  s += nZnT;
+  double* zsp_o = s;
+  s += nZnT;
+  double* taup_o = s;
+  s += nZnT;
+  double* gbubu_o = s;
+  s += nZnT;
+  double* gbubv_o = s;
+  s += nZnT;
+  double* gbvbv_o = s;
+  s += nZnT;
+  double* P_avg = s;
+  s += nZnT;
+  double* P_wavg = s;
+  s += nZnT;
+  double* gbubu_avg = s;
+  s += nZnT;
+  double* gbubu_wavg = s;
+  s += nZnT;
+  double* gbvbv_avg = s;
+  s += nZnT;
+  double* gbvbv_wavg = s;
+  s += nZnT;
+  double* gbubv_avg = s;
+  s += nZnT;
+  double* gbubv_wavg = s;
+  s += nZnT;
+  double* bsubu_i = s;
+  s += nZnT;
+  double* bsubv_i = s;
+  s += nZnT;
+  double* gvv_gsqrt_i = s;
+  s += nZnT;
+  double* guv_bsupu_i = s;
+  s += nZnT;
+
+  double* armn_e = force + 0 * fS;
+  double* armn_o = force + 1 * fS;
+  double* azmn_e = force + 2 * fS;
+  double* azmn_o = force + 3 * fS;
+  double* brmn_e = force + 4 * fS;
+  double* brmn_o = force + 5 * fS;
+  double* bzmn_e = force + 6 * fS;
+  double* bzmn_o = force + 7 * fS;
+  double* crmn_e = force + 8 * fS;
+  double* crmn_o = force + 9 * fS;
+  double* czmn_e = force + 10 * fS;
+  double* czmn_o = force + 11 * fS;
+  ComputeMHDForceDensity(
+      r1e, r1o, rue, ruo, zue, zuo, z1o, rve, rvo, zve, zvo, r12, ru12, zu12,
+      rs, zs, tau, tp, gsqrt, bsupu, bsupv, c->sqrtSF, c->sqrtSH, P_i, rup_i,
+      zup_i, rsp_i, zsp_i, taup_i, gbubu_i, gbubv_i, gbvbv_i, P_o, rup_o, zup_o,
+      rsp_o, zsp_o, taup_o, gbubu_o, gbubv_o, gbvbv_o, P_avg, P_wavg, gbubu_avg,
+      gbubu_wavg, gbvbv_avg, gbvbv_wavg, gbubv_avg, gbubv_wavg, c->deltaS, nZnT,
+      c->nsMinF, c->nsMinF1, c->nsMinH, c->nsMaxH, c->jMaxRZ, c->lthreed,
+      armn_e, armn_o, azmn_e, azmn_o, brmn_e, brmn_o, bzmn_e, bzmn_o, crmn_e,
+      crmn_o, czmn_e, czmn_o);
+
+  double* blmn_e = force + 12 * fS;
+  double* blmn_o = force + 13 * fS;
+  double* clmn_e = force + 14 * fS;
+  double* clmn_o = force + 15 * fS;
+  ComputeHybridLambdaForce(
+      bsubu, bsubv, gvv, gsqrt, guv, bsupu, lue, luo, c->sqrtSH, c->sqrtSF,
+      c->radialBlending, c->lamscale, c->lthreed, nZnT, c->nsMinF, c->nsMinF1,
+      c->nsMinH, c->nsMaxH, c->nsMaxFIncludingLcfs, bsubu_i, bsubv_i,
+      gvv_gsqrt_i, guv_bsupu_i, blmn_e, blmn_o, clmn_e, clmn_o);
+
+  if (c->with_constraint) {
+    // geometry blocks 16-19 carry the constraint coordinates and full-grid
+    // derivatives; force blocks 16-19 receive the constraint outputs.
+    const double* rCon = geom + 16 * gS;
+    const double* zCon = geom + 17 * gS;
+    const double* ruFull = geom + 18 * gS;
+    const double* zuFull = geom + 19 * gS;
+    double* gConEff = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    double* gCon = s;
+    s += (c->nsMaxF - c->nsMinF) * nZnT;
+    double* gsc = s;
+    s += c->ntor + 1;
+    double* gcs = s;
+    s += c->ntor + 1;
+    double* gcc = s;
+    s += c->ntor + 1;
+    double* gss = s;
+    s += c->ntor + 1;
+    double* gConAsym = s;
+    s += nZnT;
+    double* refl = s;
+    s += c->nThetaReduced;
+    // Constraint reference rCon0/zCon0 extrapolated from the LCFS into the
+    // volume (rzConIntoVolume): rCon0[jF] = rCon[LCFS] * s_full. This is linear
+    // in the geometry, so computing it here (rather than freezing it) keeps the
+    // exact HVP consistent with re-evaluating rzConIntoVolume each step.
+    double* rCon0 = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    double* zCon0 = s;
+    s += (c->nsMaxFIncludingLcfs - c->nsMinF) * nZnT;
+    // Constraint multiplier tcon from the geometry, as
+    // constraintForceMultiplier forms it: the even-parity radial preconditioner
+    // diagonals ard, azd of computePreconditioningMatrix, summed from both
+    // half-grid neighbours of each full-grid surface, over the surface averages
+    // of ruFull^2 and zuFull^2.
+    double* tcon = s;
+    s += c->nsMaxFIncludingLcfs - c->nsMinF;
+    double* ard_h = s;
+    s += c->nsMaxH - c->nsMinH;
+    double* azd_h = s;  // last slice of the work buffer
+    for (int jH = c->nsMinH; jH < c->nsMaxH; ++jH) {
+      double ar = 0.0;
+      double az = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int ih = (jH - c->nsMinH) * nZnT + kl;
+        // pFactor * r12 * totalPressure / tau * wInt, times (xu12 / deltaS)^2
+        const double pTau =
+            -4.0 * r12[ih] * tp[ih] / tau[ih] * c->wInt[kl % c->nThetaEff];
+        const double zu = zu12[ih] / c->deltaS;
+        const double ru = ru12[ih] / c->deltaS;
+        ar += pTau * zu * zu;
+        az += pTau * ru * ru;
+      }
+      ard_h[jH - c->nsMinH] = ar;
+      azd_h[jH - c->nsMinH] = az;
+    }
+    for (int i = 0; i < c->nsMaxFIncludingLcfs - c->nsMinF; ++i) {
+      tcon[i] = 0.0;
+    }
+    const double tcon_scale =
+        c->tcon_multiplier * 32.0 * c->deltaS * 32.0 * c->deltaS;
+    for (int jF = (c->nsMinF > 0 ? c->nsMinF : 1); jF < c->nsMaxF; ++jF) {
+      double arNorm = 0.0;
+      double azNorm = 0.0;
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int idx = (jF - c->nsMinF) * nZnT + kl;
+        const double w = c->wInt[kl % c->nThetaEff];
+        arNorm += ruFull[idx] * ruFull[idx] * w;
+        azNorm += zuFull[idx] * zuFull[idx] * w;
+      }
+      const double ard = ard_h[jF - 1 - c->nsMinH] +
+                         (jF < c->ns - 1 ? ard_h[jF - c->nsMinH] : 0.0);
+      const double azd = azd_h[jF - 1 - c->nsMinH] +
+                         (jF < c->ns - 1 ? azd_h[jF - c->nsMinH] : 0.0);
+      tcon[jF - c->nsMinF] =
+          std::min(std::fabs(ard / arNorm), std::fabs(azd / azNorm)) *
+          tcon_scale;
+    }
+    if (c->nsMaxFIncludingLcfs == c->ns) {
+      // The boundary surface carries half the weight of an interior one.
+      tcon[c->ns - 1 - c->nsMinF] = 0.5 * tcon[c->ns - 2 - c->nsMinF];
+    }
+    const int lcfs = (c->nsMaxFIncludingLcfs - 1 - c->nsMinF) * nZnT;
+    for (int jF = (c->nsMinF > 1 ? c->nsMinF : 1); jF < c->nsMaxFIncludingLcfs;
+         ++jF) {
+      const double sf = c->sqrtSF[jF - c->nsMinF1] * c->sqrtSF[jF - c->nsMinF1];
+      for (int kl = 0; kl < nZnT; ++kl) {
+        const int idx = (jF - c->nsMinF) * nZnT + kl;
+        rCon0[idx] = rCon[lcfs + kl] * sf;
+        zCon0[idx] = zCon[lcfs + kl] * sf;
+      }
+    }
+    ComputeEffectiveConstraintForce(rCon, rCon0, zCon, zCon0, ruFull, zuFull,
+                                    nZnT, c->nsMinF, c->nsMaxFIncludingLcfs,
+                                    gConEff);
+    ComputeDeAliasConstraintForce(
+        gConEff, c->faccon, tcon, c->sinmui, c->cosmui, c->cosnv, c->sinnv,
+        c->sinmu, c->cosmu, c->nsMinF, c->nsMaxF, c->nZeta, c->nThetaEff,
+        c->nThetaReduced, c->nThetaEven, c->mpol, c->ntor, c->nnyq2, c->lasym,
+        gsc, gcs, gcc, gss, gConAsym, refl, gCon);
+    double* frcon_e = force + 16 * fS;
+    double* frcon_o = force + 17 * fS;
+    double* fzcon_e = force + 18 * fS;
+    double* fzcon_o = force + 19 * fS;
+    AddConstraintForces(rCon, rCon0, zCon, zCon0, ruFull, zuFull, gCon,
+                        c->sqrtSF, nZnT, c->nsMinF, c->nsMinF1, c->nsMaxF,
+                        brmn_e, brmn_o, bzmn_e, bzmn_o, frcon_e, frcon_o,
+                        fzcon_e, fzcon_o);
+  }
+}
+
+// work must hold LocalForceWorkSize(*c) doubles.
+inline void ComputeLocalForceDensity(const double* geom, double* work,
+                                     double* force,
+                                     const LocalForceComposition* c) {
+  ComputeLocalForceDensityWithProfiles(geom, work, force, c, c->presH, c->chipH,
+                                       c->currH);
+}
+
+}  // namespace vmecpp
+
+#endif  // VMECPP_VMEC_IDEAL_MHD_MODEL_LOCAL_FORCE_COMPOSITION_H_

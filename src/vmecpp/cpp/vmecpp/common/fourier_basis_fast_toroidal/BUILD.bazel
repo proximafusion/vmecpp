@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "fourier_basis_fast_toroidal",
+    hdrs = ["fourier_basis_fast_toroidal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/fourier_basis",
+    ],
+)
+
+cc_test(
+    name = "fourier_basis_fast_toroidal_test",
+    srcs = ["fourier_basis_fast_toroidal_test.cc"],
+    deps = [
+        ":fourier_basis_fast_toroidal",
+        "@googletest//:gtest_main",
+        "@nlohmann_json//:json",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "@abseil-cpp//absl/algorithm:container",
+    ],
+    size = "small",
+)

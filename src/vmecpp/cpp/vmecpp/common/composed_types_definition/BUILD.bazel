@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+  name="composed_types",
+  visibility = ["//visibility:public"],
+  hdrs=["composed_types.h"],
+)

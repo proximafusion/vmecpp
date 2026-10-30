@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "external_magnetic_field",
+    srcs = ["external_magnetic_field.cc"],
+    hdrs = ["external_magnetic_field.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/surface_geometry:surface_geometry",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@abscab_cpp//abscab:abscab",
+        "@abseil-cpp//absl/algorithm:container",
+        "@abseil-cpp//absl/status:status",
+    ],
+)

@@ -1,0 +1,12 @@
+{
+    "normalize_by_currents": false,
+    "assume_stellarator_symmetry": true,
+    "number_of_field_periods": 5,
+    "r_grid_minimum": 0.45,
+    "r_grid_maximum": 1.05,
+    "number_of_r_grid_points": 101,
+    "z_grid_minimum": -0.3,
+    "z_grid_maximum": 0.3,
+    "number_of_z_grid_points": 101,
+    "number_of_phi_grid_points": 36
+}

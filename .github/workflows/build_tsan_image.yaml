@@ -1,0 +1,41 @@
+name: Build TSAN Docker image
+
+# Builds the ThreadSanitizer-enabled clang/libomp Docker image and pushes it to
+# GHCR. This image takes ~1h to build (it compiles LLVM/clang 18 from source),
+# so we cache it in the registry and only rebuild when the docker/tsan/ sources
+# change. The C++ TSAN test workflow (test_bazel_tsan.yaml) then just pulls the
+# prebuilt image instead of rebuilding it on every run.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/vmecpp/cpp/docker/tsan/**"
+      - ".github/workflows/build_tsan_image.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build and push TSAN image to GHCR
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/vmecpp-tsan:latest
+          docker build -t "${IMAGE,,}" src/vmecpp/cpp/docker/tsan
+          docker push "${IMAGE,,}"

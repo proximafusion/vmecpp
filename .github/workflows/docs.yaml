@@ -1,0 +1,85 @@
+name: Build and deploy docs
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+# CI-only dependency workarounds, see .github/constraints.txt and .github/uv.toml
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  PIP_ONLY_BINARY: netCDF4
+  UV_CONFIG_FILE: ${{ github.workspace }}/.github/uv.toml
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Shared environment + run; main/docs runs write results back to the
+      # benchmark-runs branch (auto-push) so they become the PR baseline.
+      - name: Run benchmarks
+        uses: ./.github/actions/run-benchmarks
+        with:
+          auto-push: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-docs:
+    if: always()
+    needs: benchmark
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Build docs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev
+          # must actually install the package otherwise sphinx can't autogenerate the API reference
+          uv pip install --system -v .[docs]
+          sphinx-apidoc --module-first --no-toc --force --separate -o docs/api src/vmecpp/ && sphinx-build docs html_docs
+      - name: Fetch benchmark dashboard
+        run: |
+          git fetch origin benchmark-runs --depth=1 || true
+          if git rev-parse --verify origin/benchmark-runs >/dev/null 2>&1; then
+            git worktree add benchmark-runs-data origin/benchmark-runs
+            if [ -d benchmark-runs-data/benchmarks ]; then
+              cp -r benchmark-runs-data/benchmarks html_docs/benchmarks
+            fi
+            git worktree remove benchmark-runs-data --force
+          fi
+      - name: Upload artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'html_docs'
+          name: 'github-pages-${{ github.run_attempt }}'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: 'github-pages-${{ github.run_attempt }}'

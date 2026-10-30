@@ -1,0 +1,83 @@
+##  FFTX size table for vmecpp's toroidal r2c / c2r batched DFTs.
+##
+##  Each row is one (fftlen, nbatch, rdstride, wrstride) shape that SPIRAL
+##  generates a hardcoded codelet for.  Hash (#) starts a comment.
+##
+##  Mapping to vmecpp parameters:
+##    fftlen  = nZeta      (toroidal grid resolution, transform length)
+##    nbatch  = 12 * mpol  (12 quantities per (m, surface) packed into one call)
+##  Both strides are APar (= 0): contiguous packing, idist=nhalf, ostride=1.
+##
+##  Coverage (binary-size optimized): default `nZeta = 2 * ntor + 4` for even
+##  ntor in [6, 18], crossed with even mpol in [6, 18]:
+##    ntor in {6, 8, 10, 12, 14, 16, 18}  ->  nZeta in {16, 20, 24, 28, 32, 36, 40}
+##    mpol in {6, 8, 10, 12, 14, 16, 18}  ->  nbatch in {72, 96, 120, 144, 168, 192, 216}
+##  7 * 7 = 49 forward + 49 inverse codelets.
+##
+##  Configurations outside this grid (odd ntor or mpol, or a non-default
+##  nZeta) fall back to the partial-DFT path at runtime; see
+##  ToroidalFftPlans::kernels_available().  To extend, add rows below and
+##  follow the regeneration steps in the README.
+
+##  fftlen 16  (ntor=6)
+fftlen :=  16;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  16;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  16;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  16;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  16;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  16;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  16;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";
+
+##  fftlen 20  (ntor=8)
+fftlen :=  20;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  20;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  20;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  20;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  20;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  20;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  20;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";
+
+##  fftlen 24  (ntor=10)
+fftlen :=  24;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  24;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  24;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  24;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  24;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  24;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  24;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";
+
+##  fftlen 28  (ntor=12)
+fftlen :=  28;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  28;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  28;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  28;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  28;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  28;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  28;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";
+
+##  fftlen 32  (ntor=14)
+fftlen :=  32;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  32;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  32;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  32;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  32;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  32;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  32;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";
+
+##  fftlen 36  (ntor=16)  -- W7-X
+fftlen :=  36;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  36;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  36;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  36;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  36;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  36;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  36;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";
+
+##  fftlen 40  (ntor=18)
+fftlen :=  40;  nbatch :=  72;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  40;  nbatch :=  96;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  40;  nbatch := 120;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  40;  nbatch := 144;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  40;  nbatch := 168;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  40;  nbatch := 192;  rdstride := "APar";  wrstride := "APar";
+fftlen :=  40;  nbatch := 216;  rdstride := "APar";  wrstride := "APar";

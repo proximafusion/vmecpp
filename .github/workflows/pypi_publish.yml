@@ -1,0 +1,202 @@
+name: Publish wheels to PyPI
+
+on:
+  # allows running workflows manually
+  workflow_dispatch:
+
+  pull_request:
+
+  release:
+    types: [published]
+
+# CI-only dependency workarounds, see .github/constraints.txt and .github/uv.toml
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/constraints.txt
+  PIP_ONLY_BINARY: netCDF4
+  UV_CONFIG_FILE: ${{ github.workspace }}/.github/uv.toml
+  LLVM_VERSION: "21"
+  ENZYME_REF: "v0.0.264"
+
+jobs:
+  main:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14, macos-15-intel]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6 # We use uv in cibuildwheel for faster builds
+      - name: Set up Python for the Enzyme object build
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Pull requests build one CPython per platform; releases and manual runs
+      # build them all.
+      - name: Select the CPython versions to build
+        if: github.event_name == 'pull_request'
+        run: echo "CIBW_BUILD=cp312-*" >> "$GITHUB_ENV"
+      # Compiler cache shared by the runs and by the CPython versions of a run.
+      - name: Cache the compiler outputs
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.os }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.os }}-
+      - name: Build Enzyme force-derivative objects
+        id: enzyme
+        uses: ./.github/actions/build-enzyme-objects
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          enzyme-ref: ${{ env.ENZYME_REF }}
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.3.1
+        # All the settings for cibuildwheel are in pyproject.toml
+        env:
+          # Linux builds run in a container, where the CI-only settings above do
+          # not apply and the repo is mounted at /project.
+          CIBW_ENVIRONMENT_LINUX: >
+            PIP_CONSTRAINT=/project/.github/constraints.txt
+            UV_CONSTRAINT=/project/.github/constraints.txt
+            PIP_ONLY_BINARY=netCDF4
+            UV_CONFIG_FILE=/project/.github/uv.toml
+            CCACHE_DIR=/project/.ccache
+            CCACHE_MAXSIZE=500M
+            CMAKE_ARGS="-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=/project/enzyme-objects/exact_force_jvp.o -DVMECPP_ENZYME_VJP_OBJECT=/project/enzyme-objects/exact_force_vjp.o"
+          CIBW_ENVIRONMENT_MACOS: >
+            MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-14' && '14.0' || '15.0' }}
+            DYLD_LIBRARY_PATH=/usr/local/opt/gcc/lib/gcc/current/:$DYLD_LIBRARY_PATH
+            FC=gfortran-14
+            OpenMP_ROOT=$(brew --prefix)/opt/libomp
+            CCACHE_DIR=${{ github.workspace }}/.ccache
+            CCACHE_MAXSIZE=500M
+            CMAKE_ARGS="-DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_JVP_OBJECT=${{ steps.enzyme.outputs.jvp-object }} -DVMECPP_ENZYME_VJP_OBJECT=${{ steps.enzyme.outputs.vjp-object }}"
+          CIBW_TEST_COMMAND: >-
+            python -c "import vmecpp; assert vmecpp.has_exact_force_jacobian()"
+            && pytest {package}/tests/test_simsopt_compat.py
+            {package}/tests/test_free_boundary.py {package}/tests/test_hessian.py
+        with:
+          package-dir: .
+          output-dir: wheelhouse
+          config-file: "{package}/pyproject.toml"
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: vmecpp-wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+
+  make-sdist:
+    name: Make SDist
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build SDist
+      run: pipx run build --sdist
+
+    - name: Move Files
+      run: mv dist wheelhouse
+
+    - name: Upload SDist
+      uses: actions/upload-artifact@v4
+      with:
+        name: vmecpp-sdist
+        path: ./wheelhouse/*.tar.gz
+
+  test-on-different-distros:
+    name: Test Linux distros
+    needs: main
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pull requests build only the CPython 3.12 wheels, which ubuntu:24.04 uses.
+        distro: ${{ fromJSON(github.event_name == 'pull_request'
+          && '["ubuntu:24.04"]'
+          || '["ubuntu:24.04", "ubuntu:22.04", "archlinux/archlinux", "debian:12", "fedora:41"]') }}
+        runner: [ubuntu-24.04]
+        include:
+          # Exercise the aarch64 wheels too, on a native arm64 runner. One
+          # distro is enough here -- this job is about testing the wheel
+          # actually works on a plain distro, and the multi-distro matrix
+          # above already covers distro-specific quirks on x86_64.
+          - distro: "ubuntu:24.04"
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.distro }}
+
+    steps:
+      - name: Install Python (Distro-Specific)
+        run: |
+          PYTHON=python3  # default, overridden below if needed
+          case ${{ matrix.distro }} in
+            ubuntu*|debian*)
+              apt update
+              apt install -y python3-venv git-lfs
+              ;;
+            fedora*)
+              dnf -y update && dnf clean all
+              dnf -y install python-pip git-lfs
+              ;;
+            archlinux*)
+              # Arch rolls to Python 3.14+ but not all deps support it yet.
+              # Install python313 from the AUR to get Python 3.13.
+              pacman -Syu --noconfirm base-devel git git-lfs
+              useradd -m builder
+              echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+              su builder -c 'cd /tmp && git clone https://aur.archlinux.org/python313.git && cd python313 && makepkg -si --noconfirm'
+              PYTHON=python3.13
+              ;;
+            *)
+              echo "Unsupported distribution: ${{ matrix.distro }}"
+              exit 1
+              ;;
+          esac
+          echo "PYTHON=$PYTHON" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Download wheels artifact
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: ./wheelhouse/
+      - name: Install wheel
+        run: |
+          ls wheelhouse/
+
+          $PYTHON -m venv venv
+          . venv/bin/activate
+          # Let pip's own tag matching pick the single wheel compatible with this
+          # interpreter and architecture; --no-index keeps it from reaching PyPi.
+          pip download --no-index --no-deps --find-links=wheelhouse/ --dest selected-wheel/ vmecpp
+          wheel_filename=$(ls selected-wheel/*.whl)
+          echo "Found matching wheel: $wheel_filename"
+          pip install "$wheel_filename"
+
+          pip install pytest
+          python -m pytest tests/
+
+
+  pypi-publish:
+    name: Publish wheels to PyPI
+    if: github.event_name == 'release'
+    needs: [main, make-sdist, test-on-different-distros]
+    runs-on: ubuntu-24.04
+    environment:
+        name: pypi
+    permissions:
+        id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

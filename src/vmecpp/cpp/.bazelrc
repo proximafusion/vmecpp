@@ -1,0 +1,45 @@
+# general compilation options
+build --cxxopt="-std=c++20" --copt="-fdiagnostics-color=always" --copt="-DEIGEN_DONT_PARALLELIZE"
+
+# workaround for a Bazel 7 issue with rules_foreign_cc: https://github.com/bazelbuild/rules_foreign_cc/issues/1129
+build --sandbox_add_mount_pair=/tmp
+
+# If compiling with clang or intel compilers, you will need to adjust the linked OpenMP library from libgomp to libomp
+# -fno-math-errno yields a few % of performance improvements and we don't check errno anyways
+build:opt   -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-DNDEBUG" --copt="-fno-math-errno"
+build:perf  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-O3" --copt="-DNDEBUG" --copt="-fno-math-errno" --copt="-g" --strip=never --copt="-fno-omit-frame-pointer"
+build:dbg   -c dbg --copt="-fopenmp" --linkopt="-lgomp" --copt="-O0"
+build:asan  -c opt --copt="-fopenmp" --linkopt="-lgomp" --copt="-DNDEBUG" --features=asan --strip=never
+# Undefined behavior sanitization is quite slow, to compensate we compile in opt mode
+build:ubsan -c opt --copt="-fopenmp" --linkopt="-lgomp" --features=ubsan --strip=never
+
+# Opt-in Enzyme autodiff smoke test (//vmecpp/common/enzyme:enzyme_smoke_test).
+# Enzyme differentiates LLVM IR through a Clang plugin, so this needs a Clang
+# toolchain and the matching ClangEnzyme plugin; it stays out of the default
+# GCC build (the test target is tagged "manual"). Select Clang with CC/CXX and
+# pass the plugin path the way -DVMECPP_ENZYME_PLUGIN did under CMake:
+#   CC=clang CXX=clang++ bazel test --config=enzyme \
+#     --copt=-fplugin=/path/to/ClangEnzyme-NN.so \
+#     //vmecpp/common/enzyme:enzyme_smoke_test
+# Enzyme runs as an optimization-time pass, so -O2 must be on for it to fire.
+build:enzyme --copt="-O2"
+
+# Use our custom-configured c++ toolchain.
+# Use --cpu as a differentiator.
+# Use the default Bazel C++ toolchain to build the tools used during the build.
+# enable OpenMP, TSan and Archer
+# OpenMP/TSan/Archer-specific options for thread sanitization
+# This is meant to be used from the tsan Docker image. See docker/tsan/README.md.
+build:tsan_archer_in_docker --crosstool_top=//docker/tsan/llvm_toolchain:clang_suite \
+                            --cpu=k8 \
+                            --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+                            --copt="-O3" --copt="-fopenmp" --copt="-fsanitize=thread" --copt="-g" --strip=never \
+                            --linkopt="-fopenmp" --linkopt="-fsanitize=thread" --linkopt="-L/usr/local/lib" --linkopt="-L/usr/local/lib/x86_64-unknown-linux-gnu" --linkopt="-larcher" \
+                            --test_env=LD_LIBRARY_PATH=/usr/local/lib/x86_64-unknown-linux-gnu \
+                            --test_env=ARCHER_OPTIONS="verbose=1" --test_env=TSAN_OPTIONS="ignore_noninstrumented_modules=1"
+
+# We observe CPU overloads when having too many OpenMP threads in parallel on the CI machines.
+# So far, it looks similar to this issue: https://stackoverflow.com/q/70126350
+# As of now, we use the solution to run the tests one after another,
+# as suggested here: https://stackoverflow.com/a/70084246.
+test --local_test_jobs=1

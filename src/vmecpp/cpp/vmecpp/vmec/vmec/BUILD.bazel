@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "vmec",
+    srcs = ["vmec.cc"],
+    hdrs = ["vmec.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log",
+        "//vmecpp/common/util",
+        "//vmecpp/common/sizes",
+        "//vmecpp/common/vmec_indata",
+        "//vmecpp/common/makegrid_lib",
+        "//vmecpp/vmec/boundaries",
+        "//vmecpp/vmec/iteration_logger",
+        "//vmecpp/vmec/vmec_constants",
+        "//vmecpp/vmec/profile_parameterization_data",
+        "//vmecpp/vmec/fourier_geometry",
+        "//vmecpp/vmec/fourier_forces",
+        "//vmecpp/vmec/fourier_velocity",
+        "//vmecpp/vmec/radial_profiles",
+        "//vmecpp/vmec/ideal_mhd_model",
+        "//vmecpp/vmec/handover_storage",
+        "//vmecpp/vmec/radial_partitioning",
+        "//vmecpp/vmec/output_quantities",
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
+        "//vmecpp/free_boundary/external_magnetic_field",
+        "//vmecpp/free_boundary/free_boundary_base",
+        "//vmecpp/free_boundary/mgrid_provider",
+        "//vmecpp/free_boundary/nestor",
+        "//vmecpp/free_boundary/only_coils",
+    ],
+)
+
+cc_test(
+    name = "vmec_test",
+    srcs = ["vmec_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:up_down_asym",
+        "//vmecpp/test_data:solovev_no_axis",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cth_like_fixed_bdy_nzeta_37",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp/test_data:cth_like_free_bdy_asym",
+        "//vmecpp/test_data:cth_like_free_bdy_multigrid",
+        "//vmecpp/test_data:solovev_free_bdy",
+    ],
+    deps = [
+        "//vmecpp/vmec/geometry",
+        "//vmecpp/vmec/geometry:vmec_geometry",
+        "//vmecpp/vmec/output_quantities:test_helpers",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/testing:numerical_comparison_lib",
+    ],
+    # The four fixed-boundary flag-combination cases roughly double what this
+    # target solves, which puts it over the 300s a medium test gets under tsan.
+    size = "large",
+)
+
+cc_test(
+    name = "energy_gradient_test",
+    srcs = ["energy_gradient_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "vmec_allocation_test",
+    srcs = ["vmec_allocation_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
+
+cc_test(
+    name = "vmec_in_memory_mgrid_test",
+    srcs = ["vmec_in_memory_mgrid_test.cc"],
+    data = [
+        "//vmecpp/test_data:cth_like_free_bdy",
+        "//vmecpp/test_data:cth_like_free_bdy_asym",
+        "//vmecpp/test_data:solovev_free_bdy",
+    ],
+    deps = [
+        "//vmecpp/vmec/output_quantities:test_helpers",
+        "@googletest//:gtest_main",
+        "//util/file_io:file_io",
+        "//util/netcdf_io:netcdf_io",
+        "//util/testing:numerical_comparison_lib",
+        "//vmecpp/vmec/vmec",
+    ],
+    size = "medium",
+)
+
+cc_test(
+    name = "energy_hessian_test",
+    srcs = ["energy_hessian_test.cc"],
+    data = [
+        "//vmecpp/test_data:solovev",
+        "//vmecpp/test_data:circular_tokamak",
+        "//vmecpp/test_data:cth_like_fixed_bdy",
+        "//vmecpp/test_data:cma",
+        "//vmecpp/test_data:li383_low_res",
+        "//vmecpp/test_data:up_down_asym",
+    ],
+    deps = [
+        "//util/file_io:file_io",
+        "//vmecpp/vmec/vmec",
+        "@googletest//:gtest_main",
+    ],
+    size = "large",
+)

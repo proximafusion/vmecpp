@@ -1,0 +1,1272 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+"""Tests for VMEC++'s Python API.
+
+Here we just test that the Python bindings and the general API works as expected.
+Physics correctness is checked at the level of the C++ core.
+"""
+
+import json
+import logging
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+import netCDF4
+import numpy as np
+import pytest
+
+import vmecpp
+from vmecpp.cpp import _vmecpp  # pyright: ignore[reportAttributeAccessIssue]
+
+# We don't want to install tests and test data as part of the package,
+# but scikit-build-core + hatchling does not support editable installs,
+# so the tests live in the sources but the vmecpp module lives in site_packages.
+# Therefore, in order to find the test data we use the relative path to this file.
+# I'm very open to alternative solutions :)
+REPO_ROOT = Path(__file__).parent.parent
+TEST_DATA_DIR = REPO_ROOT / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+
+
+@pytest.mark.parametrize(
+    ("max_threads", "input_file", "verbose"),
+    [(None, "cma.json", True), (1, "input.cma", False)],
+)
+def test_run(max_threads, input_file, verbose):
+    """Test that the Python API works with different combinations of parameters."""
+
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / input_file)
+    vmec_output = vmecpp.run(vmec_input, max_threads=max_threads, verbose=verbose)
+
+    assert vmec_output.wout is not None
+
+
+@pytest.mark.parametrize(
+    ("mgrid_path", "expected_exception"),
+    [
+        ("cma.json", RuntimeError),  # Invalid netcdf
+        ("does_not_exist", RuntimeError),
+        ("wout_cma.nc", RuntimeError),  # Valid netcdf, but invalid mgrid
+    ],
+)
+def test_raise_invalid_mgrid(mgrid_path: str, expected_exception):
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.lfreeb = True
+    vmec_input.mgrid_file = str(TEST_DATA_DIR / mgrid_path)
+    with pytest.raises(expected_exception):
+        vmecpp.run(vmec_input, max_threads=1)
+
+
+def test_get_outputs_if_non_converged_if_wanted():
+    """Test that one can get the VMEC++ outputs even if a run did not converge."""
+
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+
+    # only allow one iteration - VMEC++ will not converge that fast
+    vmec_input.niter_array[-1] = 1
+
+    # instruct VMEC++ to return the outputs, even if it did not converge
+    vmec_input.return_outputs_even_if_not_converged = True
+
+    vmec_output = vmecpp.run(vmec_input)
+
+    assert vmec_output.wout is not None
+    assert vmec_output.wout.niter == 2
+
+    # actually check that some arrays,
+    # which were previously only filled if VMEC converged,
+    # also get populated now
+    assert not np.all(vmec_output.jxbout.jxb_gradp == 0.0)
+
+
+def test_bad_initial_jacobian_is_retried_from_three_surfaces():
+    # ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ: its initial Jacobian stays
+    # bad at ns = 25 after the axis guess, and it converges from a solve at ns = 3
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_bad_initial_jacobian.json"
+    )
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+    # the non-stellarator-symmetric path retries the same way and reproduces the
+    # symmetric result
+    zeros = np.zeros_like(np.asarray(vmec_input.rbc))
+    axis_zeros = np.zeros(vmec_input.ntor + 1)
+    lasym_input = vmec_input.model_copy(
+        update={
+            "lasym": True,
+            "rbs": zeros.copy(),
+            "zbc": zeros.copy(),
+            "raxis_s": axis_zeros.copy(),
+            "zaxis_c": axis_zeros.copy(),
+        }
+    )
+    lasym_wout = vmecpp.run(lasym_input, verbose=False).wout
+    assert lasym_wout.ier_flag == 0
+    np.testing.assert_allclose(lasym_wout.rmnc, wout.rmnc, rtol=0.0, atol=2e-11)
+    np.testing.assert_allclose(lasym_wout.zmns, wout.zmns, rtol=0.0, atol=2e-11)
+
+
+def test_pinned_m1_gauge_converges_at_half_constraint():
+    # ConStellaration boundary DCaUizWEEjG6oHsffeztGFU, with the input the
+    # ConStellaration forward model builds and tcon0 = 0.5: with the VMEC 8.52
+    # gauge the residual of the ns = 71 step stalls near 2e-9, with the m = 1
+    # gauge held from the boundary it converges
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_m1_gauge_drift.json"
+    )
+    assert vmec_input.tcon0 == 0.5
+    assert vmec_input.always_fix_m1_gauge
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+
+# We trust the C++ tests to cover the hot restart functionality properly,
+# here we just want to test that the Python API for it works.
+def test_run_with_hot_restart():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+
+    # base run
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+
+    # now with hot restart at a single multigrid step
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+    vmec_input.niter_array = vmec_input.niter_array[-1:]
+    vmec_output_hot_restarted = vmecpp.run(
+        vmec_input, verbose=False, restart_from=vmec_output
+    )
+
+    assert vmec_output_hot_restarted.wout.niter == 2
+
+
+def test_hot_restart_matches_ns_against_the_wout_of_the_state():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    ns = vmec_output.wout.ns
+    vmec_output.input = vmec_input.model_copy(
+        update={"ns_array": np.array([2 * ns - 1])}
+    )
+
+    # the state is read from its wout, whatever the ns of its input
+    restarted = vmecpp.run(vmec_input, verbose=False, restart_from=vmec_output)
+    assert restarted.wout.niter <= 3
+
+    finer = vmec_input.model_copy(update={"ns_array": np.array([2 * ns - 1])})
+    with pytest.raises(ValueError, match="ns_array"):
+        vmecpp.run(finer, verbose=False, restart_from=vmec_output)
+
+
+@pytest.fixture(scope="module")
+def cma_output() -> vmecpp.VmecOutput:
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    return vmec_output
+
+
+def test_vmecwout_load_from_fortran():
+    """Test that a wout file produced by PARVMEC can be loaded by VmecWOut."""
+    wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
+    loaded_wout = vmecpp.VmecWOut.from_wout_file(wout_filename)
+    assert loaded_wout is not None
+
+
+def test_vmecwout_load_tolerates_corrupted_string_variable(tmp_path, caplog):
+    """Robust against uninitialized/non-ASCII bytes.
+
+    Such garbage should not prevent loading the rest of an otherwise-valid wout file.
+    """
+    wout_filename = REPO_ROOT / "examples" / "data" / "wout_cth_like_fixed_bdy.nc"
+    corrupted_wout_filename = tmp_path / "wout_corrupted_string.nc"
+    shutil.copyfile(wout_filename, corrupted_wout_filename)
+
+    with netCDF4.Dataset(corrupted_wout_filename, "r+") as fnc:
+        raw = bytearray(fnc.variables["mgrid_file"][:].tobytes())
+        raw[3] = 0xDD  # not valid ASCII/UTF-8
+        fnc.variables["mgrid_file"][:] = np.frombuffer(bytes(raw), dtype="S1")
+
+    with caplog.at_level(logging.WARNING):
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(corrupted_wout_filename)
+
+    assert loaded_wout is not None
+    assert loaded_wout.mgrid_file == ""
+    assert "mgrid_file" in caplog.text
+
+
+def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
+    """An mgrid file whose mode is "N" runs, and the mode reads as unset, also after a
+    round trip through a wout file."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    # the response table written as an mgrid file whose mode is "N"
+    grid = {
+        "phi": makegrid_params.number_of_phi_grid_points,
+        "zee": makegrid_params.number_of_z_grid_points,
+        "rad": makegrid_params.number_of_r_grid_points,
+    }
+    header = {
+        "ir": grid["rad"],
+        "jz": grid["zee"],
+        "kp": grid["phi"],
+        "nfp": makegrid_params.number_of_field_periods,
+        "nextcur": len(response.b_r),
+        "rmin": makegrid_params.r_grid_minimum,
+        "rmax": makegrid_params.r_grid_maximum,
+        "zmin": makegrid_params.z_grid_minimum,
+        "zmax": makegrid_params.z_grid_maximum,
+    }
+    mgrid_file = tmp_path / "mgrid_mode_none.nc"
+    with netCDF4.Dataset(mgrid_file, "w") as fnc:
+        for name, size in {**grid, "dim_00001": 1}.items():
+            fnc.createDimension(name, size)
+        for name, value in header.items():
+            fnc.createVariable(name, "i4" if isinstance(value, int) else "f8")
+            fnc.variables[name].assignValue(value)
+        fnc.createVariable("mgrid_mode", "S1", ("dim_00001",))[:] = np.array([b"N"])
+        fields = {"br": response.b_r, "bp": response.b_p, "bz": response.b_z}
+        for i in range(len(response.b_r)):
+            for name, b in fields.items():
+                variable = fnc.createVariable(f"{name}_{i + 1:03d}", "f8", tuple(grid))
+                variable[:] = b[i].reshape(tuple(grid.values()))
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.mgrid_file = str(mgrid_file)
+
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.mgrid_mode == ""
+
+    wout_filename = tmp_path / "wout_mgrid_mode_none.nc"
+    wout.save(wout_filename)
+    assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == ""
+
+
+def test_vmecinput_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_file = Path(tmp_dir) / "input_save_test.json"
+        vmec_input.save(tmp_file)
+        vmec_input_reloaded = vmecpp.VmecInput.from_file(tmp_file)
+
+        for attr in vars(vmec_input):
+            error_msg = f"mismatch in {attr}"
+            np.testing.assert_equal(
+                actual=getattr(vmec_input_reloaded, attr),
+                desired=getattr(vmec_input, attr),
+                err_msg=error_msg,
+            )
+
+
+def test_asymmetric_tokamak_input_io():
+    input_file = TEST_DATA_DIR / "input.up_down_asymmetric_tokamak"
+
+    vmec_input = vmecpp.VmecInput.from_file(input_file)
+
+    # Verify it's an asymmetric run
+    assert vmec_input.lasym is True
+
+    # Verify asymmetric arrays are properly initialized (not None)
+    assert vmec_input.rbs is not None
+    assert vmec_input.zbc is not None
+    assert vmec_input.raxis_s is not None
+    assert vmec_input.zaxis_c is not None
+
+    # Verify array shapes are correct for ntor=0, mpol=5
+    expected_shape = (5, 1)  # (mpol, 2*ntor+1)
+    assert vmec_input.rbs.shape == expected_shape
+    assert vmec_input.zbc.shape == expected_shape
+
+    expected_axis_shape = (1,)  # (ntor+1,)
+    assert vmec_input.raxis_s.shape == expected_axis_shape
+    assert vmec_input.zaxis_c.shape == expected_axis_shape
+
+    assert vmec_input.rbs[1, 0] == pytest.approx(0.6)  # RBS(0,1) from input file
+    assert vmec_input.rbs[2, 0] == pytest.approx(0.12)  # RBS(0,2) from input file
+
+    # Verify other asymmetric arrays are initialized to zero
+    assert vmec_input.zbc[0, 0] == pytest.approx(0.0)
+    assert vmec_input.raxis_s[0] == pytest.approx(0.0)
+    assert vmec_input.zaxis_c[0] == pytest.approx(0.0)
+
+
+_MISSING_FORTRAN_VARIABLES = [
+    "lrecon__logical__",
+    "lmove_axis__logical__",
+    "mnyq",
+    "nnyq",
+    "curlabel",
+    "potvac",
+    "nobser",
+    "nobd",
+    "nbsets",
+    "mnmaxpot",
+    "potsin",
+    "xmpot",
+    "xnpot",
+    "bsubumnc_sur",
+    "bsubvmnc_sur",
+    "bsupumnc_sur",
+    "bsupvmnc_sur",
+]
+"""The complete list of variables that can be found in Fortran VMEC wout files but not
+in wout files produced by VMEC++."""
+
+_EXTRA_VMEC_VARIABLES = {"lcfs_force"}
+
+
+def _to_8_52_reference(varname, actual, desired, xm_nyq):
+    """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
+
+    VMEC++ writes B_s on the full grid.
+    """
+    if varname in ("bsubsmns", "bsubsmnc"):
+        # the 8.52 half grid averaged to the interior full-grid surfaces
+        return actual[1:-1], 0.5 * (desired[1:-1] + desired[2:])
+    if varname in ("currumnc", "currvmnc", "currumns", "currvmns"):
+        # odd m use the full-grid B_s instead of its sqrt(s)-weighted average
+        even = xm_nyq % 2 == 0
+        return actual[:, even], desired[:, even]
+    return actual, desired
+
+
+def test_vmecwout_io():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    # The reference restarts from the advanced state.
+    vmec_input.backup_evaluated_state = False
+    cma_output = vmecpp.run(vmec_input, verbose=False)
+    with tempfile.NamedTemporaryFile() as tmp_file:
+        cma_output.wout.save(tmp_file.name)
+
+        assert Path(tmp_file.name).exists()
+
+        # check that from_wout_file can load the file as well
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
+        assert loaded_wout is not None
+
+        # test contents of loaded wout against original in-memory wout
+        for attr in vars(cma_output.wout):
+            error_msg = f"mismatch in {attr}"
+            np.testing.assert_equal(
+                actual=getattr(loaded_wout, attr),
+                desired=getattr(cma_output.wout, attr),
+                err_msg=error_msg,
+            )
+
+        test_dataset = netCDF4.Dataset(tmp_file.name, "r")
+
+    expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / "wout_cma.nc", "r")
+
+    expected_variables = set(expected_dataset.variables.keys()) - set(
+        _MISSING_FORTRAN_VARIABLES
+    )
+    assert expected_variables | _EXTRA_VMEC_VARIABLES == set(
+        test_dataset.variables.keys()
+    )
+
+    for varname, expected_value in expected_dataset.variables.items():
+        if varname in _MISSING_FORTRAN_VARIABLES:
+            continue
+
+        test_value = test_dataset[varname]
+        error_msg = f"mismatch in {varname}"
+
+        # string
+        if expected_value.dtype == np.dtype("S1"):
+            np.testing.assert_equal(test_value[:], expected_value[:], err_msg=error_msg)
+            continue
+
+        expected_dims = expected_value.dimensions
+        assert test_value.dimensions == expected_dims, error_msg
+
+        # Check dimensions for an array or tensor (also works for scalars)
+        for d in expected_dims:
+            assert (
+                test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
+            )
+        # np.asarray is needed to convert the masked array to a regular array.
+        # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
+        # Current density coefficients are computed via finite differences of
+        # covariant B field Fourier coefficients, which amplifies floating-point
+        # non-determinism (e.g., from OpenMP reduction order).
+        rtol = 1e-3 if varname in ("currumnc", "currvmnc") else 1e-6
+        actual = np.asarray(test_value[:])
+        desired = np.asarray(expected_value[:])
+        if varname == "chipf":
+            # The axis and the boundary entries of chipf follow PARVMEC
+            # rather than the 8.52 lineage the references come from; see
+            # computeBContra.
+            actual = actual[..., 1:-1]
+            desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
+        np.testing.assert_allclose(
+            actual,
+            desired,
+            err_msg=error_msg,
+            rtol=rtol,
+            atol=1e-7,
+            equal_nan=True,
+        )
+        assert test_value.dtype == expected_value.dtype, (
+            error_msg + f" (dtype {test_value.dtype} != {expected_value.dtype})"
+        )
+
+
+@pytest.mark.parametrize(
+    ("indata_file", "reference_wout_file", "path_type"),
+    [
+        ("cma.json", "wout_cma.nc", str),
+        ("cma.json", "wout_cma.nc", Path),
+        ("cth_like_free_bdy.json", "wout_cth_like_free_bdy.nc", str),
+    ],
+)
+def test_against_reference_wout(indata_file, reference_wout_file, path_type):
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / indata_file)
+    # The reference restarts from the advanced state.
+    indata.backup_evaluated_state = False
+    if indata.lfreeb:
+        indata.mgrid_file = str(
+            REPO_ROOT / "src" / "vmecpp" / "cpp" / indata.mgrid_file
+        )
+    vmec_output = vmecpp.run(indata)
+    fortran_wout = vmec_output.wout
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_path = Path(tmpdir, "wout_test.nc")
+        fortran_wout.save(path_type(out_path))
+
+        test_dataset = netCDF4.Dataset(out_path, "r")
+
+    expected_dataset = netCDF4.Dataset(TEST_DATA_DIR / reference_wout_file, "r")
+
+    # Some variables need enlarged tolerances,
+    # because they are not numerically well-defined.
+    enlarged_tolerances = {
+        "jdotb": {"rtol": 1.0e-5, "atol": 1.0e-4},
+        # Current density Fourier coefficients are computed via finite
+        # differences of covariant B components, which amplifies floating-point
+        # non-determinism (e.g., from OpenMP reduction order).
+        "currumnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
+        "currvmnc": {"rtol": 1.0e-4, "atol": 1.0e-4},
+    }
+
+    for varname, expected_value in expected_dataset.variables.items():
+        if varname in _MISSING_FORTRAN_VARIABLES:
+            continue
+        test_value = test_dataset[varname]
+        error_msg = f"mismatch in {varname}"
+
+        # string
+        if expected_value.dtype == np.dtype("S1"):
+            if varname == "mgrid_file":
+                # the `mgrid_file` entry in the reference wout file only contains the
+                # base name, while the one produced by VMEC++ contains a path relative
+                # to the root of the repo
+                assert test_value[:].tobytes().decode().strip() == indata.mgrid_file
+            else:
+                np.testing.assert_equal(
+                    test_value[:], expected_value[:], err_msg=error_msg
+                )
+            continue
+
+        expected_dims = expected_value.dimensions
+
+        # Check dimensions for an array or tensor (also works for scalars)
+        for d in expected_dims:
+            assert (
+                test_dataset.dimensions[d].size == expected_dataset.dimensions[d].size
+            )
+
+        rtol = enlarged_tolerances.get(varname, {"rtol": 1.0e-6})["rtol"]
+        atol = enlarged_tolerances.get(varname, {"atol": 1.0e-7})["atol"]
+
+        # np.asarray is needed to convert the masked array to a regular array.
+        # nan is a valid value for some fields (e.g. extcur) and can't be compared otherwise.
+        actual = np.asarray(test_value[:])
+        desired = np.asarray(expected_value[:])
+        if varname == "chipf":
+            # The axis and the boundary entries of chipf follow PARVMEC
+            # rather than the 8.52 lineage the references come from; see
+            # computeBContra.
+            actual = actual[..., 1:-1]
+            desired = desired[..., 1:-1]
+        actual, desired = _to_8_52_reference(
+            varname, actual, desired, expected_dataset["xm_nyq"][:]
+        )
+        np.testing.assert_allclose(
+            actual,
+            desired,
+            err_msg=error_msg,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+
+
+def test_run_reports_the_spectral_width_of_the_solver():
+    """vmecpp.run returns the spectral width the C++ solver computes."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    output = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_output = _vmecpp.run(
+        vmec_input._to_cpp_vmecindata(),
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
+    )
+    np.testing.assert_array_equal(output.wout.specw, cpp_output.wout.specw)
+
+
+def test_vmecwout_extra_fields_io(cma_output: vmecpp.VmecOutput):
+    """Support for unknown fields in wout files."""
+    cma_output_copy = cma_output.model_copy(deep=True)
+    del cma_output  # Prevent accidental use of the original object
+    cma_output_copy.wout = cma_output_copy.wout.model_copy(
+        update={
+            "extra_field": np.array([1.0, 2.0, 3.0]),
+            "extra_string": "string",
+            "extra_float": 3.14,
+            "extra_int": 42,
+            "extra_2darray": np.array([[1.0, 2.0], [3.0, 4.0]]),
+        }
+    )
+
+    with tempfile.NamedTemporaryFile() as tmp_file:
+        cma_output_copy.wout.save(tmp_file.name)
+
+        assert Path(tmp_file.name).exists()
+
+        # check that from_wout_file can load the file as well
+        loaded_wout = vmecpp.VmecWOut.from_wout_file(tmp_file.name)
+        assert loaded_wout is not None
+
+        # test contents of loaded wout against original in-memory wout
+        for attr in vars(cma_output_copy.wout):
+            error_msg = f"mismatch in {attr}"
+            np.testing.assert_equal(
+                actual=getattr(loaded_wout, attr),
+                desired=getattr(cma_output_copy.wout, attr),
+                err_msg=error_msg,
+            )
+
+
+def test_vmecwout_holds_jax_arrays(cma_output: vmecpp.VmecOutput):
+    jnp = pytest.importorskip("jax.numpy")
+    wout = cma_output.wout
+    with vmecpp.enable_x64(True):
+        array_fields = {
+            name: jnp.asarray(value)
+            for name, value in wout.model_dump().items()
+            if isinstance(value, np.ndarray)
+        }
+    jax_wout = vmecpp.VmecWOut.model_validate({**wout.model_dump(), **array_fields})
+    assert isinstance(jax_wout.rmnc, type(array_fields["rmnc"]))
+
+    with (
+        tempfile.NamedTemporaryFile() as np_file,
+        tempfile.NamedTemporaryFile() as jax_file,
+    ):
+        wout.save(np_file.name)
+        jax_wout.save(jax_file.name)
+        with (
+            netCDF4.Dataset(np_file.name, "r") as expected,
+            netCDF4.Dataset(jax_file.name, "r") as actual,
+        ):
+            assert actual.variables.keys() == expected.variables.keys()
+            for varname, expected_value in expected.variables.items():
+                assert actual[varname].dimensions == expected_value.dimensions
+                actual_value = actual[varname][:]
+                np.testing.assert_array_equal(
+                    np.ma.getmaskarray(actual_value),
+                    np.ma.getmaskarray(expected_value[:]),
+                )
+                np.testing.assert_array_equal(
+                    np.ma.getdata(actual_value), np.ma.getdata(expected_value[:])
+                )
+
+
+def test_jxbout_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "itheta",
+        "izeta",
+        "bdotk",
+        "jsupu3",
+        "jsupv3",
+        "jsups3",
+        "bsupu3",
+        "bsupv3",
+        "jcrossb",
+        "jxb_gradp",
+        "jdotb_sqrtg",
+        "sqrtg3",
+        "bsubu3",
+        "bsubv3",
+        "bsubs3",
+    ]:
+        assert len(getattr(cma_output.jxbout, varname).shape) == 2
+
+    for varname in [
+        "amaxfor",
+        "aminfor",
+        "avforce",
+        "pprim",
+        "jdotb",
+        "bdotb",
+        "bdotgradv",
+        "jpar2",
+        "jperp2",
+        "phin",
+    ]:
+        assert len(getattr(cma_output.jxbout, varname).shape) == 1
+
+
+def test_mercier_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "s",
+        "toroidal_flux",
+        "iota",
+        "shear",
+        "d_volume_d_phi",
+        "well",
+        "toroidal_current",
+        "d_toroidal_current_d_volume",
+        "pressure",
+        "d_pressure_d_volume",
+        "DMerc",
+        "Dshear",
+        "Dwell",
+        "Dcurr",
+        "Dgeod",
+    ]:
+        assert len(getattr(cma_output.mercier, varname).shape) == 1
+
+
+def test_threed1volumetrics_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "int_p",
+        "avg_p",
+        "int_bpol",
+        "avg_bpol",
+        "int_btor",
+        "avg_btor",
+        "int_modb",
+        "avg_modb",
+        "int_ekin",
+        "avg_ekin",
+    ]:
+        assert isinstance(getattr(cma_output.threed1_volumetrics, varname), float)
+
+
+def test_threed1_first_table_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "s",
+        "radial_force",
+        "toroidal_flux",
+        "iota",
+        "avg_jsupu",
+        "avg_jsupv",
+        "d_volume_d_phi",
+        "d_pressure_d_phi",
+        "spectral_width",
+        "pressure",
+        "buco_full",
+        "bvco_full",
+        "j_dot_b",
+        "b_dot_b",
+    ]:
+        assert len(getattr(cma_output.threed1_first_table, varname).shape) == 1
+
+
+def test_threed1_geometric_magnetic_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "toroidal_flux",
+        "circum_p",
+        "surf_area_p",
+        "cross_area_p",
+        "volume_p",
+        "Rmajor_p",
+        "Aminor_p",
+        "aspect",
+        "kappa_p",
+        "rcen",
+        "aminr1",
+        "pavg",
+        "factor",
+        "b0",
+        "rmax_surf",
+        "rmin_surf",
+        "zmax_surf",
+        "betapol",
+        "betatot",
+        "betator",
+        "VolAvgB",
+        "IonLarmor",
+        "jpar_perp",
+        "jparPS_perp",
+        "toroidal_current",
+        "rbtor",
+        "rbtor0",
+    ]:
+        assert isinstance(
+            getattr(cma_output.threed1_geometric_magnetic, varname), float
+        )
+    for varname in [
+        "bmin",
+        "bmax",
+        "waist",
+        "height",
+        "psi",
+        "ygeo",
+        "yinden",
+        "yellip",
+        "ytrian",
+        "yshift",
+        "loc_jpar_perp",
+        "loc_jparPS_perp",
+    ]:
+        assert len(getattr(cma_output.threed1_geometric_magnetic, varname).shape) >= 1
+
+
+def test_threed1_axis_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in ["raxis_symm", "zaxis_symm", "raxis_asym", "zaxis_asym"]:
+        if "asym" in varname:
+            assert getattr(cma_output.threed1_axis, varname) is None
+        else:
+            assert len(getattr(cma_output.threed1_axis, varname).shape) == 1
+
+
+def test_threed1_betas_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in ["betatot", "betapol", "betator", "rbtor", "betaxis", "betstr"]:
+        assert isinstance(getattr(cma_output.threed1_betas, varname), float)
+
+
+def test_threed1_shafranov_integrals_bindings(cma_output: vmecpp.VmecOutput):
+    for varname in [
+        "scaling_ratio",
+        "r_lao",
+        "f_lao",
+        "f_geo",
+        "smaleli",
+        "betai",
+        "musubi",
+        "lambda_",
+        "s11",
+        "s12",
+        "s13",
+        "s2",
+        "s3",
+        "delta1",
+        "delta2",
+        "delta3",
+    ]:
+        assert isinstance(
+            getattr(cma_output.threed1_shafranov_integrals, varname), float
+        )
+
+
+def test_is_vmec2000_input():
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
+
+    assert vmecpp.is_vmec2000_input(vmec2000_input_file)
+    assert not vmecpp.is_vmec2000_input(vmecpp_input_file)
+
+
+# Regression test #232
+def test_is_vmec2000_input_with_comment():
+    vmec2000_input_file = TEST_DATA_DIR / "input.solovev_analytical"
+    assert vmecpp.is_vmec2000_input(vmec2000_input_file)
+
+
+def test_ensure_vmec2000_input_noop():
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+
+    with vmecpp.ensure_vmec2000_input(vmec2000_input_file) as indata_file:
+        assert indata_file == vmec2000_input_file
+
+
+def test_ensure_vmec2000_input_with_null():
+    # Test that the null values are handled gracefully and removed from the VMEC2000 input file
+    vmec_input = vmecpp.VmecInput()
+    assert vmec_input.rbs is None
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
+        vmecpp_input_file = Path(tmp_dir) / "test_null.json"
+        vmec_input.save(vmecpp_input_file)
+        with vmecpp.ensure_vmec2000_input(vmecpp_input_file) as converted_indata_file:
+            indata_namelist = converted_indata_file.read_text()
+            assert "rbs" not in indata_namelist
+            assert "rbc" in indata_namelist, indata_namelist
+
+
+def test_ensure_vmec2000_input_keeps_axis():
+    # the JSON axis keys differ from the namelist names
+    reference = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "cth_like_fixed_bdy_asym.json"
+    )
+    assert reference.raxis_s is not None
+    assert reference.zaxis_c is not None
+    reference.raxis_s[1] = 1.0e-3
+    reference.zaxis_c[0] = -2.0e-3
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        vmecpp_input_file = Path(tmp_dir) / "axis.json"
+        reference.save(vmecpp_input_file)
+        with vmecpp.ensure_vmec2000_input(vmecpp_input_file) as indata_file:
+            round_trip = vmecpp.VmecInput.from_file(indata_file)
+    for name in ("raxis_c", "zaxis_s", "raxis_s", "zaxis_c"):
+        np.testing.assert_allclose(
+            getattr(round_trip, name), getattr(reference, name), rtol=1e-15, atol=0
+        )
+
+
+def test_ensure_vmecpp_input_noop():
+    vmecpp_input_file = TEST_DATA_DIR / "cma.json"
+
+    with vmecpp.ensure_vmecpp_input(vmecpp_input_file) as new_input_file:
+        assert new_input_file == vmecpp_input_file
+
+
+def test_ensure_vmecpp_input():
+    vmec2000_input_file = TEST_DATA_DIR / "input.cma"
+
+    with vmecpp.ensure_vmecpp_input(vmec2000_input_file) as vmecpp_input_file:
+        assert vmecpp_input_file == TEST_DATA_DIR / f"cma.{os.getpid()}.json"
+        with open(vmecpp_input_file) as f:
+            vmecpp_input_dict = json.load(f)
+            # check the output is remotely sensible: we don't want to test indata_to_json's
+            # correctness here, just that nothing went terribly wrong
+            assert vmecpp_input_dict["mpol"] == 5
+            assert vmecpp_input_dict["ntor"] == 6
+
+
+# Regression test for PR #181
+def test_raise_invalid_threadcount():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    with pytest.raises(RuntimeError):
+        vmecpp.run(vmec_input, max_threads=-1)
+    with pytest.raises(RuntimeError):
+        vmecpp.run(vmec_input, max_threads=0)
+
+
+def test_run_under_an_openmp_thread_limit():
+    """Runs under OMP_THREAD_LIMIT=2 get fewer threads than they request.
+
+    The fixed-boundary run requests four radial threads and gets two, which makes it the
+    run with two threads. The free-boundary run requests two radial threads with a
+    nested vacuum team of two, which the limit leaves one thread.
+    """
+    script = f"""\
+from pathlib import Path
+
+import vmecpp
+
+data = Path({str(TEST_DATA_DIR)!r})
+fixed = vmecpp.VmecInput.from_file(data / "solovev.json")
+print("fixed", repr(vmecpp.run(fixed, max_threads=4, verbose=False).wout.volume))
+grid = vmecpp.MakegridParameters.from_file(data / "makegrid_parameters_cth_like.json")
+grid.number_of_r_grid_points = 31
+grid.number_of_phi_grid_points = 36
+grid.number_of_z_grid_points = 20
+field = vmecpp.MagneticFieldResponseTable.from_coils_file(data / "coils.cth_like", grid)
+free = vmecpp.VmecInput.from_file(data / "cth_like_free_bdy.json")
+print("free", repr(vmecpp.run(free, field, max_threads=2, verbose=False).wout.volume))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "OMP_THREAD_LIMIT": "2"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    volumes = {}
+    for line in result.stdout.splitlines():
+        words = line.split()
+        if len(words) == 2 and words[0] in ("fixed", "free"):
+            volumes[words[0]] = float(words[1])
+
+    fixed = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    two_threads = vmecpp.run(fixed, max_threads=2, verbose=False)
+    assert volumes["fixed"] == two_threads.wout.volume
+
+    grid = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    grid.number_of_r_grid_points = 31
+    grid.number_of_phi_grid_points = 36
+    grid.number_of_z_grid_points = 20
+    field = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", grid
+    )
+    free = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    two_vacuum_threads = vmecpp.run(free, field, max_threads=2, verbose=False)
+    assert volumes["free"] == pytest.approx(two_vacuum_threads.wout.volume, rel=1e-10)
+
+
+def test_vmec_input_validation():
+    test_file = TEST_DATA_DIR / "solovev.json"
+    vmec_input = vmecpp.VmecInput.from_file(test_file)
+
+    # Why do we not compare `json_dict = json.loads(test_file.read_text())` ?
+    # The test_file json may exclude fields that have default values,
+    # while the parsed versions should have all fields populated.
+    indata_dict_from_json = json.loads(vmec_input._to_cpp_vmecindata().to_json())
+    vmec_input_dict_from_json = json.loads(vmec_input.model_dump_json())
+
+    if not vmec_input.lasym:
+        for lasym_field in ["rbs", "zbc", "raxis_s", "zaxis_c"]:
+            del vmec_input_dict_from_json[lasym_field]
+
+    assert indata_dict_from_json == vmec_input_dict_from_json
+
+
+def test_vmec_output_serialization(cma_output: vmecpp.VmecOutput):
+    # Since VmecOutput contains the other objects, we don't need to test them individually.
+    serialized_output = cma_output.model_dump_json()
+    deserialized_output = vmecpp.VmecOutput.model_validate_json(serialized_output)
+
+    # Test nested objects (VmecWOut, JxbOut, Mercier, etc.)
+    for field in vmecpp.VmecOutput.model_fields:
+        deserialized_field = getattr(deserialized_output, field)
+        output_field = getattr(cma_output, field)
+        # Check the individual fields of the nested object
+        for attr in vars(output_field):
+            error_msg = f"mismatch in {attr}"
+
+            np.testing.assert_equal(
+                actual=getattr(deserialized_field, attr),
+                desired=getattr(output_field, attr),
+                err_msg=error_msg,
+            )
+
+
+def test_aux_arrays_from_cpp_wout():
+    """Test that auxiliary arrays are correctly padded when empty, and padding doesn't
+    accidentally overwrite any values."""
+
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    cpp_wout = vmec_output.wout._to_cpp_wout()
+
+    def assert_aux_defaults(wout: vmecpp.VmecWOut):
+        # Check padding values and length
+        assert len(wout.am_aux_s) == vmecpp.ndfmax
+        assert len(wout.am_aux_f) == vmecpp.ndfmax
+        assert len(wout.ac_aux_s) == vmecpp.ndfmax
+        assert len(wout.ac_aux_f) == vmecpp.ndfmax
+        assert len(wout.ai_aux_s) == vmecpp.ndfmax
+        assert len(wout.ai_aux_f) == vmecpp.ndfmax
+
+        # Verify _aux_s arrays are padded with -1
+        np.testing.assert_allclose(wout.am_aux_s, -1.0)
+        np.testing.assert_allclose(wout.ac_aux_s, -1.0)
+        np.testing.assert_allclose(wout.ai_aux_s, -1.0)
+
+        # Verify _aux_f arrays are padded with 0
+        np.testing.assert_allclose(wout.am_aux_f, 0.0)
+        np.testing.assert_allclose(wout.ac_aux_f, 0.0)
+        np.testing.assert_allclose(wout.ai_aux_f, 0.0)
+
+    assert_aux_defaults(vmecpp.VmecWOut._from_cpp_wout(cpp_wout))
+
+    # Set all aux arrays to empty
+    cpp_wout.am_aux_s = np.array([])
+    cpp_wout.am_aux_f = np.array([])
+    cpp_wout.ac_aux_s = np.array([])
+    cpp_wout.ac_aux_f = np.array([])
+    cpp_wout.ai_aux_s = np.array([])
+    cpp_wout.ai_aux_f = np.array([])
+
+    # Check that defaults work for empty aux arrays
+    assert_aux_defaults(vmecpp.VmecWOut._from_cpp_wout(cpp_wout))
+
+    # The defaults don't overwrite the original values, only pad them
+    cpp_wout.am_aux_s = np.array([2.0, 3.0])
+    cpp_wout.am_aux_f = np.array([2.0, 3.0])
+    wout = vmecpp.VmecWOut._from_cpp_wout(cpp_wout)
+    with pytest.raises(AssertionError):
+        assert_aux_defaults(wout)
+    np.testing.assert_almost_equal(wout.am_aux_s[:2], np.array([2.0, 3.0]))
+    np.testing.assert_almost_equal(wout.am_aux_f[:2], np.array([2.0, 3.0]))
+
+
+def test_populate_raw_profile_knots():
+    vmec_input = vmecpp.VmecInput()
+    vmec_input.ns_array = np.array([5, 9])
+
+    def f(s):
+        return s**2
+
+    vmec_input = vmecpp.populate_raw_profile(vmec_input, "pressure", f)
+
+    s_values = set()
+    for ns in vmec_input.ns_array:
+        delta = 1.0 / float(ns - 1)
+        s_values.update(i * delta for i in range(ns))
+        s_values.update((i - 0.5) * delta for i in range(ns))
+    expected_knots = np.array(sorted(s_values), dtype=float)
+
+    n = len(expected_knots)
+    np.testing.assert_allclose(vmec_input.am_aux_s[:n], expected_knots)
+    np.testing.assert_allclose(vmec_input.am_aux_f[:n], expected_knots**2)
+    assert vmec_input.pmass_type == "line_segment"
+
+
+def test_default_preset():
+    # Default construction doesn't throw an exception
+    default_preset = vmecpp.VmecInput()
+    # Sample a few of the default values that should be set
+    assert default_preset.nfp == 1
+    assert default_preset.mpol == 6
+    assert not default_preset.lasym
+    assert default_preset.ns_array == np.array([31])
+
+
+def test_python_defaults_match_cpp_defaults():
+    python_defaults = vmecpp.VmecInput()
+    cpp_defaults = vmecpp.VmecInput._from_cpp_vmecindata(_vmecpp.VmecINDATA())
+
+    for field in vmecpp.VmecInput.model_fields:
+        py_val = getattr(python_defaults, field)
+        cpp_val = getattr(cpp_defaults, field)
+        if isinstance(py_val, np.ndarray):
+            np.testing.assert_array_equal(py_val, cpp_val)
+        else:
+            assert py_val == cpp_val
+
+
+def test_ctrl_c_interrupts_run():
+    """Test that a VMEC++ run can be interrupted with SIGINT (Ctrl+C).
+
+    Launches a subprocess that starts a long VMEC++ run, sends SIGINT after the run has
+    started, and verifies that the process terminates with KeyboardInterrupt rather than
+    running to completion.
+    """
+    script = f"""\
+import sys
+import vmecpp
+from pathlib import Path
+
+vmec_input = vmecpp.VmecInput.from_file(
+    Path({str(TEST_DATA_DIR)!r}) / "cma.json"
+)
+# Use many iterations to ensure the run doesn't finish before the signal
+vmec_input.niter_array[-1] = 100000
+vmec_input.ftol_array[-1] = 1.0e-18  # Don't terminate due to tolerance
+try:
+    vmecpp.run(vmec_input, verbose=True, max_threads=1)
+    # Should not reach here
+    print("RUN_COMPLETED")
+except KeyboardInterrupt:
+    print("KEYBOARD_INTERRUPT")
+"""
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", script],
+        # Merge stderr into stdout so editable-install build output
+        # doesn't block the stdout readline loop
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    # Wait for the subprocess to signal that it's about to start the run.
+    deadline = time.monotonic() + 60
+    partial_output = ""
+    assert proc.stdout
+    while time.monotonic() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        partial_output += line
+        # The tabular output of the first force iteration
+        if "    1 |" in line:
+            break
+    else:
+        raise RuntimeError(
+            "The vmecpp subprocess did not start in time. Progress: \n" + partial_output
+        )
+
+    proc.send_signal(signal.SIGINT)
+
+    remaining_output = proc.communicate(timeout=30)[0]
+    output = partial_output + remaining_output
+    assert "KEYBOARD_INTERRUPT" in output, (
+        f"Expected KeyboardInterrupt but got:\noutput: {output}"
+    )
+    assert "RUN_COMPLETED" not in output
+
+
+def _wout_without_full_grid_lambda(source: Path, target: Path) -> None:
+    """Copy a wout file, dropping the full-grid lambda arrays only VMEC++ writes."""
+    dropped = {"lmns_full", "lmnc_full"}
+    with netCDF4.Dataset(source) as src, netCDF4.Dataset(target, "w") as dst:
+        for name, dimension in src.dimensions.items():
+            dst.createDimension(
+                name, None if dimension.isunlimited() else len(dimension)
+            )
+        for name, variable in src.variables.items():
+            if name in dropped:
+                continue
+            src.set_auto_mask(False)
+            created = dst.createVariable(name, variable.datatype, variable.dimensions)
+            created.setncatts({k: variable.getncattr(k) for k in variable.ncattrs()})
+            created[...] = src[name][()]
+
+
+def test_wout_recovers_full_grid_lambda_from_half_grid():
+    """The full-grid lambda is recovered from a wout that stores only the half grid."""
+    wout_path = TEST_DATA_DIR / "wout_cth_like_fixed_bdy_spline_pressure.nc"
+    with netCDF4.Dataset(wout_path) as fnc:
+        assert "lmns_full" not in fnc.variables
+
+    loaded = vmecpp.VmecWOut.from_wout_file(wout_path)
+    computed = vmecpp.run(
+        vmecpp.VmecInput.from_file(
+            TEST_DATA_DIR / "cth_like_fixed_bdy_spline_pressure.json"
+        ),
+        max_threads=1,
+        verbose=False,
+    ).wout
+
+    peak = np.abs(computed.lmns_full).max()
+    assert peak > 0.1
+    np.testing.assert_allclose(loaded.lmns_full, computed.lmns_full, atol=1.0e-8 * peak)
+
+
+def test_wout_recovers_full_grid_lambda_for_asymmetric_equilibrium(tmp_path):
+    """The recovery covers both lambda halves of an asymmetric equilibrium."""
+    computed = vmecpp.run(
+        vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy_asym.json"),
+        max_threads=1,
+        verbose=False,
+    ).wout
+    assert computed.lasym
+
+    full = tmp_path / "wout_asym.nc"
+    computed.save(full)
+    half_only = tmp_path / "wout_asym_half_grid_lambda.nc"
+    _wout_without_full_grid_lambda(full, half_only)
+
+    loaded = vmecpp.VmecWOut.from_wout_file(half_only)
+    for recovered, reference in (
+        (loaded.lmns_full, computed.lmns_full),
+        (loaded.lmnc_full, computed.lmnc_full),
+    ):
+        assert recovered is not None
+        assert reference is not None
+        peak = np.abs(reference).max()
+        assert peak > 0.0
+        np.testing.assert_allclose(recovered, reference, atol=1.0e-10 * peak)
+
+
+def test_hot_restart_from_a_wout_without_full_grid_lambda(tmp_path):
+    """A restart from a wout with half-grid lambda only converges at once."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    cold = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    full = tmp_path / "wout_cth.nc"
+    cold.wout.save(full)
+    half_only = tmp_path / "wout_cth_half_grid_lambda.nc"
+    _wout_without_full_grid_lambda(full, half_only)
+
+    restart_from = cold.model_copy(deep=True)
+    restart_from.wout = vmecpp.VmecWOut.from_wout_file(half_only)
+
+    hot_input = vmec_input.model_copy(deep=True)
+    hot_input.ns_array = vmec_input.ns_array[-1:]
+    hot_input.ftol_array = vmec_input.ftol_array[-1:]
+    hot_input.niter_array = vmec_input.niter_array[-1:]
+    hot = vmecpp.run(hot_input, restart_from=restart_from, max_threads=1, verbose=False)
+
+    assert hot.wout.niter < 10
+
+
+def test_vmec_input_decodes_bytes_string_fields():
+    vmec_input = vmecpp.VmecInput.model_validate(
+        {
+            "mgrid_file": b"mgrid.nc  ",
+            "pmass_type": b"power_series ",
+            "pcurr_type": "power_series",
+        }
+    )
+
+    assert vmec_input.mgrid_file == "mgrid.nc"
+    assert vmec_input.pmass_type == "power_series"
+    assert vmec_input.pcurr_type == "power_series"
+
+
+def test_vmec_input_axis_aliases_read_write_the_axis_fields():
+    vmec_input = vmecpp.VmecInput(lasym=True)
+
+    vmec_input.raxis_cc = np.array([3.0])
+    vmec_input.zaxis_cs = np.array([0.5])
+    vmec_input.raxis_cs = np.array([0.1])
+    vmec_input.zaxis_cc = np.array([0.2])
+
+    np.testing.assert_array_equal(vmec_input.raxis_c, [3.0])
+    np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
+    np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
+    np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+def test_hot_restart_mismatch_raises_dedicated_error():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    base_output = vmecpp.run(vmec_input, verbose=False)
+    mismatched = vmec_input.model_copy(update={"ns_array": vmec_input.ns_array + 2})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ns_array") as info:
+        vmecpp.run(mismatched, restart_from=base_output, verbose=False)
+    assert isinstance(info.value, ValueError)
+
+
+def test_resize_is_in_place():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.resize(4, 3)
+    assert (vmec_input.mpol, vmec_input.ntor) == (4, 3)
+    assert np.asarray(vmec_input.rbc).shape == (4, 7)
+
+
+def test_resize_keeps_a_fourier_continuation_schedule():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    ntor = vmec_input.ntor_max
+    vmec_input.mpol = np.array([4, 6])
+    vmec_input.resize(6, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 6]
+    vmec_input.resize(5, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
+    vmec_input.resize(3, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
+
+
+def test_vmec_input_keys():
+    vmec_input = vmecpp.VmecInput.from_file(Path("examples/data/solovev.json"))
+    keys = vmec_input.keys()
+    assert "ns_array" in keys
+    assert set(keys) == set(vmecpp.VmecInput.model_fields)
+
+
+def test_axis_guess_longer_than_ntor_is_truncated():
+    vmec_input = vmecpp.VmecInput.from_file(Path("examples/data/solovev.json"))
+    ntor = vmec_input.ntor_max
+    long_axis = np.arange(1.0, ntor + 6.0)
+    rebuilt = vmecpp.VmecInput.model_validate(
+        {
+            **vmec_input.model_dump(mode="json"),
+            "raxis_c": long_axis,
+            "zaxis_s": long_axis,
+        }
+    )
+    np.testing.assert_array_equal(rebuilt.raxis_c, long_axis[: ntor + 1])
+    np.testing.assert_array_equal(rebuilt.zaxis_s, long_axis[: ntor + 1])

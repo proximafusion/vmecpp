@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "thread_local_storage",
+    srcs = ["thread_local_storage.cc"],
+    hdrs = ["thread_local_storage.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/sizes:sizes",
+    ],
+)

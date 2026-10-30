@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "sizes",
+    srcs = ["sizes.cc"],
+    hdrs = ["sizes.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/log:check",
+        "@abseil-cpp//absl/strings:str_format",
+        "//vmecpp/common/util:util",
+        "//vmecpp/common/vmec_indata:vmec_indata",
+    ],
+)
