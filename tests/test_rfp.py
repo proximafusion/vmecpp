@@ -11,8 +11,9 @@ import pytest
 
 import vmecpp
 
-TEST_DATA = Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp"
-TEST_DATA = TEST_DATA / "test_data"
+TEST_DATA = (
+    Path(__file__).parent.parent / "src" / "vmecpp" / "cpp" / "vmecpp" / "test_data"
+)
 
 
 def test_lrfp_holds_chi_prime_constant_and_phi_prime_at_q_times_it():
