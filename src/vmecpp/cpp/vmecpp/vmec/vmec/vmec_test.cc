@@ -1330,3 +1330,118 @@ TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
     EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
   }
 }  // CurrentDensityEndsAtTheSmallestRadialResolution
+
+// A boundary of the ConStellaration dataset (plasma_config_id
+// D3zD6qDAHKSDjVyBVtg9AfA) whose first time steps at delt = 0.7 make flux
+// surfaces cross. Without jacobian_safe_step those steps are undone and retried
+// once the Jacobian has changed sign. With it no step crosses them: the run
+// converges with shortened steps in place of the bad-Jacobian restarts, to the
+// same state on one thread and on four.
+TEST(TestVmec, JacobianSafeStepShortensTimeStepsThatCrossFluxSurfaces) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/constellaration_nfp5.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok()) << indata.status();
+
+  const auto count = [](const Eigen::VectorXi& restart_reasons,
+                        vmecpp::RestartReason reason) {
+    return (restart_reasons.array() == static_cast<int>(reason)).count();
+  };
+
+  const auto unlimited = vmecpp::run(*indata, std::nullopt, /*max_threads=*/1,
+                                     vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(unlimited.ok()) << unlimited.status();
+  EXPECT_GT(count(unlimited->wout.restart_reason_timetrace,
+                  vmecpp::RestartReason::BAD_JACOBIAN),
+            0);
+
+  indata->jacobian_safe_step = true;
+  const auto one_thread = vmecpp::run(*indata, std::nullopt, /*max_threads=*/1,
+                                      vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(one_thread.ok()) << one_thread.status();
+  const auto four_threads = vmecpp::run(
+      *indata, std::nullopt, /*max_threads=*/4, vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(four_threads.ok()) << four_threads.status();
+
+  const auto& a = one_thread->wout;
+  const auto& b = four_threads->wout;
+  EXPECT_EQ(a.itfsq, b.itfsq);
+  auto rel_max = [](const auto& x, const auto& y) -> double {
+    return (x - y).cwiseAbs().maxCoeff() / x.cwiseAbs().maxCoeff();
+  };
+  // the sums over threads change the round-off, 3e-11 in iota
+  constexpr double kTol = 1.0e-9;
+  EXPECT_LT(rel_max(a.iotaf, b.iotaf), kTol);
+  EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol);
+  EXPECT_LT(rel_max(a.zmns, b.zmns), kTol);
+
+  EXPECT_EQ(
+      count(a.restart_reason_timetrace, vmecpp::RestartReason::BAD_JACOBIAN),
+      0);
+  const auto shortened =
+      count(a.restart_reason_timetrace, vmecpp::RestartReason::SHORTENED_STEP);
+  EXPECT_GT(shortened, 0);
+  EXPECT_EQ(shortened, count(b.restart_reason_timetrace,
+                             vmecpp::RestartReason::SHORTENED_STEP));
+}
+
+namespace {
+
+// Runs indata with and without jacobian_safe_step on one thread and expects
+// the same iterations, the same restart-reason trace and the same state, bit
+// for bit.
+void ExpectUnchangedByJacobianSafeStep(VmecINDATA indata,
+                                       const std::string& name) {
+  indata.jacobian_safe_step = false;
+  const auto unlimited = vmecpp::run(indata, std::nullopt, /*max_threads=*/1,
+                                     vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(unlimited.ok()) << name << ": " << unlimited.status();
+  indata.jacobian_safe_step = true;
+  const auto limited = vmecpp::run(indata, std::nullopt, /*max_threads=*/1,
+                                   vmecpp::OutputMode::kSilent);
+  ASSERT_TRUE(limited.ok()) << name << ": " << limited.status();
+
+  const auto& a = unlimited->wout;
+  const auto& b = limited->wout;
+  EXPECT_EQ(a.itfsq, b.itfsq) << name;
+  ASSERT_EQ(a.restart_reason_timetrace.size(),
+            b.restart_reason_timetrace.size())
+      << name;
+  EXPECT_TRUE(
+      (a.restart_reason_timetrace.array() == b.restart_reason_timetrace.array())
+          .all())
+      << name;
+  auto max_difference = [](const auto& x, const auto& y) -> double {
+    return (x - y).cwiseAbs().maxCoeff();
+  };
+  EXPECT_EQ(max_difference(a.rmnc, b.rmnc), 0.0) << name;
+  EXPECT_EQ(max_difference(a.zmns, b.zmns), 0.0) << name;
+  EXPECT_EQ(max_difference(a.lmns, b.lmns), 0.0) << name;
+  EXPECT_EQ(max_difference(a.iotaf, b.iotaf), 0.0) << name;
+}
+
+}  // namespace
+
+// With jacobian_safe_step, a run in which no time step takes the Jacobian
+// below kJacobianRetainedFraction of its value takes the steps of the run
+// without it: the ConStellaration boundary above at delt = 0.35, and
+// cth_like_fixed_bdy.
+TEST(TestVmec, JacobianSafeStepLeavesStepsThatKeepTheBoundUnchanged) {
+  const absl::StatusOr<std::string> constellaration_json =
+      ReadFile("vmecpp/test_data/constellaration_nfp5.json");
+  ASSERT_TRUE(constellaration_json.ok());
+  absl::StatusOr<VmecINDATA> constellaration =
+      VmecINDATA::FromJson(*constellaration_json);
+  ASSERT_TRUE(constellaration.ok()) << constellaration.status();
+  constellaration->delt = 0.35;
+  ExpectUnchangedByJacobianSafeStep(*constellaration, "constellaration_nfp5");
+
+  const absl::StatusOr<std::string> cth_like_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy.json");
+  ASSERT_TRUE(cth_like_json.ok());
+  const absl::StatusOr<VmecINDATA> cth_like =
+      VmecINDATA::FromJson(*cth_like_json);
+  ASSERT_TRUE(cth_like.ok()) << cth_like.status();
+  ExpectUnchangedByJacobianSafeStep(*cth_like, "cth_like_fixed_bdy");
+}
