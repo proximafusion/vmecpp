@@ -23,6 +23,7 @@ N = 3  # braid turns per transit
 R0 = 1.0  # radius of the rope in m
 B0 = 1.0  # guide field at R0 in T
 PLANES, THETAS = 48, 48  # planes and polar angles of the boundary
+NTHETA, NZETA = 40, 48  # poloidal and toroidal grid points of the solver
 SEGMENTS = 192  # points on the magnetic axis of the strand
 SOURCES = 24, 108  # polar and toroidal angles of the current elements of each strand
 PENALTY = 10.0  # mode amplitude of a boundary that VMEC++ does not solve
@@ -198,8 +199,8 @@ def strand_input(rope, rb, zb, **update):
         lasym=False,
         mpol=rope.mpol,
         ntor=rope.ntor,
-        ntheta=40,
-        nzeta=48,
+        ntheta=NTHETA,
+        nzeta=NZETA,
         ns_array=np.array([rope.ns]),
         ftol_array=np.array([1e-13]),
         niter_array=np.array([20000]),
@@ -370,11 +371,11 @@ def solve(rope, x, vertical, start=None):
 def projection(m_shape, n_shape):
     """The least-squares projection of a function on the solver's boundary grid onto the
     shape modes."""
-    k, j = np.meshgrid(np.arange(48), np.arange(21), indexing="ij")
+    k, j = np.meshgrid(np.arange(NZETA), np.arange(NTHETA // 2 + 1), indexing="ij")
     modes = Rope(m_shape=m_shape, n_shape=n_shape).modes
     grid = np.stack(
         [
-            np.cos(m * 2.0 * np.pi * j / 40 - n * 2.0 * np.pi * k / 48).ravel()
+            np.cos(m * 2.0 * np.pi * j / NTHETA - n * 2.0 * np.pi * k / NZETA).ravel()
             for m, n in modes
         ],
         1,
