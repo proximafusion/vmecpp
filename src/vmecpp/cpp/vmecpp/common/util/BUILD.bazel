@@ -2,6 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 cc_library(
+    name = "os_compat",
+    hdrs = ["os_compat.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
