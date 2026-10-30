@@ -20,7 +20,9 @@ import lundquist_flux_rope as lq
 
 @pytest.fixture(scope="module")
 def rope():
-    output = vmecpp.run(lq.lundquist_input(30.0), max_threads=1, verbose=False)
+    output = vmecpp.run(
+        lq.lundquist_input(30.0, lq.NS[:4]), max_threads=1, verbose=False
+    )
     return lq.lundquist(output)
 
 

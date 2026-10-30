@@ -16,7 +16,7 @@ KA = 3.0  # k a; B_z reverses at k r = 2.405, inside the rope
 B0 = 1.0  # B_z on the axis in T
 ASPECTS = (10.0, 30.0, 100.0)  # R0 / a
 DEGREE = 20  # of the power series of q in the normalized poloidal flux s
-NS = [17, 33, 65, 129]
+NS = [17, 33, 65, 129, 257, 513]
 
 
 def rope(s):
@@ -48,7 +48,7 @@ def q_profile(aspect):
     return coefficients, misfit
 
 
-def lundquist_input(aspect):
+def lundquist_input(aspect, grids=NS):
     """The fixed-boundary input of the circular rope of the aspect ratio at zero
     pressure, with the q profile of the straight rope in s."""
     k, r0 = KA / MINOR, aspect * MINOR
@@ -56,9 +56,9 @@ def lundquist_input(aspect):
         lrfp=True,
         mpol=6,
         ntor=0,
-        ns_array=np.array(NS),
-        ftol_array=np.array([1e-12] * len(NS)),
-        niter_array=np.array([40000] * len(NS)),
+        ns_array=np.array(grids),
+        ftol_array=np.array([1e-12] * len(grids)),
+        niter_array=np.array([80000] * len(grids)),
         phiedge=2.0 * np.pi * B0 * MINOR * j1(KA) / k,
         ncurr=0,
         piota_type="power_series",
@@ -85,8 +85,8 @@ def lundquist(output):
     # the vertex of the parabola through the three points about the peak
     a, b, _ = np.polyfit(s[j - 1 : j + 2], phi[j - 1 : j + 2], 2)
     s_reversal = -b / (2.0 * a)
-    r0 = float(np.asarray(wout.raxis_cc)[0])
-    # R B_phi from the last two half-grid surfaces to the boundary
+    r0 = float(np.asarray(wout.rmnc)[0, -1])
+    # R B_phi from the last two half-grid surfaces to the boundary, over its centre
     bvco = np.asarray(wout.bvco)
     edge_field = (1.5 * bvco[-1] - 0.5 * bvco[-2]) / r0
     mean_field = float(wout.phi[-1]) / (np.pi * MINOR**2)
