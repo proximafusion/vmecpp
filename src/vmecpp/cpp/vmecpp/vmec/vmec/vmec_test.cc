@@ -1333,21 +1333,28 @@ TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
 
 // A boundary of the ConStellaration dataset (plasma_config_id
 // D3zD6qDAHKSDjVyBVtg9AfA) whose first time steps at delt = 0.7 make flux
-// surfaces cross. Without jacobian_safe_step the run gives up after 75
-// restarts. With it the run converges, to the same state on one thread and on
-// four, and its restart-reason trace marks the same shortened steps.
-TEST(TestVmec, JacobianSafeStepConvergesWhereTimeStepsCrossFluxSurfaces) {
+// surfaces cross. Without jacobian_safe_step those steps are undone and retried
+// once the Jacobian has changed sign. With it no step crosses them: the run
+// converges with shortened steps in place of the bad-Jacobian restarts, to the
+// same state on one thread and on four.
+TEST(TestVmec, JacobianSafeStepShortensTimeStepsThatCrossFluxSurfaces) {
   const absl::StatusOr<std::string> indata_json =
       ReadFile("vmecpp/test_data/constellaration_nfp5.json");
   ASSERT_TRUE(indata_json.ok());
   absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(indata.ok()) << indata.status();
 
+  const auto count = [](const Eigen::VectorXi& restart_reasons,
+                        vmecpp::RestartReason reason) {
+    return (restart_reasons.array() == static_cast<int>(reason)).count();
+  };
+
   const auto unlimited = vmecpp::run(*indata, std::nullopt, /*max_threads=*/1,
                                      vmecpp::OutputMode::kSilent);
-  ASSERT_FALSE(unlimited.ok());
-  EXPECT_THAT(unlimited.status().message(),
-              ::testing::HasSubstr("JACOBIAN_75_TIMES_BAD"));
+  ASSERT_TRUE(unlimited.ok()) << unlimited.status();
+  EXPECT_GT(count(unlimited->wout.restart_reason_timetrace,
+                  vmecpp::RestartReason::BAD_JACOBIAN),
+            0);
 
   indata->jacobian_safe_step = true;
   const auto one_thread = vmecpp::run(*indata, std::nullopt, /*max_threads=*/1,
@@ -1369,14 +1376,14 @@ TEST(TestVmec, JacobianSafeStepConvergesWhereTimeStepsCrossFluxSurfaces) {
   EXPECT_LT(rel_max(a.rmnc, b.rmnc), kTol);
   EXPECT_LT(rel_max(a.zmns, b.zmns), kTol);
 
-  const auto shortened = [](const Eigen::VectorXi& restart_reasons) {
-    return (restart_reasons.array() ==
-            static_cast<int>(vmecpp::RestartReason::SHORTENED_STEP))
-        .count();
-  };
-  EXPECT_GT(shortened(a.restart_reason_timetrace), 0);
-  EXPECT_EQ(shortened(a.restart_reason_timetrace),
-            shortened(b.restart_reason_timetrace));
+  EXPECT_EQ(
+      count(a.restart_reason_timetrace, vmecpp::RestartReason::BAD_JACOBIAN),
+      0);
+  const auto shortened =
+      count(a.restart_reason_timetrace, vmecpp::RestartReason::SHORTENED_STEP);
+  EXPECT_GT(shortened, 0);
+  EXPECT_EQ(shortened, count(b.restart_reason_timetrace,
+                             vmecpp::RestartReason::SHORTENED_STEP));
 }
 
 namespace {
