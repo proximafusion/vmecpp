@@ -35,6 +35,7 @@ from vmecpp import _util, autodiff_wout
 from vmecpp import geometry as _geometry
 from vmecpp._continuation import _run_fourier_continuation, interpolate_solution
 from vmecpp._free_boundary import (
+    MagneticFieldFunction,
     MagneticFieldResponseTable,
     MakegridParameters,
 )
@@ -282,6 +283,10 @@ class VmecInput(BaseModelWithNumpy):
     May be a sequence of ints, analogous to :attr:`mpol`; see its docstring.
     """
 
+    def keys(self) -> list[str]:
+        """The input field names, as for the dict-like INDATA objects of SIMSOPT."""
+        return list(type(self).model_fields)
+
     @property
     def mpol_max(self) -> int:
         """The final mpol resolution, if a multigrid sequence is used."""
@@ -526,13 +531,38 @@ class VmecInput(BaseModelWithNumpy):
     above 1.0 accelerate it. The default 0.5 is the damping of VMEC 8.52.
     """
 
+    lambda_precondition_checkerboard_terms: float = 1e-3
+    """Stiffness floor with which the lambda preconditioner treats the radial
+    checkerboard (odd-even) mode of the m = 0 lambda, as a fraction of the stiffness of
+    a smooth mode.
+
+    lambda enters B through its average over neighbouring surfaces, which cancels a
+    (-1)^j checkerboard of the full-grid m = 0 lambda, so the energy and the force
+    hardly see it; a diagonal lambda preconditioner converges it last, and it shows up
+    as a sign-alternating <J.B> and DMerc. Non-negative values precondition the m = 0
+    lambda with its tridiagonal radial block plus this fraction of the diagonal, which
+    enlarges the checkerboard step at most 1 / value times: 0 inverts the exact block.
+    Negative values keep the diagonal preconditioner of VMEC 8.52, which the reference
+    tests use. The converged equilibrium does not depend on it.
+    """
+
     lbsubs: bool = False
     """If true, recompute the full-grid covariant B_s by solving radial force balance
-    (lbsubs flag in Fortran VMEC)."""
+    with regularized radial derivatives.
+
+    Helps with getting more physical currents for post-processing involving `B_s`
+    like diagnostic reconstruction, DMerc, or toroidal current densities.
+    https://proximafusion.github.io/vmecpp/tutorials/fixed_boundary.html
+    """
 
     backup_evaluated_state: bool = True
     """If true, restart backups hold the state of the last force evaluation; if false,
     they hold the advanced state, as in educational_VMEC and the reference files."""
+
+    always_fix_m1_gauge: bool = False
+    """If true, the m = 1 gauge of R and Z is set from the boundary at the start of
+    every multigrid step and held there; if false, it is held only in the first
+    iteration of a multigrid step and while fsqz < 1e-6, as in VMEC 8.52."""
 
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
@@ -649,8 +679,8 @@ class VmecInput(BaseModelWithNumpy):
                 )
 
         # The 1D magnetic-axis arrays must have length ntor+1. Shorter arrays
-        # simply omit trailing (zero) coefficients and are silently zero-padded;
-        # longer arrays are rejected rather than silently truncated.
+        # simply omit trailing (zero) coefficients and are zero-padded; longer
+        # arrays are truncated.
         ntor_plus_one_fields = ["raxis_c", "zaxis_s"]
         if self.lasym:
             ntor_plus_one_fields.extend(["raxis_s", "zaxis_c"])
@@ -693,7 +723,7 @@ class VmecInput(BaseModelWithNumpy):
 
         Arrays shorter than ntor_new+1 are zero-padded (the omitted trailing
         coefficients are implicitly zero). Arrays longer than ntor_new+1 are
-        rejected to avoid silently truncating user-data.
+        truncated.
 
         Args:
             coeff: A 1D NumPy array of axis coefficients (length ntor+1).
@@ -702,18 +732,15 @@ class VmecInput(BaseModelWithNumpy):
         Examples:
             >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0]), ntor_new=3)
             array([1., 2., 0., 0.])
+            >>> VmecInput.resize_1d_axis_coeff(np.array([1.0, 2.0, 3.0]), ntor_new=1)
+            array([1., 2.])
         """
         assert ntor_new >= 0
         coeff = np.asarray(coeff, dtype=float).ravel()
         new_len = ntor_new + 1
-        if coeff.size > new_len:
-            msg = (
-                f"length of axis coefficient array ({coeff.size}) exceeds ntor+1 ({new_len}). "
-                f"Please truncate r_axis_c and zaxis_s to a size consistent with ntor={ntor_new}."
-            )
-            raise ValueError(msg)
         resized_coeff = np.zeros(new_len)
-        resized_coeff[: coeff.size] = coeff
+        n = min(coeff.size, new_len)
+        resized_coeff[:n] = coeff[:n]
         return resized_coeff
 
     @staticmethod
@@ -1240,6 +1267,11 @@ class VmecWOut(BaseModelWithNumpy):
     )
     """Evolution of the force residual at the vacuum boundary along the run."""
 
+    lcfs_force: jt.Float[NpOrJax, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Evolution of the normalized squared R and Z force residuals on the LCFS."""
+
     restart_reason_timetrace: typing.Annotated[
         jt.Int[NpOrJax, "time"],
         pydantic.Field(alias="restart_reasons"),
@@ -1352,13 +1384,54 @@ class VmecWOut(BaseModelWithNumpy):
     currumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
-    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid."""
+    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid.
+
+    Evaluate the cosine series with ``xm_nyq * theta - xn_nyq * zeta``, add
+    the sine series from ``currumns`` when present, then divide by the Jacobian
+    :math:`\sqrt{g}` at the same points to obtain :math:`J^{\theta}`. ``xn_nyq``
+    already includes ``nfp``. These coefficients include the factor :math:`1/\mu_0`;
+    do not divide by :math:`\mu_0` again. Prefer these exported currents when
+    computing current-dependent quantities.
+
+    At an interior full-grid index ``j``, the matching Jacobian is obtained by
+    averaging half-grid Fourier coefficients at columns ``j`` and ``j + 1``
+    of ``gmnc`` and, when present, ``gmns``. Axis and boundary currents are
+    extrapolated values.
+
+    Consumers rebuilding currents from covariant B must use the same radial
+    derivative as VMEC++. With ``lbsubs=True``, the full-grid B_s is paired with
+    the sqrt(s)-regularized odd-m derivative of B_u and B_v. For either component
+    Q, write ``Q = sqrt(s) * q`` for odd m and evaluate at interior surface j::
+
+        h = 1 / (ns - 1)
+        s = j * h
+        q_inner = Q[j] / sqrt((j - 0.5) * h)
+        q_outer = Q[j + 1] / sqrt((j + 0.5) * h)
+        dQ_ds = sqrt(s) * (q_outer - q_inner) / h
+        dQ_ds += (q_inner + q_outer) / (4 * sqrt(s))
+
+    Here Q is one Fourier coefficient across the stored half-grid columns;
+    apply this to both sine and cosine coefficients. Even m uses the ordinary
+    difference ``(Q[j + 1] - Q[j]) / h``. Angular derivatives of B_s use the
+    Fourier basis. The same rule applies to other calculations combining these
+    radial derivatives with B_s. Plain odd-m differences break the cancellation
+    at the axis and can produce a spurious current growing as :math:`h^{-1/2}`
+    under radial refinement.
+    """
 
     # Defaulted for backwards compatibility with old wout files
     currvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
-    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid."""
+    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid.
+
+    Reconstruct with ``xm_nyq``, ``xn_nyq``, and the sine partner ``currvmns``,
+    then divide by the full-grid Jacobian. The physical toroidal current density
+    is :math:`J_{\phi} = R J^{\zeta}` in A/m^2. The factor :math:`1/\mu_0` is
+    already included. See ``currumnc`` for Jacobian interpolation and the required
+    sqrt(s)-regularized odd-m derivative when rebuilding currents from B_s,
+    B_u, and B_v.
+    """
 
     rmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (cos) for ``R`` of the geometry of the flux surfaces on the
@@ -1431,11 +1504,17 @@ class VmecWOut(BaseModelWithNumpy):
 
     currumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\theta}` on the full-grid; non-
-    stellarator-symmetric."""
+    stellarator-symmetric.
+
+    Use together with ``currumnc`` as described there.
+    """
 
     currvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\zeta}` on the full-grid; non-
-    stellarator-symmetric."""
+    stellarator-symmetric.
+
+    Use together with ``currvmnc`` as described there.
+    """
 
     pcurr_type: ProfileType
     """Parametrization of toroidal current profile (copied from input)."""
@@ -3074,7 +3153,7 @@ def _vmec_output_from_cpp(input: VmecInput, cpp_output_quantities) -> VmecOutput
 
 def run(
     input: VmecInput,
-    magnetic_field: MagneticFieldResponseTable | None = None,
+    magnetic_field: MagneticFieldResponseTable | MagneticFieldFunction | None = None,
     *,
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
@@ -3086,8 +3165,10 @@ def run(
 
     Args:
         input: a VmecInput instance, corresponding to the contents of a classic VMEC input file
-        magnetic_field: if present, VMEC++ will pass the magnetic field object in memory instead of reading
-            it from an mgrid file (only relevant in free-boundary runs).
+        magnetic_field: the external magnetic field of a free-boundary run, used instead of the
+            mgrid file in the input: either a MagneticFieldResponseTable, which is weighted by
+            `input.extcur` and interpolated like an mgrid, or a :data:`MagneticFieldFunction`
+            ``b_r, b_phi, b_z = f(r, phi, z)`` evaluated at the plasma boundary points.
         max_threads: maximum number of threads that VMEC++ should spawn. The actual number might still
             be lower that this in case there are too few flux surfaces to keep these many threads
             busy. If None, a number of threads equal to the number of logical cores is used.
@@ -3185,7 +3266,7 @@ def run(
             verbose=_verbose.value,
             iteration_callback=cpp_iteration_callback,
         )
-    else:
+    elif isinstance(magnetic_field, MagneticFieldResponseTable):
         # magnetic_response_table takes precedence anyway, but let's be explicit, to ensure
         # we don't silently use the mgrid file in input, instead of the magnetic_response_table object.
         cpp_indata.mgrid_file = "NONE"
@@ -3197,6 +3278,22 @@ def run(
             verbose=_verbose.value,
             iteration_callback=cpp_iteration_callback,
         )
+    elif callable(magnetic_field):
+        cpp_indata.mgrid_file = "NONE"
+        cpp_output_quantities = _vmecpp.run(
+            cpp_indata,
+            magnetic_field=magnetic_field,
+            initial_state=initial_state,
+            max_threads=max_threads,
+            verbose=_verbose.value,
+            iteration_callback=cpp_iteration_callback,
+        )
+    else:
+        msg = (
+            "magnetic_field must be a MagneticFieldResponseTable or a callable, but is "
+            f"{type(magnetic_field).__name__}"
+        )
+        raise TypeError(msg)
 
     return _vmec_output_from_cpp(input, cpp_output_quantities)
 
@@ -3449,6 +3546,7 @@ __all__ = [  # noqa: RUF022
     "Mercier",
     "Threed1Volumetrics",
     "MakegridParameters",
+    "MagneticFieldFunction",
     "MagneticFieldResponseTable",
     "FreeBoundaryMethod",
     "IterationStyle",

@@ -1,0 +1,5 @@
+# CI-only uv settings, read through UV_CONFIG_FILE. netCDF4 is installed from wheels
+# only, so a runner that has no wheel of its newest release gets the newest release
+# that has one; pip takes the same setting from PIP_ONLY_BINARY.
+[pip]
+only-binary = ["netcdf4"]

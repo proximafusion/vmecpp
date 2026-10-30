@@ -1,0 +1,121 @@
+name: Build Enzyme derivative objects
+description: Build the pinned ClangEnzyme plugin and VMEC++ force-derivative objects.
+
+inputs:
+  llvm-version:
+    description: LLVM major version used to build ClangEnzyme.
+    required: false
+    default: "21"
+  enzyme-ref:
+    description: ClangEnzyme source revision.
+    required: false
+    default: v0.0.264
+
+outputs:
+  jvp-object:
+    description: Absolute path to the generated JVP object.
+    value: ${{ steps.objects.outputs.jvp-object }}
+  vjp-object:
+    description: Absolute path to the generated VJP object.
+    value: ${{ steps.objects.outputs.vjp-object }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Clang/LLVM and build dependencies on Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        wget https://apt.llvm.org/llvm.sh
+        chmod +x llvm.sh
+        sudo ./llvm.sh "${{ inputs.llvm-version }}"
+        sudo apt-get install -y \
+          "llvm-${{ inputs.llvm-version }}-dev" \
+          "clang-${{ inputs.llvm-version }}" \
+          "libclang-${{ inputs.llvm-version }}-dev" \
+          "libomp-${{ inputs.llvm-version }}-dev" \
+          cmake gfortran ninja-build python3-dev zlib1g-dev \
+          libnetcdf-dev libhdf5-dev liblapack-dev
+
+    - name: Install Clang/LLVM and build dependencies on macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install llvm@${{ inputs.llvm-version }} libomp gcc cmake ninja
+
+    - name: Cache the ClangEnzyme plugin
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: enzyme-build
+        key: enzyme-${{ inputs.enzyme-ref }}-llvm${{ inputs.llvm-version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Set Clang/LLVM paths on Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "ENZYME_CC=clang-${{ inputs.llvm-version }}" >> "$GITHUB_ENV"
+        echo "ENZYME_CXX=clang++-${{ inputs.llvm-version }}" >> "$GITHUB_ENV"
+        echo "LLVM_DIR=$(llvm-config-${{ inputs.llvm-version }} --cmakedir)" >> "$GITHUB_ENV"
+        echo "CLANG_DIR=$(llvm-config-${{ inputs.llvm-version }} --prefix)/lib/cmake/clang" >> "$GITHUB_ENV"
+
+    - name: Set Clang/LLVM paths on macOS
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        llvm_prefix="$(brew --prefix llvm@${{ inputs.llvm-version }})"
+        echo "ENZYME_CC=${llvm_prefix}/bin/clang" >> "$GITHUB_ENV"
+        echo "ENZYME_CXX=${llvm_prefix}/bin/clang++" >> "$GITHUB_ENV"
+        echo "LLVM_DIR=${llvm_prefix}/lib/cmake/llvm" >> "$GITHUB_ENV"
+        echo "CLANG_DIR=${llvm_prefix}/lib/cmake/clang" >> "$GITHUB_ENV"
+        echo "OpenMP_ROOT=$(brew --prefix)/opt/libomp" >> "$GITHUB_ENV"
+
+    - name: Build the pinned ClangEnzyme plugin
+      shell: bash
+      run: |
+        git clone --depth 1 --branch "${{ inputs.enzyme-ref }}" \
+          https://github.com/EnzymeAD/Enzyme.git enzyme-src
+        cmake -G Ninja -S enzyme-src/enzyme -B enzyme-build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DLLVM_DIR="${LLVM_DIR}" \
+          -DClang_DIR="${CLANG_DIR}"
+        ninja -C enzyme-build "ClangEnzyme-${{ inputs.llvm-version }}"
+      if: steps.cache.outputs.cache-hit != 'true'
+
+    - name: Locate ClangEnzyme plugin
+      shell: bash
+      run: |
+        if [ "${RUNNER_OS}" = "macOS" ]; then
+          plugin="$(find "${PWD}/enzyme-build" -name "ClangEnzyme-${{ inputs.llvm-version }}.dylib" -print -quit)"
+        else
+          plugin="$(find "${PWD}/enzyme-build" -name "ClangEnzyme-${{ inputs.llvm-version }}.so" -print -quit)"
+        fi
+        test -n "${plugin}"
+        echo "ENZYME_PLUGIN=${plugin}" >> "$GITHUB_ENV"
+      id: plugin
+
+    - name: Build Enzyme force-derivative objects
+      shell: bash
+      run: |
+        cmake_args=(
+          -G Ninja
+          -S .
+          -B enzyme-object-build
+          -DCMAKE_BUILD_TYPE=Release
+          -DVMECPP_ENABLE_ENZYME=ON
+          "-DVMECPP_ENZYME_PLUGIN=${ENZYME_PLUGIN}"
+        )
+        if [ "${RUNNER_OS}" = "macOS" ]; then
+          cmake_args+=("-DOpenMP_ROOT=${OpenMP_ROOT}")
+        fi
+        CC="${ENZYME_CC}" CXX="${ENZYME_CXX}" cmake "${cmake_args[@]}"
+        cmake --build enzyme-object-build --target vmecpp_core --parallel 4
+        mkdir -p enzyme-objects
+        jvp="$(find enzyme-object-build -name exact_force_jvp.cc.o -print -quit)"
+        vjp="$(find enzyme-object-build -name exact_force_vjp.cc.o -print -quit)"
+        test -n "${jvp}"
+        test -n "${vjp}"
+        cp "${jvp}" enzyme-objects/exact_force_jvp.o
+        cp "${vjp}" enzyme-objects/exact_force_vjp.o
+        echo "jvp-object=${GITHUB_WORKSPACE}/enzyme-objects/exact_force_jvp.o" >> "$GITHUB_OUTPUT"
+        echo "vjp-object=${GITHUB_WORKSPACE}/enzyme-objects/exact_force_vjp.o" >> "$GITHUB_OUTPUT"
+      id: objects

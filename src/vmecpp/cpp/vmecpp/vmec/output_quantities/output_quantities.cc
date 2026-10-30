@@ -26,6 +26,18 @@ using testing::IsCloseRelAbs;
 using testing::IsVectorCloseRelAbs;
 
 namespace {
+double HalfGridRadialDerivative(double inner, double outer, double sqrt_s_inner,
+                                double sqrt_s_outer, double sqrt_s_full,
+                                double inverse_delta_s, bool odd) {
+  if (!odd) {
+    return (outer - inner) * inverse_delta_s;
+  }
+  const double q_inner = inner / sqrt_s_inner;
+  const double q_outer = outer / sqrt_s_outer;
+  return (q_outer - q_inner) * inverse_delta_s * sqrt_s_full +
+         0.25 * (q_inner + q_outer) / sqrt_s_full;
+}
+
 // Return the input vector if non-empty, else a 1-element
 // vector containing val (it's a common initialization pattern used below).
 VectorXd NonEmptyVectorOr(const Eigen::VectorXd& vec, const double val) {
@@ -1670,9 +1682,8 @@ vmecpp::OutputQuantities vmecpp::DeriveOutputQuantities(
     // When VmecINDATA::lbsubs is true, re-derive the interior full-grid B_s
     // (and its tangential derivatives) by solving the radial force-balance
     // equation in spectral space. This is jxbforce.f90's `IF (lbsubs)` path
-    // and is independent of the equilibrium iteration; it only changes the
-    // jxbout diagnostic. ExtrapolateBSubS below then fills the axis/edge
-    // entries from the corrected interior values.
+    // and is independent of the equilibrium iteration. ExtrapolateBSubS below
+    // then fills the axis/edge entries from the corrected interior values.
     if (indata.lbsubs) {
       RecomputeBSubSFromRadialForceBalance(
           s, fc, t, output_quantities.vmec_internal_results,
@@ -1690,7 +1701,8 @@ vmecpp::OutputQuantities vmecpp::DeriveOutputQuantities(
     output_quantities.jxbout = ComputeJxBOutputFileContents(
         s, fc, output_quantities.vmec_internal_results,
         output_quantities.bsubs_full, output_quantities.covariant_b_derivatives,
-        indata.return_outputs_even_if_not_converged, vmec_status);
+        indata.return_outputs_even_if_not_converged, vmec_status,
+        indata.lbsubs);
 
     if (checkpoint == VmecCheckpoint::JXBOUT) {
       return output_quantities;  // output_quantities partially uninitialized.
@@ -2831,423 +2843,182 @@ void vmecpp::ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
   ExtrapolateFullGridEnds(fc.ns, s.nZnT, m_bsubs_full.bsubs_full);
 }  // ExtrapolateBSubS
 
+vmecpp::RowMatrixXd vmecpp::ComputeCovariantBRadialDerivative(
+    const Sizes& s, const FlowControl& fc,
+    const VmecInternalResults& vmec_internal_results,
+    const RowMatrixXd& field) {
+  RowMatrixXd derivative = RowMatrixXd::Zero(fc.ns, s.nZnT);
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        int shifted_l = (l + s.nThetaEven / 2) % s.nThetaEven;
+        int shifted_k = k;
+        if (!s.lasym && shifted_l >= s.nThetaReduced) {
+          shifted_l = s.nThetaEven - shifted_l;
+          shifted_k = (s.nZeta - k) % s.nZeta;
+        }
+        const int kl = k * s.nThetaEff + l;
+        const int shifted_kl = shifted_k * s.nThetaEff + shifted_l;
+        const double inner = field(jF - 1, kl);
+        const double outer = field(jF, kl);
+        const double odd_inner = 0.5 * (inner - field(jF - 1, shifted_kl));
+        const double odd_outer = 0.5 * (outer - field(jF, shifted_kl));
+        derivative(jF, kl) =
+            HalfGridRadialDerivative(inner - odd_inner, outer - odd_outer, 0.0,
+                                     0.0, 0.0, 1.0 / fc.deltaS, false) +
+            HalfGridRadialDerivative(
+                odd_inner, odd_outer, vmec_internal_results.sqrtSH[jF - 1],
+                vmec_internal_results.sqrtSH[jF],
+                vmec_internal_results.sqrtSF[jF], 1.0 / fc.deltaS, true);
+      }
+    }
+  }
+  return derivative;
+}
+
 void vmecpp::RecomputeBSubSFromRadialForceBalance(
-    const Sizes& s, const FlowControl& fc, const FourierBasisFastPoloidal& t,
+    const Sizes& s, const FlowControl& fc,
+    const FourierBasisFastPoloidal& /*t*/,
     const VmecInternalResults& vmec_internal_results, BSubSFull& m_bsubs_full,
     CovariantBDerivatives& m_covariant_b_derivatives) {
-  // Port of jxbforce.f90 lines 368-515 (the `IF (lbsubs)` block) plus the
-  // collocation-based linear solve in getbsubs.f90. The pre-pass in jxbforce
-  // (the Fourier low-pass filter) is already handled upstream by
-  // LowPassFilterCovariantB, so this routine only does the radial-force-balance
-  // re-derivation of B_s on the interior full-grid surfaces.
-  //
-  // The math: on each interior surface jF the equation
-  //   bsupu_full * d(B_s)/du + bsupv_full * d(B_s)/dv = brho
-  // is solved by collocation. Both sides are multiplied through by
-  // sqrt(g_full); bsupu_full and bsupv_full below are accordingly sqrt(g) *
-  // B^u/v averaged between the two adjacent half-grid surfaces, matching the
-  // Fortran bsupu1/bsupv1.
-
-  // Dimension check from getbsubs.f90:49. mnyq + 1 should equal the half-period
-  // poloidal point count, and nnyq should equal nZeta/2 (== 0 for
-  // axisymmetric). If either condition fails we cannot reproduce the Fortran
-  // basis layout, so skip the re-derivation and keep the half->full
-  // interpolation in place.
-  const int mmax = s.mnyq;
-  const int nmax = s.nnyq;
-  if (mmax + 1 != s.nThetaReduced || nmax != s.nZeta / 2) {
-    LOG(WARNING) << "lbsubs: Nyquist resolution does not match the realspace "
-                    "grid (mnyq + 1 = "
-                 << (mmax + 1) << ", nThetaReduced = " << s.nThetaReduced
-                 << ", nnyq = " << nmax << ", nZeta / 2 = " << (s.nZeta / 2)
-                 << "); keeping half->full interpolated B_s.";
-    return;
+  // Product-basis collocation, including both stellarator parities for lasym.
+  // At Nyquist, retain the sine whose derivative is resolved and omit the
+  // cosine with identically zero derivatives at the collocation points.
+  struct Mode {
+    int m;
+    int n;
+    bool sine_theta;
+    bool sine_zeta;
+  };
+  const int mmax = s.nThetaEven / 2;
+  const int nmax = s.nZeta / 2;
+  const bool toroidal_nyquist = s.nZeta > 1 && s.nZeta % 2 == 0;
+  std::vector<Mode> modes;
+  modes.push_back({0, 0, true, false});  // Pedestal, not a B_s coefficient.
+  for (int m = 0; m <= mmax; ++m) {
+    for (int n = 0; n <= nmax; ++n) {
+      const bool n_endpoint = n == 0 || (toroidal_nyquist && n == nmax);
+      if (m > 0 && (m < mmax || n_endpoint)) {
+        modes.push_back({m, n, true, false});
+      }
+      if (n > 0 && (!n_endpoint || m == 0)) {
+        modes.push_back({m, n, false, true});
+      }
+    }
   }
-
-  // The lasym branch (spectral decomposition of brho into symmetric and
-  // antisymmetric pieces, solved on the half-period poloidal range carried
-  // by FourierBasisFastPoloidal) is not implemented; fall through to the
-  // half->full interpolation.
-  if (s.lasym && s.nThetaEff != s.nThetaReduced) {
-    LOG(WARNING) << "lbsubs: lasym path not implemented; "
-                    "keeping half->full interpolated B_s.";
-    return;
-  }
-
-  const int nmax1 = std::max(0, nmax - 1);
-  // Row count: ntheta3 * nzeta minus the (theta=0, theta=pi) X (v>pi)
-  // reflection-symmetric duplicates that drop out for stellarator-symmetric
-  // runs.
-  int itotal = s.nThetaEff * s.nZeta;
-  if (!s.lasym) {
-    itotal -= 2 * nmax1;
-  }
-
-  // Per-surface scratch buffers used both to build the RHS and to evaluate
-  // the inverse DFT after the solve.
-  std::vector<double> sqrtg_full(s.nZnT, 0.0);
-  std::vector<double> bsupu_full(s.nZnT, 0.0);
-  std::vector<double> bsupv_full(s.nZnT, 0.0);
-  std::vector<double> brho(s.nZnT, 0.0);
-
-  Eigen::MatrixXd amatrix(itotal, itotal);
-  Eigen::VectorXd brhs(itotal);
-
-  // Per-surface coefficient arrays. Storage: (mmax+1) x (nmax+1), with
-  // _cs/_ss only populated for n > 0 (the n=0 entries of those parities are
-  // always zero). For lasym=false, _cc and _ss are unused.
-  std::vector<double> bsubsmn_sc((mmax + 1) * (nmax + 1), 0.0);
-  std::vector<double> bsubsmn_cs((mmax + 1) * (nmax + 1), 0.0);
-  std::vector<double> bsubsmn_cc;
-  std::vector<double> bsubsmn_ss;
   if (s.lasym) {
-    bsubsmn_cc.assign((mmax + 1) * (nmax + 1), 0.0);
-    bsubsmn_ss.assign((mmax + 1) * (nmax + 1), 0.0);
-  }
-
-  const double ohs = 1.0 / fc.deltaS;
-  const double sign_jacobian =
-      static_cast<double>(vmec_internal_results.sign_of_jacobian);
-
-  for (int jF = 1; jF < fc.ns - 1; ++jF) {
-    const int jHi = jF - 1;
-    const int jHo = jF;
-
-    // ----- Build the RHS brho on the full-grid surface jF -----
-    for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int idx_o = jHo * s.nZnT + kl;
-      const int idx_i = jHi * s.nZnT + kl;
-      const double g_o = vmec_internal_results.gsqrt(idx_o);
-      const double g_i = vmec_internal_results.gsqrt(idx_i);
-
-      sqrtg_full[kl] = 0.5 * (g_o + g_i);
-      bsupu_full[kl] = 0.5 * (vmec_internal_results.bsupu(idx_o) * g_o +
-                              vmec_internal_results.bsupu(idx_i) * g_i);
-      bsupv_full[kl] = 0.5 * (vmec_internal_results.bsupv(idx_o) * g_o +
-                              vmec_internal_results.bsupv(idx_i) * g_i);
-
-      const double dbsubu = vmec_internal_results.bsubu(idx_o) -
-                            vmec_internal_results.bsubu(idx_i);
-      const double dbsubv = vmec_internal_results.bsubv(idx_o) -
-                            vmec_internal_results.bsubv(idx_i);
-
-      // brho carries the sqrt(g) factor, matching jxbforce.f90:382-384.
-      brho[kl] = ohs * (bsupu_full[kl] * dbsubu + bsupv_full[kl] * dbsubv) +
-                 (vmec_internal_results.presH[jHo] -
-                  vmec_internal_results.presH[jHi]) *
-                     ohs * sqrtg_full[kl];
-    }
-
-    // ----- Subtract flux-surface-average force balance -----
-    // The integral of (bsupu * dB_s/du + bsupv * dB_s/dv) over a flux surface
-    // is zero by integration by parts, so the local equation has no solution
-    // unless the same integral has been removed from the RHS. cf.
-    // jxbforce.f90:388-389.
-    double brho00 = 0.0;
-    for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int l = kl % s.nThetaEff;
-      brho00 += brho[kl] * s.wInt[l];
-    }
-    const double vp_full = 0.5 * (vmec_internal_results.dVdsH[jHo] +
-                                  vmec_internal_results.dVdsH[jHi]);
-    if (vp_full == 0.0) {
-      LOG(WARNING) << "lbsubs: dVds = 0 at jF=" << jF
-                   << "; keeping half->full interpolated B_s on this surface.";
-      continue;
-    }
-    for (int kl = 0; kl < s.nZnT; ++kl) {
-      brho[kl] -= sign_jacobian * sqrtg_full[kl] * brho00 / vp_full;
-    }
-
-    // ----- Build the collocation matrix and RHS vector -----
-    amatrix.setZero();
-    brhs.setZero();
-
-    int ijtot = 0;
-    bool layout_consistent = true;
-    for (int l = 0; l < s.nThetaEff; ++l) {
-      for (int k = 0; k < s.nZeta; ++k) {
-        // Skip the theta=0 and theta=pi rows that are toroidally reflected
-        // duplicates of earlier rows for stellarator-symmetric runs (see
-        // getbsubs.f90:68-69; the i.eq.1 / i.eq.ntheta2 Fortran indices map to
-        // l == 0 / l == nThetaReduced - 1 here).
-        const bool at_theta_edge = (l == 0) || (l == s.nThetaReduced - 1);
-        const bool at_v_reflected = (k > s.nZeta / 2);
-        if (at_theta_edge && at_v_reflected && !s.lasym) {
-          continue;
-        }
-
-        if (ijtot >= itotal) {
-          layout_consistent = false;
-          break;
-        }
-
-        const int kl = k * s.nThetaEff + l;
-        brhs(ijtot) = brho[kl];
-
-        int mntot = 0;
-        for (int m = 0; m <= mmax; ++m) {
-          for (int n = 0; n <= nmax; ++n) {
-            if (mntot >= itotal) {
-              break;
-            }
-            if (m == 0 && n == 0 && s.lasym) {
-              continue;
-            }
-
-            const int idx_ml = m * s.nThetaReduced + l;
-            const int idx_kn = k * (s.nnyq2 + 1) + n;
-
-            const double cosmu_val = t.cosmu[idx_ml];
-            const double sinmu_val = t.sinmu[idx_ml];
-            const double cosnv_val = t.cosnv[idx_kn];
-            const double sinnv_val = t.sinnv[idx_kn];
-
-            const double ccmn = cosmu_val * cosnv_val;
-            const double ssmn = sinmu_val * sinnv_val;
-            const double scmn = sinmu_val * cosnv_val;
-            const double csmn = cosmu_val * sinnv_val;
-
-            const double dm = m * bsupu_full[kl];
-            const double dn = n * bsupv_full[kl] * s.nfp;
-
-            // Coefficient of sin(mu)cos(nv) basis when acted on by
-            // bsupu * d/du + bsupv * d/dv.
-            const double termsc = dm * ccmn - dn * ssmn;
-            // Coefficient of cos(mu)sin(nv) basis.
-            const double termcs = -dm * ssmn + dn * ccmn;
-
-            // Column layout matches getbsubs.f90 exactly. Endpoints (m=0,
-            // n=0, m=mmax, n=nmax) collapse to a single component each
-            // because the other sin/cos vanishes identically there.
-            if (n == 0 || n == nmax) {
-              if (m > 0) {
-                amatrix(ijtot, mntot) = termsc;
-              } else if (n == 0) {
-                // Pedestal entry for the (m=0, n=0) mode: this fixes the
-                // (otherwise undetermined) average value of B_s. Should
-                // solve to zero given that brho00 was subtracted above.
-                amatrix(ijtot, mntot) = bsupv_full[kl];
-              } else {
-                amatrix(ijtot, mntot) = termcs;
-              }
-            } else if (m == 0 || m == mmax) {
-              amatrix(ijtot, mntot) = termcs;
-            } else {
-              amatrix(ijtot, mntot) = termsc;
-              mntot += 1;
-              if (mntot >= itotal) {
-                layout_consistent = false;
-                break;
-              }
-              amatrix(ijtot, mntot) = termcs;
-            }
-            mntot += 1;
-
-            if (s.lasym) {
-              if (m == 0 && (n == 0 || n == nmax)) {
-                continue;
-              }
-              if (mntot >= itotal) {
-                break;
-              }
-
-              const double termcc = -dm * scmn - dn * csmn;
-              const double termss = dm * csmn + dn * scmn;
-
-              if ((n == 0 || n == nmax) || (m == 0 || m == mmax)) {
-                amatrix(ijtot, mntot) = termcc;
-              } else {
-                amatrix(ijtot, mntot) = termcc;
-                mntot += 1;
-                if (mntot >= itotal) {
-                  layout_consistent = false;
-                  break;
-                }
-                amatrix(ijtot, mntot) = termss;
-              }
-              mntot += 1;
-            }
-          }  // n
-          if (!layout_consistent) {
-            break;
-          }
-        }  // m
-
-        ijtot += 1;
-      }  // k
-      if (!layout_consistent) {
-        break;
-      }
-    }  // l
-
-    if (!layout_consistent || ijtot != itotal) {
-      LOG(WARNING) << "lbsubs: collocation row count " << ijtot
-                   << " does not match expected " << itotal << " at jF=" << jF
-                   << "; keeping half->full interpolated B_s on this surface.";
-      continue;
-    }
-
-    // ----- Solve A x = b -----
-    // Match getbsubs.f90:145+ by solving and then checking that the recovered
-    // coefficients reproduce the RHS to within a tight tolerance; this guards
-    // both singular matrices (where Eigen's solve would return NaN/Inf) and
-    // any layout mismatch that slips past the static checks above.
-    Eigen::PartialPivLU<Eigen::MatrixXd> lu(amatrix);
-    const Eigen::VectorXd xsol = lu.solve(brhs);
-    if (!xsol.allFinite()) {
-      LOG(WARNING) << "lbsubs: solve returned non-finite values at jF=" << jF
-                   << "; keeping half->full interpolated B_s on this surface.";
-      continue;
-    }
-    const double brhs_scale = std::max(brhs.cwiseAbs().maxCoeff(), 1.0);
-    const double residual_inf = (amatrix * xsol - brhs).cwiseAbs().maxCoeff();
-    if (residual_inf > 1.0e-8 * brhs_scale) {
-      LOG(WARNING) << "lbsubs: large solve residual " << residual_inf
-                   << " (rhs scale " << brhs_scale << ") at jF=" << jF
-                   << "; keeping half->full interpolated B_s on this surface.";
-      continue;
-    }
-
-    // ----- Map xsol back to bsubsmn coefficients -----
-    std::fill(bsubsmn_sc.begin(), bsubsmn_sc.end(), 0.0);
-    std::fill(bsubsmn_cs.begin(), bsubsmn_cs.end(), 0.0);
-    if (s.lasym) {
-      std::fill(bsubsmn_cc.begin(), bsubsmn_cc.end(), 0.0);
-      std::fill(bsubsmn_ss.begin(), bsubsmn_ss.end(), 0.0);
-    }
-    {
-      int mntot = 0;
-      bool overflow = false;
-      for (int m = 0; m <= mmax && !overflow; ++m) {
-        for (int n = 0; n <= nmax && !overflow; ++n) {
-          if (mntot >= itotal) {
-            break;
-          }
-          if (m == 0 && n == 0 && s.lasym) {
-            continue;
-          }
-          const int idx_mn = m * (nmax + 1) + n;
-
-          if (n == 0 || n == nmax) {
-            // m > 0, or the (m=0, n=0) pedestal: the lone unknown captures the
-            // surface-average of B_s, which is forced to zero by the brho00
-            // subtraction. We store it in the (0,0) sin-cos slot for symmetry
-            // with the rest of the layout, even though sin(0) = 0 makes it
-            // inert in the inverse DFT below.
-            if (m > 0 || n == 0) {
-              bsubsmn_sc[idx_mn] = xsol(mntot);
-            } else {
-              bsubsmn_cs[idx_mn] = xsol(mntot);
-            }
-          } else if (m == 0 || m == mmax) {
-            bsubsmn_cs[idx_mn] = xsol(mntot);
-          } else {
-            bsubsmn_sc[idx_mn] = xsol(mntot);
-            mntot += 1;
-            if (mntot >= itotal) {
-              overflow = true;
-              break;
-            }
-            bsubsmn_cs[idx_mn] = xsol(mntot);
-          }
-          mntot += 1;
-
-          if (s.lasym) {
-            if (m == 0 && (n == 0 || n == nmax)) {
-              continue;
-            }
-            if (mntot >= itotal) {
-              break;
-            }
-            if ((n == 0 || n == nmax) || (m == 0 || m == mmax)) {
-              bsubsmn_cc[idx_mn] = xsol(mntot);
-            } else {
-              bsubsmn_cc[idx_mn] = xsol(mntot);
-              mntot += 1;
-              if (mntot >= itotal) {
-                overflow = true;
-                break;
-              }
-              bsubsmn_ss[idx_mn] = xsol(mntot);
-            }
-            mntot += 1;
-          }
-        }
-      }
-    }
-
-    // ----- Inverse DFT: fill bsubs_full, bsubsu, bsubsv at jF -----
-    // The interior surface is overwritten; the axis (jF = 0) and edge
-    // (jF = ns-1) are handled later by ExtrapolateBSubS.
-    for (int kl = 0; kl < s.nZnT; ++kl) {
-      const int target = jF * s.nZnT + kl;
-      m_bsubs_full.bsubs_full(target) = 0.0;
-      m_covariant_b_derivatives.bsubsu(target) = 0.0;
-      m_covariant_b_derivatives.bsubsv(target) = 0.0;
-    }
-
     for (int m = 0; m <= mmax; ++m) {
       for (int n = 0; n <= nmax; ++n) {
-        const int idx_mn = m * (nmax + 1) + n;
-        const double bsc = bsubsmn_sc[idx_mn];
-        const double bcs = bsubsmn_cs[idx_mn];
-        const double bcc = s.lasym ? bsubsmn_cc[idx_mn] : 0.0;
-        const double bss = s.lasym ? bsubsmn_ss[idx_mn] : 0.0;
+        const bool m_endpoint = m == 0 || m == mmax;
+        const bool n_endpoint = n == 0 || (toroidal_nyquist && n == nmax);
+        if (!(m_endpoint && n_endpoint)) {
+          modes.push_back({m, n, false, false});
+        }
+        if (!m_endpoint && !n_endpoint) {
+          modes.push_back({m, n, true, true});
+        }
+      }
+    }
+  }
 
-        for (int k = 0; k < s.nZeta; ++k) {
-          const int idx_kn = k * (s.nnyq2 + 1) + n;
-          const double cosnv_val = t.cosnv[idx_kn];
-          const double sinnv_val = t.sinnv[idx_kn];
-          const double cosnvn_val = t.cosnvn[idx_kn];
-          const double sinnvn_val = t.sinnvn[idx_kn];
-          for (int l = 0; l < s.nThetaEff; ++l) {
-            const int idx_ml = m * s.nThetaReduced + l;
-            const double cosmu_val = t.cosmu[idx_ml];
-            const double sinmu_val = t.sinmu[idx_ml];
-            const double cosmum_val = t.cosmum[idx_ml];
-            const double sinmum_val = t.sinmum[idx_ml];
+  std::vector<int> rows;
+  for (int l = 0; l < s.nThetaEff; ++l) {
+    for (int k = 0; k < s.nZeta; ++k) {
+      if (!s.lasym && (l == 0 || l == mmax) && k > nmax) {
+        continue;
+      }
+      rows.push_back(k * s.nThetaEff + l);
+    }
+  }
+  const int num_modes = static_cast<int>(modes.size());
+  CHECK_EQ(rows.size(), modes.size());
+  Eigen::MatrixXd value(s.nZnT, num_modes);
+  Eigen::MatrixXd dtheta(s.nZnT, num_modes);
+  Eigen::MatrixXd dzeta(s.nZnT, num_modes);
+  for (int column = 0; column < num_modes; ++column) {
+    const Mode& mode = modes[column];
+    for (int k = 0; k < s.nZeta; ++k) {
+      const double angle_zeta = 2.0 * M_PI * mode.n * k / s.nZeta;
+      const double cn = std::cos(angle_zeta);
+      const double sn =
+          (toroidal_nyquist && mode.n == nmax) ? 0.0 : std::sin(angle_zeta);
+      for (int l = 0; l < s.nThetaEff; ++l) {
+        const double angle_theta = 2.0 * M_PI * mode.m * l / s.nThetaEven;
+        const double cm = std::cos(angle_theta);
+        const double sm = mode.m == mmax ? 0.0 : std::sin(angle_theta);
+        const double poloidal = mode.sine_theta ? sm : cm;
+        const double toroidal = mode.sine_zeta ? sn : cn;
+        const int kl = k * s.nThetaEff + l;
+        value(kl, column) = poloidal * toroidal;
+        dtheta(kl, column) = mode.m * (mode.sine_theta ? cm : -sm) * toroidal;
+        dzeta(kl, column) =
+            mode.n * s.nfp * poloidal * (mode.sine_zeta ? cn : -sn);
+      }
+    }
+  }
 
-            const int target = jF * s.nZnT + k * s.nThetaEff + l;
-
-            // B_s = bsc * sin(mu)cos(nv) + bcs * cos(mu)sin(nv)
-            //       (+ bcc * cos(mu)cos(nv) + bss * sin(mu)sin(nv))
-            m_bsubs_full.bsubs_full(target) +=
-                bsc * sinmu_val * cosnv_val + bcs * cosmu_val * sinnv_val;
-            if (s.lasym) {
-              m_bsubs_full.bsubs_full(target) +=
-                  bcc * cosmu_val * cosnv_val + bss * sinmu_val * sinnv_val;
-            }
-
-            // d(B_s)/du. Conventions: cosmum = +m*cosmu, sinmum = -m*sinmu.
-            m_covariant_b_derivatives.bsubsu(target) +=
-                bsc * cosmum_val * cosnv_val + bcs * sinmum_val * sinnv_val;
-            if (s.lasym) {
-              m_covariant_b_derivatives.bsubsu(target) +=
-                  bcc * sinmum_val * cosnv_val + bss * cosmum_val * sinnv_val;
-            }
-
-            // d(B_s)/dv. Conventions: cosnvn = +n*nfp*cosnv,
-            // sinnvn = -n*nfp*sinnv.
-            m_covariant_b_derivatives.bsubsv(target) +=
-                bsc * sinmu_val * sinnvn_val + bcs * cosmu_val * cosnvn_val;
-            if (s.lasym) {
-              m_covariant_b_derivatives.bsubsv(target) +=
-                  bcc * cosmu_val * sinnvn_val + bss * sinmu_val * cosnvn_val;
-            }
-          }  // l
-        }  // k
-      }  // n
-    }  // m
-  }  // jF
-}  // RecomputeBSubSFromRadialForceBalance
+  const RowMatrixXd bsubus = ComputeCovariantBRadialDerivative(
+      s, fc, vmec_internal_results, vmec_internal_results.bsubu);
+  const RowMatrixXd bsubvs = ComputeCovariantBRadialDerivative(
+      s, fc, vmec_internal_results, vmec_internal_results.bsubv);
+  Eigen::MatrixXd matrix(num_modes, num_modes);
+  Eigen::VectorXd rhs(num_modes);
+  VectorXd sqrtg(s.nZnT), bsupu(s.nZnT), bsupv(s.nZnT), brho(s.nZnT);
+  for (int jF = 1; jF < fc.ns - 1; ++jF) {
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      const double gi = vmec_internal_results.gsqrt(jF - 1, kl);
+      const double go = vmec_internal_results.gsqrt(jF, kl);
+      sqrtg[kl] = 0.5 * (gi + go);
+      bsupu[kl] = 0.5 * (gi * vmec_internal_results.bsupu(jF - 1, kl) +
+                         go * vmec_internal_results.bsupu(jF, kl));
+      bsupv[kl] = 0.5 * (gi * vmec_internal_results.bsupv(jF - 1, kl) +
+                         go * vmec_internal_results.bsupv(jF, kl));
+      brho[kl] = bsupu[kl] * bsubus(jF, kl) + bsupv[kl] * bsubvs(jF, kl) +
+                 sqrtg[kl] *
+                     (vmec_internal_results.presH[jF] -
+                      vmec_internal_results.presH[jF - 1]) /
+                     fc.deltaS;
+    }
+    double average_force = 0.0;
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      average_force += brho[kl] * s.wInt[kl % s.nThetaEff];
+    }
+    const double vp = 0.5 * (vmec_internal_results.dVdsH[jF - 1] +
+                             vmec_internal_results.dVdsH[jF]);
+    if (vp == 0.0) {
+      LOG(WARNING) << "lbsubs: dVds = 0 at jF=" << jF;
+      continue;
+    }
+    brho -= vmec_internal_results.sign_of_jacobian * average_force / vp * sqrtg;
+    for (int row = 0; row < num_modes; ++row) {
+      const int kl = rows[row];
+      matrix.row(row) = bsupu[kl] * dtheta.row(kl) + bsupv[kl] * dzeta.row(kl);
+      matrix(row, 0) = bsupv[kl];
+      rhs[row] = brho[kl];
+    }
+    Eigen::PartialPivLU<Eigen::MatrixXd> lu(matrix);
+    VectorXd solution = lu.solve(rhs);
+    const double scale = std::max(rhs.cwiseAbs().maxCoeff(), 1.0);
+    if (!solution.allFinite() ||
+        (matrix * solution - rhs).cwiseAbs().maxCoeff() > 1e-8 * scale) {
+      LOG(WARNING) << "lbsubs: collocation solve failed at jF=" << jF
+                   << "; keeping metric B_s.";
+      continue;
+    }
+    solution[0] = 0.0;
+    m_bsubs_full.bsubs_full.row(jF) = (value * solution).transpose();
+    m_covariant_b_derivatives.bsubsu.row(jF) = (dtheta * solution).transpose();
+    m_covariant_b_derivatives.bsubsv.row(jF) = (dzeta * solution).transpose();
+  }
+}
 
 vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     const Sizes& s, const FlowControl& fc,
     const VmecInternalResults& vmec_internal_results,
     const BSubSFull& bsubs_full,
     const CovariantBDerivatives& covariant_b_derivatives,
-    const bool return_outputs_even_if_not_converged, VmecStatus vmec_status) {
+    const bool return_outputs_even_if_not_converged, VmecStatus vmec_status,
+    bool regularize_radial_derivatives) {
   JxBOutFileContents jxbout;
 
   jxbout.itheta = RowMatrixXd::Zero(vmec_internal_results.num_full, s.nZnT);
@@ -3308,8 +3079,16 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
 
   std::vector<double> jxb(s.nZnT, 0.0);
 
+  RowMatrixXd bsubus_regularized, bsubvs_regularized;
+  if (regularize_radial_derivatives) {
+    bsubus_regularized = ComputeCovariantBRadialDerivative(
+        s, fc, vmec_internal_results, vmec_internal_results.bsubu);
+    bsubvs_regularized = ComputeCovariantBRadialDerivative(
+        s, fc, vmec_internal_results, vmec_internal_results.bsubv);
+  }
+
   // (2 pi)^2
-  static constexpr double dnorm1 = 4.0 * M_PI * M_PI;
+  static constexpr double kFourPiSquared = 4.0 * M_PI * M_PI;
 
   for (int jF = 1; jF < fc.ns - 1; ++jF) {
     const int jHi = jF - 1;
@@ -3321,7 +3100,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     const double ovp =
         2.0 /
         (vmec_internal_results.dVdsH[jHo] + vmec_internal_results.dVdsH[jHi]) /
-        dnorm1;
+        kFourPiSquared;
 
     // signgs / V'
     const double tjnorm = ovp * vmec_internal_results.sign_of_jacobian;
@@ -3409,8 +3188,12 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
       const double bsubsu = covariant_b_derivatives.bsubsu(jF * s.nZnT + kl);
       const double bsubsv = covariant_b_derivatives.bsubsv(jF * s.nZnT + kl);
 
-      const double bsubus = (bsubu_outside - bsubu_inside) / fc.deltaS;
-      const double bsubvs = (bsubv_outside - bsubv_inside) / fc.deltaS;
+      const double bsubus = regularize_radial_derivatives
+                                ? bsubus_regularized(jF, kl)
+                                : (bsubu_outside - bsubu_inside) / fc.deltaS;
+      const double bsubvs = regularize_radial_derivatives
+                                ? bsubvs_regularized(jF, kl)
+                                : (bsubv_outside - bsubv_inside) / fc.deltaS;
 
       jxbout.itheta(target_index) = (bsubsv - bsubvs) / MU_0;
       jxbout.izeta(target_index) = (-bsubsu + bsubus) / MU_0;
@@ -3483,17 +3266,17 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
     jxbout.avforce[jF] = average_force_residual;
     jxbout.pprim[jF] = average_pressure_gradient;
 
-    jxbout.jdotb[jF] = dnorm1 * tjnorm * average_jdotb;
-    jxbout.bdotb[jF] = dnorm1 * tjnorm * average_bdotb;
+    jxbout.jdotb[jF] = kFourPiSquared * tjnorm * average_jdotb;
+    jxbout.bdotb[jF] = kFourPiSquared * tjnorm * average_bdotb;
 
     const double phipH_outside = vmec_internal_results.phipH[jHo];
     const double phipH_inside = vmec_internal_results.phipH[jHi];
 
     jxbout.bdotgradv[jF] =
-        dnorm1 * tjnorm * (phipH_outside + phipH_inside) / 2.0;
+        kFourPiSquared * tjnorm * (phipH_outside + phipH_inside) / 2.0;
 
-    jxbout.jpar2[jF] = dnorm1 * tjnorm * average_jpar2;
-    jxbout.jperp2[jF] = dnorm1 * tjnorm * average_jperp2;
+    jxbout.jpar2[jF] = kFourPiSquared * tjnorm * average_jpar2;
+    jxbout.jperp2[jF] = kFourPiSquared * tjnorm * average_jperp2;
 
     // Some quantities are only computed if VMEC++ actually converged.
     if (vmec_status == VmecStatus::SUCCESSFUL_TERMINATION ||
@@ -3543,7 +3326,7 @@ vmecpp::JxBOutFileContents vmecpp::ComputeJxBOutputFileContents(
       const double ovp = 2.0 /
                          (vmec_internal_results.dVdsH[jH + 1] +
                           vmec_internal_results.dVdsH[jH]) /
-                         dnorm1;
+                         kFourPiSquared;
 
       for (int kl = 0; kl < s.nZnT; ++kl) {
         const int target_index = jH * s.nZnT + kl;
@@ -4772,26 +4555,12 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
                                         vmec_internal_results.z_o(l_off));
 
           if (yz1u >= maximum_z) {
-            maximum_z = std::abs(yz1u);
+            maximum_z = yz1u;
             rzmax = yr1u;
-          } else if (yz1u <= minimum_z) {
-            minimum_z = yz1u;
-
-            // TODO(jons): these seem to not be used anywhere in Fortran VMEC?
-            // rzmin = yr1u;
           }
-
-          if (yr1u >= maximum_r) {
-            maximum_r = yr1u;
-
-            // TODO(jons): these seem to not be used anywhere  in Fortran VMEC?
-            // zxmax = yz1u;
-          } else if (yr1u <= minimum_r) {
-            minimum_r = yr1u;
-
-            // TODO(jons): these seem to not be used anywhere in Fortran VMEC?
-            // zxmin = yz1u;
-          }
+          minimum_z = std::min(minimum_z, yz1u);
+          maximum_r = std::max(maximum_r, yr1u);
+          minimum_r = std::min(minimum_r, yr1u);
         }  // l
       }  // icount
 
@@ -5202,6 +4971,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.fsqt = wout.force_residual_r + wout.force_residual_z +
               wout.force_residual_lambda;
   wout.delbsq = ToEigenVector(fc.delbsq);
+  wout.lcfs_force = ToEigenVector(fc.lcfs_force_timetrace);
   // Convert status codes to integer values
   wout.restart_reason_timetrace =
       Eigen::VectorXi::Zero(fc.restart_reasons.size());
@@ -5888,6 +5658,56 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   }  // omp parallel
 #endif
 
+  if (indata.lbsubs) {
+    // Nyquist sine modes vanish at the sample points, but their derivatives
+    // need not vanish. Recover these coefficients from the solved curl so
+    // that wout retains the derivatives used by jxbout.
+    const RowMatrixXd bsubus = ComputeCovariantBRadialDerivative(
+        s, fc, m_vmec_internal_results, m_vmec_internal_results.bsubu);
+    const RowMatrixXd bsubvs = ComputeCovariantBRadialDerivative(
+        s, fc, m_vmec_internal_results, m_vmec_internal_results.bsubv);
+    const bool toroidal_nyquist = s.nZeta > 1 && s.nZeta % 2 == 0;
+    for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
+      const int m = wout.xm_nyq[mn];
+      const int n = wout.xn_nyq[mn] / s.nfp;
+      const bool n_endpoint =
+          n == 0 || (toroidal_nyquist && std::abs(n) == s.nZeta / 2);
+      const bool poloidal_ghost = m == s.nThetaEven / 2 && n_endpoint;
+      const bool toroidal_ghost = m == 0 && n != 0 && n_endpoint;
+      if (!poloidal_ghost && !toroidal_ghost) {
+        continue;
+      }
+      for (int jF = 1; jF < fc.ns - 1; ++jF) {
+        double projection = 0.0;
+        double norm = 0.0;
+        for (int k = 0; k < s.nZeta; ++k) {
+          for (int l = 0; l < s.nThetaEff; ++l) {
+            const int kl = k * s.nThetaEff + l;
+            const double angle = 2.0 * M_PI *
+                                 (static_cast<double>(m * l) / s.nThetaEven -
+                                  static_cast<double>(n * k) / s.nZeta);
+            const double basis = std::cos(angle);
+            const double derivative =
+                poloidal_ghost ? bsubus(jF, kl) - MU_0 * jxbout.izeta(jF, kl)
+                               : bsubvs(jF, kl) + MU_0 * jxbout.itheta(jF, kl);
+            projection += derivative * basis * s.wInt[l];
+            norm += basis * basis * s.wInt[l];
+          }
+        }
+        wout.bsubsmns(mn, jF) =
+            poloidal_ghost ? projection / (norm * m * (n == 0 ? 1.0 : 2.0))
+                           : -projection / (norm * n * s.nfp);
+      }
+      wout.bsubsmns(mn, 0) =
+          fc.ns < 4 ? wout.bsubsmns(mn, 1)
+                    : 2.0 * wout.bsubsmns(mn, 1) - wout.bsubsmns(mn, 2);
+      wout.bsubsmns(mn, fc.ns - 1) = fc.ns < 4
+                                         ? wout.bsubsmns(mn, 1)
+                                         : 2.0 * wout.bsubsmns(mn, fc.ns - 2) -
+                                               wout.bsubsmns(mn, fc.ns - 3);
+    }
+  }
+
   // -------------------
   // non-stellarator-symmetric Fourier coefficients
 
@@ -6069,22 +5889,12 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         double t2 = 0.0;
         double t3 = 0.0;
 
-        if (m % 2 == 1) {
-          // odd m: regularized derivatives
-          const double bu0 = wout.bsubumnc(mn, j_f) / sqrt_s_half_inner;
-          const double bu1 = wout.bsubumnc(mn, j_f + 1) / sqrt_s_half_outer;
-          t2 = ohs * (bu1 - bu0) * sqrt_s_full +
-               0.25 * (bu0 + bu1) / sqrt_s_full;
-
-          const double bv0 = wout.bsubvmnc(mn, j_f) / sqrt_s_half_inner;
-          const double bv1 = wout.bsubvmnc(mn, j_f + 1) / sqrt_s_half_outer;
-          t3 = ohs * (bv1 - bv0) * sqrt_s_full +
-               0.25 * (bv0 + bv1) / sqrt_s_full;
-        } else {
-          // even m: simple finite differences
-          t2 = ohs * (wout.bsubumnc(mn, j_f + 1) - wout.bsubumnc(mn, j_f));
-          t3 = ohs * (wout.bsubvmnc(mn, j_f + 1) - wout.bsubvmnc(mn, j_f));
-        }
+        t2 = HalfGridRadialDerivative(
+            wout.bsubumnc(mn, j_f), wout.bsubumnc(mn, j_f + 1),
+            sqrt_s_half_inner, sqrt_s_half_outer, sqrt_s_full, ohs, m % 2 == 1);
+        t3 = HalfGridRadialDerivative(
+            wout.bsubvmnc(mn, j_f), wout.bsubvmnc(mn, j_f + 1),
+            sqrt_s_half_inner, sqrt_s_half_outer, sqrt_s_full, ohs, m % 2 == 1);
 
         wout.currumnc(mn, j_f) = -n_nfp * t1 - t3;
         wout.currvmnc(mn, j_f) = -m * t1 + t2;
@@ -6094,20 +5904,14 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           double t2a = 0.0;
           double t3a = 0.0;
 
-          if (m % 2 == 1) {
-            const double bu0a = wout.bsubumns(mn, j_f) / sqrt_s_half_inner;
-            const double bu1a = wout.bsubumns(mn, j_f + 1) / sqrt_s_half_outer;
-            t2a = ohs * (bu1a - bu0a) * sqrt_s_full +
-                  0.25 * (bu0a + bu1a) / sqrt_s_full;
-
-            const double bv0a = wout.bsubvmns(mn, j_f) / sqrt_s_half_inner;
-            const double bv1a = wout.bsubvmns(mn, j_f + 1) / sqrt_s_half_outer;
-            t3a = ohs * (bv1a - bv0a) * sqrt_s_full +
-                  0.25 * (bv0a + bv1a) / sqrt_s_full;
-          } else {
-            t2a = ohs * (wout.bsubumns(mn, j_f + 1) - wout.bsubumns(mn, j_f));
-            t3a = ohs * (wout.bsubvmns(mn, j_f + 1) - wout.bsubvmns(mn, j_f));
-          }
+          t2a = HalfGridRadialDerivative(wout.bsubumns(mn, j_f),
+                                         wout.bsubumns(mn, j_f + 1),
+                                         sqrt_s_half_inner, sqrt_s_half_outer,
+                                         sqrt_s_full, ohs, m % 2 == 1);
+          t3a = HalfGridRadialDerivative(wout.bsubvmns(mn, j_f),
+                                         wout.bsubvmns(mn, j_f + 1),
+                                         sqrt_s_half_inner, sqrt_s_half_outer,
+                                         sqrt_s_full, ohs, m % 2 == 1);
 
           wout.currumns(mn, j_f) = n_nfp * t1a - t3a;
           wout.currvmns(mn, j_f) = m * t1a + t2a;

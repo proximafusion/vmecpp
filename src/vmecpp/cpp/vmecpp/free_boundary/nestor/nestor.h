@@ -14,7 +14,6 @@
 #include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
 #include "vmecpp/free_boundary/free_boundary_base/free_boundary_base.h"
 #include "vmecpp/free_boundary/laplace_solver/laplace_solver.h"
-#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 #include "vmecpp/free_boundary/regularized_integrals/regularized_integrals.h"
 #include "vmecpp/free_boundary/singular_integrals/singular_integrals.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
@@ -24,8 +23,9 @@ namespace vmecpp {
 class Nestor : public FreeBoundaryBase {
  public:
   Nestor(const Sizes* s, const TangentialPartitioning* tp,
-         const MGridProvider* mgrid, std::span<double> matrixShare,
-         std::span<double> bvecShare, std::span<double> bSqVacShare,
+         const MagneticFieldFunction* magnetic_field,
+         std::span<double> matrixShare, std::span<double> bvecShare,
+         std::span<double> bSqVacShare,
          Eigen::PartialPivLU<Eigen::MatrixXd>* lu_decomposition,
          std::span<double> vacuum_b_r_share,
          std::span<double> vacuum_b_phi_share,

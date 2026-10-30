@@ -7,7 +7,7 @@
 ``(rss + zcs) / 2`` and ``(rss - zcs) / 2``; the second one is a poloidal-angle
 origin per toroidal harmonic. The native iteration lets it drift under its force
 until ``fsqz < 1e-6`` and freezes it wherever it is, so the converged state is a
-function of the iteration history. ``VmecModel.always_fix_m1_gauge`` zeroes that
+function of the iteration history. ``VmecInput.always_fix_m1_gauge`` zeroes that
 force from the first iteration and sets the gauge from the boundary at every
 multigrid step; the converged gauge is then the boundary gauge scaled by
 ``sqrt(s)``, and the fixed-gauge force Jacobian is the linearization of the
@@ -87,11 +87,11 @@ def _requires_exact_derivatives(model) -> None:
 def _solve(indata: vmecpp.VmecInput, always_fix_m1_gauge: bool):
     """Solve through every entry of ns_array, as autodiff._solve_model does."""
     cpp_indata = indata._to_cpp_vmecindata()
+    cpp_indata.always_fix_m1_gauge = always_fix_m1_gauge
     model = None
     for ns in (int(value) for value in np.asarray(indata.ns_array)):
         if model is None:
             model = _vmecpp.VmecModel.create(cpp_indata, ns)
-            model.always_fix_m1_gauge = always_fix_m1_gauge
         else:
             model.refine_to(ns)
         model.solve()
@@ -102,8 +102,8 @@ def _solve(indata: vmecpp.VmecInput, always_fix_m1_gauge: bool):
 def test_pinned_gauge_stays_at_the_boundary_interpolation() -> None:
     indata = _cth_like_input([25])
     cpp_indata = indata._to_cpp_vmecindata()
+    cpp_indata.always_fix_m1_gauge = True
     model = _vmecpp.VmecModel.create(cpp_indata, 25)
-    model.always_fix_m1_gauge = True
     initial = np.asarray(model.get_state(), dtype=np.float64).copy()
     model.solve()
     solved = np.asarray(model.get_state(), dtype=np.float64)
@@ -125,7 +125,7 @@ def test_pinned_gauge_stays_at_the_boundary_interpolation() -> None:
     )
 
     # The native iteration moves the gauge by an amount comparable to its size.
-    native = _vmecpp.VmecModel.create(cpp_indata, 25)
+    native = _vmecpp.VmecModel.create(indata._to_cpp_vmecindata(), 25)
     native.solve()
     drift = np.abs(np.asarray(native.get_state())[gauge] - initial[gauge]).max()
     assert drift > 1.0e-5
@@ -163,12 +163,9 @@ def test_pinned_hot_restart_uses_the_new_boundary_gauge() -> None:
     modified = indata.model_copy(update={"rbc": np.asarray(indata.rbc).copy()})
     modified.rbc[1, modified.ntor + 1] += 0.01
     restart = _vmecpp.HotRestartState(wout=output.wout, indata=cpp_indata)
-    model = _vmecpp.VmecModel.create(
-        modified._to_cpp_vmecindata(),
-        13,
-        initial_state=restart,
-        always_fix_m1_gauge=True,
-    )
+    pinned_indata = modified._to_cpp_vmecindata()
+    pinned_indata.always_fix_m1_gauge = True
+    model = _vmecpp.VmecModel.create(pinned_indata, 13, initial_state=restart)
     gauge = autodiff._gauge_entries(model)
     unpinned = _vmecpp.VmecModel.create(
         modified._to_cpp_vmecindata(), 13, initial_state=restart
