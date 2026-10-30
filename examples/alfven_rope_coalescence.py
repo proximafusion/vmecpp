@@ -184,6 +184,12 @@ def main():
         "default the rope's file with _merged added to its name",
     )
     parser.add_argument("--workers", type=int, default=os.cpu_count())
+    parser.add_argument(
+        "--convergence",
+        action="store_true",
+        help="the energies on 25, 49 and 97 surfaces and at 24 x 108 and 32 x 144 "
+        "angles, instead of 25 surfaces and 24 x 108 angles",
+    )
     args = parser.parse_args()
     data = json.loads(Path(args.rope).read_text())
     rope = rope_example.Rope(angle=data["angle"], spacing=data["spacing"])
@@ -215,15 +221,18 @@ def main():
         path.write_text(json.dumps(matched, indent=1))
     pair_turns = [np.eye(3), turn(np.pi / rope_example.N)]
     total = 2.0 * rope.current
-    runs = {}
     # surfaces of the solves and of Simpson's rule, and angles of the sums
-    for ns, surfaces, ntheta, nzeta in (
-        (25, 25, 32, 144),
-        (49, 25, 32, 144),
-        (97, 25, 32, 144),
-        (97, 49, 24, 108),
-        (97, 49, 32, 144),
-    ):
+    grids = [(25, 25, 24, 108)]
+    if args.convergence:
+        grids = [
+            (25, 25, 32, 144),
+            (49, 25, 32, 144),
+            (97, 25, 32, 144),
+            (97, 49, 24, 108),
+            (97, 49, 32, 144),
+        ]
+    runs = {}
+    for ns, surfaces, ntheta, nzeta in grids:
         if ns not in runs:
             runs[ns] = (
                 fixed(rope, np.array(data["x"]), ns),
