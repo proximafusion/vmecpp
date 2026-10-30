@@ -69,9 +69,11 @@ def _assert_same_geometry(ref, test, atol):
     np.testing.assert_allclose(np.asarray(test.zmns), np.asarray(ref.zmns), atol=atol)
 
 
-def test_lasym_reduces_to_symmetric_2d():
+@pytest.mark.parametrize("lbsubs", [False, True])
+def test_lasym_reduces_to_symmetric_2d(lbsubs):
     """2D: lasym=True with zero asymmetric content reproduces the symmetric run."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    base.lbsubs = lbsubs
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
@@ -80,9 +82,11 @@ def test_lasym_reduces_to_symmetric_2d():
 
 
 @pytest.mark.parametrize("lambda_precondition_checkerboard_terms", [-1.0, 1e-3])
-def test_lasym_reduces_to_symmetric_3d(lambda_precondition_checkerboard_terms):
+@pytest.mark.parametrize("lbsubs", [False, True])
+def test_lasym_reduces_to_symmetric_3d(lambda_precondition_checkerboard_terms, lbsubs):
     """3D: lasym=True with zero asymmetric content reproduces the symmetric run."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base.lbsubs = lbsubs
     base.lambda_precondition_checkerboard_terms = lambda_precondition_checkerboard_terms
     sym = _run(base)
     asym = _run(_enable_lasym(base))
@@ -107,10 +111,12 @@ def _numeric_fields(model, prefix=""):
     return fields
 
 
-def test_lasym_reduces_to_symmetric_3d_all_outputs():
+@pytest.mark.parametrize("lbsubs", [False, True])
+def test_lasym_reduces_to_symmetric_3d_all_outputs(lbsubs):
     """3D: every jxbout, Mercier, threed1 and wout quantity of the lasym run
     reproduces the symmetric run on the shared poloidal range."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base.lbsubs = lbsubs
     sym = vmecpp.run(base, max_threads=1, verbose=False)
     asym = vmecpp.run(_enable_lasym(base), max_threads=1, verbose=False)
 

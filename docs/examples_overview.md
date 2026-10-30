@@ -17,4 +17,6 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`fourier_resolution_increase.py`](../examples/fourier_resolution_increase.py): reach a high Fourier resolution by continuation, in fewer iterations than a fixed-resolution solve.
 - [`watch_solve.py`](../examples/watch_solve.py): draw the flux surfaces and the force residuals while VMEC++ converges, through the iteration callback of `vmecpp.run`.
 - [`self_consistent_bootstrap_current.py`](../examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
+- [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
+- [`force_balance_spectrum.py`](../examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
 - [`barrier_gradient.py`](../examples/barrier_gradient.py): differentiate the energy barrier between two equilibria with respect to input parameters, from one adjoint solve per equilibrium.

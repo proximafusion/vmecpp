@@ -87,25 +87,76 @@ print(f"Solved successfully in {output.wout.itfsq} iterations.")
 
 ### Enable `lbsubs` for Current-Related Properties and Mercier Stability (`DMerc`)
 
-If you plan to inspect current-related quantities, such as the Mercier stability criterion (`DMerc`), the magnetic shear term, or the current term (`Dcurr`), always set:
+We recommend setting `lbsubs=True` by default. It is relevant to current density,
+parallel and Pfirsch-Schlueter currents, current-based diagnostic reconstruction,
+and Mercier terms. The input field still defaults to `False` for backward
+compatibility, so set it explicitly. Check that the quantities you use converge
+with radial and angular resolution. Current calculations need a final force
+tolerance below `1e-16`; `1e-19` can be beneficial because radial differentiation
+amplifies residual errors in the magnetic field:
 
 ```python
 vmec_input.lbsubs = True
-```
-
-**Why this matters:**
-VMEC uses a staggered radial grid with half-grid and full-grid quantities. By default (`lbsubs = False`), the covariant radial magnetic field component $B_s$ on the full grid is calculated by averaging values from adjacent half-grid points. While this is sufficient for basic geometric quantities, simple interpolation introduces numerical inconsistencies when calculating radial derivatives of $B_s$, which directly enter the current density $\mathbf{J}$ and the Mercier criterion.
-
-When `lbsubs = True`, VMEC++ re-derives the full-grid $B_s$ by inverting the radial force balance equation in Fourier space. This ensures that the magnetic field components and the radial current balance are consistent, yielding accurate and reliable `DMerc` values:
-
-```python
-vmec_input.lbsubs = True
+vmec_input.ftol_array[-1] = min(vmec_input.ftol_array[-1], 1e-19)
 output = vmecpp.run(vmec_input)
-
-# Inspect Mercier stability results on the interior flux surfaces
 dmerc = output.mercier.DMerc
-print("Mercier criterion DMerc (positive means stable):", dmerc[1:-1])
+print("Mercier criterion on interior surfaces:", dmerc[1:-1])
 ```
+
+Inspect signed current profiles and cross-sections for unphysical spikes,
+near-axis divergence, and banding across flux surfaces. Tighten the force
+tolerance and refine the radial and angular grids to check whether these
+features persist. Check that the run actually reaches the requested tolerance.
+
+#### What changes, and what is the tradeoff?
+
+With `lbsubs=False`, VMEC++ computes the covariant radial component $B_s$ from
+the geometry and magnetic field on the half grid, then averages it onto the full
+grid. That interpolation can leave large errors when currents involve the
+cancellation of radial derivatives of $B_u$ or $B_v$ against angular derivatives
+of $B_s$. Ampere's law uses these angular derivatives of $B_s$, rather than its
+radial derivative.
+
+With `lbsubs=True`, VMEC++ instead solves for $B_s$ on each interior full-grid
+surface using radial force balance, with the surface-averaged part removed.
+The geometry, pressure, rotational transform, and tangential magnetic field
+are unchanged. Both symmetric and asymmetric configurations use this solve.
+
+The tradeoff is **force-balance consistency versus geometric consistency**.
+For one magnetic field tangent to the flux surfaces, the geometry requires
+
+$$
+B_s = \mathbf{B}\cdot\frac{\partial\mathbf{x}}{\partial s}
+    = g_{s\theta} B^\theta + g_{s\zeta} B^\zeta.
+$$
+
+The independently re-solved $B_s$ need not satisfy this identity with the
+unchanged geometry and contravariant field at finite resolution. Thus the
+post-processed components need not describe exactly the same magnetic field.
+Currents still come from Ampere's law applied to the chosen covariant components;
+this does not make them the exact curl of the unchanged geometry-based field.
+The re-solve improves one numerical condition, rather than making all equilibrium
+conditions exact. Agreement between these constructions must be checked under
+refinement.
+
+#### Use matching derivatives in downstream calculations
+
+Prefer the exported current coefficients `currumnc`, `currvmnc`, and their sine
+partners for asymmetric equilibria. They already include $1/\mu_0$; see the
+`currumnc` docstring for reconstruction and Jacobian interpolation.
+
+If rebuilding currents or other quantities from $B_s$, $B_u$, and $B_v$, use
+VMEC++'s sqrt(s)-regularized odd-m radial derivative. For odd m, write
+$Q(s)=\sqrt{s}\,q(s)$ and difference the smooth remainder $q$; even m uses the
+ordinary radial difference. The `currumnc` docstring gives the exact formula and
+half-grid indices. Pairing the re-solved $B_s$ with plain odd-m differences breaks
+the near-axis cancellation and can create a false current growing as $h^{-1/2}$
+with radial refinement. Matching the derivative is separate from the geometric
+tradeoff above.
+
+The $B_s$ re-solve can amplify divergence near rational surfaces, where
+$m\iota-nN_{\rm fp}$ is small, but is typically the preferred treatment for
+quantities related to current density.
 
 ### Use a Spectrally Condensed Boundary
 

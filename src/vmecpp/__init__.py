@@ -548,7 +548,12 @@ class VmecInput(BaseModelWithNumpy):
 
     lbsubs: bool = False
     """If true, recompute the full-grid covariant B_s by solving radial force balance
-    (lbsubs flag in Fortran VMEC)."""
+    with regularized radial derivatives.
+
+    Helps with getting more physical currents for post-processing involving `B_s`
+    like diagnostic reconstruction, DMerc, or toroidal current densities.
+    https://proximafusion.github.io/vmecpp/tutorials/fixed_boundary.html
+    """
 
     backup_evaluated_state: bool = True
     """If true, restart backups hold the state of the last force evaluation; if false,
@@ -1262,6 +1267,11 @@ class VmecWOut(BaseModelWithNumpy):
     )
     """Evolution of the force residual at the vacuum boundary along the run."""
 
+    lcfs_force: jt.Float[NpOrJax, "time"] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Evolution of the normalized squared R and Z force residuals on the LCFS."""
+
     restart_reason_timetrace: typing.Annotated[
         jt.Int[NpOrJax, "time"],
         pydantic.Field(alias="restart_reasons"),
@@ -1374,13 +1384,54 @@ class VmecWOut(BaseModelWithNumpy):
     currumnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
-    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid."""
+    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\theta}` on the full-grid.
+
+    Evaluate the cosine series with ``xm_nyq * theta - xn_nyq * zeta``, add
+    the sine series from ``currumns`` when present, then divide by the Jacobian
+    :math:`\sqrt{g}` at the same points to obtain :math:`J^{\theta}`. ``xn_nyq``
+    already includes ``nfp``. These coefficients include the factor :math:`1/\mu_0`;
+    do not divide by :math:`\mu_0` again. Prefer these exported currents when
+    computing current-dependent quantities.
+
+    At an interior full-grid index ``j``, the matching Jacobian is obtained by
+    averaging half-grid Fourier coefficients at columns ``j`` and ``j + 1``
+    of ``gmnc`` and, when present, ``gmns``. Axis and boundary currents are
+    extrapolated values.
+
+    Consumers rebuilding currents from covariant B must use the same radial
+    derivative as VMEC++. With ``lbsubs=True``, the full-grid B_s is paired with
+    the sqrt(s)-regularized odd-m derivative of B_u and B_v. For either component
+    Q, write ``Q = sqrt(s) * q`` for odd m and evaluate at interior surface j::
+
+        h = 1 / (ns - 1)
+        s = j * h
+        q_inner = Q[j] / sqrt((j - 0.5) * h)
+        q_outer = Q[j + 1] / sqrt((j + 0.5) * h)
+        dQ_ds = sqrt(s) * (q_outer - q_inner) / h
+        dQ_ds += (q_inner + q_outer) / (4 * sqrt(s))
+
+    Here Q is one Fourier coefficient across the stored half-grid columns;
+    apply this to both sine and cosine coefficients. Even m uses the ordinary
+    difference ``(Q[j + 1] - Q[j]) / h``. Angular derivatives of B_s use the
+    Fourier basis. The same rule applies to other calculations combining these
+    radial derivatives with B_s. Plain odd-m differences break the cancellation
+    at the axis and can produce a spurious current growing as :math:`h^{-1/2}`
+    under radial refinement.
+    """
 
     # Defaulted for backwards compatibility with old wout files
     currvmnc: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] = pydantic.Field(
         default_factory=lambda: np.array([])
     )
-    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid."""
+    r"""Fourier coefficients (cos) of :math:`\sqrt{g} J^{\zeta}` on the full-grid.
+
+    Reconstruct with ``xm_nyq``, ``xn_nyq``, and the sine partner ``currvmns``,
+    then divide by the full-grid Jacobian. The physical toroidal current density
+    is :math:`J_{\phi} = R J^{\zeta}` in A/m^2. The factor :math:`1/\mu_0` is
+    already included. See ``currumnc`` for Jacobian interpolation and the required
+    sqrt(s)-regularized odd-m derivative when rebuilding currents from B_s,
+    B_u, and B_v.
+    """
 
     rmnc: jt.Float[NpOrJax, "mn_mode n_surfaces"]
     """Fourier coefficients (cos) for ``R`` of the geometry of the flux surfaces on the
@@ -1453,11 +1504,17 @@ class VmecWOut(BaseModelWithNumpy):
 
     currumns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\theta}` on the full-grid; non-
-    stellarator-symmetric."""
+    stellarator-symmetric.
+
+    Use together with ``currumnc`` as described there.
+    """
 
     currvmns: jt.Float[NpOrJax, "mn_mode_nyq n_surfaces"] | None = None
     r"""Fourier coefficients (sin) of :math:`\sqrt{g} J^{\zeta}` on the full-grid; non-
-    stellarator-symmetric."""
+    stellarator-symmetric.
+
+    Use together with ``currvmnc`` as described there.
+    """
 
     pcurr_type: ProfileType
     """Parametrization of toroidal current profile (copied from input)."""

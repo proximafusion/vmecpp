@@ -82,8 +82,11 @@ _JDOTB_TOLERANCE = 1.0e-9
 # fields that depend on the force-balance B_s.
 _LBSUBS_FIELDS = {
     "bsubsmns",
+    "bsubsmnc",
     "currumnc",
     "currvmnc",
+    "currumns",
+    "currvmns",
     "jdotb",
     "DMerc",
     "DCurr",
@@ -105,6 +108,9 @@ _CASES = {
     "cth_like_free_bdy": 1.0e-14,
     "solovev_lbsubs": 1.0e-14,
     "cth_like_fixed_bdy_lbsubs": 1.0e-14,
+    "up_down_asym_lbsubs": 1.0e-14,
+    "cth_like_fixed_bdy_asym_lbsubs": 1.0e-14,
+    "cth_like_fixed_bdy_vacuum_lbsubs": 1.0e-14,
 }
 
 
@@ -112,6 +118,9 @@ def _load_input(name: str, ftol: float) -> vmecpp.VmecInput:
     if name.endswith("_lbsubs"):
         indata = _load_input(name.removesuffix("_lbsubs"), ftol)
         return indata.model_copy(update={"lbsubs": True})
+    if name.endswith("_vacuum"):
+        indata = _load_input(name.removesuffix("_vacuum"), ftol)
+        return indata.model_copy(update={"am": np.zeros_like(indata.am), "curtor": 0.0})
     if name == "solovev_ns3":
         # the smallest radial grid: one interior full-grid surface
         indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
@@ -491,8 +500,8 @@ def test_vjp_linearizes_at_the_forward_solve() -> None:
 
 
 def test_forward_solves_keep_no_cpp_objects() -> None:
-    """JAX keeps callback closures alive, so the forward cache is bounded, holds NumPy
-    data only, and the VJP consumes its entry."""
+    """The forward cache is bounded, holds NumPy data only, and keeps its entry through
+    a VJP."""
     indata = _cth_like_input()
     solver = autodiff._RunSolver(indata, max_threads=1)
     boundary = np.asarray(_boundary(indata))
@@ -506,7 +515,7 @@ def test_forward_solves_keep_no_cpp_objects() -> None:
             for value in solve["wout_fields"].values()
         )
     solver._solved_model(boundary * (1.0 + 2.0e-6))
-    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE - 1
+    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE
 
 
 def test_output_pytree_round_trip() -> None:
@@ -618,3 +627,69 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
         f"rel diff={abs(directional - finite_difference) / abs(finite_difference):.2e}"
     )
     np.testing.assert_allclose(directional, finite_difference, rtol=2.0e-2)
+
+
+@pytest.mark.parametrize(
+    "case", ["solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"]
+)
+def test_exported_currents_match_jxbout(case):
+    """Unlike VMEC 8.52, lbsubs exports the same regularized currents as jxbout,
+    including the derivatives of Nyquist sine modes."""
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
+    indata.ns_array = np.array([9])
+    indata.ftol_array = np.array([1e-13])
+    indata.niter_array = np.array([20000])
+    indata.lbsubs = True
+    output = vmecpp.run(indata, max_threads=1, verbose=False)
+    wout = output.wout
+    ntor = int(np.asarray(indata.ntor).item())
+    nzeta = max(indata.nzeta, 2 * ntor + 4) if ntor else max(indata.nzeta, 1)
+    ntheta = output.jxbout.izeta.shape[1] // nzeta
+    ntheta_even = ntheta if indata.lasym else 2 * (ntheta - 1)
+    theta = 2 * np.pi * np.arange(ntheta) / ntheta_even
+    zeta = 2 * np.pi * np.arange(nzeta) / (nzeta * wout.nfp)
+    angles = (
+        wout.xm_nyq[:, None, None] * theta - wout.xn_nyq[:, None, None] * zeta[:, None]
+    )
+    cosine = np.cos(angles).reshape(len(wout.xm_nyq), -1)
+    sine = np.sin(angles).reshape(len(wout.xm_nyq), -1)
+    for cos_name, sin_name, expected in (
+        ("currumnc", "currumns", output.jxbout.itheta),
+        ("currvmnc", "currvmns", output.jxbout.izeta),
+    ):
+        actual = getattr(wout, cos_name)[:, 1:-1].T @ cosine
+        coefficients = getattr(wout, sin_name)
+        if coefficients is not None:
+            actual += coefficients[:, 1:-1].T @ sine
+        scale = np.max(np.abs(expected[1:-1]))
+        np.testing.assert_allclose(actual, expected[1:-1], rtol=0, atol=1e-9 * scale)
+
+
+def test_vacuum_pointwise_toroidal_current_residual():
+    """Zero pressure and zero prescribed current give a vacuum equilibrium.
+
+    At finite resolution compare the residual current with B/(mu_0 R), using pointwise
+    values so that angular oscillations cannot cancel in the check. The general lbsubs
+    solve leaves a finite-resolution residual in this verification case.
+    """
+    indata = vmecpp.VmecInput.from_file(REPO_ROOT / "examples/data/input.w7x")
+    indata.am = np.zeros(1)
+    indata.ncurr = 1
+    indata.ac = np.zeros(1)
+    indata.curtor = 0.0
+    indata.ns_array = np.array([9, 17])
+    indata.ftol_array = np.array([1e-16, 1e-16])
+    indata.niter_array = np.array([20000, 20000])
+    indata.lbsubs = True
+    output = vmecpp.run(indata, max_threads=1, verbose=False)
+    wout = output.wout
+    theta = np.linspace(0, 2 * np.pi, 96, endpoint=False)
+    radial = np.arange(1, wout.ns - 1)
+    scale = float(wout.volavgB) / (4e-7 * np.pi * float(wout.Rmajor_p))
+    for zeta in np.arange(4) * np.pi / (2 * wout.nfp):
+        cos = np.cos(wout.xm[:, None] * theta - wout.xn[:, None] * zeta)
+        cos_nyq = np.cos(wout.xm_nyq[:, None] * theta - wout.xn_nyq[:, None] * zeta)
+        r = wout.rmnc[:, radial].T @ cos
+        sqrtg = (0.5 * (wout.gmnc[:, radial] + wout.gmnc[:, radial + 1])).T @ cos_nyq
+        current = r * (wout.currvmnc[:, radial].T @ cos_nyq) / sqrtg
+        assert np.max(np.abs(current)) < 2e-3 * scale

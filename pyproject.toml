@@ -48,7 +48,7 @@ test = [
   "pytest",
 ]
 benchmark = [
-  "pytest",
+  "pytest<9",
   "pytest-benchmark",
 ]
 docs = [

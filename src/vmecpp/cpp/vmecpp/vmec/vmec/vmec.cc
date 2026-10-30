@@ -476,6 +476,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.force_residual_lambda.reserve(cap);
         fc_.mhd_energy.reserve(cap);
         fc_.delbsq.reserve(cap);
+        fc_.lcfs_force_timetrace.reserve(cap);
         fc_.restart_reasons.reserve(cap);
       }
 
@@ -1683,8 +1684,10 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     if (fc_.lfreeb) {
       // delbsq is only available on the LCFS thread
       fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
+      fc_.lcfs_force_timetrace.push_back(fc_.lcfs_force);
     } else {
       fc_.delbsq.push_back(0.0);
+      fc_.lcfs_force_timetrace.push_back(0.0);
     }
     fc_.restart_reasons.push_back(fc_.restart_reason);
     fc_.mhd_energy.push_back(h_.mhdEnergy);
