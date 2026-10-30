@@ -209,7 +209,8 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     indata += "\n  ! select constraint on iota or enclosed toroidal current profiles\n"
     indata += _int_to_namelist("ncurr", vmecpp_json)
 
-    indata += "\n  ! (initial guess for) iota profile\n"
+    indata += "\n  ! (initial guess for) iota profile, or q profile with lrfp\n"
+    indata += _bool_to_namelist("lrfp", vmecpp_json)
     indata += _string_to_namelist("piota_type", vmecpp_json)
     indata += _float_array_to_namelist("ai", vmecpp_json)
     indata += _float_array_to_namelist("ai_aux_s", vmecpp_json)

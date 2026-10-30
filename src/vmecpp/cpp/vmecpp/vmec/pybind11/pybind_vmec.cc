@@ -1101,6 +1101,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("lambda_precondition_checkerboard_terms",
                      &VmecINDATA::lambda_precondition_checkerboard_terms)
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
+      .def_readwrite("lrfp", &VmecINDATA::lrfp)
       .def_readwrite("backup_evaluated_state",
                      &VmecINDATA::backup_evaluated_state)
       .def_readwrite("always_fix_m1_gauge", &VmecINDATA::always_fix_m1_gauge)
