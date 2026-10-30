@@ -256,8 +256,8 @@ def helix_of(points):
 
 
 def geometry(wout, js, theta, zeta):
-    """Points, the tangents e_theta and e_zeta, sqrt(g), and the currents sqrt(g) J^theta
-    and sqrt(g) J^zeta on the full-grid surfaces js at the angles theta and zeta."""
+    """Points, tangents e_theta and e_zeta, sqrt(g), and sqrt(g) J^theta and sqrt(g)
+    J^zeta on the full-grid surfaces js at the angles theta and zeta."""
 
     def series(coefficients, m, n, kind, d_theta=0, d_zeta=0):
         angle = m[:, None, None] * theta[None, :, None] - n[:, None, None] * zeta
@@ -325,8 +325,8 @@ def biot_savart(points, elements, x):
 
 @dataclasses.dataclass
 class Field:
-    """The other strands as the current elements J dV at points, the guide field
-    B0 R0 / R along phi and a vertical field."""
+    """The other strands as current elements J dV at points, the guide field B0 R0 / R
+    along phi and a vertical field."""
 
     points: np.ndarray
     elements: np.ndarray
