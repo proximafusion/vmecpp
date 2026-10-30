@@ -98,6 +98,9 @@ class FlowControl {
   std::vector<double> force_residual_z;
   std::vector<double> force_residual_lambda;
 
+  // Sum of the normalized squared R and Z force residuals on the LCFS.
+  double lcfs_force = 0.0;
+
   // Preconditioned cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;
@@ -107,6 +110,9 @@ class FlowControl {
 
   // Time-trace of the force at the vacuum boundary (only for free-boundary)
   std::vector<double> delbsq;
+  // Time-trace of the R and Z force residuals on the LCFS (only for
+  // free-boundary)
+  std::vector<double> lcfs_force_timetrace;
   // Time-trace of the restart reasons, for debugging purposes. Each restart is
   // a pair of <iteration, reason> (e.g. to see how many jacobian resets
   // occurred)

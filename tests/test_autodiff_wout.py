@@ -1,7 +1,5 @@
 """The JAX output stage against the C++ one, the VmecWOut pytree, and gradients."""
 
-import subprocess
-import sys
 from pathlib import Path
 
 import jax
@@ -57,9 +55,6 @@ _SCALE_OF = {
 # amplifies the roundoff of the latter by 1 / (mu_0 ds); the Mercier terms are
 # products of such differences.
 _TOLERANCE = {
-    # a difference of two O(1 / mu_0) terms, the least well-conditioned field;
-    # 2e-5 of its maximum matches the atol of the Fortran reference test
-    "jdotb": 2.0e-5,
     "jcuru": 1.0e-6,
     "jcurv": 1.0e-6,
     "ctor": 1.0e-6,
@@ -78,12 +73,20 @@ _TOLERANCE = {
 }
 _DEFAULT_TOLERANCE = 1.0e-10
 
+# <J.B> is the surface average of K.B, which cancels to ~1e-6 of its magnitude, so its
+# roundoff is measured per surface against the Cauchy-Schwarz bound
+# sqrt(<j_par^2> <B^2>) of the integrand rather than against <J.B> itself.
+_JDOTB_TOLERANCE = 1.0e-9
+
 # The lbsubs collocation solve amplifies roundoff by its condition number in the
 # fields that depend on the force-balance B_s.
 _LBSUBS_FIELDS = {
     "bsubsmns",
+    "bsubsmnc",
     "currumnc",
     "currvmnc",
+    "currumns",
+    "currvmns",
     "jdotb",
     "DMerc",
     "DCurr",
@@ -105,6 +108,9 @@ _CASES = {
     "cth_like_free_bdy": 1.0e-14,
     "solovev_lbsubs": 1.0e-14,
     "cth_like_fixed_bdy_lbsubs": 1.0e-14,
+    "up_down_asym_lbsubs": 1.0e-14,
+    "cth_like_fixed_bdy_asym_lbsubs": 1.0e-14,
+    "cth_like_fixed_bdy_vacuum_lbsubs": 1.0e-14,
 }
 
 
@@ -112,6 +118,9 @@ def _load_input(name: str, ftol: float) -> vmecpp.VmecInput:
     if name.endswith("_lbsubs"):
         indata = _load_input(name.removesuffix("_lbsubs"), ftol)
         return indata.model_copy(update={"lbsubs": True})
+    if name.endswith("_vacuum"):
+        indata = _load_input(name.removesuffix("_vacuum"), ftol)
+        return indata.model_copy(update={"am": np.zeros_like(indata.am), "curtor": 0.0})
     if name == "solovev_ns3":
         # the smallest radial grid: one interior full-grid surface
         indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
@@ -207,6 +216,11 @@ def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
     fields = own_model_fields(vmecpp.VmecWOut)
     assert set(autodiff_wout.WOUT_QUANTITIES) <= set(fields)
     for name in fields:
+        if name == "jdotb":
+            _assert_jdotb_close(
+                actual.jdotb, expected.jdotb, output.jxbout, indata.lbsubs
+            )
+            continue
         _assert_field_close(
             name,
             getattr(actual, name),
@@ -214,6 +228,17 @@ def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
             expected,
             lbsubs=indata.lbsubs,
         )
+
+
+def _assert_jdotb_close(actual, expected, jxbout, lbsubs):
+    bound = np.sqrt(np.abs(np.asarray(jxbout.jpar2) * np.asarray(jxbout.bdotb)))
+    # the end values are extrapolated from their two neighbours
+    bound[[0, -1]] = 3.0 * np.maximum(bound[[1, -2]], bound[[2, -3]])
+    tolerance = _JDOTB_TOLERANCE
+    if lbsubs:
+        tolerance *= _LBSUBS_TOLERANCE_FACTOR
+    error = np.abs(np.asarray(actual) - np.asarray(expected))
+    assert np.all(error <= tolerance * bound), ("jdotb", (error / bound).max())
 
 
 def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:
@@ -231,17 +256,26 @@ def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:
         _assert_field_close(name, value, getattr(expected, name), expected)
 
 
-def test_run_returns_the_output_stage_wout() -> None:
+def test_run_returns_the_cpp_output_stage_wout(monkeypatch) -> None:
+    """A concrete run takes its wout from the C++ output stage; the JAX stage is for
+    traced runs only."""
+
+    def fail(*_):
+        message = "run() evaluated the JAX output stage"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(vmecpp, "_wout_from_output_stage", fail)
+    monkeypatch.setattr(autodiff_wout, "wout_quantities", fail)
     indata = _load_input("solovev", 1.0e-12)
     wout = vmecpp.run(indata, max_threads=1, verbose=False).wout
     output = _vmecpp.run(
         indata._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT, max_threads=1
     )
-    reference = vmecpp._wout_from_output_stage(indata, output)
+    reference = vmecpp.VmecWOut._from_cpp_wout(output.wout)
     for name in autodiff_wout.WOUT_QUANTITIES:
-        value = getattr(wout, name)
-        assert value is None or isinstance(value, float | np.ndarray), name
-        np.testing.assert_array_equal(value, getattr(reference, name), err_msg=name)
+        np.testing.assert_array_equal(
+            getattr(wout, name), getattr(reference, name), err_msg=name
+        )
 
 
 def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
@@ -265,21 +299,6 @@ def test_run_returns_outputs_of_an_early_stop_at_a_coarser_step() -> None:
     np.testing.assert_allclose(
         actual.rmnc, expected.rmnc, rtol=0.0, atol=1.0e-12 * np.abs(expected.rmnc).max()
     )
-
-
-def test_cli_uses_the_cpp_output_stage(tmp_path) -> None:
-    script = (
-        "import runpy, sys\n"
-        "import vmecpp\n"
-        "def fail(*args):\n"
-        "    raise AssertionError('the CLI evaluated the JAX output stage')\n"
-        "vmecpp._wout_from_output_stage = fail\n"
-        f"sys.argv = ['vmecpp', {str(TEST_DATA_DIR / 'solovev.json')!r}, '--quiet']\n"
-        "runpy.run_module('vmecpp', run_name='__main__')\n"
-    )
-    subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)
-    wout = vmecpp.VmecWOut.from_wout_file(tmp_path / "wout_solovev.nc")
-    assert wout.ns == 55
 
 
 def test_wout_quantities_accept_a_prescribed_iota(solved_case) -> None:
@@ -400,12 +419,13 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
     """A traced boundary solves through the differentiable path; under jax.jit the
     forward solve is not observable, so only the wout physics fields are set."""
     indata = _cth_like_input()
+    cpp_indata = indata._to_cpp_vmecindata()
+    cpp_indata.always_fix_m1_gauge = True
     reference = vmecpp.VmecWOut._from_cpp_wout(
         _vmecpp.run(
-            indata._to_cpp_vmecindata(),
+            cpp_indata,
             max_threads=1,
             verbose=_vmecpp.OutputMode.SILENT,
-            always_fix_m1_gauge=True,
         ).wout
     )
 
@@ -480,8 +500,8 @@ def test_vjp_linearizes_at_the_forward_solve() -> None:
 
 
 def test_forward_solves_keep_no_cpp_objects() -> None:
-    """JAX keeps callback closures alive, so the forward cache is bounded, holds NumPy
-    data only, and the VJP consumes its entry."""
+    """The forward cache is bounded, holds NumPy data only, and keeps its entry through
+    a VJP."""
     indata = _cth_like_input()
     solver = autodiff._RunSolver(indata, max_threads=1)
     boundary = np.asarray(_boundary(indata))
@@ -495,7 +515,7 @@ def test_forward_solves_keep_no_cpp_objects() -> None:
             for value in solve["wout_fields"].values()
         )
     solver._solved_model(boundary * (1.0 + 2.0e-6))
-    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE - 1
+    assert len(autodiff._FORWARD_SOLVES) == autodiff._FORWARD_SOLVES_SIZE
 
 
 def test_output_pytree_round_trip() -> None:
@@ -514,11 +534,12 @@ def test_run_with_a_traced_boundary_fills_the_cpp_outputs() -> None:
     """Under jax.grad the forward solve runs eagerly, so the non-differentiable members
     of the output come from its C++ output stage."""
     indata = _cth_like_input()
+    cpp_indata = indata._to_cpp_vmecindata()
+    cpp_indata.always_fix_m1_gauge = True
     reference = _vmecpp.run(
-        indata._to_cpp_vmecindata(),
+        cpp_indata,
         max_threads=1,
         verbose=_vmecpp.OutputMode.SILENT,
-        always_fix_m1_gauge=True,
     )
     captured = {}
 
@@ -587,11 +608,11 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
 
     def pinned_objective(value):
         cpp_input = _with_boundary(indata, value)._to_cpp_vmecindata()
+        cpp_input.always_fix_m1_gauge = True
         wout = vmecpp.VmecWOut._from_cpp_wout(
             _vmecpp.run(
                 cpp_input,
                 verbose=_vmecpp.OutputMode.SILENT,
-                always_fix_m1_gauge=True,
             ).wout
         )
         return wout.aspect if objective_name == "aspect" else _quasisymmetry_proxy(wout)
@@ -606,3 +627,69 @@ def test_gradient_matches_central_differences(objective_name: str, seed: int) ->
         f"rel diff={abs(directional - finite_difference) / abs(finite_difference):.2e}"
     )
     np.testing.assert_allclose(directional, finite_difference, rtol=2.0e-2)
+
+
+@pytest.mark.parametrize(
+    "case", ["solovev", "cth_like_fixed_bdy", "cth_like_fixed_bdy_asym"]
+)
+def test_exported_currents_match_jxbout(case):
+    """Unlike VMEC 8.52, lbsubs exports the same regularized currents as jxbout,
+    including the derivatives of Nyquist sine modes."""
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{case}.json")
+    indata.ns_array = np.array([9])
+    indata.ftol_array = np.array([1e-13])
+    indata.niter_array = np.array([20000])
+    indata.lbsubs = True
+    output = vmecpp.run(indata, max_threads=1, verbose=False)
+    wout = output.wout
+    ntor = int(np.asarray(indata.ntor).item())
+    nzeta = max(indata.nzeta, 2 * ntor + 4) if ntor else max(indata.nzeta, 1)
+    ntheta = output.jxbout.izeta.shape[1] // nzeta
+    ntheta_even = ntheta if indata.lasym else 2 * (ntheta - 1)
+    theta = 2 * np.pi * np.arange(ntheta) / ntheta_even
+    zeta = 2 * np.pi * np.arange(nzeta) / (nzeta * wout.nfp)
+    angles = (
+        wout.xm_nyq[:, None, None] * theta - wout.xn_nyq[:, None, None] * zeta[:, None]
+    )
+    cosine = np.cos(angles).reshape(len(wout.xm_nyq), -1)
+    sine = np.sin(angles).reshape(len(wout.xm_nyq), -1)
+    for cos_name, sin_name, expected in (
+        ("currumnc", "currumns", output.jxbout.itheta),
+        ("currvmnc", "currvmns", output.jxbout.izeta),
+    ):
+        actual = getattr(wout, cos_name)[:, 1:-1].T @ cosine
+        coefficients = getattr(wout, sin_name)
+        if coefficients is not None:
+            actual += coefficients[:, 1:-1].T @ sine
+        scale = np.max(np.abs(expected[1:-1]))
+        np.testing.assert_allclose(actual, expected[1:-1], rtol=0, atol=1e-9 * scale)
+
+
+def test_vacuum_pointwise_toroidal_current_residual():
+    """Zero pressure and zero prescribed current give a vacuum equilibrium.
+
+    At finite resolution compare the residual current with B/(mu_0 R), using pointwise
+    values so that angular oscillations cannot cancel in the check. The general lbsubs
+    solve leaves a finite-resolution residual in this verification case.
+    """
+    indata = vmecpp.VmecInput.from_file(REPO_ROOT / "examples/data/input.w7x")
+    indata.am = np.zeros(1)
+    indata.ncurr = 1
+    indata.ac = np.zeros(1)
+    indata.curtor = 0.0
+    indata.ns_array = np.array([9, 17])
+    indata.ftol_array = np.array([1e-16, 1e-16])
+    indata.niter_array = np.array([20000, 20000])
+    indata.lbsubs = True
+    output = vmecpp.run(indata, max_threads=1, verbose=False)
+    wout = output.wout
+    theta = np.linspace(0, 2 * np.pi, 96, endpoint=False)
+    radial = np.arange(1, wout.ns - 1)
+    scale = float(wout.volavgB) / (4e-7 * np.pi * float(wout.Rmajor_p))
+    for zeta in np.arange(4) * np.pi / (2 * wout.nfp):
+        cos = np.cos(wout.xm[:, None] * theta - wout.xn[:, None] * zeta)
+        cos_nyq = np.cos(wout.xm_nyq[:, None] * theta - wout.xn_nyq[:, None] * zeta)
+        r = wout.rmnc[:, radial].T @ cos
+        sqrtg = (0.5 * (wout.gmnc[:, radial] + wout.gmnc[:, radial + 1])).T @ cos_nyq
+        current = r * (wout.currvmnc[:, radial].T @ cos_nyq) / sqrtg
+        assert np.max(np.abs(current)) < 2e-3 * scale

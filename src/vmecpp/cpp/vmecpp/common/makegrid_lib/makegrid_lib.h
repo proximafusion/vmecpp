@@ -7,6 +7,7 @@
 
 #include <Eigen/Dense>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -120,17 +121,23 @@ absl::StatusOr<MakegridParameters> ImportMakegridParametersFromFile(
 absl::StatusOr<RowMatrix3Xd> MakeCylindricalGrid(
     const MakegridParameters& makegrid_parameters);
 
+// Called as progress(circuits_done, number_of_circuits) before the first
+// circuit and after each circuit.
+using ProgressCallback = std::function<void(int, int)>;
+
 // Compute the (normalized) magnetic field components on the given grid
 // and store it (overwriting) in the provided cache.
 absl::StatusOr<MagneticFieldResponseTable> ComputeMagneticFieldResponseTable(
     const MakegridParameters& makegrid_parameters,
-    const MagneticConfiguration& magnetic_configuration);
+    const MagneticConfiguration& magnetic_configuration,
+    const ProgressCallback& progress = nullptr);
 
 // Compute the (normalized) vector potential components on the given grid
 // and store it (overwriting) in the provided cache.
 absl::StatusOr<MakegridCachedVectorPotential> ComputeVectorPotentialCache(
     const MakegridParameters& makegrid_parameters,
-    const MagneticConfiguration& magnetic_configuration);
+    const MagneticConfiguration& magnetic_configuration,
+    const ProgressCallback& progress = nullptr);
 
 // Write the given magnetic field cache (and optionally, the given vector
 // potential cache) to a NetCDF file specified by the given filename.

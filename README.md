@@ -32,12 +32,12 @@ Compared to its Fortran predecessors, VMEC++:
 - has a zero-crash policy and reports issues via standard Python exceptions
 - allows hot-restarting a run from a previous converged state (see [Hot restart](#hot-restart))
 - supports inputs in the classic INDATA format as well as simpler-to-parse JSON files; it is also simple to construct input objects programmatically in Python
-- typically runs faster
+- runs faster in the majority of cases
 - comes with [substantial documentation of its internal numerics](https://github.com/proximafusion/vmecpp/blob/main/docs/the_numerics_of_vmecpp.pdf)
 
 VMEC++ can run on a laptop, but it is a suitable component for large-scale stellarator optimization pipelines.
 
-On the other hand, some features of the original Fortran VMEC are not available in VMEC++.
+On the other hand, some features of the original Fortran VMEC are intentionally omitted from VMEC++ to reduce complexity.
 See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 
 <!-- NOTE: if you change the intro above, remember to also adapt docs/index.md! -->
@@ -49,6 +49,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 - [Usage](#usage)
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
+  - [With JAX for gradients](#differentiable-runs)
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -74,7 +75,7 @@ See [examples/](https://github.com/proximafusion/vmecpp/blob/main/examples/) for
 Suitable input files are found in [`examples/data`](https://github.com/proximafusion/vmecpp/blob/main/examples/data).
 If unsure where to start, we suggest giving the [`w7x`](https://github.com/proximafusion/vmecpp/blob/main/examples/data/w7x.json) case a try, which is a five-field-period stellarator case for the [Wendelstein 7-X](https://www.ipp.mpg.de/w7x) stellarator.
 
-For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs fixed-boundary VMEC++ on the W7-X case and plots the convergence of the force residuals.
+For example [`examples/force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py) runs VMEC++ and plots the force residual convergence. It defaults to the fixed-boundary W7-X case; pass a free-boundary input file to include the vacuum-boundary traces.
 <!-- SPHINX-END1 -->
 ![W7-X force residual convergence](docs/w7x_force_convergence.png)
 <!-- SPHINX-START2 -->
@@ -117,6 +118,40 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 print(f"Computed plasma volume: {vmec.volume()}")
 ```
 
+## Differentiable runs
+
+> [!NOTE]
+> The autodiff API is not yet stable. We are planning to make autodiff the default
+> behaviour and to release a suitable pip wheel in the upcoming weeks.
+
+The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
+in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
+When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
+force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
+Otherwise it returns NumPy arrays as before.
+
+Leaves that change shape depending on iteration progress (`fsqt` trace for example)
+are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
+tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
+and diagnostics are `None`.
+
+```python
+import jax
+import jax.numpy as jnp
+import vmecpp
+
+vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
+
+
+def aspect(rbc, zbs):
+    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
+    return vmecpp.run(boundary, verbose=False).wout.aspect
+
+
+rbc = jnp.asarray(vmec_input.rbc)
+zbs = jnp.asarray(vmec_input.zbs)
+d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
+```
 ### As a command line tool
 
 You can use VMEC++ directly as a CLI tool.
@@ -127,7 +162,19 @@ In a terminal in which Python has access to the VMEC++ package:
 # vmecpp is a python module and can be either run with `python -m` or directly as a script
 vmecpp examples/data/input.w7x
 
-# check all options
+vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
+vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
+vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fortran VMEC
+
+# convert a classic Fortran indata file to VMEC++'s JSON format -> examples/data/w7x.json
+vmecpp convert examples/data/input.w7x
+
+# compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
+# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
+vmecpp mgrid makegrid_parameters.json coils.<name>
+
+# print the version, or check all options
+vmecpp --version
 vmecpp --help
 ```
 
@@ -156,7 +203,7 @@ Ubuntu 22.04 and 24.04, as well as Debian 12 are officially supported.
 
 1. Install required system packages:
 ```shell
-sudo apt-get install -y build-essential cmake gfortran libnetcdf-dev libomp-dev libhdf5-dev python3-dev
+sudo apt-get install -y build-essential cmake zlib1g-dev libomp-dev python3-dev
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a dedicated virtual environment):
@@ -176,7 +223,7 @@ Otherwise the Ubuntu package `python-is-python3` provides the `python` alias.
 1. Install required system packages:
 
 ```shell
-pacman -Sy --noconfirm python-pip gcc gcc-fortran openmp hdf5 netcdf
+pacman -Sy --noconfirm python-pip gcc openmp zlib cmake
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -192,7 +239,7 @@ python -m pip install git+https://github.com/proximafusion/vmecpp
 1. Install required system packages:
 
 ```shell
-dnf install -y python3.10-devel cmake g++ gfortran libomp-devel hdf5-devel netcdf-devel
+dnf install -y python3.10-devel cmake g++ zlib-devel libomp-devel
 ```
 
 2. Install VMEC++ as a Python package (possibly after creating a virtual environment):
@@ -283,14 +330,15 @@ VMEC++ on a configuration that is very similar to the converged equilibrium.
 ```python
 import vmecpp
 
-vmec_input = vmecpp.VmecInput.from_file("w7x.json")
+vmec_input = vmecpp.VmecInput.from_file("examples/data/w7x.json")
 
 # Base run
 vmec_output = vmecpp.run(vmec_input)
 
 # Now let's perturb the plasma boundary a little bit...
-vmec_input.rbc[0, 0] *= 0.8
-vmec_input.rbc[1, 0] *= 1.2
+ntor = vmec_input.ntor
+vmec_input.rbc[0, ntor+0] *= 1.0 + 1.0e-6 # m=0, n=0
+vmec_input.rbc[1, ntor+0] *= 1.0 - 1.0e-6 # m=1, n=0
 # ...and fix up the multigrid steps: hot-restarted runs only allow a single step
 vmec_input.ns_array = vmec_input.ns_array[-1:]
 vmec_input.ftol_array = vmec_input.ftol_array[-1:]
@@ -301,41 +349,6 @@ vmec_input.niter_array = vmec_input.niter_array[-1:]
 # the run starts already close to the equilibrium, so it will take
 # very few iterations to converge this time!
 hot_restarted_output = vmecpp.run(vmec_input, restart_from=vmec_output)
-```
-
-## Differentiable runs
-
-> [!NOTE]
-> The autodiff API is not yet stable. We are planning to make autodiff the default
-> behaviour and to release a suitable pip wheel in the upcoming weeks.
-
-The `wout` quantities support autodiff with JAX. `jax.grad` can differentiate objectives written
-in terms of `wout` quantities with respect to the boundary coefficients `rbc`, `zbs`.
-When they are JAX tracers, `vmecpp.run` solves through the implicit adjoint of the
-force residual, which needs a build with `-DVMECPP_ENABLE_ENZYME=ON`.
-Otherwise it returns NumPy arrays as before.
-
-Leaves that change shape depending on iteration progress (`fsqt` trace for example)
-are treated as aux data to support differentiability. `jxbout`, `mercier` and `threed1`
-tables are also treated as non-differentiable aux data. Under `jax.jit` these tables
-and diagnostics are `None`.
-
-```python
-import jax
-import jax.numpy as jnp
-import vmecpp
-
-vmec_input = vmecpp.VmecInput.from_file("cth_like_fixed_bdy.json")
-
-
-def aspect(rbc, zbs):
-    boundary = vmec_input.model_copy(update={"rbc": rbc, "zbs": zbs})
-    return vmecpp.run(boundary, verbose=False).wout.aspect
-
-
-rbc = jnp.asarray(vmec_input.rbc)
-zbs = jnp.asarray(vmec_input.zbs)
-d_aspect_d_rbc, d_aspect_d_zbs = jax.grad(aspect, argnums=(0, 1))(rbc, zbs)
 ```
 
 ## Full tests and validation against the reference Fortran VMEC v8.52
@@ -382,20 +395,6 @@ VMEC++:
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
-
-## Roadmap
-
-Some of the things we are planning for VMEC++'s future:
-- [x] free-boundary hot-restart in Python
-- [X] open-sourcing the full VMEC++ test suite (including the Verification&Validation part that compares `wout` contents)
-- [x] open-sourcing the source code to reproduce VMEC++'s performance benchmarks
-- [x] VMEC++ usable as a C++ bazel module
-
-Some items we do not plan to work on, but where community ownership is welcome:
-- [ ] packaging VMEC++ for platforms or package managers other than pip (e.g. conda, homebrew, ...)
-- [ ] native Windows support
-- [x] ARM support
-- [ ] 2D preconditioner using [`bcyclic_plus_plus`](https://code.ornl.gov/m4c/bcyclic_plus_plus)
 
 ## Related repositories
 

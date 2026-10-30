@@ -40,11 +40,14 @@ runs:
         key: bazel-bench-${{ github.sha }}
         restore-keys: bazel-bench
 
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+
     - name: Install vmecpp with benchmark dependencies
       shell: bash
-      run: |
-        pip install uv
-        uv pip install --system -v .[benchmark]
+      run: uv pip install --system -v .[benchmark]
 
     # Entries are immutable: a new key per main commit refreshes the cache, GitHub evicts old ones.
     - name: Save bazel cache

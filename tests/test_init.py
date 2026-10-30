@@ -114,6 +114,21 @@ def test_bad_initial_jacobian_is_retried_from_three_surfaces():
     np.testing.assert_allclose(lasym_wout.zmns, wout.zmns, rtol=0.0, atol=2e-11)
 
 
+def test_pinned_m1_gauge_converges_at_half_constraint():
+    # ConStellaration boundary DCaUizWEEjG6oHsffeztGFU, with the input the
+    # ConStellaration forward model builds and tcon0 = 0.5: with the VMEC 8.52
+    # gauge the residual of the ns = 71 step stalls near 2e-9, with the m = 1
+    # gauge held from the boundary it converges
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA_DIR / "constellaration_m1_gauge_drift.json"
+    )
+    assert vmec_input.tcon0 == 0.5
+    assert vmec_input.always_fix_m1_gauge
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+    assert wout.ier_flag == 0
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+
+
 # We trust the C++ tests to cover the hot restart functionality properly,
 # here we just want to test that the Python API for it works.
 def test_run_with_hot_restart():
@@ -309,6 +324,8 @@ _MISSING_FORTRAN_VARIABLES = [
 """The complete list of variables that can be found in Fortran VMEC wout files but not
 in wout files produced by VMEC++."""
 
+_EXTRA_VMEC_VARIABLES = {"lcfs_force"}
+
 
 def _to_8_52_reference(varname, actual, desired, xm_nyq):
     """Restrict a comparison against a VMEC 8.52 reference to what VMEC++ shares.
@@ -355,7 +372,9 @@ def test_vmecwout_io():
     expected_variables = set(expected_dataset.variables.keys()) - set(
         _MISSING_FORTRAN_VARIABLES
     )
-    assert expected_variables == set(test_dataset.variables.keys())
+    assert expected_variables | _EXTRA_VMEC_VARIABLES == set(
+        test_dataset.variables.keys()
+    )
 
     for varname, expected_value in expected_dataset.variables.items():
         if varname in _MISSING_FORTRAN_VARIABLES:
@@ -780,7 +799,7 @@ def test_ensure_vmec2000_input_noop():
 
 def test_ensure_vmec2000_input_with_null():
     # Test that the null values are handled gracefully and removed from the VMEC2000 input file
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     assert vmec_input.rbs is None
     with tempfile.TemporaryDirectory() as tmp_dir:
         vmec_input.rbc = np.array([[1.0, 2.0, 3.0]])
@@ -984,7 +1003,7 @@ def test_aux_arrays_from_cpp_wout():
 
 
 def test_populate_raw_profile_knots():
-    vmec_input = vmecpp.VmecInput.default()
+    vmec_input = vmecpp.VmecInput()
     vmec_input.ns_array = np.array([5, 9])
 
     def f(s):
@@ -1007,7 +1026,7 @@ def test_populate_raw_profile_knots():
 
 def test_default_preset():
     # Default construction doesn't throw an exception
-    default_preset = vmecpp.VmecInput.default()
+    default_preset = vmecpp.VmecInput()
     # Sample a few of the default values that should be set
     assert default_preset.nfp == 1
     assert default_preset.mpol == 6
@@ -1200,3 +1219,54 @@ def test_vmec_input_axis_aliases_read_write_the_axis_fields():
     np.testing.assert_array_equal(vmec_input.zaxis_s, [0.5])
     np.testing.assert_array_equal(vmec_input.raxis_s, [0.1])
     np.testing.assert_array_equal(vmec_input.zaxis_c, [0.2])
+
+
+def test_hot_restart_mismatch_raises_dedicated_error():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    base_output = vmecpp.run(vmec_input, verbose=False)
+    mismatched = vmec_input.model_copy(update={"ns_array": vmec_input.ns_array + 2})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ns_array") as info:
+        vmecpp.run(mismatched, restart_from=base_output, verbose=False)
+    assert isinstance(info.value, ValueError)
+
+
+def test_resize_is_in_place():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_input.resize(4, 3)
+    assert (vmec_input.mpol, vmec_input.ntor) == (4, 3)
+    assert np.asarray(vmec_input.rbc).shape == (4, 7)
+
+
+def test_resize_keeps_a_fourier_continuation_schedule():
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    ntor = vmec_input.ntor_max
+    vmec_input.mpol = np.array([4, 6])
+    vmec_input.resize(6, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 6]
+    vmec_input.resize(5, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [4, 5]
+    vmec_input.resize(3, ntor)
+    assert np.asarray(vmec_input.mpol).tolist() == [3, 3]
+
+
+def test_vmec_input_keys():
+    vmec_input = vmecpp.VmecInput.from_file(Path("examples/data/solovev.json"))
+    keys = vmec_input.keys()
+    assert "ns_array" in keys
+    assert set(keys) == set(vmecpp.VmecInput.model_fields)
+
+
+def test_axis_guess_longer_than_ntor_is_truncated():
+    vmec_input = vmecpp.VmecInput.from_file(Path("examples/data/solovev.json"))
+    ntor = vmec_input.ntor_max
+    long_axis = np.arange(1.0, ntor + 6.0)
+    rebuilt = vmecpp.VmecInput.model_validate(
+        {
+            **vmec_input.model_dump(mode="json"),
+            "raxis_c": long_axis,
+            "zaxis_s": long_axis,
+        }
+    )
+    np.testing.assert_array_equal(rebuilt.raxis_c, long_axis[: ntor + 1])
+    np.testing.assert_array_equal(rebuilt.zaxis_s, long_axis[: ntor + 1])

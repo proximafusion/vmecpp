@@ -7,12 +7,13 @@
 namespace vmecpp {
 
 OnlyCoils::OnlyCoils(const Sizes* s, const TangentialPartitioning* tp,
-                     const MGridProvider* mgrid, std::span<double> bSqVacShare,
+                     const MagneticFieldFunction* magnetic_field,
+                     std::span<double> bSqVacShare,
                      std::span<double> vacuum_b_r_share,
                      std::span<double> vacuum_b_phi_share,
                      std::span<double> vacuum_b_z_share,
                      std::span<double> reduce_slots)
-    : FreeBoundaryBase(s, tp, mgrid, bSqVacShare, vacuum_b_r_share,
+    : FreeBoundaryBase(s, tp, magnetic_field, bSqVacShare, vacuum_b_r_share,
                        vacuum_b_phi_share, vacuum_b_z_share),
       reduce_slots_(reduce_slots) {}  // OnlyCoils
 
