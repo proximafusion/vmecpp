@@ -260,6 +260,13 @@ class VmecINDATA {
   // while fsqz < 1e-6, as in VMEC 8.52.
   bool always_fix_m1_gauge;
 
+  // If true, the R and Z forces on the boundary of a free-boundary run count in
+  // the force residuals of every iteration once the vacuum pressure acts on it,
+  // so the run converges only with the boundary in balance; if false, they
+  // count only in the 50 iterations after the start of a multigrid step or a
+  // restart and once fsqr + fsqz < 1e-6, as in VMEC 8.52.
+  bool always_include_edge_forces;
+
   // allows to switch between VMEC 8.52 and PARVMEC iteration style
   // default: VMEC 8.52 (Golden Reference for V&V, and what educational_VMEC is
   // based on)

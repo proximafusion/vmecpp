@@ -338,6 +338,7 @@ VmecINDATA::VmecINDATA() {
   lbsubs = false;
   backup_evaluated_state = true;
   always_fix_m1_gauge = false;
+  always_include_edge_forces = false;
   iteration_style = IterationStyle::VMEC_8_52;
   return_outputs_even_if_not_converged = false;
   lgiveup = false;
@@ -476,6 +477,8 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(backup_evaluated_state, "/indata/backup_evaluated_state",
                  file);
   WriteH5Dataset(always_fix_m1_gauge, "/indata/always_fix_m1_gauge", file);
+  WriteH5Dataset(always_include_edge_forces,
+                 "/indata/always_include_edge_forces", file);
   WriteH5Dataset(return_outputs_even_if_not_converged,
                  "/indata/return_outputs_even_if_not_converged", file);
   WriteH5Dataset(lgiveup, "/indata/lgiveup", file);
@@ -625,6 +628,14 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   from_file);
   } else {
     m_indata.always_fix_m1_gauge = false;
+  }
+
+  if (H5Lexists(from_file.getId(), "/indata/always_include_edge_forces", 0) ==
+      1) {
+    ReadH5Dataset(m_indata.always_include_edge_forces,
+                  "/indata/always_include_edge_forces", from_file);
+  } else {
+    m_indata.always_include_edge_forces = false;
   }
 
   // Legacy way of checking for dataset existence
@@ -1178,6 +1189,16 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.always_fix_m1_gauge = maybe_always_fix_m1_gauge->value();
   }
 
+  auto maybe_always_include_edge_forces =
+      JsonReadBool(j, "always_include_edge_forces");
+  if (!maybe_always_include_edge_forces.ok()) {
+    return maybe_always_include_edge_forces.status();
+  }
+  if (maybe_always_include_edge_forces->has_value()) {
+    vmec_indata.always_include_edge_forces =
+        maybe_always_include_edge_forces->value();
+  }
+
   auto maybe_iteration_style = JsonReadString(j, "iteration_style");
   if (!maybe_iteration_style.ok()) {
     return maybe_iteration_style.status();
@@ -1530,6 +1551,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["lbsubs"] = lbsubs;
   output["backup_evaluated_state"] = backup_evaluated_state;
   output["always_fix_m1_gauge"] = always_fix_m1_gauge;
+  output["always_include_edge_forces"] = always_include_edge_forces;
   output["iteration_style"] = ToString(iteration_style);
   output["return_outputs_even_if_not_converged"] =
       return_outputs_even_if_not_converged;

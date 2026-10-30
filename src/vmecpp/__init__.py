@@ -564,6 +564,13 @@ class VmecInput(BaseModelWithNumpy):
     every multigrid step and held there; if false, it is held only in the first
     iteration of a multigrid step and while fsqz < 1e-6, as in VMEC 8.52."""
 
+    always_include_edge_forces: bool = False
+    """If true, the R and Z forces on the boundary of a free-boundary run count in the
+    force residuals of every iteration once the vacuum pressure acts on it, so the run
+    converges only with the boundary in balance; if false, they count only in the 50
+    iterations after the start of a multigrid step or a restart and once fsqr + fsqz <
+    1e-6, as in VMEC 8.52."""
+
     return_outputs_even_if_not_converged: bool = False
     """If true, return a wout even if VMEC++ did not converge, instead of raising a
     RuntimeError.

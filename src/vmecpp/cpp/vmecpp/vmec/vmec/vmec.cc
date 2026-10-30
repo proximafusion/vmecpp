@@ -299,6 +299,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
       last_preconditioner_update_(0),
       last_full_update_nestor_(0) {
   always_fix_m1_gauge_ = indata_.always_fix_m1_gauge;
+  fc_.always_include_edge_forces = indata_.always_include_edge_forces;
 
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);

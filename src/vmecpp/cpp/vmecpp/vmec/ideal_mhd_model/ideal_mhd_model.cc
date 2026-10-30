@@ -966,7 +966,14 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // wouldn't trigger without special handling for the hot-restart case.
   bool hot_restart = (iter2 == 1 && m_vacuum_pressure_state_ ==
                                         VacuumPressureState::kInitialized);
+  // With always_include_edge_forces the edge counts in every iteration once the
+  // vacuum pressure acts on it, so a run cannot converge with it out of
+  // balance.
+  const bool always_include =
+      m_fc.always_include_edge_forces &&
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized;
   bool includeEdgeRZForces =
+      always_include ||
       ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
   Eigen::Vector3d localFResInvar;
   localFResInvar.setZero();
