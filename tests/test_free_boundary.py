@@ -99,7 +99,7 @@ def test_hot_restart_from_fixed_boundary():
         nvacskip=1,
     )
 
-    def field(r, phi, z):
+    def field(r, *_):
         return np.zeros_like(r), 1.0 / r, np.full_like(r, vertical)
 
     cold = vmecpp.run(vmec_input, field, max_threads=1, verbose=False)
