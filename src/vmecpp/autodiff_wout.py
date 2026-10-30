@@ -774,9 +774,8 @@ def _flux_scale(vmec_input: Any) -> float:
     the profile, and with ``lrfp`` also ``d chi / d s``."""
     if vmec_input.lrfp:
         # the trapezoidal integral of q that the C++ torflux takes with lrfp
-        edge_flux = float(
-            np.trapezoid(_rfp_q(vmec_input, np.linspace(0.0, 1.0, 101)), dx=0.01)
-        )
+        q = _rfp_q(vmec_input, np.linspace(0.0, 1.0, 101))
+        edge_flux = 0.01 * float(np.sum(q[1:-1]) + 0.5 * (q[0] + q[-1]))
     else:
         aphi = np.asarray(vmec_input.aphi, dtype=np.float64)
         if aphi.size == 0:
