@@ -166,6 +166,12 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
       all_cz[mn].setZero();
     }
 
+    lambda_b_half.setZero(ns + 1);
+    lambda_m0_a.setZero(ns);
+    lambda_m0_d.setZero(ns);
+    lambda_m0_b.setZero(ns);
+    lambda_m0_c.setZero((s_.ntor + 1) * (s_.lasym ? 2 : 1), ns);
+
     // =========================================================================
     // Parallel tri-diagonal solver handover storage
     // =========================================================================

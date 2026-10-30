@@ -69,9 +69,11 @@ def _assert_same_geometry(ref, test, atol):
     np.testing.assert_allclose(np.asarray(test.zmns), np.asarray(ref.zmns), atol=atol)
 
 
-def test_lasym_reduces_to_symmetric_2d():
+@pytest.mark.parametrize("lbsubs", [False, True])
+def test_lasym_reduces_to_symmetric_2d(lbsubs):
     """2D: lasym=True with zero asymmetric content reproduces the symmetric run."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    base.lbsubs = lbsubs
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
@@ -79,9 +81,13 @@ def test_lasym_reduces_to_symmetric_2d():
     _assert_same_physics(sym, asym, vol_rtol=1e-9, beta_atol=1e-9, iota_atol=1e-8)
 
 
-def test_lasym_reduces_to_symmetric_3d():
+@pytest.mark.parametrize("lambda_precondition_checkerboard_terms", [-1.0, 1e-3])
+@pytest.mark.parametrize("lbsubs", [False, True])
+def test_lasym_reduces_to_symmetric_3d(lambda_precondition_checkerboard_terms, lbsubs):
     """3D: lasym=True with zero asymmetric content reproduces the symmetric run."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base.lbsubs = lbsubs
+    base.lambda_precondition_checkerboard_terms = lambda_precondition_checkerboard_terms
     sym = _run(base)
     asym = _run(_enable_lasym(base))
     assert np.max(np.abs(np.asarray(asym.rmns))) < 1e-12
@@ -105,10 +111,12 @@ def _numeric_fields(model, prefix=""):
     return fields
 
 
-def test_lasym_reduces_to_symmetric_3d_all_outputs():
+@pytest.mark.parametrize("lbsubs", [False, True])
+def test_lasym_reduces_to_symmetric_3d_all_outputs(lbsubs):
     """3D: every jxbout, Mercier, threed1 and wout quantity of the lasym run
     reproduces the symmetric run on the shared poloidal range."""
     base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base.lbsubs = lbsubs
     sym = vmecpp.run(base, max_threads=1, verbose=False)
     asym = vmecpp.run(_enable_lasym(base), max_threads=1, verbose=False)
 
@@ -157,6 +165,34 @@ def test_z_shift_preserves_physics():
     _assert_same_physics(sym, shifted, vol_rtol=1e-9, beta_atol=1e-9, iota_atol=1e-8)
     # the wout z-shift lands in the m=0 asymmetric coefficients (cos parity)
     assert abs(np.asarray(shifted.zmnc)[0, -1] - dz) < 1e-10
+
+
+def test_z_shift_preserves_cross_section_shape():
+    """A rigid z-shift leaves the geometric radius, indentation, elongation,
+    triangularity and shift of every cross-section unchanged.
+
+    Deviation from VMEC 8.52, which takes |Z| as the largest Z and checks a point for a
+    new minimum only when it is not a new maximum, so that a cross-section shifted far
+    enough below Z = 0 gets the wrong extrema.
+    """
+    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev.json")
+    sym = vmecpp.run(base, max_threads=1, verbose=False)
+    dz = -1.0
+    zbc = np.zeros_like(np.asarray(base.zbs))
+    zbc[0, base.ntor] = dz
+    zaxis_c = np.zeros(base.ntor + 1)
+    zaxis_c[0] = dz
+    shifted = vmecpp.run(
+        _enable_lasym(base, zbc=zbc, zaxis_c=zaxis_c), max_threads=1, verbose=False
+    )
+    for name in ("ygeo", "yinden", "yellip", "ytrian", "yshift"):
+        np.testing.assert_allclose(
+            getattr(shifted.threed1_geometric_magnetic, name),
+            getattr(sym.threed1_geometric_magnetic, name),
+            rtol=0.0,
+            atol=1e-10,
+            err_msg=name,
+        )
 
 
 def _toroidally_rotated_input(vmec_input, zeta0):

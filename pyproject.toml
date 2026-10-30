@@ -51,7 +51,7 @@ test = [
   "sympy",
 ]
 benchmark = [
-  "pytest",
+  "pytest<9",
   "pytest-benchmark",
 ]
 docs = [

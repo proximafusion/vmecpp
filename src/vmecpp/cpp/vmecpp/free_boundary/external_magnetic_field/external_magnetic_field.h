@@ -6,23 +6,34 @@
 #define VMECPP_FREE_BOUNDARY_EXTERNAL_MAGNETIC_FIELD_EXTERNAL_MAGNETIC_FIELD_H_
 
 #include <Eigen/Dense>
+#include <functional>
 #include <span>
 
 #include "absl/status/status.h"
 #include "vmecpp/common/sizes/sizes.h"
 #include "vmecpp/common/util/util.h"
-#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
 #include "vmecpp/free_boundary/surface_geometry/surface_geometry.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
 
 namespace vmecpp {
 
+// Evaluates the cylindrical components (B^R, B^phi, B^Z) of the external
+// magnetic field at the points (r[i], phi[i], z[i]), with phi the geometric
+// toroidal angle. The outputs come sized to the number of points. Called
+// concurrently by the vacuum threads, each on its own slice of the surface.
+using MagneticFieldFunction = std::function<absl::Status(
+    const Eigen::VectorXd& r, const Eigen::VectorXd& phi,
+    const Eigen::VectorXd& z, Eigen::VectorXd& m_b_r, Eigen::VectorXd& m_b_phi,
+    Eigen::VectorXd& m_b_z)>;
+
 class ExternalMagneticField {
  public:
   ExternalMagneticField(const Sizes* s, const TangentialPartitioning* tp,
-                        const SurfaceGeometry* sg, const MGridProvider* mgrid);
+                        const SurfaceGeometry* sg,
+                        const MagneticFieldFunction* magnetic_field);
 
-  // Returns kFailedPrecondition if this thread's slice left the vacuum grid.
+  // Returns the status of the magnetic field evaluation on this thread's
+  // slice.
   [[nodiscard]] absl::Status update(const std::span<const double> rAxis,
                                     const std::span<const double> zAxis,
                                     double netToroidalCurrent);
@@ -32,7 +43,12 @@ class ExternalMagneticField {
   Eigen::VectorXd surfaceXYZ;
   Eigen::VectorXd bCoilsXYZ;
 
-  // interpolated magnetic field from mgrid
+  // thread-local surface points in cylindrical coordinates
+  Eigen::VectorXd surfaceR;
+  Eigen::VectorXd surfacePhi;
+  Eigen::VectorXd surfaceZ;
+
+  // external magnetic field at the surface points
   Eigen::VectorXd interpBr;
   Eigen::VectorXd interpBp;
   Eigen::VectorXd interpBz;
@@ -76,9 +92,7 @@ class ExternalMagneticField {
   const TangentialPartitioning& tp_;
 
   const SurfaceGeometry& sg_;
-  const MGridProvider& mgrid_;
-
-  void updateInterpolation();
+  const MagneticFieldFunction* magnetic_field_;
 
   // Compute the contribution to the external magnetic field from net toroidal
   // current along magnetic axis. Here, the contribution is computed using

@@ -1224,6 +1224,7 @@ struct WOutFileContents {
   Eigen::VectorXd force_residual_z;
   Eigen::VectorXd force_residual_lambda;
   Eigen::VectorXd delbsq;
+  Eigen::VectorXd lcfs_force;
   Eigen::VectorXi restart_reason_timetrace;
 
   // Gradient of the energy at each iteration
@@ -1518,6 +1519,12 @@ CovariantBDerivatives LowPassFilterCovariantB(
 void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
                       BSubSFull& m_bsubs_full);
 
+// Half-to-full radial derivative of a covariant tangential field. Odd poloidal
+// harmonics are differentiated as sqrt(s) times a smooth remainder.
+RowMatrixXd ComputeCovariantBRadialDerivative(
+    const Sizes& s, const FlowControl& fc,
+    const VmecInternalResults& vmec_internal_results, const RowMatrixXd& field);
+
 // Re-compute the full-grid covariant B_s on interior surfaces (jF = 1 .. ns-2)
 // by solving the radial force-balance equation
 //   bsupu * d(B_s)/du + bsupv * d(B_s)/dv = brho
@@ -1540,13 +1547,9 @@ void ExtrapolateBSubS(const Sizes& s, const FlowControl& fc,
 // before the solve, since the local equation has no solution otherwise (the
 // integral of bsupu * dB_s/du + bsupv * dB_s/dv over the surface is zero).
 //
-// If the linear system is singular or its dimensions do not match the
-// Fourier basis, a warning is logged and the corresponding surface is left
-// in its half->full-interpolated state.
-//
-// Only the stellarator-symmetric (lasym = false) path is implemented. On a
-// lasym configuration the function logs a warning and leaves B_s as the
-// half->full interpolation.
+// Radial derivatives use sqrt(s) regularization for odd poloidal harmonics.
+// Both stellarator parities are included for lasym. If the linear solve fails,
+// a warning is logged and the surface keeps its metric B_s.
 void RecomputeBSubSFromRadialForceBalance(
     const Sizes& s, const FlowControl& fc, const FourierBasisFastPoloidal& t,
     const VmecInternalResults& vmec_internal_results, BSubSFull& m_bsubs_full,
@@ -1557,7 +1560,8 @@ JxBOutFileContents ComputeJxBOutputFileContents(
     const VmecInternalResults& vmec_internal_results,
     const BSubSFull& bsubs_full,
     const CovariantBDerivatives& covariant_b_derivatives,
-    const bool return_outputs_even_if_not_converged, VmecStatus vmec_status);
+    const bool return_outputs_even_if_not_converged, VmecStatus vmec_status,
+    bool regularize_radial_derivatives = false);
 
 MercierStabilityIntermediateQuantities ComputeIntermediateMercierQuantities(
     const Sizes& s, const FlowControl& fc,

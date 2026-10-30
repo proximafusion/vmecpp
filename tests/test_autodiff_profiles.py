@@ -55,6 +55,19 @@ def test_half_grid_profiles_match_the_solver(ncurr: int) -> None:
         np.testing.assert_allclose(current, wout.buco[1:], rtol=1e-10)
 
 
+def test_mass_profile_reads_missing_two_power_coefficients_as_zero() -> None:
+    """AM = 1, 2, 0 arrives as [1, 2] through indata2json; the solver and mass_profile
+    read the missing exponent as zero, a flat profile."""
+    indata = _cth_like(1).model_copy(
+        update={"pmass_type": "two_power", "am": np.asarray([1.0, 2.0])}
+    )
+    wout = vmecpp.run(indata, max_threads=1, verbose=False).wout
+    s_half = (np.arange(wout.ns - 1) + 0.5) / (wout.ns - 1.0)
+    mass = autodiff_wout.mass_profile(indata, s_half)
+    np.testing.assert_allclose(mass, wout.mass[1:] * autodiff_wout.MU_0, rtol=1e-14)
+    np.testing.assert_allclose(wout.mass[1:], wout.mass[1], rtol=1e-14)
+
+
 def test_half_grid_profiles_keep_zero_current() -> None:
     indata = _cth_like(1).model_copy(update={"ac": np.zeros(1)})
     current = autodiff_wout.half_grid_profiles(indata, 15, {})[2]

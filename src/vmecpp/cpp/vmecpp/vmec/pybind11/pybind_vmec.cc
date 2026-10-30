@@ -131,6 +131,61 @@ struct PythonIterationCallback {
   }
 };
 
+// Adapts a Python callable f(r, phi, z) -> (b_r, b_phi, b_z) to
+// vmecpp::MagneticFieldFunction: each call acquires the GIL; an exception, or
+// a result that is not three arrays of the length of r, fails the vacuum
+// solve, and Rethrow raises it once the run has returned.
+struct PythonMagneticField {
+  py::object callable;
+  std::optional<py::error_already_set> error;
+
+  vmecpp::MagneticFieldFunction Function() {
+    return [this](const Eigen::VectorXd &r, const Eigen::VectorXd &phi,
+                  const Eigen::VectorXd &z, Eigen::VectorXd &m_b_r,
+                  Eigen::VectorXd &m_b_phi,
+                  Eigen::VectorXd &m_b_z) -> absl::Status {
+      py::gil_scoped_acquire acquire;
+      if (error.has_value()) {
+        return absl::CancelledError("magnetic_field raised an exception");
+      }
+      try {
+        py::object b = callable(r, phi, z);
+        std::tuple<Eigen::VectorXd, Eigen::VectorXd, Eigen::VectorXd> b_rpz;
+        try {
+          b_rpz = b.cast<decltype(b_rpz)>();
+        } catch (const py::cast_error &) {
+          PyErr_SetString(PyExc_TypeError,
+                          "magnetic_field must return three 1D float arrays "
+                          "(b_r, b_phi, b_z)");
+          throw py::error_already_set();
+        }
+        auto &[b_r, b_phi, b_z] = b_rpz;
+        if (b_r.size() != r.size() || b_phi.size() != r.size() ||
+            b_z.size() != r.size()) {
+          PyErr_Format(PyExc_ValueError,
+                       "magnetic_field must return arrays of length %zd, the "
+                       "number of points, but returned lengths %zd, %zd, %zd",
+                       r.size(), b_r.size(), b_phi.size(), b_z.size());
+          throw py::error_already_set();
+        }
+        m_b_r = b_r;
+        m_b_phi = b_phi;
+        m_b_z = b_z;
+        return absl::OkStatus();
+      } catch (py::error_already_set &e) {
+        error.emplace(std::move(e));
+        return absl::CancelledError("magnetic_field raised an exception");
+      }
+    };
+  }
+
+  void Rethrow() {
+    if (error.has_value()) {
+      throw *error;
+    }
+  }
+};
+
 vmecpp::HotRestartState MakeHotRestartState(vmecpp::WOutFileContents wout,
                                             const vmecpp::VmecINDATA &indata) {
   return vmecpp::HotRestartState(std::move(wout), indata);
@@ -238,8 +293,7 @@ class VmecModel {
   // owns the multi-grid sequencing.
   static std::unique_ptr<VmecModel> Create(
       const VmecINDATA &indata, int ns,
-      const std::optional<vmecpp::HotRestartState> &initial_state,
-      bool always_fix_m1_gauge) {
+      const std::optional<vmecpp::HotRestartState> &initial_state) {
     auto vmec_or = vmecpp::Vmec::FromIndata(
         indata, /*magnetic_response_table=*/nullptr, /*max_threads=*/1,
         vmecpp::OutputMode::kSilent);
@@ -248,7 +302,6 @@ class VmecModel {
     }
     auto model = std::make_unique<VmecModel>(std::move(vmec_or.value()));
     vmecpp::Vmec &v = *model->vmec_;
-    v.always_fix_m1_gauge_ = always_fix_m1_gauge;
 
     // Mirror the per-multi-grid-step setup that Vmec::run performs before
     // SolveEquilibrium (vmec.cc), for a single ns value.
@@ -468,9 +521,6 @@ class VmecModel {
   }
 
   bool always_fix_m1_gauge() const { return vmec_->always_fix_m1_gauge_; }
-  void set_always_fix_m1_gauge(bool value) const {
-    vmec_->always_fix_m1_gauge_ = value;
-  }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
   // Each call converges the *current* resolution ftol_array entry.
@@ -1102,9 +1152,12 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_readwrite("return_vacuum_field", &VmecINDATA::return_vacuum_field)
       .def_readwrite("lambda_preconditioner_scale",
                      &VmecINDATA::lambda_preconditioner_scale)
+      .def_readwrite("lambda_precondition_checkerboard_terms",
+                     &VmecINDATA::lambda_precondition_checkerboard_terms)
       .def_readwrite("lbsubs", &VmecINDATA::lbsubs)
       .def_readwrite("backup_evaluated_state",
                      &VmecINDATA::backup_evaluated_state)
+      .def_readwrite("always_fix_m1_gauge", &VmecINDATA::always_fix_m1_gauge)
       .def_readwrite("iteration_style", &VmecINDATA::iteration_style)
       .def_readwrite("return_outputs_even_if_not_converged",
                      &VmecINDATA::return_outputs_even_if_not_converged)
@@ -1512,6 +1565,7 @@ PYBIND11_MODULE(_vmecpp, m) {
                      &vmecpp::WOutFileContents::force_residual_lambda)
       .def_readwrite("fsqt", &vmecpp::WOutFileContents::fsqt)
       .def_readwrite("delbsq", &vmecpp::WOutFileContents::delbsq)
+      .def_readwrite("lcfs_force", &vmecpp::WOutFileContents::lcfs_force)
       .def_readwrite("wdot", &vmecpp::WOutFileContents::wdot)
       .def_readwrite("restart_reason_timetrace",
                      &vmecpp::WOutFileContents::restart_reason_timetrace)
@@ -1716,7 +1770,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       [](const VmecINDATA &indata,
          std::optional<vmecpp::HotRestartState> initial_state,
          std::optional<int> max_threads, vmecpp::OutputMode verbose,
-         bool always_fix_m1_gauge,
          py::object iteration_callback) -> vmecpp::OutputQuantities {
         bool was_interrupted = false;
         auto interrupt_check = [&was_interrupted]() -> bool {
@@ -1736,8 +1789,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         {
           py::gil_scoped_release release;
           ret = vmecpp::run(indata, std::move(initial_state), max_threads,
-                            verbose, interrupt_check, always_fix_m1_gauge,
-                            iteration_hook.Hook());
+                            verbose, interrupt_check, iteration_hook.Hook());
         }
         iteration_hook.Rethrow();
         if (was_interrupted) {
@@ -1748,7 +1800,6 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("indata"), py::arg("initial_state") = std::nullopt,
       py::arg("max_threads") = std::nullopt,
       py::arg("verbose") = vmecpp::OutputMode::kProgress,
-      py::arg("always_fix_m1_gauge") = false,
       py::arg("iteration_callback") = py::none());
 
   py::class_<makegrid::MakegridParameters>(m, "MakegridParameters")
@@ -1825,6 +1876,38 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("makegrid_parameters"), py::arg("magnetic_configuration"));
 
   m.def(
+      "write_makegrid_netcdf_file",
+      [](const std::string &out_file,
+         const makegrid::MakegridParameters &mgrid_params,
+         const magnetics::MagneticConfiguration &magnetic_configuration,
+         py::object progress) {
+        // progress(stage, circuits_done, number_of_circuits) with stage "B"
+        // (magnetic field) or "A" (vector potential).
+        auto callback = [&progress](const char *stage) {
+          return makegrid::ProgressCallback(
+              [&progress, stage](int done, int total) {
+                if (!progress.is_none()) progress(stage, done, total);
+              });
+        };
+        auto maybe_currents =
+            magnetics::GetCircuitCurrents(magnetic_configuration);
+        Eigen::VectorXd currents = GetValueOrThrow(maybe_currents);
+        auto maybe_table = makegrid::ComputeMagneticFieldResponseTable(
+            mgrid_params, magnetic_configuration, callback("B"));
+        auto table = GetValueOrThrow(maybe_table);
+        auto maybe_vector_potential = makegrid::ComputeVectorPotentialCache(
+            mgrid_params, magnetic_configuration, callback("A"));
+        auto vector_potential = GetValueOrThrow(maybe_vector_potential);
+        absl::Status status = makegrid::WriteMakegridNetCDFFile(
+            out_file, mgrid_params, currents, table, vector_potential);
+        if (!status.ok()) {
+          throw std::runtime_error(std::string(status.message()));
+        }
+      },
+      py::arg("out_file"), py::arg("makegrid_parameters"),
+      py::arg("magnetic_configuration"), py::arg("progress") = py::none());
+
+  m.def(
       "run",
       [](const VmecINDATA &indata,
          const makegrid::MagneticFieldResponseTable &magnetic_response_table,
@@ -1862,15 +1945,51 @@ PYBIND11_MODULE(_vmecpp, m) {
       py::arg("verbose") = vmecpp::OutputMode::kProgress,
       py::arg("iteration_callback") = py::none());
 
+  m.def(
+      "run",
+      [](const VmecINDATA &indata, py::function magnetic_field,
+         std::optional<vmecpp::HotRestartState> initial_state,
+         std::optional<int> max_threads, vmecpp::OutputMode verbose,
+         py::object iteration_callback) {
+        bool was_interrupted = false;
+        auto interrupt_check = [&was_interrupted]() -> bool {
+          if (was_interrupted) return true;
+          py::gil_scoped_acquire acquire;
+          if (PyErr_CheckSignals() != 0) {
+            was_interrupted = true;
+            return true;
+          }
+          return false;
+        };
+        PythonIterationCallback iteration_hook{iteration_callback,
+                                               std::nullopt};
+        PythonMagneticField field{magnetic_field, std::nullopt};
+        absl::StatusOr<vmecpp::OutputQuantities> ret;
+        {
+          py::gil_scoped_release release;
+          ret = vmecpp::run(indata, field.Function(), std::move(initial_state),
+                            max_threads, verbose, interrupt_check,
+                            iteration_hook.Hook());
+        }
+        field.Rethrow();
+        iteration_hook.Rethrow();
+        if (was_interrupted) {
+          throw py::error_already_set();
+        }
+        return GetValueOrThrow(ret);
+      },
+      py::arg("indata"), py::arg("magnetic_field"),
+      py::arg("initial_state") = std::nullopt,
+      py::arg("max_threads") = std::nullopt,
+      py::arg("verbose") = vmecpp::OutputMode::kProgress,
+      py::arg("iteration_callback") = py::none());
+
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
   // from Python (see vmecpp._iteration).
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
-                  py::arg("ns"), py::arg("initial_state") = std::nullopt,
-                  py::arg("always_fix_m1_gauge") = false,
-                  "Create a model; set always_fix_m1_gauge here to pin the "
-                  "gauge during hot-restart initialization.")
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
            py::arg("always_fix_m1_gauge") = true)
@@ -1890,17 +2009,14 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
       .def("solve", &VmecModel::Solve)
-      .def_property("always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
-                    &VmecModel::set_always_fix_m1_gauge,
-                    "Zero the m=1 gauge force from the first iteration of "
-                    "solve() and set the gauge from the boundary in "
-                    "refine_to(). For a hot restart, pass the flag to create() "
-                    "so initialization pins the gauge. The converged gauge "
-                    "then equals the "
-                    "boundary gauge scaled by sqrt(s), independent of the "
-                    "iteration and multigrid history, and the exact "
-                    "Hessian-vector products with always_fix_m1_gauge=True "
-                    "are the Jacobian of the iterated system.")
+      .def_property_readonly(
+          "always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
+          "indata.always_fix_m1_gauge: zero the m=1 gauge force from the first "
+          "iteration of solve() and set the gauge from the boundary in "
+          "create() and refine_to(). The converged gauge then equals the "
+          "boundary gauge scaled by sqrt(s), independent of the iteration and "
+          "multigrid history, and the exact Hessian-vector products with "
+          "always_fix_m1_gauge=True are the Jacobian of the iterated system.")
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("set_state_from_fourier", &VmecModel::SetStateFromFourier,

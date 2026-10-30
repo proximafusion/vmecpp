@@ -181,6 +181,7 @@ TEST(TestVmecINDATA, CheckDefaults) {
   EXPECT_EQ(indata.return_vacuum_field, false);
   EXPECT_EQ(indata.lbsubs, false);
   EXPECT_EQ(indata.backup_evaluated_state, true);
+  EXPECT_EQ(indata.always_fix_m1_gauge, false);
 
   // initial guess for magnetic axis
   EXPECT_EQ(indata.raxis_c.size(), indata.ntor + 1);
@@ -361,15 +362,14 @@ TEST(TestVmecINDATA, CheckSplineProfilesNeedEnoughKnots) {
 
 // Below its coefficient count a closed-form evaluator returns zero for every
 // s, so the run converges to an equilibrium without the requested profile.
-// gauss_trunc needs 2 coefficients, two_power and two_power_gs 3 and
-// two_lorentz 8; the zero-padded power series accept any count.
+// gauss_trunc needs 2 coefficients and two_lorentz 8; the power series and
+// two_power, which read a missing coefficient as zero, accept any count.
 TEST(TestVmecINDATA, CheckClosedFormProfilesNeedEnoughCoefficients) {
   struct Case {
     std::string name;
     int minimum;
   };
-  for (const Case& c : {Case{"gauss_trunc", 2}, Case{"two_power", 3},
-                        Case{"two_power_gs", 3}, Case{"two_lorentz", 8}}) {
+  for (const Case& c : {Case{"gauss_trunc", 2}, Case{"two_lorentz", 8}}) {
     VmecINDATA indata;
     indata.pmass_type = c.name;
     indata.am = Eigen::VectorXd::Ones(c.minimum - 1);
@@ -383,13 +383,36 @@ TEST(TestVmecINDATA, CheckClosedFormProfilesNeedEnoughCoefficients) {
   // the current profile is held to the same counts
   VmecINDATA current_indata;
   current_indata.ncurr = 1;
-  current_indata.pcurr_type = "two_power";
-  current_indata.ac = Eigen::VectorXd::Ones(2);
+  current_indata.pcurr_type = "gauss_trunc";
+  current_indata.ac = Eigen::VectorXd::Ones(1);
   EXPECT_FALSE(
       IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
-  current_indata.ac = Eigen::VectorXd::Ones(3);
+  current_indata.ac = Eigen::VectorXd::Ones(2);
   EXPECT_TRUE(
       IsConsistent(current_indata, /*enable_info_messages=*/false).ok());
+}
+
+// indata2json drops the trailing zeros of the coefficient arrays, so
+// AM = 1, 2, 0 arrives as [1, 2]; two_power reads the missing exponent as zero.
+TEST(TestVmecINDATA, CheckTwoPowerProfilesAcceptMissingCoefficients) {
+  for (const char* name : {"two_power", "two_power_gs"}) {
+    VmecINDATA indata;
+    indata.pmass_type = name;
+    indata.am = Eigen::VectorXd::Zero(0);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << name;
+    indata.am = Eigen::VectorXd::Ones(2);
+    EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok())
+        << name;
+
+    VmecINDATA current_indata;
+    current_indata.ncurr = 1;
+    current_indata.pcurr_type = name;
+    current_indata.ac = Eigen::VectorXd::Ones(2);
+    EXPECT_TRUE(
+        IsConsistent(current_indata, /*enable_info_messages=*/false).ok())
+        << name;
+  }
 }
 
 // The spline evaluators walk the knots in order and, for the Akima and cubic
@@ -714,6 +737,7 @@ void CheckHdf5RoundTrip(const std::string& filename) {
   EXPECT_EQ(indata.lbsubs, indata_from_file.lbsubs);
   EXPECT_EQ(indata.backup_evaluated_state,
             indata_from_file.backup_evaluated_state);
+  EXPECT_EQ(indata.always_fix_m1_gauge, indata_from_file.always_fix_m1_gauge);
   EXPECT_EQ(indata.raxis_c, indata_from_file.raxis_c);
   EXPECT_EQ(indata.zaxis_s, indata_from_file.zaxis_s);
   EXPECT_EQ(indata.raxis_s, indata_from_file.raxis_s);
@@ -929,6 +953,7 @@ TEST(TestVmecINDATA, CopyMethod) {
   EXPECT_EQ(copy.return_vacuum_field, indata.return_vacuum_field);
   EXPECT_EQ(copy.lbsubs, indata.lbsubs);
   EXPECT_EQ(copy.backup_evaluated_state, indata.backup_evaluated_state);
+  EXPECT_EQ(copy.always_fix_m1_gauge, indata.always_fix_m1_gauge);
   EXPECT_EQ(copy.iteration_style, indata.iteration_style);
   EXPECT_EQ(copy.return_outputs_even_if_not_converged,
             indata.return_outputs_even_if_not_converged);
