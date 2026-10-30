@@ -68,6 +68,32 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+def test_always_include_edge_forces():
+    """With always_include_edge_forces a free-boundary run converges only once the force
+    on its boundary meets ftol too, and a fixed-boundary run is unchanged."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.always_include_edge_forces = True
+    wout = vmecpp.run(vmec_input, response, verbose=False).wout
+    ftol = vmec_input.ftol_array[-1]
+    assert wout.lcfs_force[-1] <= wout.fsqr + wout.fsqz <= 2.0 * ftol
+
+    fixed_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    plain = vmecpp.run(fixed_input, verbose=False).wout
+    fixed_input.always_include_edge_forces = True
+    edge = vmecpp.run(fixed_input, verbose=False).wout
+    assert edge.itfsq == plain.itfsq
+    np.testing.assert_array_equal(edge.rmnc, plain.rmnc)
+
+
 def test_vacuum_potential_cutoffs():
     """The vacuum potential's cutoffs default to the plasma's, must not fall below them,
     and a run with larger ones converges on the same grid."""

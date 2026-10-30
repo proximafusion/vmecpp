@@ -96,6 +96,10 @@ class FlowControl {
   // Sum of the normalized squared R and Z force residuals on the LCFS.
   double lcfs_force = 0.0;
 
+  // From INDATA: the R and Z forces on the LCFS count in the force residuals of
+  // every iteration once the vacuum pressure acts on it.
+  bool always_include_edge_forces = false;
+
   // Preconditioned cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;
