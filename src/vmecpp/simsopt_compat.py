@@ -559,7 +559,7 @@ class Vmec(Optimizable):
 
     def set_mpol_ntor(self, new_mpol: int, new_ntor: int):
         assert self.indata is not None
-        self.indata = self.indata.resize(new_mpol, new_ntor)
+        self.indata.resize(new_mpol, new_ntor)
 
         mpol_for_surfacerzfourier, ntor_for_surfacerzfourier = (
             self._surface_rzfourier_resolution(new_mpol, new_ntor)

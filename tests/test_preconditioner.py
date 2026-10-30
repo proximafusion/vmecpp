@@ -61,3 +61,37 @@ def test_preconditioner_state_invariant_after_assembly():
     m.evaluate(2, 2, False)
     mv1 = np.asarray(m.apply_preconditioner(v), float)
     assert np.linalg.norm(mv1 - mv0) <= 1e-12 * np.linalg.norm(mv0)
+
+
+CTH_LIKE = SOLOVEV.parent / "cth_like_fixed_bdy.json"
+
+
+def test_checkerboard_lambda_preconditioner_inverts_m0_lambda_block():
+    # The m = 0 lambda preconditioner is P = c (M + floor D)^-1 with M the radial m = 0
+    # lambda block of the force Jacobian H (c M^-1 = -scale H^-1) and P_diag = c D^-1
+    # the diagonal preconditioner, so P (-H / scale + floor P_diag^-1) = I on every
+    # row, the axis and LCFS rows included.
+    indata = _vmecpp.VmecINDATA.from_file(str(CTH_LIKE))
+    floor = 1e-3
+    indata.lambda_precondition_checkerboard_terms = floor
+    ns = 15
+    m = _vmecpp.VmecModel.create(indata, ns)
+    indata.lambda_precondition_checkerboard_terms = -1.0
+    diag = _vmecpp.VmecModel.create(indata, ns)
+    m.evaluate(2, 2, True)
+    diag.evaluate(2, 2, True)
+    scale = indata.lambda_preconditioner_scale
+    size = np.asarray(m.get_state()).size
+    lcs = np.arange(size).reshape(6, ns, indata.mpol, indata.ntor + 1)[5]
+    for n in range(1, indata.ntor + 1):
+        cols = lcs[1:, 0, n]
+        k = np.zeros((cols.size, cols.size))
+        for i, c in enumerate(cols):
+            v = np.zeros(size)
+            v[c] = 1.0
+            d = np.asarray(diag.apply_preconditioner(v), float)[c]
+            hv = np.asarray(m.hessian_vector_product(v, 1e-7), float)
+            k[:, i] = np.asarray(m.apply_preconditioner(-hv / scale + floor * v / d))[
+                cols
+            ]
+        np.testing.assert_allclose(k, np.eye(cols.size), atol=3e-2)

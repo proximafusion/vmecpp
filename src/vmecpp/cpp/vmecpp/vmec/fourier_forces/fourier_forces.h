@@ -23,6 +23,7 @@ class FourierForces : public FourierCoeffs {
 
   void zeroZForceForM1();
   void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
+  double lcfsRZResidual() const;
 
   // The parities this run actually carries, in a fixed order: R, then Z, then
   // lambda, each cc/ss/sc/cs as the symmetry and dimensionality allow. Code

@@ -10,7 +10,6 @@ cc_library(
         "//vmecpp/common/util:util",
         "//vmecpp/common/sizes:sizes",
         "//vmecpp/free_boundary/surface_geometry:surface_geometry",
-        "//vmecpp/free_boundary/mgrid_provider:mgrid_provider",
         "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
         "@abscab_cpp//abscab:abscab",
         "@abseil-cpp//absl/algorithm:container",
