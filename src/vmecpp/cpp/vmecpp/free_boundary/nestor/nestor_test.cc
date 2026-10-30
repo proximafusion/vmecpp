@@ -10,7 +10,7 @@
 #include "gtest/gtest.h"
 #include "vmecpp/common/fourier_basis_fast_toroidal/fourier_basis_fast_toroidal.h"
 #include "vmecpp/common/sizes/sizes.h"
-#include "vmecpp/free_boundary/mgrid_provider/mgrid_provider.h"
+#include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
 #include "vmecpp/free_boundary/tangential_partitioning/tangential_partitioning.h"
 
 namespace vmecpp {
@@ -21,7 +21,7 @@ namespace vmecpp {
 // potential that is harmonic in the whole exterior. The vacuum field that
 // NESTOR reconstructs must vanish on the surface, so |B|^2/2 there is the
 // solver's error, measured against the external field's own |B_ext|^2/2.
-// The field is supplied exactly on the surface (no mgrid interpolation).
+// The field is evaluated exactly on the surface (no mgrid interpolation).
 TEST(TestNestor, InteriorDipoleLineGivesZeroFieldOnHelicalTorus) {
   const bool lasym = false;
   const int nfp = 2;
@@ -73,13 +73,43 @@ TEST(TestNestor, InteriorDipoleLineGivesZeroFieldOnHelicalTorus) {
   fb.cos_to_cc_ss(rmnc, rCC, rSS, s.ntor, s.mpol);
   fb.sin_to_sc_cs(zmns, zSC, zCS, s.ntor, s.mpol);
 
-  // surface points on NESTOR's grid: kl = l * nZeta + k, theta_l = 2 pi l /
-  // nThetaEven, zeta_k = 2 pi k / (nfp nZeta)
-  Eigen::VectorXd br = Eigen::VectorXd::Zero(s.nZnT);
-  Eigen::VectorXd bp = Eigen::VectorXd::Zero(s.nZnT);
-  Eigen::VectorXd bz = Eigen::VectorXd::Zero(s.nZnT);
+  // field of the dipole line in cylindrical components at (R, phi, Z)
   const int num_dipoles = 96 * nfp;
   const double moment = 1.0 / 96.0;  // total vertical moment 1 A m^2 per period
+  const auto dipole_field = [&](double R, double phi, double Z, double& br,
+                                double& bp, double& bz) {
+    const double x = R * std::cos(phi);
+    const double y = R * std::sin(phi);
+    double bx = 0.0, by = 0.0;
+    bz = 0.0;
+    for (int j = 0; j < num_dipoles; ++j) {
+      const double phi_j = 2.0 * M_PI * j / num_dipoles;
+      const double dx = x - R0 * std::cos(phi_j);
+      const double dy = y - R0 * std::sin(phi_j);
+      const double dz = Z;
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      const double r = std::sqrt(r2);
+      const double f = 1.0e-7 / (r2 * r);  // mu0 / (4 pi) / r^3
+      const double mdotn = moment * dz / r;
+      bx += f * 3.0 * mdotn * dx / r;
+      by += f * 3.0 * mdotn * dy / r;
+      bz += f * (3.0 * mdotn * dz / r - moment);
+    }
+    br = bx * std::cos(phi) + by * std::sin(phi);
+    bp = -bx * std::sin(phi) + by * std::cos(phi);
+  };
+  const MagneticFieldFunction magnetic_field =
+      [&](const Eigen::VectorXd& r, const Eigen::VectorXd& phi,
+          const Eigen::VectorXd& z, Eigen::VectorXd& m_b_r,
+          Eigen::VectorXd& m_b_phi, Eigen::VectorXd& m_b_z) {
+        for (Eigen::Index i = 0; i < r.size(); ++i) {
+          dipole_field(r[i], phi[i], z[i], m_b_r[i], m_b_phi[i], m_b_z[i]);
+        }
+        return absl::OkStatus();
+      };
+
+  // |B_ext|^2/2 at the surface points on NESTOR's grid: kl = l * nZeta + k,
+  // theta_l = 2 pi l / nThetaEven, zeta_k = 2 pi k / (nfp nZeta)
   double ref_sum = 0.0;
   for (int kl = 0; kl < s.nZnT; ++kl) {
     const int l = kl / s.nZeta;
@@ -92,32 +122,12 @@ TEST(TestNestor, InteriorDipoleLineGivesZeroFieldOnHelicalTorus) {
       R += rmnc[mn] * std::cos(arg);
       Z += zmns[mn] * std::sin(arg);
     }
-    const double x = R * std::cos(zeta);
-    const double y = R * std::sin(zeta);
-    double bx = 0.0, by = 0.0, bzc = 0.0;
-    for (int j = 0; j < num_dipoles; ++j) {
-      const double phi_j = 2.0 * M_PI * j / num_dipoles;
-      const double dx = x - R0 * std::cos(phi_j);
-      const double dy = y - R0 * std::sin(phi_j);
-      const double dz = Z;
-      const double r2 = dx * dx + dy * dy + dz * dz;
-      const double r = std::sqrt(r2);
-      const double f = 1.0e-7 / (r2 * r);  // mu0 / (4 pi) / r^3
-      const double mdotn = moment * dz / r;
-      bx += f * 3.0 * mdotn * dx / r;
-      by += f * 3.0 * mdotn * dy / r;
-      bzc += f * (3.0 * mdotn * dz / r - moment);
-    }
-    br[kl] = bx * std::cos(zeta) + by * std::sin(zeta);
-    bp[kl] = -bx * std::sin(zeta) + by * std::cos(zeta);
-    bz[kl] = bzc;
-    const double half_b2 = 0.5 * (bx * bx + by * by + bzc * bzc);
+    double br = 0.0, bp = 0.0, bz = 0.0;
+    dipole_field(R, zeta, Z, br, bp, bz);
+    const double half_b2 = 0.5 * (br * br + bp * bp + bz * bz);
     ref_sum += half_b2 * half_b2;
   }
   const double ref_rms = std::sqrt(ref_sum / s.nZnT);
-
-  MGridProvider mgrid;
-  mgrid.SetFixedMagneticField(br, bp, bz);
 
   TangentialPartitioning tp(s.nZnT);
   const int nf = s.ntor;
@@ -130,7 +140,7 @@ TEST(TestNestor, InteriorDipoleLineGivesZeroFieldOnHelicalTorus) {
       vacuum_b_z(s.nZnT);
   std::vector<double> reduce_slots(matrixShare.size());
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_decomposition;
-  Nestor nestor(&s, &tp, &mgrid, matrixShare, bvecShare, bSqVacShare,
+  Nestor nestor(&s, &tp, &magnetic_field, matrixShare, bvecShare, bSqVacShare,
                 &lu_decomposition, vacuum_b_r, vacuum_b_phi, vacuum_b_z,
                 reduce_slots);
 

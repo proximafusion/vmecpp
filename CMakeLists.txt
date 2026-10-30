@@ -83,6 +83,11 @@ file(MAKE_DIRECTORY "${_native_deps_include}")
 # lib it doesn't bundle zlib's own object code, so it must be linked in
 # explicitly wherever hdf5_c is used.
 find_package(ZLIB REQUIRED)
+if(APPLE)
+  # The macOS SDK is already on Clang's implicit system include path. Adding
+  # its usr/include directory explicitly breaks libc++'s system-header wrappers.
+  set_property(TARGET ZLIB::ZLIB PROPERTY INTERFACE_INCLUDE_DIRECTORIES "")
+endif()
 
 set(_native_deps_cmake_args
   -DCMAKE_INSTALL_PREFIX=${_native_deps_prefix}
@@ -188,7 +193,7 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
 endif()
 FetchContent_Declare(
   eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_REPOSITORY https://github.com/eigen-mirror/eigen.git
   GIT_TAG tags/5.0.1
   GIT_SHALLOW TRUE
 )
@@ -486,12 +491,6 @@ endif()
 #   -DVMECPP_ENABLE_ENZYME=ON -DVMECPP_ENZYME_PLUGIN=/path/to/ClangEnzyme-NN.so
 option(VMECPP_ENABLE_ENZYME "Build Enzyme autodiff targets" OFF)
 if(VMECPP_ENABLE_ENZYME)
-  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
-    message(FATAL_ERROR
-      "VMECPP_ENABLE_ENZYME requires a Clang-based compiler (got "
-      "${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin. "
-      "Intel oneAPI icx/icpx (IntelLLVM) is Clang-based and supported.")
-  endif()
   set(VMECPP_ENZYME_PLUGIN "" CACHE FILEPATH "Path to ClangEnzyme-NN.so")
   set(VMECPP_ENZYME_CORE_TARGETS vmecpp_core)
   if(VMECPP_HWCAPS_DISPATCH)
@@ -557,6 +556,12 @@ if(VMECPP_ENABLE_ENZYME)
         PUBLIC VMECPP_ENABLE_ENZYME)
     endforeach()
   else()
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|IntelLLVM")
+      message(FATAL_ERROR
+        "Building Enzyme derivative sources requires a Clang-based compiler "
+        "(got ${CMAKE_CXX_COMPILER_ID}); Enzyme attaches as a Clang plugin. "
+        "Use prebuilt Enzyme objects with a different compiler.")
+    endif()
     if(NOT VMECPP_ENZYME_PLUGIN OR NOT EXISTS "${VMECPP_ENZYME_PLUGIN}")
       message(FATAL_ERROR
         "VMECPP_ENABLE_ENZYME=ON requires "
@@ -568,11 +573,11 @@ if(VMECPP_ENABLE_ENZYME)
     enable_testing()
     # Exact autodiff (forward and reverse) of a real VMEC nonlinear kernel: the
     # half-grid Jacobian. Enzyme runs as an optimization-time pass, so it needs
-    # -O2 and the plugin attached.
+    # -O3 and the plugin attached.
     add_executable(jacobian_kernel_autodiff_test
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/jacobian_kernel_autodiff_test.cc)
     target_compile_options(jacobian_kernel_autodiff_test PRIVATE
-      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+      -O3 -fplugin=${VMECPP_ENZYME_PLUGIN})
     add_test(NAME jacobian_kernel_autodiff COMMAND jacobian_kernel_autodiff_test)
     # Exact Hessian of the composed local force map (all six force-chain kernels):
     # forward/reverse Jacobian vs finite differences, and JVP cost vs FD-HVP.
@@ -580,7 +585,7 @@ if(VMECPP_ENABLE_ENZYME)
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/common/enzyme/local_force_hessian_test.cc
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc)
     target_compile_options(local_force_hessian_test PRIVATE
-      -O2 -fplugin=${VMECPP_ENZYME_PLUGIN})
+      -O3 -fplugin=${VMECPP_ENZYME_PLUGIN})
     add_test(NAME local_force_hessian COMMAND local_force_hessian_test)
 
     # Wire the exact force Hessian-vector product into the core library and the
@@ -595,12 +600,19 @@ if(VMECPP_ENABLE_ENZYME)
         PUBLIC VMECPP_ENABLE_ENZYME)
     endforeach()
     # Enzyme does not support the AVX mask intrinsics emitted for x86-64-v3.
-    # Compile these two translation units for the baseline ISA in every core;
-    # the rest of vmecpp_core_v3 remains optimized for x86-64-v3.
+    # Compile these two translation units for the baseline ISA on x86; use the
+    # compiler's default target on other architectures.
+    # Keep these objects native: GCC and Apple's linker cannot consume LLVM 21
+    # LTO bitcode emitted by Clang, while the objects are linked across toolchains.
+    set(VMECPP_ENZYME_COMPILE_OPTIONS
+      "-O3;-fno-lto;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+      list(PREPEND VMECPP_ENZYME_COMPILE_OPTIONS "-march=x86-64")
+    endif()
     set_source_files_properties(
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_jvp.cc
       ${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/vmecpp/vmec/ideal_mhd_model/exact_force_vjp.cc
       PROPERTIES COMPILE_OPTIONS
-        "-march=x86-64;-O2;-fplugin=${VMECPP_ENZYME_PLUGIN}")
+        "${VMECPP_ENZYME_COMPILE_OPTIONS}")
   endif()
 endif()

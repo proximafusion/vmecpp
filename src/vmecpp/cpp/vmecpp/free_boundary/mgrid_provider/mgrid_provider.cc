@@ -8,7 +8,7 @@
 
 #include <algorithm>
 #include <array>
-#include <cfloat>  // DBL_MAX
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -88,8 +88,6 @@ MGridProvider::MGridProvider() {
   nextcur = -1;
 
   has_mgrid_loaded_ = false;
-
-  has_fixed_field_ = false;
 
   mgrid_mode = "";
 }
@@ -329,7 +327,6 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
   }
 
   has_mgrid_loaded_ = true;
-  has_fixed_field_ = false;
 
   return absl::Status();
 }
@@ -382,49 +379,35 @@ absl::Status MGridProvider::LoadFields(
   }  // nextcur
 
   has_mgrid_loaded_ = true;
-  has_fixed_field_ = false;
 
   return absl::OkStatus();
 }
 
-void MGridProvider::SetFixedMagneticField(const Eigen::VectorXd& fixed_br,
-                                          const Eigen::VectorXd& fixed_bp,
-                                          const Eigen::VectorXd& fixed_bz) {
-  // copy into local storage
-  fixed_br_ = fixed_br;
-  fixed_bp_ = fixed_bp;
-  fixed_bz_ = fixed_bz;
-
-  has_mgrid_loaded_ = true;
-  has_fixed_field_ = true;
-}  // SetFixedMagneticField
-
-// interpolate mgrid file at current flux surface
-absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
-                                        int nZnT, const Eigen::VectorXd& rLCFS,
+// interpolate mgrid file at the given points
+absl::Status MGridProvider::interpolate(const Eigen::VectorXd& rLCFS,
+                                        const Eigen::VectorXd& phiLCFS,
                                         const Eigen::VectorXd& zLCFS,
                                         Eigen::VectorXd& m_interpBr,
                                         Eigen::VectorXd& m_interpBp,
                                         Eigen::VectorXd& m_interpBz) const {
   CHECK(has_mgrid_loaded_) << "no mgrid loaded";
 
-  if (has_fixed_field_) {
-    // quick return: just copy into target storage
-    // Uniform across the team, so skipping the barrier below is safe.
-
-    for (int kl = ztMin; kl < ztMax; ++kl) {
-      m_interpBr[kl - ztMin] = fixed_br_[kl];
-      m_interpBp[kl - ztMin] = fixed_bp_[kl];
-      m_interpBz[kl - ztMin] = fixed_bz_[kl];
-    }  // kl
-
-    return absl::OkStatus();
-  }
+  // toroidal grid index per unit of phi
+  const double phi_to_index = nfp * numPhi / (2.0 * M_PI);
 
   bool exceedGridSizeR = false;
   bool exceedGridSizeZ = false;
-  for (int kl = ztMin; kl < ztMax; ++kl) {
-    int k = kl % nZeta;
+  for (Eigen::Index kl = 0; kl < rLCFS.size(); ++kl) {
+    const double phi_index = phiLCFS[kl] * phi_to_index;
+    const double phi_index_rounded = std::round(phi_index);
+    if (std::abs(phi_index - phi_index_rounded) > 1.0e-8) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "MGridProvider::interpolate: phi = %.15g is not on the toroidal "
+          "grid of %d points per field period.",
+          phiLCFS[kl], numPhi));
+    }
+    const int k =
+        ((static_cast<int>(phi_index_rounded) % numPhi) + numPhi) % numPhi;
 
     // check if plasma boundary exceeds pre-computed grid
     if (rLCFS[kl] < minR || rLCFS[kl] > maxR) {
@@ -476,9 +459,9 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
         bz += weight * bZ[index];
       }
     }
-    m_interpBr[kl - ztMin] = br;
-    m_interpBp[kl - ztMin] = bp;
-    m_interpBz[kl - ztMin] = bz;
+    m_interpBr[kl] = br;
+    m_interpBp[kl] = bp;
+    m_interpBz[kl] = bz;
   }  // kl
 
   absl::Status status = absl::OkStatus();
@@ -489,17 +472,10 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
     // --> will only get slower, but more robust (and accurate?)
     // --> would also require to always have coil geometry inside mgrid file for
     // on-the-fly re-evaluation...
-    // Global, not per-slice, so the message is the same whoever reports.
-    double min_r = DBL_MAX;
-    double max_r = -DBL_MAX;
-    double min_z = DBL_MAX;
-    double max_z = -DBL_MAX;
-    for (int kl = 0; kl < nZnT; ++kl) {
-      min_r = std::min(min_r, rLCFS[kl]);
-      max_r = std::max(max_r, rLCFS[kl]);
-      min_z = std::min(min_z, zLCFS[kl]);
-      max_z = std::max(max_z, zLCFS[kl]);
-    }  // kl
+    const double min_r = rLCFS.minCoeff();
+    const double max_r = rLCFS.maxCoeff();
+    const double min_z = zLCFS.minCoeff();
+    const double max_z = zLCFS.maxCoeff();
 
     std::string exceeded_extents;
     if (exceedGridSizeR) {
@@ -521,11 +497,6 @@ absl::Status MGridProvider::interpolate(int ztMin, int ztMax, int nZeta,
         "it contains the plasma boundary at every iteration.",
         exceeded_extents));
   }
-
-  // Unconditional: every thread must reach this barrier or the team deadlocks.
-#ifdef _OPENMP
-#pragma omp barrier
-#endif  // _OPENMP
 
   return status;
 }

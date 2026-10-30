@@ -1,0 +1,15 @@
+{
+  "case": "sheared-asym",
+  "ns": 13,
+  "stage": "before",
+  "seconds": 9.399159699009033,
+  "fsq": 9.822418810654092e-17,
+  "beta": 0.018723433089931674,
+  "max_error_A_m2": 257097.9874668992,
+  "rms_error_A_m2": 35894.668704206764,
+  "first_surface_max_error_A_m2": 257097.9874668992,
+  "bulk_max_error_A_m2": 43127.453287568875,
+  "reference_max_A_m2": 1731478.3930038388,
+  "DMerc_first": -478315.37606662535,
+  "reference_kind": "analytical_curl"
+}

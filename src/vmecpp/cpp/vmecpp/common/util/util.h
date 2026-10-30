@@ -282,25 +282,10 @@ void TridiagonalSolveOpenMP(
 // clause; the process-wide OpenMP thread count is left alone.
 int vmec_adjust_num_threads(int max_threads, int num_surfaces_to_distribute);
 
-// Compute the number of threads to use for the free-boundary (NESTOR) vacuum
-// solve. The vacuum solve is parallelized over the tangential boundary grid
-// (nZnT points), so - unlike the radial solve, which is capped at ns/2 - it can
-// use as many threads as there are tangential grid points. This count is
-// deliberately decoupled from the radial thread count so the vacuum solve can
-// use the full thread budget even at coarse multigrid steps (small ns). The
-// vacuum solve runs in a nested parallel region with an explicit num_threads()
-// clause.
-int vmec_adjust_vacuum_num_threads(int max_threads, int n_znt);
-
 // Number of threads the OpenMP runtime grants a parallel region that requests
 // requested_threads from the calling context. OMP_THREAD_LIMIT and the active
 // nesting levels can make it smaller than the request; without OpenMP it is 1.
 int GrantedThreads(int requested_threads);
-
-// Number of threads the OpenMP runtime grants a parallel region that requests
-// nested_threads from the single thread of a team of outer_threads threads, as
-// IdealMhdModel::update opens the vacuum solve inside the radial solve.
-int GrantedNestedThreads(int outer_threads, int nested_threads);
 
 // Initializes absl logging for the standalone and Python entry points: all
 // messages down to INFO go to stderr as plain text, without prefixes.
