@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 """The inductive energy of Alfven's rope and of the single strand its strands coalesce
-into, with the same current and flux, from Biot-Savart over VMEC++'s current density."""
+into, from Biot-Savart over VMEC++'s current density and in closed form."""
 
 import argparse
 import dataclasses
@@ -13,6 +13,8 @@ from pathlib import Path
 
 import alfven_rope as rope_example
 import numpy as np
+from scipy.optimize import brentq
+from scipy.special import j0, j1, jv
 
 import vmecpp
 
@@ -137,6 +139,42 @@ def fixed(rope, x, ns):
     )
 
 
+def lundquist(x):
+    """J0 J2 / J1^2 at k a = x, which sets the energy of the interior of a Lundquist
+    strand."""
+    return j0(x) * jv(2, x) / j1(x) ** 2
+
+
+def braid_energy(rope, d):
+    """The energy of two thin Lundquist strands wound at helix radius d: their rings, their
+    mutual inductance and the winding."""
+    x, b, r0 = rope.ka, rope.radius, rope_example.R0
+    t = rope_example.N * d / r0
+    # each strand as a ring with a Lundquist interior
+    ring = np.log(8.0 * r0 / b) - 1.0 - 1.5 * lundquist(x)
+    # the pair's mutual inductance, to order (d / R0)^2
+    mutual = (
+        np.log(4.0 * r0 / d)
+        - 2.0
+        + (d / r0) ** 2 * (0.75 * np.log(4.0 * r0 / d) - 0.25)
+    )
+    # the winding's solenoid, tan psi = t, and its overlap with the strands' interiors
+    winding = 0.75 * t**2 + t * b / d * (2.0 / x - j0(x) / j1(x))
+    # each strand deformed by its partner's tidal field
+    tidal = (b / d) ** 4 / 32.0 * (j1(x) * jv(3, x) + j0(x) * jv(2, x))
+    tidal /= j1(x) ** 2 - j0(x) * jv(2, x)
+    return MU0 * r0 * rope.current**2 * (ring + mutual + winding + tidal)
+
+
+def merged_energy(rope):
+    """The energy of the thin Lundquist ring with the flux and current of both strands
+    at their k, at the radius where its edge field is the guide field."""
+    x, r0 = rope.ka, rope_example.R0
+    y = brentq(lambda v: v * j1(v) / j0(v) - 2.0 * x * j1(x) / j0(x), 1e-6, 2.404)
+    ring = np.log(8.0 * r0 * x / (y * rope.radius)) - 1.0 - 1.5 * lundquist(y)
+    return 2.0 * MU0 * r0 * rope.current**2 * ring
+
+
 def main():
     parser = argparse.ArgumentParser(description="coalescence energy of Alfven's rope")
     parser.add_argument("--rope", default=str(DATA), help="matched shape of the rope")
@@ -221,6 +259,11 @@ def main():
     print(
         f"thin straight wires: coalescence {wire / 1e3:.3f} kJ; vertical field of the "
         f"merged strand {vertical:+.5f} T"
+    )
+    w_braid, w_merged = braid_energy(rope, d), merged_energy(rope)
+    print(
+        f"closed form: braid {w_braid / 1e3:.3f} kJ, merged {w_merged / 1e3:.3f} kJ, "
+        f"coalescence {(w_merged - w_braid) / 1e3:.3f} kJ"
     )
 
 

@@ -53,6 +53,23 @@ def test_thin_ring(torus):
     np.testing.assert_allclose(energy, 0.5 * inductance * current**2, rtol=1e-3)
 
 
+def test_merged_energy_closed_form():
+    """The stored merged strand, on the rope's axis, against the thin Lundquist ring
+    whose edge field is the guide field."""
+    data = json.loads((DATA / "alfven_rope_merged.json").read_text())
+    merged = alfven_rope_coalescence.Merged(
+        angle=data["angle"], spacing=data["spacing"]
+    )
+    wout = alfven_rope_coalescence.fixed(merged, np.array(data["x"]), 49).wout
+    *strand, _ = alfven_rope.currents(wout, 2, 24, 144)
+    boundary = alfven_rope_coalescence.surface(wout)
+    # the strand is axisymmetric, so one plane of targets stands for all 144
+    energy = alfven_rope_coalescence.energy(strand, boundary, [np.eye(3)], 144, chunk=8)
+    rope = alfven_rope.Rope(angle=data["angle"], spacing=data["spacing"])
+    closed = alfven_rope_coalescence.merged_energy(rope)
+    np.testing.assert_allclose(energy, closed, rtol=5e-3)
+
+
 def test_merged_pressure_balance():
     data = json.loads((DATA / "alfven_rope_merged.json").read_text())
     merged = alfven_rope_coalescence.Merged(
