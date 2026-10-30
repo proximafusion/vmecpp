@@ -18,12 +18,11 @@ order; the example itself runs the same measurements further out.
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import pytest
-
-pytest.importorskip("sympy")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
@@ -225,9 +224,6 @@ def test_free_boundary_force_is_second_order():
     (R, Z) is interpolated exactly, so the vacuum pressure the solver uses is analytic
     and the only error left is the discretization.
     """
-    import tempfile  # noqa: PLC0415
-    from pathlib import Path as _Path  # noqa: PLC0415
-
     with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as fh:
         mgrid = fh.name
     try:
@@ -251,7 +247,7 @@ def test_free_boundary_force_is_second_order():
         assert _order(volume) > 1.7, volume
         assert _order(edge) > 1.7, edge
     finally:
-        _Path(mgrid).unlink(missing_ok=True)
+        Path(mgrid).unlink(missing_ok=True)
 
 
 def test_asymmetric_path_reproduces_the_symmetric_result(case_and_model):

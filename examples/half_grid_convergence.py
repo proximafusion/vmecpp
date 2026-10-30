@@ -4,17 +4,16 @@
 # SPDX-License-Identifier: MIT
 """Convergence of the half-grid rule's discrete solution, by manufactured solution.
 
-`half_grid_consistency.py` measures the half-grid rule on exact half-point values:
-the radial force it assembles at a node differs from the exact force by order h^2.
-This file solves with it. On the annulus 1/4 < s < 1, with R and Z held at a
-manufactured mapping at s = 1/4 and s = 1 and lambda and iota taken from the
-mapping, the unknowns are the Fourier coefficients of R and Z on the interior
-nodes, and the equations are the node rule's radial force r_s collocated at as
-many angles per node as R has coefficients and the surface current component
-r_u = -(d_u B_v - d_v B_u) B^v at the outer half point collocated at as many as Z
-has. The right-hand side is the continuum value of each at the mapping, so the
-mapping solves the continuum problem and the discrete solution's distance from it
-is the discretization error.
+This file solves with the half-grid rule, which forms the radial force at a full-grid
+node from the averages and centred differences of the field at its two half points.
+On the annulus 1/4 < s < 1, with R and Z held at a manufactured mapping at s = 1/4
+and s = 1 and lambda and iota taken from the mapping, the unknowns are the Fourier
+coefficients of R and Z on the interior nodes, and the equations are the node rule's
+radial force r_s collocated at as many angles per node as R has coefficients and the
+surface current component r_u = -(d_u B_v - d_v B_u) B^v at the outer half point
+collocated at as many as Z has. The right-hand side is the continuum value of each at
+the mapping, so the mapping solves the continuum problem and the discrete solution's
+distance from it is the discretization error.
 
 Lambda held fixed is the problem on the quotient by the poloidal gauge. A
 non-stellarator-symmetric mapping carries a second gauge direction, the rotation of
@@ -48,8 +47,8 @@ MU0 = 4.0e-7 * math.pi
 
 
 def cases():
-    """The three mappings of half_grid_consistency restricted to m <= 1 and without
-    lambda's m = 2 mode, so that five Fourier modes carry R, Z and lambda."""
+    """The fitted mapping of manufactured_solution without its m = 2 modes, so that five
+    Fourier modes carry R, Z and lambda: three-dimensional, asymmetric and high-beta."""
     p = list(mms.FITTED_P)
     p[11] = 0.0
     sym = mms.build_case(p, m2=False)

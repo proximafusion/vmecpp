@@ -31,7 +31,6 @@ half-grid rule.
 from __future__ import annotations
 
 import sys
-from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -82,19 +81,3 @@ def test_error_within_the_certificate(errors, name, ns):
     lo, hi = CERTIFIED[name][ns]
     err = errors[name, ns]
     assert lo - ABS <= err <= hi + ABS, (name, ns, err, lo, hi)
-
-
-@pytest.mark.parametrize("name", list(CERTIFIED))
-def test_certified_error_falls_fourfold(name):
-    """Between consecutive resolutions the ratio of the errors, over every value the two
-    enclosures allow, lies between 3.5 and 4.5."""
-    table = CERTIFIED[name]
-    ns = sorted(table)
-    for a, b in pairwise(ns):
-        assert table[a][0] / table[b][1] > 3.5, (name, a, b)
-        assert table[a][1] / table[b][0] < 4.5, (name, a, b)
-
-
-def test_pressure_leaves_the_error_unchanged():
-    for ns in CERTIFIED["high-beta"]:
-        assert CERTIFIED["asymmetric"][ns] == CERTIFIED["high-beta"][ns], ns

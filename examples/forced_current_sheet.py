@@ -11,8 +11,8 @@ response is a current sheet on the rational surface. VMEC++ still converges at
 every radial resolution, since its grid smooths the sheet, and what shows the
 obstruction is the radial force residual of the converged state reconstructed
 from its own half-grid quantities: its (2,1) harmonic on the rational surface
-stays put under radial refinement, while its n = 0 harmonics above m = 1 fall
-fourfold per doubling of ns, which is the order of the discretization.
+stays put under radial refinement, while its (2,0), (3,0) and (4,0) harmonics
+fall fourfold per doubling of ns, which is the order of the discretization.
 
 `node_residual` is that reconstruction: VMEC's parity-aware half-grid rule
 for R and Z, the half-grid lambda and iota, and the radial residual at a

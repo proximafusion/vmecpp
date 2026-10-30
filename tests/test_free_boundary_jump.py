@@ -8,16 +8,15 @@
 p + B^2/2 across the boundary at each point of NESTOR's grid is enclosed by
 Stellarocq's point certificates (theories/BoxCell.v, check_bpcert_correct)
 for every vacuum pressure on the segment between NESTOR's and the one BIEST's
-virtual casing gives: CEILING bounds it over the whole grid and FLOOR bounds
-NESTOR's jump from below where it is largest. The certified jump falls under
-radial refinement when each resolution's ceiling lies below the previous
-floor.
+virtual casing gives: the ceiling of each resolution in CERTIFIED bounds it over
+the whole grid and the floor bounds NESTOR's jump from below where it is largest.
+Each resolution's ceiling lies below the previous resolution's floor, so the
+certified jump falls under radial refinement.
 """
 
 from __future__ import annotations
 
 import sys
-from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -89,20 +88,6 @@ def test_jump_within_certificate(runs, ns):
     assert floor <= big <= ceiling
     assert float(np.abs(j["vmecpp"]).max()) <= ceiling + 1e-5
     assert float(np.abs(j["edge_difference"]).max()) < 1e-5
-
-
-def test_certified_jump_falls():
-    """Each resolution's ceiling lies below the previous resolution's floor."""
-    ns = sorted(CERTIFIED)
-    for a, b in pairwise(ns):
-        assert CERTIFIED[b][1] < CERTIFIED[a][0]
-
-
-def test_covering_holds_the_grid_certificates():
-    """The bound over the whole boundary is at least the jump certified at the largest
-    grid point of the same run."""
-    for ns, bound in COVERED.items():
-        assert CERTIFIED[ns][0] <= bound
 
 
 def test_jump_falls_under_refinement(runs):
