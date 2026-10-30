@@ -23,7 +23,8 @@ N = 3  # braid turns per transit
 R0 = 1.0  # radius of the rope in m
 B0 = 1.0  # guide field at R0 in T
 PLANES, THETAS = 48, 48  # planes and polar angles of the boundary
-SEGMENTS = 192  # segments of the axis of each other strand
+SEGMENTS = 192  # points on the magnetic axis of the strand
+SOURCES = 24, 108  # polar and toroidal angles of the current elements of each strand
 PENALTY = 10.0  # mode amplitude of a boundary that VMEC++ does not solve
 STEP = 1.0e-5  # finite-difference step of the unknowns, in m and T
 MAX_STEP = 2.0e-3  # largest change of an unknown in one step, in m and T
@@ -234,17 +235,17 @@ def axis_points(wout):
     return np.stack([r * np.cos(phi), r * np.sin(phi), z], -1)
 
 
-def partners(points, strands):
-    """The points turned about Z by 2 pi j / (strands N), the axes of the other
-    strands."""
-    out = []
+def partners(vectors, strands):
+    """The vectors turned about Z by 2 pi j / (strands N) for j = 1 to strands - 1,
+    their images on the other strands."""
+    out = [vectors[:0]]
     for j in range(1, strands):
         c, s = (
             np.cos(2.0 * np.pi * j / (strands * N)),
             np.sin(2.0 * np.pi * j / (strands * N)),
         )
-        out.append(points @ np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]))
-    return out
+        out.append(vectors @ np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]))
+    return np.concatenate(out)
 
 
 def helix_of(points):
@@ -254,23 +255,81 @@ def helix_of(points):
     return r.mean(), np.hypot(r - r.mean(), z).mean()
 
 
-def line_field(path, current, x):
-    """Biot-Savart field at the points x of the closed polygon path carrying the
-    current."""
-    a = path[None, :, :] - x[:, None, :]
-    b = np.roll(path, -1, axis=0)[None, :, :] - x[:, None, :]
-    na, nb = np.linalg.norm(a, axis=-1), np.linalg.norm(b, axis=-1)
-    f = (na + nb) / (na * nb * (na * nb + np.sum(a * b, axis=-1)))
-    return MU0 * current / (4.0 * np.pi) * np.sum(np.cross(a, b) * f[..., None], axis=1)
+def geometry(wout, js, theta, zeta):
+    """Points, the tangents e_theta and e_zeta, sqrt(g), and the currents sqrt(g) J^theta
+    and sqrt(g) J^zeta on the full-grid surfaces js at the angles theta and zeta."""
+
+    def series(coefficients, m, n, kind, d_theta=0, d_zeta=0):
+        angle = m[:, None, None] * theta[None, :, None] - n[:, None, None] * zeta
+        if (d_theta, d_zeta) == (0, 0):
+            base = kind(angle)
+        else:
+            base = -np.sin(angle) if kind is np.cos else np.cos(angle)
+        factor = (m**d_theta * (-n) ** d_zeta)[:, None, None]
+        return np.tensordot(coefficients.T, factor * base, axes=1)
+
+    xm, xn = np.asarray(wout.xm, float), np.asarray(wout.xn, float)
+    xmb, xnb = np.asarray(wout.xm_nyq, float), np.asarray(wout.xn_nyq, float)
+    rmnc, zmns = np.asarray(wout.rmnc)[:, js], np.asarray(wout.zmns)[:, js]
+    r = series(rmnc, xm, xn, np.cos)
+    z = series(zmns, xm, xn, np.sin)
+    r_t, r_z = series(rmnc, xm, xn, np.cos, 1, 0), series(rmnc, xm, xn, np.cos, 0, 1)
+    z_t, z_z = series(zmns, xm, xn, np.sin, 1, 0), series(zmns, xm, xn, np.sin, 0, 1)
+    cos, sin = np.cos(zeta), np.sin(zeta)
+    points = np.stack([r * cos, r * sin, z], -1)
+    e_theta = np.stack([r_t * cos, r_t * sin, z_t], -1)
+    e_zeta = np.stack([r_z * cos - r * sin, r_z * sin + r * cos, z_z], -1)
+    # sqrt(g) on the full grid from the half-grid coefficients of gmnc, extrapolated to
+    # the edge and, in its m = 0 modes, to the axis
+    gmnc = np.asarray(wout.gmnc)
+    full = np.zeros_like(gmnc)
+    full[:, 0] = np.where(xmb == 0, 1.5 * gmnc[:, 1] - 0.5 * gmnc[:, 2], 0.0)
+    full[:, 1:-1] = 0.5 * (gmnc[:, 1:-1] + gmnc[:, 2:])
+    full[:, -1] = 1.5 * gmnc[:, -1] - 0.5 * gmnc[:, -2]
+    jacobian = series(full[:, js], xmb, xnb, np.cos)
+    cu = series(np.asarray(wout.currumnc)[:, js], xmb, xnb, np.cos)
+    cv = series(np.asarray(wout.currvmnc)[:, js], xmb, xnb, np.cos)
+    return points, e_theta, e_zeta, jacobian, cu, cv
+
+
+def currents(wout, ns_step, ntheta, nzeta):
+    """Points, current density and Simpson-weighted volume of the elements of a strand
+    on an odd number of surfaces ns_step apart, and its toroidal current."""
+    ns = int(wout.ns)
+    js = np.arange(0, ns, ns_step)
+    weight = np.where(np.arange(js.size) % 2 == 1, 4.0, 2.0)
+    weight[[0, -1]] = 1.0
+    weight *= ns_step / (3.0 * (ns - 1))
+    theta = 2.0 * np.pi * np.arange(ntheta) / ntheta
+    zeta = 2.0 * np.pi * np.arange(nzeta) / nzeta
+    points, e_theta, e_zeta, jacobian, cu, cv = geometry(wout, js, theta, zeta)
+    density = (cu / jacobian)[..., None] * e_theta + (cv / jacobian)[..., None] * e_zeta
+    cell = (2.0 * np.pi) ** 2 / (ntheta * nzeta)
+    volume = np.abs(jacobian) * weight[:, None, None] * cell
+    current = (
+        float(wout.signgs) * np.sum(weight * cv[:, :, 0].sum(axis=1)) * 2.0 * np.pi
+    )
+    return points, density, volume, current / ntheta
+
+
+def biot_savart(points, elements, x):
+    """Field at the points x of the current elements J dV at points."""
+    out = np.empty_like(x)
+    for k in range(0, len(x), 128):
+        d = x[k : k + 128, None] - points[None]
+        out[k : k + 128] = np.einsum(
+            "tsk,ts->tk", np.cross(elements[None], d), np.linalg.norm(d, axis=-1) ** -3
+        )
+    return MU0 / (4.0 * np.pi) * out
 
 
 @dataclasses.dataclass
 class Field:
-    """The other strands as their currents along their axes, the guide field B0 R0 / R
-    along phi and a vertical field."""
+    """The other strands as the current elements J dV at points, the guide field
+    B0 R0 / R along phi and a vertical field."""
 
-    paths: list
-    current: float
+    points: np.ndarray
+    elements: np.ndarray
     vertical: float
 
     def __call__(self, r, phi, z):
@@ -279,7 +338,7 @@ class Field:
         )
         cos, sin = np.cos(phi.ravel()), np.sin(phi.ravel())
         x = np.stack([r.ravel() * cos, r.ravel() * sin, z.ravel()], -1)
-        b = sum(line_field(path, self.current, x) for path in self.paths)
+        b = biot_savart(self.points, self.elements, x)
         b_r = (b[:, 0] * cos + b[:, 1] * sin).reshape(r.shape)
         b_phi = (b[:, 1] * cos - b[:, 0] * sin).reshape(r.shape) + B0 * R0 / r
         return b_r, b_phi, b[:, 2].reshape(r.shape) + self.vertical
@@ -287,13 +346,18 @@ class Field:
 
 def solve(rope, x, vertical, start=None):
     """The fixed-boundary strand inside the boundary of x, hot-started from start, and
-    its first free-boundary iteration in the field of the others on its turned axes."""
+    its first free-boundary iteration in the field of its turned copies."""
     rb, zb = boundary(rope, x)
     fixed = vmecpp.run(
         strand_input(rope, rb, zb), max_threads=1, verbose=False, restart_from=start
     )
-    paths = partners(axis_points(fixed.wout), rope.strands)
-    field = Field(paths, rope.current, vertical)
+    points, density, volume, _ = currents(fixed.wout, 1, *SOURCES)
+    elements = (density * volume[..., None]).reshape(-1, 3)
+    field = Field(
+        partners(points.reshape(-1, 3), rope.strands),
+        partners(elements, rope.strands),
+        vertical,
+    )
     free_input = strand_input(
         rope, rb, zb, lfreeb=True, niter_array=np.array([1]), return_vacuum_field=True
     )
@@ -375,7 +439,7 @@ def match(rope, workers, report=print):
             if np.abs(f).max() < 1e-8:
                 break
             # the solves of the step start from the strand at y while the jump is large,
-            # and from VMEC's initial guess near the root, where they must vary smoothly
+            # and from VMEC's initial guess near the root
             hot = start if np.abs(f).max() > 1e-4 else None
             f = residual(rope, x0, hot, y)
             columns = pool.map(
