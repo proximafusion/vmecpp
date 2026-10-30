@@ -21,7 +21,7 @@ CONSTELLARATION_NFP5 = (
 def test_python_loop_takes_the_steps_of_the_cpp_solve() -> None:
     """On a boundary whose default time steps make flux surfaces cross, the Python
     iteration restarts on bad Jacobians without the step limit and shortens those steps
-    with it, in the iterations of the C++ solve and with its restart-reason trace:
+    with it, in the iterations of the C++ solve and with its restart-reason trace, and
     backups taken at the end of a shortened step are shortened with it in both."""
     vmec_input = vmecpp.VmecInput.from_file(CONSTELLARATION_NFP5)
     _, unlimited = vmecpp.solve_multigrid(vmec_input)
