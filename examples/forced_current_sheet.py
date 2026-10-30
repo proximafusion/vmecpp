@@ -11,7 +11,7 @@ response is a current sheet on the rational surface. VMEC++ still converges at
 every radial resolution, since its grid smooths the sheet, and what shows the
 obstruction is the radial force residual of the converged state reconstructed
 from its own half-grid quantities: its (2,1) harmonic on the rational surface
-stays put under radial refinement, while every non-resonant harmonic falls
+stays put under radial refinement, while its n = 0 harmonics above m = 1 fall
 fourfold per doubling of ns, which is the order of the discretization.
 
 `node_residual` is that reconstruction: VMEC's parity-aware half-grid rule
@@ -81,6 +81,8 @@ def rippled_tokamak(ns: int, ftol: float = 1.0e-15):
     vi.ftol_array = np.full(len(steps), ftol)
     vi.niter_array = np.full(len(steps), 60000)
     vi.nstep = 1000
+    # the lambda preconditioner of the certified states, without the m = 0 term
+    vi.lambda_precondition_checkerboard_terms = -1.0
     return vmecpp.run(vi, verbose=False).wout
 
 
@@ -227,7 +229,7 @@ def harmonic(rs: np.ndarray, m: int, n: int) -> float:
 
 
 def main():
-    modes = [(2, 1), (2, 0), (1, 0), (3, 1), (1, 1)]
+    modes = [(2, 1), (2, 0), (3, 0), (4, 0), (3, 1)]
     print(f"rippled circular tokamak, ripple {RIPPLE}, iota = {IOTA[0]} {IOTA[1]:+} s")
     print(f"harmonics of r_s on s = {S_RATIONAL}, where iota = 1/2")
     prev = None

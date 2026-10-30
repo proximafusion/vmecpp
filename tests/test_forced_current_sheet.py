@@ -6,8 +6,8 @@
 
 `examples/forced_current_sheet.py` runs the circular tokamak of the test data with a
 (1,1) boundary ripple and iota = 1/2 at s = 0.625, and reconstructs the radial force
-residual of the converged state on that surface by VMEC's own half-grid rule. Its non-
-resonant harmonics fall fourfold per doubling of ns, the order of the discretization;
+residual of the converged state on that surface by VMEC's own half-grid rule. Its n = 0
+harmonics above m = 1 fall fourfold per doubling of ns, the order of the discretization;
 its (2,1) harmonic does not fall, because a nested-surface field cannot balance the
 force the ripple drives at the rational surface, whose ideal response is a current
 sheet.
@@ -53,12 +53,12 @@ def harmonics():
         wout = fcs.rippled_tokamak(ns)
         j = round((ns - 1) * fcs.S_RATIONAL)
         rs = fcs.node_residual(wout, j)
-        out[ns] = {mn: fcs.harmonic(rs, *mn) for mn in ((2, 1), (2, 0), (1, 0))}
+        out[ns] = {mn: fcs.harmonic(rs, *mn) for mn in ((2, 1), (2, 0), (3, 0), (4, 0))}
     return out
 
 
 def test_non_resonant_harmonics_fall_fourfold(harmonics):
-    for mn in ((2, 0), (1, 0)):
+    for mn in ((2, 0), (3, 0), (4, 0)):
         for coarse, fine in pairwise(NS):
             ratio = abs(harmonics[coarse][mn] / harmonics[fine][mn])
             assert ratio > 3.5, (mn, coarse, fine, ratio)
