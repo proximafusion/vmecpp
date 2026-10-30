@@ -153,7 +153,34 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
       // coefficients below.
     }
   }
+  theta_shift_ = delta;
 
+  sortIntoInternalArrays(id.rbc, id.zbs, id.rbs, id.zbc, delta);
+}
+
+void Boundaries::setupInnerFromIndata(const VmecINDATA& id,
+                                      const Boundaries& boundary,
+                                      bool have_to_flip_theta) {
+  // a plasma with an inner boundary has no magnetic axis
+  raxis_c.setZero();
+  zaxis_s.setZero();
+  if (s_.lasym) {
+    raxis_s.setZero();
+    zaxis_c.setZero();
+  }
+
+  sortIntoInternalArrays(*id.rbc_inner, *id.zbs_inner, id.rbs_inner,
+                         id.zbc_inner, boundary.theta_shift_);
+  if (have_to_flip_theta) {
+    flipTheta();
+  }
+  ensureM1Constrained(0.5);
+}
+
+void Boundaries::sortIntoInternalArrays(
+    const RowMatrixXd& rbc_in, const RowMatrixXd& zbs_in,
+    const std::optional<RowMatrixXd>& rbs_in,
+    const std::optional<RowMatrixXd>& zbc_in, double delta) {
   absl::c_fill_n(rbcc, s_.mpol * (s_.ntor + 1), 0);
   absl::c_fill_n(zbsc, s_.mpol * (s_.ntor + 1), 0);
   if (s_.lthreed) {
@@ -187,14 +214,14 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
       double rbc;
       double zbs;
       if (!s_.lasym || delta == 0.0) {
-        rbc = id.rbc(m, source_n);
-        zbs = id.zbs(m, source_n);
+        rbc = rbc_in(m, source_n);
+        zbs = zbs_in(m, source_n);
       } else {
         // lasym && delta != 0.0
-        rbc = id.rbc(m, source_n) * cosMDelta +
-              (*id.rbs)(m, source_n) * sinMDelta;
-        zbs = id.zbs(m, source_n) * cosMDelta -
-              (*id.zbc)(m, source_n) * sinMDelta;
+        rbc = rbc_in(m, source_n) * cosMDelta +
+              (*rbs_in)(m, source_n) * sinMDelta;
+        zbs = zbs_in(m, source_n) * cosMDelta -
+              (*zbc_in)(m, source_n) * sinMDelta;
       }
 
       const int idx_mn = m * (s_.ntor + 1) + target_n;
@@ -213,13 +240,13 @@ void Boundaries::parseToInternalArrays(const VmecINDATA& id, bool verbose) {
         double rbs;
         double zbc;
         if (delta == 0.0) {
-          rbs = (*id.rbs)(m, source_n);
-          zbc = (*id.zbc)(m, source_n);
+          rbs = (*rbs_in)(m, source_n);
+          zbc = (*zbc_in)(m, source_n);
         } else {
-          rbs = (*id.rbs)(m, source_n) * cosMDelta -
-                id.rbc(m, source_n) * sinMDelta;
-          zbc = (*id.zbc)(m, source_n) * cosMDelta +
-                id.zbs(m, source_n) * sinMDelta;
+          rbs = (*rbs_in)(m, source_n) * cosMDelta -
+                rbc_in(m, source_n) * sinMDelta;
+          zbc = (*zbc_in)(m, source_n) * cosMDelta +
+                zbs_in(m, source_n) * sinMDelta;
         }
 
         if (m > 0) {

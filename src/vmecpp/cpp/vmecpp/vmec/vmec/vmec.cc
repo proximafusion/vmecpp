@@ -103,6 +103,13 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
         msg_start, msg_end, initial_state.wout.ns, indata.ns_array[0])));
   }
 
+  // check for matching `inner_boundary_s`, which sets the radial grid that the
+  // columns of the wout lie on
+  if (initial_state.indata.inner_boundary_s != indata.inner_boundary_s) {
+    return HotRestartMismatch(absl::InvalidArgumentError(
+        absl::StrCat(msg_start, "inner_boundary_s", msg_end)));
+  }
+
   return absl::OkStatus();
 }
 }  // namespace
@@ -302,6 +309,17 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
 
   // remainder of readin()
   fc_.haveToFlipTheta = b_.setupFromIndata(indata_, verbose_);
+
+  // IsConsistent refuses an input that sets inner_boundary_s without the inner
+  // boundary arrays, in FromIndata and in run().
+  const bool has_inner_boundary_arrays =
+      indata_.rbc_inner.has_value() && indata_.zbs_inner.has_value() &&
+      (!indata_.lasym ||
+       (indata_.rbs_inner.has_value() && indata_.zbc_inner.has_value()));
+  if (indata_.inner_boundary_s > 0.0 && has_inner_boundary_arrays) {
+    b_inner_.emplace(&s_, &t_, indata_.signgs);
+    b_inner_->setupInnerFromIndata(indata_, b_, fc_.haveToFlipTheta);
+  }
 
   if (fc_.lfreeb) {
     // tangential Fourier resolution of the vacuum potential
@@ -725,7 +743,8 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   // *THIS* actually sets the global ns value for the main physics algorithm
   fc_.ns = nsval;
 
-  fc_.deltaS = 1.0 / (fc_.ns - 1.0);
+  // the surfaces divide [inner_boundary_s, 1] evenly
+  fc_.deltaS = (1.0 - indata_.inner_boundary_s) / (fc_.ns - 1.0);
   fc_.num_surfaces_to_distribute = fc_.ns - 1;
   if (fc_.lfreeb) {
     fc_.num_surfaces_to_distribute = fc_.ns;
@@ -801,9 +820,9 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
       // of radial grid points over threads to be printed out.
       // Disabled for now to reduce noise.
       const bool printout_radial_partitioning = false;
-      r_[thread_id]->adjustRadialPartitioning(num_threads_, thread_id, nsval,
-                                              fc_.lfreeb,
-                                              printout_radial_partitioning);
+      r_[thread_id]->adjustRadialPartitioning(
+          num_threads_, thread_id, nsval, fc_.lfreeb,
+          printout_radial_partitioning, b_inner_.has_value());
 
       h_.allocate(*r_[thread_id], fc_.ns);
 
@@ -915,13 +934,13 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
               t_, initial_state->wout.rmnc, initial_state->wout.zmns,
               initial_state->wout.lmns_full, initial_state->wout.rmns,
               initial_state->wout.zmnc, initial_state->wout.lmnc_full,
-              *p_[thread_id], constants_, indata_.signgs, &b_);
+              *p_[thread_id], constants_, indata_.signgs, &b_,
+              b_inner_.has_value() ? &b_inner_.value() : nullptr);
         }
       }
     } else {
       for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-        decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_,
-                                                            *p_[thread_id]);
+        SetInitialGuess(thread_id);
       }
     }
     if (is_checkpoint_step &&
@@ -955,8 +974,7 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
     // odd-m axis extrapolation does not reproduce the sqrt(s) profile).
     if (always_fix_m1_gauge_) {
       for (int thread_id = 0; thread_id < num_threads_; ++thread_id) {
-        decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_,
-                                                         *p_[thread_id]);
+        SetM1GaugeFromBoundaries(thread_id);
       }
     }
 
@@ -979,6 +997,24 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   }
 
   return false;
+}
+
+void Vmec::SetInitialGuess(int thread_id) {
+  if (!b_inner_.has_value()) {
+    decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_, *p_[thread_id]);
+    return;
+  }
+  decomposed_x_[thread_id]->interpFromBoundaries(t_, *b_inner_, b_,
+                                                 *p_[thread_id]);
+}
+
+void Vmec::SetM1GaugeFromBoundaries(int thread_id) {
+  if (!b_inner_.has_value()) {
+    decomposed_x_[thread_id]->setM1GaugeFromBoundary(t_, b_, *p_[thread_id]);
+    return;
+  }
+  decomposed_x_[thread_id]->setM1GaugeFromBoundaries(t_, *b_inner_, b_,
+                                                     *p_[thread_id]);
 }
 
 // eqsolve
@@ -1127,8 +1163,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
   if (fc_.restart_reason == RestartReason::BAD_JACOBIAN) {
     decomposed_x_[thread_id]->setZero();
     if (m_lreset_internal) {
-      decomposed_x_[thread_id]->interpFromBoundaryAndAxis(t_, b_,
-                                                          *p_[thread_id]);
+      SetInitialGuess(thread_id);
     }
 
     // protect reads of restart_reason above from write below
@@ -1179,11 +1214,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       return SolveEqLoopStatus::CHECKPOINT_REACHED;
     }
 
-    // check for bad jacobian and bad initial guess for axis
+    // check for bad jacobian and bad initial guess for axis; a plasma with an
+    // inner boundary has no axis to guess again
     if (fc_.ijacob == 0 &&
         (status_ == VmecStatus::BAD_JACOBIAN ||
          fc_.restart_reason == RestartReason::HUGE_INITIAL_FORCES) &&
-        fc_.ns >= 3) {
+        fc_.ns >= 3 && !b_inner_.has_value()) {
 // protect reads of ijacob above from write below
 #ifdef _OPENMP
 #pragma omp barrier
@@ -1234,8 +1270,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
         const auto msg = absl::StrFormat(
             "FATAL ERROR in thread=%d. The solver failed during the first "
             "iterations. This may happen if the initial boundary is poorly "
-            "shaped or if it isn't spectrally condensed enough.",
-            thread_id);
+            "shaped or if it isn't spectrally condensed enough%s.",
+            thread_id,
+            b_inner_.has_value()
+                ? ", or if the inner boundary does not lie inside the boundary"
+                : "");
         return absl::UnknownError(msg);
       }
 
@@ -2290,8 +2329,9 @@ void Vmec::InterpolateToNextMultigridStep(
     }
   }  // thread_id
 
-  // only odd m
-  for (int m = 1; m < s_.mpol; m += 2) {
+  // only odd m, and only towards a magnetic axis
+  const bool has_axis = !b_inner_.has_value();
+  for (int m = 1; has_axis && m < s_.mpol; m += 2) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
       const int idx_fc_0 =
           ((0 - m_x_old[thread_with_ns_0]->nsMin()) * s_.mpol + m) *
@@ -2408,9 +2448,12 @@ void Vmec::InterpolateToNextMultigridStep(
           node[k] = stencil[k] * hs_old;
         }
         if (scheme == MultigridInterpolationScheme::kCubicRho) {
-          target = std::sqrt(sj);
+          // sqrt(s) at the positions on [0, 1] above, which map to
+          // [inner_boundary_s, 1] in s
+          const double s_inner = indata_.inner_boundary_s;
+          target = std::sqrt(s_inner + sj * (1.0 - s_inner));
           for (int k = 0; k < 4; ++k) {
-            node[k] = std::sqrt(node[k]);
+            node[k] = std::sqrt(s_inner + node[k] * (1.0 - s_inner));
           }
         }
         for (int k = 0; k < 4; ++k) {
@@ -2468,11 +2511,20 @@ void Vmec::InterpolateToNextMultigridStep(
   }  // thread_id
 
   // ------------------------
+  // An inner boundary is fixed: set it again, free of the round-off of the
+  // scaling above.
+  if (b_inner_.has_value()) {
+    for (int thread_id = 0; thread_id < num_threads_new; ++thread_id) {
+      m_x_new[thread_id]->SetInnerBoundary(t_, *b_inner_);
+    }
+  }
+
+  // ------------------------
   // Zero M=1 modes at origin
 
   // Actually, all odd-m modes are zeroed!
   // odd m only
-  for (int m = 1; m < s_.mpol; m += 2) {
+  for (int m = 1; has_axis && m < s_.mpol; m += 2) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
       const int idx_fc_0 =
           ((0 - m_x_old[thread_with_ns_0]->nsMin()) * s_.mpol + m) *

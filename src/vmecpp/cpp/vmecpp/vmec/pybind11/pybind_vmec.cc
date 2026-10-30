@@ -420,13 +420,18 @@ class VmecModel {
   // Reset to the (possibly re-guessed) initial profile; used on bad Jacobian.
   void ResetToInitialGuess() const {
     vmec_->decomposed_x_[0]->setZero();
-    vmec_->decomposed_x_[0]->interpFromBoundaryAndAxis(vmec_->t_, vmec_->b_,
-                                                       *vmec_->p_[0]);
+    vmec_->SetInitialGuess(/*thread_id=*/0);
   }
   void RecomputeAxis() const {
+    if (has_inner_boundary()) {
+      throw std::runtime_error(
+          "VmecModel.recompute_axis: a plasma with an inner boundary has no "
+          "magnetic axis");
+    }
     vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
                                                      vmec_->indata_.signgs);
   }
+  bool has_inner_boundary() const { return vmec_->b_inner_.has_value(); }
 
   // Recompute the magnetic axis to fix the Jacobian sign, then re-initialize
   // the radial state from the new axis. This is the C++ axis reguess in
@@ -434,10 +439,13 @@ class VmecModel {
   // model (preconditioner + scratch) starts clean; the in-place reset alone
   // leaves stale forward-model state from the failed evaluation, which the C++
   // single continuous parallel region tolerates but a step-by-step driver does
-  // not.
+  // not. A plasma with an inner boundary has no axis, so only the radial state
+  // is re-initialized.
   void Reinitialize() {
-    vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
-                                                     vmec_->indata_.signgs);
+    if (!has_inner_boundary()) {
+      vmec_->b_.RecomputeMagneticAxisToFixJacobianSign(vmec_->fc_.nsval,
+                                                       vmec_->indata_.signgs);
+    }
     double delt0 = vmec_->indata_.delt;
     // Vmec::run resets the accumulated constants before every
     // InitializeRadial (the rmsPhiP -> lamscale accumulation in
@@ -574,6 +582,11 @@ class VmecModel {
       throw std::runtime_error(
           "VmecModel.geometry_state_vjp currently supports stellarator-"
           "symmetric models only");
+    }
+    if (has_inner_boundary()) {
+      throw std::runtime_error(
+          "VmecModel.geometry_state_vjp currently supports models with a "
+          "magnetic axis only");
     }
     if (poloidal_flux_bar.size() != 0 &&
         poloidal_flux_bar.size() != vmec_->fc_.ns) {
@@ -733,6 +746,12 @@ class VmecModel {
           "Exact derivative operators do not support lforbal=true because "
           "the LFORBAL force replacement has no JVP/VJP; use "
           "lforbal=false or a finite-difference derivative.");
+    }
+    if (has_inner_boundary()) {
+      throw std::runtime_error(
+          "Exact derivative operators do not support an inner boundary, whose "
+          "geometry transforms they do not differentiate; use a "
+          "finite-difference derivative.");
     }
   }
 
@@ -920,7 +939,7 @@ class VmecModel {
   bool have_to_flip_theta() const { return vmec_->fc_.haveToFlipTheta; }
   bool has_exact_force_jacobian() const {
 #ifdef VMECPP_ENABLE_ENZYME
-    return !vmec_->m_[0]->lforbal;
+    return !vmec_->m_[0]->lforbal && !has_inner_boundary();
 #else
     return false;
 #endif
@@ -1135,8 +1154,33 @@ PYBIND11_MODULE(_vmecpp, m) {
             return w.rbs;
           })
       .def_property_readonly(
-          "zbc", [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+          "zbc",
+          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
             return w.zbc;
+          })
+
+      // inner boundary of a plasma without a magnetic axis; _set_mpol_ntor
+      // allocates the arrays once inner_boundary_s > 0
+      .def_readwrite("inner_boundary_s", &VmecINDATA::inner_boundary_s)
+      .def_property_readonly(
+          "rbc_inner",
+          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+            return w.rbc_inner;
+          })
+      .def_property_readonly(
+          "zbs_inner",
+          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+            return w.zbs_inner;
+          })
+      .def_property_readonly(
+          "rbs_inner",
+          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+            return w.rbs_inner;
+          })
+      .def_property_readonly(
+          "zbc_inner",
+          [](VmecINDATA &w) -> std::optional<vmecpp::RowMatrixXd> & {
+            return w.zbc_inner;
           });
 
   py::native_enum<vmecpp::FreeBoundaryMethod>(m, "FreeBoundaryMethod",
@@ -1994,6 +2038,8 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def_property_readonly("ntor_geometry", &VmecModel::ntor_geometry)
       .def_property_readonly("lthreed", &VmecModel::lthreed)
       .def_property_readonly("lasym", &VmecModel::lasym)
+      .def_property_readonly("has_inner_boundary",
+                             &VmecModel::has_inner_boundary)
       .def_property_readonly("has_exact_force_jacobian",
                              &VmecModel::has_exact_force_jacobian)
       .def_property_readonly("force_residual_r", &VmecModel::force_residual_r)

@@ -18,8 +18,10 @@ RadialPartitioning::RadialPartitioning() {
 
 void RadialPartitioning::adjustRadialPartitioning(int num_threads,
                                                   int thread_id, int ns_input,
-                                                  bool lfreeb, bool printout) {
+                                                  bool lfreeb, bool printout,
+                                                  bool inner_boundary) {
   ns_ = ns_input;
+  inner_boundary_ = inner_boundary;
   int num_surfaces_to_distribute = ns_ - 1;
   if (lfreeb) {
     num_surfaces_to_distribute = ns_;
@@ -131,5 +133,7 @@ int RadialPartitioning::get_num_threads() const { return num_threads_; }
 int RadialPartitioning::get_thread_id() const { return thread_id_; }
 
 bool RadialPartitioning::has_boundary() const { return nsMaxF1 == ns_; }
+
+bool RadialPartitioning::has_inner_boundary() const { return inner_boundary_; }
 
 }  // namespace vmecpp
