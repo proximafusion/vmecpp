@@ -47,8 +47,12 @@ class RadialProfiles {
   double polflux(double x);
 
   double evalMassProfile(double x);
+  // iota, or 1/q with lrfp, where ai describes q
   double evalIotaProfile(double x);
   double evalCurrProfile(double x);
+  // The flux label at which the profiles are evaluated at radial position x:
+  // the enclosed toroidal flux, or x itself with lrfp.
+  double profileCoordinate(double x);
 
   // With ncurr = 1 the enclosed current profile is a shape scaled to curtor by
   // its value at the boundary, so a profile that encloses no net current there
