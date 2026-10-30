@@ -20,3 +20,4 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
 - [`force_balance_spectrum.py`](../examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
 - [`alfven_rope.py`](../examples/alfven_rope.py): solve Alfven's Birkeland rope of two or more strands, a Taylor-state strand inside a boundary matched to NESTOR's vacuum field from the other strands and a guide field.
+- [`alfven_rope_coalescence.py`](../examples/alfven_rope_coalescence.py): compute the inductive energy of Alfven's two-strand rope and of the single strand its strands coalesce into.

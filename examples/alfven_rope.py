@@ -428,7 +428,7 @@ def match(rope, workers, report=print):
         * rope.strands
         * rope.current
         / (4.0 * np.pi * R0)
-        * (np.log(8.0 * R0 / (0.88 * rope.helix_radius)) - 1.25)
+        * (np.log(8.0 * R0 / (0.88 * max(rope.helix_radius, rope.radius))) - 1.25)
     )
     y = np.concatenate([x0[free], [vertical]])
     f, start = evaluate(rope, x0, None, y)
