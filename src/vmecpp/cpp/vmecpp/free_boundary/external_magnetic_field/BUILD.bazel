@@ -16,3 +16,17 @@ cc_library(
         "@abseil-cpp//absl/status:status",
     ],
 )
+
+cc_test(
+    name = "external_magnetic_field_test",
+    srcs = ["external_magnetic_field_test.cc"],
+    deps = [
+        ":external_magnetic_field",
+        "//vmecpp/common/fourier_basis_fast_toroidal",
+        "//vmecpp/common/sizes:sizes",
+        "//vmecpp/free_boundary/surface_geometry:surface_geometry",
+        "//vmecpp/free_boundary/tangential_partitioning:tangential_partitioning",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

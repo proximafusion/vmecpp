@@ -80,19 +80,23 @@ class ExternalMagneticField {
   // ABSCAB-version and `no_abscab_in_belicu` for simple version.
   static constexpr bool kUseAbscabForAxisCurrent = false;
 
-  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
-  // resolved by the surface grid; the net-toroidal-current axis filament is
-  // then replicated over this many equally-spaced toroidal angles to resolve
-  // it (educational_VMEC uses nvper = 64 for the tokamak case). For nZeta > 1,
-  // nvper is the number of field periods.
-  static constexpr int kAxisymmetricToroidalReplication = 64;
+  // number of field periods over which the axis polygon repeats
   int nvper_;
+
+  // whether the axis current flows on the circular axis, for nZeta == 1
+  bool circular_axis_;
 
   const Sizes& s_;
   const TangentialPartitioning& tp_;
 
   const SurfaceGeometry& sg_;
   const MagneticFieldFunction* magnetic_field_;
+
+  // Adds the field of the net toroidal current along the magnetic axis, on the
+  // circular axis of an axisymmetric plasma and the axis polygon otherwise.
+  void AddAxisCurrentField(const std::span<const double> rAxis,
+                           const std::span<const double> zAxis,
+                           double netToroidalCurrent);
 
   // Compute the contribution to the external magnetic field from net toroidal
   // current along magnetic axis. Here, the contribution is computed using
@@ -105,6 +109,12 @@ class ExternalMagneticField {
   // current along magnetic axis. Here, this contribution is computed using a
   // straightforward implementation of the Hanson-Hirshman 2002 paper.
   void AddAxisCurrentFieldSimple(const std::span<const double> rAxis,
+                                 const std::span<const double> zAxis,
+                                 double netToroidalCurrent);
+
+  // Compute the contribution to the external magnetic field from net toroidal
+  // current along the circular magnetic axis, as a circular filament.
+  void AddAxisCurrentFieldCircle(const std::span<const double> rAxis,
                                  const std::span<const double> zAxis,
                                  double netToroidalCurrent);
 

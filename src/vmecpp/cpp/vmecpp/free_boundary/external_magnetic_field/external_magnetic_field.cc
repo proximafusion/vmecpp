@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/external_magnetic_field/external_magnetic_field.h"
 
+#include <array>
 #include <cmath>
 
 #include "abscab/abscab.hh"
@@ -15,12 +16,10 @@ ExternalMagneticField::ExternalMagneticField(
     const Sizes* s, const TangentialPartitioning* tp, const SurfaceGeometry* sg,
     const MagneticFieldFunction* magnetic_field)
     : s_(*s), tp_(*tp), sg_(*sg), magnetic_field_(magnetic_field) {
-  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is not
-  // resolved by the surface grid, so the axis-current filament is replicated
-  // over nvper equally-spaced toroidal angles (matching educational_VMEC's
-  // nvper = 64 for the tokamak); otherwise nvper is the number of field
-  // periods.
-  nvper_ = (s_.nZeta == 1) ? kAxisymmetricToroidalReplication : s_.nfp;
+  // the axis polygon repeats over the field periods; an axisymmetric
+  // (nZeta == 1) plasma carries the axis current on the circular axis instead
+  nvper_ = s_.nfp;
+  circular_axis_ = s_.nZeta == 1;
 
   // nzeta points per each of the nvper toroidal replications,
   // and then one more point to close the loop
@@ -72,11 +71,7 @@ absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
 #pragma omp barrier
 #endif  // _OPENMP
 
-  if (kUseAbscabForAxisCurrent) {
-    AddAxisCurrentFieldAbscab(rAxis, zAxis, netToroidalCurrent);
-  } else {
-    AddAxisCurrentFieldSimple(rAxis, zAxis, netToroidalCurrent);
-  }
+  AddAxisCurrentField(rAxis, zAxis, netToroidalCurrent);
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -89,6 +84,20 @@ absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
 #endif  // _OPENMP
 
   return field_status;
+}
+
+void ExternalMagneticField::AddAxisCurrentField(
+    const std::span<const double> rAxis, const std::span<const double> zAxis,
+    double netToroidalCurrent) {
+  if (circular_axis_) {
+    AddAxisCurrentFieldCircle(rAxis, zAxis, netToroidalCurrent);
+    return;
+  }
+  if (kUseAbscabForAxisCurrent) {
+    AddAxisCurrentFieldAbscab(rAxis, zAxis, netToroidalCurrent);
+    return;
+  }
+  AddAxisCurrentFieldSimple(rAxis, zAxis, netToroidalCurrent);
 }
 
 // add in contribution from net toroidal current along magnetic axis
@@ -306,6 +315,36 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
     curtorBr[kl - tp_.ztMin] = _bR;
     curtorBp[kl - tp_.ztMin] = _bP;
     curtorBz[kl - tp_.ztMin] = _bZ;
+  }  // kl
+}
+
+void ExternalMagneticField::AddAxisCurrentFieldCircle(
+    const std::span<const double> rAxis, const std::span<const double> zAxis,
+    double netToroidalCurrent) {
+  // the surface points lie in the plane phi = 0, where x is R and y is phi
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    surfaceXYZ[(kl - tp_.ztMin) * 3 + 0] = sg_.r1b[kl];
+    surfaceXYZ[(kl - tp_.ztMin) * 3 + 1] = 0.0;
+    surfaceXYZ[(kl - tp_.ztMin) * 3 + 2] = sg_.z1b[kl];
+  }  // kl
+
+  axis_current = netToroidalCurrent;
+
+  // ABSCAB adds to the target storage
+  bCoilsXYZ.setZero();
+
+  // the axis is the circle of radius rAxis[0] about the Z axis at height
+  // zAxis[0], its current flowing towards increasing phi
+  std::array<double, 3> center = {0.0, 0.0, zAxis[0]};
+  std::array<double, 3> normal = {0.0, 0.0, 1.0};
+  abscab::magneticFieldCircularFilament(center.data(), normal.data(), rAxis[0],
+                                        axis_current, tp_.ztMax - tp_.ztMin,
+                                        surfaceXYZ.data(), bCoilsXYZ.data());
+
+  for (int kl = tp_.ztMin; kl < tp_.ztMax; ++kl) {
+    curtorBr[kl - tp_.ztMin] = bCoilsXYZ[3 * (kl - tp_.ztMin) + 0];
+    curtorBp[kl - tp_.ztMin] = bCoilsXYZ[3 * (kl - tp_.ztMin) + 1];
+    curtorBz[kl - tp_.ztMin] = bCoilsXYZ[3 * (kl - tp_.ztMin) + 2];
   }  // kl
 }
 
