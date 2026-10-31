@@ -19,3 +19,5 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`self_consistent_bootstrap_current.py`](../examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
 - [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
 - [`force_balance_spectrum.py`](../examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
+- [`alfven_rope.py`](../examples/alfven_rope.py): solve Alfven's Birkeland rope of two or more strands, a Taylor-state strand inside a boundary matched to NESTOR's vacuum field from the other strands and a guide field.
+- [`alfven_rope_coalescence.py`](../examples/alfven_rope_coalescence.py): compute the inductive energy of Alfven's two-strand rope and of the single strand its strands coalesce into.
