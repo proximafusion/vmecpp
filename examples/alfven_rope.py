@@ -370,11 +370,23 @@ def projection(m_shape, n_shape):
     return np.linalg.pinv(grid)
 
 
-def jump(free):
+def jump(fixed, free):
     """The jump in magnetic pressure across the boundary on the solver's grid, plasma
-    minus vacuum, in units of B0^2 / 2."""
-    fb = free.threed1_free_boundary
-    return ((np.asarray(fb.bsqmhdi) - np.asarray(fb.bsqvaci)) / (0.5 * B0**2)).ravel()
+    minus vacuum, in units of B0^2 / 2: the plasma's extrapolated to the boundary from
+    its two outermost half-grid surfaces, the vacuum's from the first free-boundary
+    evaluation, on the boundary of the fixed run."""
+    wout = fixed.wout
+    k, j = np.meshgrid(np.arange(NZETA), np.arange(NTHETA // 2 + 1), indexing="ij")
+    theta, zeta = 2.0 * np.pi * j / NTHETA, 2.0 * np.pi * k / (NZETA * N)
+    xm = np.asarray(wout.xm_nyq)[:, None, None]
+    xn = np.asarray(wout.xn_nyq)[:, None, None]
+    cos = np.cos(xm * theta - xn * zeta)
+    plasma = [
+        0.5 * np.tensordot(np.asarray(wout.bmnc)[:, js], cos, 1) ** 2
+        for js in (wout.ns - 1, wout.ns - 2)
+    ]
+    vacuum = np.asarray(free.threed1_free_boundary.bsqvaci)
+    return ((1.5 * plasma[0] - 0.5 * plasma[1] - vacuum) / (0.5 * B0**2)).ravel()
 
 
 def unknowns_to_shape(rope, x0, y):
@@ -396,7 +408,7 @@ def evaluate(rope, x0, start, y):
         return np.full(len(rope.modes), PENALTY), None
     if fixed.wout.ier_flag != 0:
         return np.full(len(rope.modes), PENALTY), None
-    return projection(rope.m_shape, rope.n_shape) @ jump(free), fixed
+    return projection(rope.m_shape, rope.n_shape) @ jump(fixed, free), fixed
 
 
 def residual(rope, x0, start, y):

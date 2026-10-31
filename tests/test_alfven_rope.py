@@ -26,8 +26,10 @@ def matched():
 
 
 def test_pressure_balance(matched):
-    rope, _, free = matched
-    modes = alfven_rope.projection(rope.m_shape, rope.n_shape) @ alfven_rope.jump(free)
+    rope, fixed, free = matched
+    modes = alfven_rope.projection(rope.m_shape, rope.n_shape) @ alfven_rope.jump(
+        fixed, free
+    )
     np.testing.assert_allclose(modes, 0.0, atol=1e-6)
 
 
