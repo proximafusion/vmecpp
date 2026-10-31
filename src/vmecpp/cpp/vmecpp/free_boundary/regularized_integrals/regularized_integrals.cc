@@ -5,6 +5,8 @@
 #include "vmecpp/free_boundary/regularized_integrals/regularized_integrals.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -57,22 +59,25 @@ void RegularizedIntegrals::computeConstants() {
     }
   }  // k
 
-  // For an axisymmetric (nZeta == 1) plasma the toroidal direction is resolved
-  // by nvper_ toroidal images rather than the surface grid; precompute the
-  // analytic-approximation toroidal-angle factor at each image angle.
-  nvper_ = (s_.nZeta == 1) ? kAxisymmetricToroidalImages : s_.nfp;
-  if (s_.nZeta == 1) {
-    tanv_per_.resize(nvper_);
-    for (int p = 0; p < nvper_; ++p) {
-      const double argv = M_PI * p / nvper_;
-      if (std::abs(argv - 0.5 * M_PI) < epsTan) {
-        // mask singularity at pi/2
-        tanv_per_[p] = bigNo;
-      } else {
-        tanv_per_[p] = 2.0 * std::tan(argv);
-      }
-    }  // p
-  }
+  // an axisymmetric (nZeta == 1) plasma integrates over toroidal images, whose
+  // number the first update takes from the boundary
+  nvper_ = (s_.nZeta == 1) ? 0 : s_.nfp;
+}
+
+void RegularizedIntegrals::SetToroidalImages(int count) {
+  const double epsTan = 1.0e-15;
+  const double bigNo = 1.0e50;
+
+  nvper_ = count;
+  tanv_per_.resize(nvper_);
+  for (int p = 0; p < nvper_; ++p) {
+    const double argv = M_PI * p / nvper_;
+    tanv_per_[p] = 2.0 * std::tan(argv);
+    if (std::abs(argv - 0.5 * M_PI) < epsTan) {
+      // mask singularity at pi/2
+      tanv_per_[p] = bigNo;
+    }
+  }  // p
 }
 
 void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
@@ -236,6 +241,22 @@ void RegularizedIntegrals::updateAxisymmetric(const Eigen::VectorXd& bDotN) {
   // integral is added back in SingularIntegrals.
   const int numLocal = tp_.ztMax - tp_.ztMin;
   const int nThetaEven = s_.nThetaEven;  // == theta_by_nzeta since nZeta == 1
+
+  if (nvper_ == 0) {
+    // images no farther apart on the outboard side than twice the closest
+    // neighbouring boundary points in the poloidal plane
+    double r_max = 0.0;
+    double spacing = std::numeric_limits<double>::infinity();
+    for (int l = 0; l < nThetaEven; ++l) {
+      const int next = (l + 1) % nThetaEven;
+      r_max = std::max(r_max, sg_.r1b[l]);
+      spacing = std::min(spacing, std::hypot(sg_.r1b[next] - sg_.r1b[l],
+                                             sg_.z1b[next] - sg_.z1b[l]));
+    }
+    SetToroidalImages(
+        std::max(kAxisymmetricToroidalImages,
+                 static_cast<int>(std::ceil(M_PI * r_max / spacing))));
+  }
 
   absl::c_fill_n(greenp, numLocal * nThetaEven, 0);
   absl::c_fill_n(gstore, nThetaEven, 0);
