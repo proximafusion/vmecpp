@@ -2762,8 +2762,8 @@ class Threed1FreeBoundary(BaseModelWithNumpy):
     established."""
 
     bsqmhdf: jt.Float[np.ndarray, "nzeta ntheta"]
-    """Plasma-side total pressure at convergence, extrapolated to the boundary from
-    the two outermost half-grid surfaces."""
+    """Plasma-side total pressure at convergence, extrapolated to the boundary from the
+    two outermost half-grid surfaces."""
 
     bsqvacf: jt.Float[np.ndarray, "nzeta ntheta"]
     """Vacuum-side magnetic pressure at convergence."""
