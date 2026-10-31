@@ -75,8 +75,8 @@ def test_merged_pressure_balance():
     merged = alfven_rope_coalescence.Merged(
         angle=data["angle"], spacing=data["spacing"]
     )
-    _, free = alfven_rope.solve(merged, np.array(data["x"]), data["vertical"])
+    fixed, free = alfven_rope.solve(merged, np.array(data["x"]), data["vertical"])
     modes = alfven_rope.projection(merged.m_shape, merged.n_shape) @ alfven_rope.jump(
-        free
+        fixed, free
     )
     np.testing.assert_allclose(modes, 0.0, atol=1e-6)
