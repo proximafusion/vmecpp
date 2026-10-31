@@ -2738,8 +2738,8 @@ class Threed1FreeBoundary(BaseModelWithNumpy):
     ``phib = 2 pi k / (nzeta nfp)`` over one field period and the poloidal points
     of the reduced range (the full range when ``lasym``). The pressures are
     VMEC's normalized ones, ``B^2/2 + mu0 p`` on the plasma side and ``B^2/2`` on
-    the vacuum side, so their difference is the jump in total pressure across
-    the boundary. Every array is zero for a fixed-boundary run.
+    the vacuum side, so ``bsqmhdf - bsqvacf`` is the jump in total pressure across
+    the boundary at convergence. Every array is zero for a fixed-boundary run.
     """
 
     model_config = pydantic.ConfigDict(extra="forbid")
@@ -2754,13 +2754,16 @@ class Threed1FreeBoundary(BaseModelWithNumpy):
     """Boundary Z."""
 
     bsqmhdi: jt.Float[np.ndarray, "nzeta ntheta"]
-    """Plasma-side total pressure when the vacuum field was first established."""
+    """Plasma-side total pressure on the outermost half-grid surface when the vacuum
+    field was first established."""
 
     bsqvaci: jt.Float[np.ndarray, "nzeta ntheta"]
-    """Vacuum-side magnetic pressure when the vacuum field was first established."""
+    """Vacuum-side magnetic pressure on the boundary when the vacuum field was first
+    established."""
 
     bsqmhdf: jt.Float[np.ndarray, "nzeta ntheta"]
-    """Plasma-side total pressure at convergence."""
+    """Plasma-side total pressure at convergence, extrapolated to the boundary from
+    the two outermost half-grid surfaces."""
 
     bsqvacf: jt.Float[np.ndarray, "nzeta ntheta"]
     """Vacuum-side magnetic pressure at convergence."""
