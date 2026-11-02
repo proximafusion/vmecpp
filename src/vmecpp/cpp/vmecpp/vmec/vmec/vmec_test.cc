@@ -1016,6 +1016,33 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   EXPECT_GT(output->wout.lcfs_force.maxCoeff(), 0.0);
 }  // MultiGridFreeBoundary
 
+// The force residual on the LCFS is a sum of squares of forces, so once the
+// first iteration records it, none records it as exactly zero, on any number of
+// threads.
+TEST(TestVmec, LcfsForceIsRecordedInEveryIteration) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_multigrid.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  for (const int threads : {1, 4}) {
+    const auto output = vmecpp::run(*indata, std::nullopt, threads);
+    ASSERT_TRUE(output.ok());
+    const Eigen::VectorXd& lcfs_force = output->wout.lcfs_force;
+    Eigen::Index first = 0;
+    while (first < lcfs_force.size() && lcfs_force[first] == 0.0) {
+      ++first;
+    }
+    ASSERT_LT(first, lcfs_force.size());
+    const Eigen::Index zeros =
+        (lcfs_force.tail(lcfs_force.size() - first).array() == 0.0).count();
+    EXPECT_EQ(zeros, 0) << threads << " threads, " << first
+                        << " leading zeros, " << lcfs_force.size()
+                        << " iterations";
+  }
+}  // LcfsForceIsRecordedInEveryIteration
+
 // The free-boundary threed1 section covers the poloidal range the run is solved
 // on, which is the full one for an asymmetric equilibrium, so the boundary it
 // reports must reproduce the wout Fourier series at every point of that range.
