@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793623876341,
+  "lastUpdate": 1793624677014,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26519,6 +26519,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.2854415630000062,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "30f16b5cb898babf969c59926c477cb0627d71b3",
+          "message": "Use abscab's vectorized SoA polygon-filament routines (#1043)\n\n* Use abscab's vectorized SoA polygon-filament routines\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n\n* Evaluate magnetic configurations in the SoA (3, n) layout throughout\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-02T13:43:43+01:00",
+          "tree_id": "7791856924ad8eb1def67e0dc54e533c0ed571fa",
+          "url": "https://github.com/proximafusion/vmecpp/commit/30f16b5cb898babf969c59926c477cb0627d71b3"
+        },
+        "date": 1793624669375,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.6434397617999934,
+            "range": "stddev: 0.0028087056871508535",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.563109939999985,
+            "range": "stddev: 0.012513699684110967",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0878011800000043,
+            "range": "stddev: 0.0007309578068609757",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6867309246666764,
+            "range": "stddev: 0.03432786916625506",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.6252567919999971,
+            "range": "stddev: 0.0022145789089622063",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.7138359420000215,
+            "range": "stddev: 0.016814710574988446",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.2087313670000412,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.47578963700004806,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
