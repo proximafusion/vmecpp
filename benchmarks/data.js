@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793622861450,
+  "lastUpdate": 1793623528095,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26439,6 +26439,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3069182009999736,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "130992531+jons-pf@users.noreply.github.com",
+            "name": "Jonathan Schilling",
+            "username": "jons-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0617f6f9501b86ed453454ccb77571a51f65565b",
+          "message": "review/try-out of command line usage examples in README (#1026)\n\nalso added makegrid example input files for `vmec.test` (here `cth_like`) example from PARVMEC repo.",
+          "timestamp": "2026-11-02T12:38:22Z",
+          "tree_id": "79899f2b7778ba7c6d3ed359ab0128711bc7ef40",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0617f6f9501b86ed453454ccb77571a51f65565b"
+        },
+        "date": 1793623522141,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.581522830400013,
+            "range": "stddev: 0.0010976173298204851",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.706571282000008,
+            "range": "stddev: 0.016040366668881305",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0697638643333296,
+            "range": "stddev: 0.0021679412946419316",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.8716174973333182,
+            "range": "stddev: 0.016279922365838768",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2700188486666661,
+            "range": "stddev: 0.006048031723990164",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.477765082333311,
+            "range": "stddev: 0.019762823012149367",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.124265094000009,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.2854415630000062,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
