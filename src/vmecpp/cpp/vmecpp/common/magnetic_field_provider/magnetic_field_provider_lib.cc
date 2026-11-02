@@ -4,9 +4,8 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/common/magnetic_field_provider/magnetic_field_provider_lib.h"
 
-#include <algorithm>  // fill, max
+#include <algorithm>  // max
 #include <cstddef>
-#include <span>
 #include <sstream>
 #include <vector>
 
@@ -27,92 +26,51 @@ using composed_types::Vector3d;
 
 namespace {
 
-// ABSCAB takes point sets as flat arrays in array-of-structs order
-// (x0, y0, z0, x1, y1, z1, ...), and declares its input pointers non-const
-// without writing through them, hence the mutable spans below. Converting into
-// and out of that order is done once per MagneticConfiguration rather than once
-// per current carrier.
+// Point sets are held as (3, n) row-major matrices: the x, y and z components
+// are contiguous rows, the struct-of-arrays layout of ABSCAB's vectorized
+// polygon-filament routines. The nested-vector overloads of the public API
+// are converted into and out of this layout once per call.
 
-std::vector<double> ToAbscabOrder(
-    const std::vector<std::vector<double>>& positions) {
-  const std::size_t number_of_positions = positions.size();
-  std::vector<double> flat(number_of_positions * 3);
-  for (std::size_t i = 0; i < number_of_positions; ++i) {
-    flat[i * 3 + 0] = positions[i][0];
-    flat[i * 3 + 1] = positions[i][1];
-    flat[i * 3 + 2] = positions[i][2];
+using FlatMatrix3Xd = Eigen::Matrix<double, 3, Eigen::Dynamic, Eigen::ColMajor>;
+
+RowMatrix3Xd ToRowMatrix(const std::vector<std::vector<double>>& positions) {
+  RowMatrix3Xd matrix(3, static_cast<Eigen::Index>(positions.size()));
+  for (Eigen::Index column = 0; column < matrix.cols(); ++column) {
+    const auto& position = positions[static_cast<std::size_t>(column)];
+    matrix.col(column) << position[0], position[1], position[2];
   }
+  return matrix;
+}
+
+RowMatrix3Xd VerticesToRowMatrix(const PolygonFilament& polygon_filament) {
+  RowMatrix3Xd matrix(3, polygon_filament.vertices_size());
+  for (int i = 0; i < polygon_filament.vertices_size(); ++i) {
+    const Vector3d& vertex = polygon_filament.vertices(i);
+    matrix.col(i) << vertex.x(), vertex.y(), vertex.z();
+  }
+  return matrix;
+}
+
+void AddToVectors(const RowMatrix3Xd& contribution,
+                  std::vector<std::vector<double>>& m_target) {
+  for (Eigen::Index column = 0; column < contribution.cols(); ++column) {
+    auto& target = m_target[static_cast<std::size_t>(column)];
+    target[0] += contribution(0, column);
+    target[1] += contribution(1, column);
+    target[2] += contribution(2, column);
+  }
+}
+
+// ABSCAB's circular-filament routines take point sets as flat arrays in
+// array-of-structs order (x0, y0, z0, x1, y1, z1, ...).
+std::vector<double> Interleave(const RowMatrix3Xd& positions) {
+  std::vector<double> flat(static_cast<std::size_t>(positions.size()));
+  Eigen::Map<FlatMatrix3Xd>(flat.data(), 3, positions.cols()) = positions;
   return flat;
 }
 
-std::vector<double> ToAbscabOrder(const RowMatrix3Xd& positions) {
-  const auto number_of_positions = static_cast<std::size_t>(positions.cols());
-  std::vector<double> flat(number_of_positions * 3);
-  for (std::size_t i = 0; i < number_of_positions; ++i) {
-    const auto column = static_cast<Eigen::Index>(i);
-    flat[i * 3 + 0] = positions(0, column);
-    flat[i * 3 + 1] = positions(1, column);
-    flat[i * 3 + 2] = positions(2, column);
-  }
-  return flat;
-}
-
-// Struct-of-arrays copy of an array-of-structs point set, as taken by the
-// vectorized polygon-filament routines.
-struct Soa {
-  std::vector<double> x, y, z;
-
-  explicit Soa(std::size_t size) : x(size), y(size), z(size) {}
-};
-
-Soa ToSoa(std::span<const double> aos) {
-  Soa soa(aos.size() / 3);
-  for (std::size_t i = 0; i < soa.x.size(); ++i) {
-    soa.x[i] = aos[i * 3 + 0];
-    soa.y[i] = aos[i * 3 + 1];
-    soa.z[i] = aos[i * 3 + 2];
-  }
-  return soa;
-}
-
-Soa VerticesToSoa(const PolygonFilament& polygon_filament) {
-  Soa soa(static_cast<std::size_t>(polygon_filament.vertices_size()));
-  for (std::size_t i = 0; i < soa.x.size(); ++i) {
-    const Vector3d& vertex = polygon_filament.vertices(static_cast<int>(i));
-    soa.x[i] = vertex.x();
-    soa.y[i] = vertex.y();
-    soa.z[i] = vertex.z();
-  }
-  return soa;
-}
-
-// Adds the SoA polygon-filament result (which the routine accumulates into)
-// onto the array-of-structs contribution.
-void AddFromSoa(const Soa& soa, std::span<double> m_contribution) {
-  for (std::size_t i = 0; i < soa.x.size(); ++i) {
-    m_contribution[i * 3 + 0] += soa.x[i];
-    m_contribution[i * 3 + 1] += soa.y[i];
-    m_contribution[i * 3 + 2] += soa.z[i];
-  }
-}
-
-void AddFromAbscabOrder(const std::vector<double>& contribution,
-                        std::vector<std::vector<double>>& m_target) {
-  for (std::size_t i = 0; i < m_target.size(); ++i) {
-    m_target[i][0] += contribution[i * 3 + 0];
-    m_target[i][1] += contribution[i * 3 + 1];
-    m_target[i][2] += contribution[i * 3 + 2];
-  }
-}
-
-void AddFromAbscabOrder(const std::vector<double>& contribution,
-                        RowMatrix3Xd& m_target) {
-  for (Eigen::Index column = 0; column < m_target.cols(); ++column) {
-    const auto i = static_cast<std::size_t>(column);
-    m_target(0, column) += contribution[i * 3 + 0];
-    m_target(1, column) += contribution[i * 3 + 1];
-    m_target(2, column) += contribution[i * 3 + 2];
-  }
+void AddInterleaved(const std::vector<double>& flat, RowMatrix3Xd& m_target) {
+  m_target += Eigen::Map<const FlatMatrix3Xd>(flat.data(), 3, m_target.cols());
 }
 
 // The contribution of a single current carrier, added into m_contribution in
@@ -120,7 +78,7 @@ void AddFromAbscabOrder(const std::vector<double>& contribution,
 
 void AddMagneticField(
     const InfiniteStraightFilament& infinite_straight_filament, double current,
-    std::span<double> evaluation_positions, std::span<double> m_contribution) {
+    const RowMatrix3Xd& evaluation_positions, RowMatrix3Xd& m_contribution) {
   if (current == 0.0) {
     // no current -> no contribution
     return;
@@ -147,11 +105,10 @@ void AddMagneticField(
   const double origin_y = origin.y();
   const double origin_z = origin.z();
 
-  const std::size_t num_evaluation_locations = evaluation_positions.size() / 3;
-  for (std::size_t i = 0; i < num_evaluation_locations; ++i) {
-    const double evaluation_position_x = evaluation_positions[i * 3 + 0];
-    const double evaluation_position_y = evaluation_positions[i * 3 + 1];
-    const double evaluation_position_z = evaluation_positions[i * 3 + 2];
+  for (Eigen::Index i = 0; i < evaluation_positions.cols(); ++i) {
+    const double evaluation_position_x = evaluation_positions(0, i);
+    const double evaluation_position_y = evaluation_positions(1, i);
+    const double evaluation_position_z = evaluation_positions(2, i);
 
     // connection vector from evaluation position to origin on filament
     const double delta_eval_origin_x = origin_x - evaluation_position_x;
@@ -222,15 +179,15 @@ void AddMagneticField(
         toroidal_unit_vector_z * magnetic_field_strength;
 
     // add to target storage
-    m_contribution[i * 3 + 0] += magnetic_field_vector_x;
-    m_contribution[i * 3 + 1] += magnetic_field_vector_y;
-    m_contribution[i * 3 + 2] += magnetic_field_vector_z;
+    m_contribution(0, i) += magnetic_field_vector_x;
+    m_contribution(1, i) += magnetic_field_vector_y;
+    m_contribution(2, i) += magnetic_field_vector_z;
   }
 }  // AddMagneticField for InfiniteStraightFilament
 
 void AddMagneticField(const CircularFilament& circular_filament, double current,
-                      std::span<double> evaluation_positions,
-                      std::span<double> m_contribution) {
+                      const RowMatrix3Xd& evaluation_positions,
+                      RowMatrix3Xd& m_contribution) {
   const Vector3d& center_vector = circular_filament.center();
   std::vector<double> center = {
       center_vector.x(),
@@ -247,30 +204,38 @@ void AddMagneticField(const CircularFilament& circular_filament, double current,
 
   const double radius = circular_filament.radius();
 
+  // ABSCAB declares its inputs non-const without writing through them.
+  std::vector<double> flat_positions = Interleave(evaluation_positions);
+  std::vector<double> flat_contribution(flat_positions.size(), 0.0);
   abscab::magneticFieldCircularFilament(
       center.data(), normal.data(), radius, current,
-      static_cast<int>(evaluation_positions.size() / 3),
-      evaluation_positions.data(), m_contribution.data());
+      static_cast<int>(evaluation_positions.cols()), flat_positions.data(),
+      flat_contribution.data());
+  AddInterleaved(flat_contribution, m_contribution);
 }  // AddMagneticField for CircularFilament
 
 void AddMagneticField(const PolygonFilament& polygon_filament, double current,
-                      std::span<double> evaluation_positions,
-                      std::span<double> m_contribution) {
-  const Soa vertices = VerticesToSoa(polygon_filament);
-  const Soa positions = ToSoa(evaluation_positions);
-  Soa result(positions.x.size());
+                      const RowMatrix3Xd& evaluation_positions,
+                      RowMatrix3Xd& m_contribution) {
+  const RowMatrix3Xd vertices = VerticesToRowMatrix(polygon_filament);
+  const Eigen::Index num_vertices = vertices.cols();
+  const Eigen::Index num_positions = evaluation_positions.cols();
 
+  // Rows of a row-major matrix are contiguous: x, y, z start at data() + k * n.
   abscab::magneticFieldPolygonFilament(
-      polygon_filament.vertices_size(), vertices.x.data(), vertices.y.data(),
-      vertices.z.data(), current, static_cast<int>(positions.x.size()),
-      positions.x.data(), positions.y.data(), positions.z.data(),
-      result.x.data(), result.y.data(), result.z.data());
-  AddFromSoa(result, m_contribution);
+      static_cast<int>(num_vertices), vertices.data(),
+      vertices.data() + num_vertices, vertices.data() + 2 * num_vertices,
+      current, static_cast<int>(num_positions), evaluation_positions.data(),
+      evaluation_positions.data() + num_positions,
+      evaluation_positions.data() + 2 * num_positions, m_contribution.data(),
+      m_contribution.data() + num_positions,
+      m_contribution.data() + 2 * num_positions);
 }  // AddMagneticField for PolygonFilament
 
 void AddVectorPotential(const CircularFilament& circular_filament,
-                        double current, std::span<double> evaluation_positions,
-                        std::span<double> m_contribution) {
+                        double current,
+                        const RowMatrix3Xd& evaluation_positions,
+                        RowMatrix3Xd& m_contribution) {
   const Vector3d& center_vector = circular_filament.center();
   std::vector<double> center = {
       center_vector.x(),
@@ -292,25 +257,32 @@ void AddVectorPotential(const CircularFilament& circular_filament,
   // magnetic-field routines. With the negation, A is parallel to the current
   // that produces it, which agrees with MAKEGRID and with the closed form
   // checked in VectorPotential.CheckCircularFilament.
+  // ABSCAB declares its inputs non-const without writing through them.
+  std::vector<double> flat_positions = Interleave(evaluation_positions);
+  std::vector<double> flat_contribution(flat_positions.size(), 0.0);
   abscab::vectorPotentialCircularFilament(
       center.data(), normal.data(), radius, -current,
-      static_cast<int>(evaluation_positions.size() / 3),
-      evaluation_positions.data(), m_contribution.data());
+      static_cast<int>(evaluation_positions.cols()), flat_positions.data(),
+      flat_contribution.data());
+  AddInterleaved(flat_contribution, m_contribution);
 }  // AddVectorPotential for CircularFilament
 
 void AddVectorPotential(const PolygonFilament& polygon_filament, double current,
-                        std::span<double> evaluation_positions,
-                        std::span<double> m_contribution) {
-  const Soa vertices = VerticesToSoa(polygon_filament);
-  const Soa positions = ToSoa(evaluation_positions);
-  Soa result(positions.x.size());
+                        const RowMatrix3Xd& evaluation_positions,
+                        RowMatrix3Xd& m_contribution) {
+  const RowMatrix3Xd vertices = VerticesToRowMatrix(polygon_filament);
+  const Eigen::Index num_vertices = vertices.cols();
+  const Eigen::Index num_positions = evaluation_positions.cols();
 
+  // Rows of a row-major matrix are contiguous: x, y, z start at data() + k * n.
   abscab::vectorPotentialPolygonFilament(
-      polygon_filament.vertices_size(), vertices.x.data(), vertices.y.data(),
-      vertices.z.data(), current, static_cast<int>(positions.x.size()),
-      positions.x.data(), positions.y.data(), positions.z.data(),
-      result.x.data(), result.y.data(), result.z.data());
-  AddFromSoa(result, m_contribution);
+      static_cast<int>(num_vertices), vertices.data(),
+      vertices.data() + num_vertices, vertices.data() + 2 * num_vertices,
+      current, static_cast<int>(num_positions), evaluation_positions.data(),
+      evaluation_positions.data() + num_positions,
+      evaluation_positions.data() + 2 * num_positions, m_contribution.data(),
+      m_contribution.data() + num_positions,
+      m_contribution.data() + 2 * num_positions);
 }  // AddVectorPotential for PolygonFilament
 
 // The current of a coil within a serial circuit.
@@ -338,11 +310,11 @@ absl::Status UnsupportedCurrentCarrier(const CurrentCarrier& current_carrier) {
 // buffer that is added on afterwards, so contributions are summed in the same
 // order and with the same rounding as when each carrier is evaluated on its
 // own.
-template <typename Target>
 absl::Status AccumulateMagneticField(
     const MagneticConfiguration& magnetic_configuration,
-    std::span<double> evaluation_positions, Target& m_target) {
-  std::vector<double> contribution(evaluation_positions.size(), 0.0);
+    const RowMatrix3Xd& evaluation_positions, RowMatrix3Xd& m_target) {
+  RowMatrix3Xd contribution =
+      RowMatrix3Xd::Zero(3, evaluation_positions.cols());
 
   for (const SerialCircuit& serial_circuit :
        magnetic_configuration.serial_circuits()) {
@@ -355,7 +327,7 @@ absl::Status AccumulateMagneticField(
       const double current = CoilCurrent(serial_circuit, coil);
 
       for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
-        std::fill(contribution.begin(), contribution.end(), 0.0);
+        contribution.setZero();
         switch (current_carrier.type_case()) {
           case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
             AddMagneticField(current_carrier.infinite_straight_filament(),
@@ -375,7 +347,7 @@ absl::Status AccumulateMagneticField(
           default:
             return UnsupportedCurrentCarrier(current_carrier);
         }
-        AddFromAbscabOrder(contribution, m_target);
+        m_target += contribution;
       }  // CurrentCarrier
     }  // Coil
   }  // SerialCircuit
@@ -383,11 +355,11 @@ absl::Status AccumulateMagneticField(
   return absl::OkStatus();
 }  // AccumulateMagneticField
 
-template <typename Target>
 absl::Status AccumulateVectorPotential(
     const MagneticConfiguration& magnetic_configuration,
-    std::span<double> evaluation_positions, Target& m_target) {
-  std::vector<double> contribution(evaluation_positions.size(), 0.0);
+    const RowMatrix3Xd& evaluation_positions, RowMatrix3Xd& m_target) {
+  RowMatrix3Xd contribution =
+      RowMatrix3Xd::Zero(3, evaluation_positions.cols());
 
   for (const SerialCircuit& serial_circuit :
        magnetic_configuration.serial_circuits()) {
@@ -400,7 +372,7 @@ absl::Status AccumulateVectorPotential(
       const double current = CoilCurrent(serial_circuit, coil);
 
       for (const CurrentCarrier& current_carrier : coil.current_carriers()) {
-        std::fill(contribution.begin(), contribution.end(), 0.0);
+        contribution.setZero();
         switch (current_carrier.type_case()) {
           case CurrentCarrier::TypeCase::kInfiniteStraightFilament:
             // The magnetic vector potential diverges for an infinite straight
@@ -424,7 +396,7 @@ absl::Status AccumulateVectorPotential(
           default:
             return UnsupportedCurrentCarrier(current_carrier);
         }
-        AddFromAbscabOrder(contribution, m_target);
+        m_target += contribution;
       }  // CurrentCarrier
     }  // Coil
   }  // SerialCircuit
@@ -468,13 +440,12 @@ absl::Status MagneticField(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd contribution = RowMatrix3Xd::Zero(3, positions.cols());
 
-  AddMagneticField(infinite_straight_filament, current,
-                   evaluation_positions_flat, contribution);
-  AddFromAbscabOrder(contribution, m_magnetic_field);
+  AddMagneticField(infinite_straight_filament, current, positions,
+                   contribution);
+  AddToVectors(contribution, m_magnetic_field);
 
   return absl::OkStatus();
 }  // MagneticField for InfiniteStraightFilament
@@ -493,13 +464,11 @@ absl::Status MagneticField(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd contribution = RowMatrix3Xd::Zero(3, positions.cols());
 
-  AddMagneticField(circular_filament, current, evaluation_positions_flat,
-                   contribution);
-  AddFromAbscabOrder(contribution, m_magnetic_field);
+  AddMagneticField(circular_filament, current, positions, contribution);
+  AddToVectors(contribution, m_magnetic_field);
 
   return absl::OkStatus();
 }  // MagneticField for CircularFilament
@@ -518,13 +487,11 @@ absl::Status MagneticField(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd contribution = RowMatrix3Xd::Zero(3, positions.cols());
 
-  AddMagneticField(polygon_filament, current, evaluation_positions_flat,
-                   contribution);
-  AddFromAbscabOrder(contribution, m_magnetic_field);
+  AddMagneticField(polygon_filament, current, positions, contribution);
+  AddToVectors(contribution, m_magnetic_field);
 
   return absl::OkStatus();
 }  // MagneticField for PolygonFilament
@@ -544,10 +511,12 @@ absl::Status MagneticField(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  return AccumulateMagneticField(magnetic_configuration,
-                                 evaluation_positions_flat, m_magnetic_field);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd result = RowMatrix3Xd::Zero(3, positions.cols());
+  absl::Status status =
+      AccumulateMagneticField(magnetic_configuration, positions, result);
+  AddToVectors(result, m_magnetic_field);
+  return status;
 }  // MagneticField for MagneticConfiguration
 
 absl::Status MagneticField(const MagneticConfiguration& magnetic_configuration,
@@ -567,10 +536,8 @@ absl::Status MagneticField(const MagneticConfiguration& magnetic_configuration,
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  return AccumulateMagneticField(magnetic_configuration,
-                                 evaluation_positions_flat, m_magnetic_field);
+  return AccumulateMagneticField(magnetic_configuration, evaluation_positions,
+                                 m_magnetic_field);
 }  // MagneticField for MagneticConfiguration, Eigen layout
 
 // ----------------
@@ -589,13 +556,11 @@ absl::Status VectorPotential(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd contribution = RowMatrix3Xd::Zero(3, positions.cols());
 
-  AddVectorPotential(circular_filament, current, evaluation_positions_flat,
-                     contribution);
-  AddFromAbscabOrder(contribution, m_vector_potential);
+  AddVectorPotential(circular_filament, current, positions, contribution);
+  AddToVectors(contribution, m_vector_potential);
 
   return absl::OkStatus();
 }  // VectorPotential for CircularFilament
@@ -614,13 +579,11 @@ absl::Status VectorPotential(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  std::vector<double> contribution(evaluation_positions_flat.size(), 0.0);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd contribution = RowMatrix3Xd::Zero(3, positions.cols());
 
-  AddVectorPotential(polygon_filament, current, evaluation_positions_flat,
-                     contribution);
-  AddFromAbscabOrder(contribution, m_vector_potential);
+  AddVectorPotential(polygon_filament, current, positions, contribution);
+  AddToVectors(contribution, m_vector_potential);
 
   return absl::OkStatus();
 }  // VectorPotential for PolygonFilament
@@ -645,10 +608,12 @@ absl::Status VectorPotential(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  return AccumulateVectorPotential(
-      magnetic_configuration, evaluation_positions_flat, m_vector_potential);
+  const RowMatrix3Xd positions = ToRowMatrix(evaluation_positions);
+  RowMatrix3Xd result = RowMatrix3Xd::Zero(3, positions.cols());
+  absl::Status status =
+      AccumulateVectorPotential(magnetic_configuration, positions, result);
+  AddToVectors(result, m_vector_potential);
+  return status;
 }  // VectorPotential for MagneticConfiguration
 
 absl::Status VectorPotential(
@@ -673,10 +638,8 @@ absl::Status VectorPotential(
     }
   }
 
-  std::vector<double> evaluation_positions_flat =
-      ToAbscabOrder(evaluation_positions);
-  return AccumulateVectorPotential(
-      magnetic_configuration, evaluation_positions_flat, m_vector_potential);
+  return AccumulateVectorPotential(magnetic_configuration, evaluation_positions,
+                                   m_vector_potential);
 }  // VectorPotential for MagneticConfiguration, Eigen layout
 
 absl::StatusOr<double> LinkingCurrent(
