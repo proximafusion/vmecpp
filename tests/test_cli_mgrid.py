@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 from pathlib import Path
+from types import SimpleNamespace
 
 import netCDF4
 import pytest
@@ -42,6 +43,26 @@ def test_help_lists_subcommands(capsys):
     assert "convert" in out
     assert "makegrid" in out
     assert "mgrid" in out
+
+
+def test_quiet_run_does_not_print_output_message(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["vmecpp", "-q", "input.test"])
+    monkeypatch.setattr(cli.vmecpp.VmecInput, "from_file", lambda _: object())
+    monkeypatch.setattr(
+        cli.vmecpp,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            wout=SimpleNamespace(save=lambda _: None)
+        ),
+    )
+    monkeypatch.setattr(
+        cli.vmecpp._util, "get_vmec_configuration_name", lambda _: "test"
+    )
+
+    cli.main()
+
+    assert capsys.readouterr().out == ""
 
 
 if __name__ == "__main__":
