@@ -148,6 +148,24 @@ def test_run_with_hot_restart():
     assert vmec_output_hot_restarted.wout.niter == 2
 
 
+def test_run_with_hot_restart_from_wout(tmp_path):
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    wout_path = tmp_path / "wout_cma.nc"
+    vmec_output.wout.save(wout_path)
+    wout = vmecpp.VmecWOut.from_wout_file(wout_path)
+
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+    vmec_input.niter_array = vmec_input.niter_array[-1:]
+    restarted = vmecpp.run(vmec_input, verbose=False, restart_from=wout)
+    assert restarted.wout.niter == 2
+
+    mismatched = vmec_input.model_copy(update={"ntor": vmec_input.ntor + 1})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ntor"):
+        vmecpp.run(mismatched, verbose=False, restart_from=wout)
+
+
 def test_hot_restart_matches_ns_against_the_wout_of_the_state():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
     vmec_output = vmecpp.run(vmec_input, verbose=False)
