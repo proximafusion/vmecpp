@@ -57,17 +57,43 @@ std::vector<double> ToAbscabOrder(const RowMatrix3Xd& positions) {
   return flat;
 }
 
-std::vector<double> VerticesInAbscabOrder(
-    const PolygonFilament& polygon_filament) {
-  const int number_of_vertices = polygon_filament.vertices_size();
-  std::vector<double> flat(static_cast<std::size_t>(number_of_vertices) * 3);
-  for (int i = 0; i < number_of_vertices; ++i) {
-    const Vector3d& vertex = polygon_filament.vertices(i);
-    flat[i * 3 + 0] = vertex.x();
-    flat[i * 3 + 1] = vertex.y();
-    flat[i * 3 + 2] = vertex.z();
+// Struct-of-arrays copy of an array-of-structs point set, as taken by the
+// vectorized polygon-filament routines.
+struct Soa {
+  std::vector<double> x, y, z;
+
+  explicit Soa(std::size_t size) : x(size), y(size), z(size) {}
+};
+
+Soa ToSoa(std::span<const double> aos) {
+  Soa soa(aos.size() / 3);
+  for (std::size_t i = 0; i < soa.x.size(); ++i) {
+    soa.x[i] = aos[i * 3 + 0];
+    soa.y[i] = aos[i * 3 + 1];
+    soa.z[i] = aos[i * 3 + 2];
   }
-  return flat;
+  return soa;
+}
+
+Soa VerticesToSoa(const PolygonFilament& polygon_filament) {
+  Soa soa(static_cast<std::size_t>(polygon_filament.vertices_size()));
+  for (std::size_t i = 0; i < soa.x.size(); ++i) {
+    const Vector3d& vertex = polygon_filament.vertices(static_cast<int>(i));
+    soa.x[i] = vertex.x();
+    soa.y[i] = vertex.y();
+    soa.z[i] = vertex.z();
+  }
+  return soa;
+}
+
+// Adds the SoA polygon-filament result (which the routine accumulates into)
+// onto the array-of-structs contribution.
+void AddFromSoa(const Soa& soa, std::span<double> m_contribution) {
+  for (std::size_t i = 0; i < soa.x.size(); ++i) {
+    m_contribution[i * 3 + 0] += soa.x[i];
+    m_contribution[i * 3 + 1] += soa.y[i];
+    m_contribution[i * 3 + 2] += soa.z[i];
+  }
 }
 
 void AddFromAbscabOrder(const std::vector<double>& contribution,
@@ -230,12 +256,16 @@ void AddMagneticField(const CircularFilament& circular_filament, double current,
 void AddMagneticField(const PolygonFilament& polygon_filament, double current,
                       std::span<double> evaluation_positions,
                       std::span<double> m_contribution) {
-  std::vector<double> vertices = VerticesInAbscabOrder(polygon_filament);
+  const Soa vertices = VerticesToSoa(polygon_filament);
+  const Soa positions = ToSoa(evaluation_positions);
+  Soa result(positions.x.size());
 
   abscab::magneticFieldPolygonFilament(
-      polygon_filament.vertices_size(), vertices.data(), current,
-      static_cast<int>(evaluation_positions.size() / 3),
-      evaluation_positions.data(), m_contribution.data());
+      polygon_filament.vertices_size(), vertices.x.data(), vertices.y.data(),
+      vertices.z.data(), current, static_cast<int>(positions.x.size()),
+      positions.x.data(), positions.y.data(), positions.z.data(),
+      result.x.data(), result.y.data(), result.z.data());
+  AddFromSoa(result, m_contribution);
 }  // AddMagneticField for PolygonFilament
 
 void AddVectorPotential(const CircularFilament& circular_filament,
@@ -271,12 +301,16 @@ void AddVectorPotential(const CircularFilament& circular_filament,
 void AddVectorPotential(const PolygonFilament& polygon_filament, double current,
                         std::span<double> evaluation_positions,
                         std::span<double> m_contribution) {
-  std::vector<double> vertices = VerticesInAbscabOrder(polygon_filament);
+  const Soa vertices = VerticesToSoa(polygon_filament);
+  const Soa positions = ToSoa(evaluation_positions);
+  Soa result(positions.x.size());
 
   abscab::vectorPotentialPolygonFilament(
-      polygon_filament.vertices_size(), vertices.data(), current,
-      static_cast<int>(evaluation_positions.size() / 3),
-      evaluation_positions.data(), m_contribution.data());
+      polygon_filament.vertices_size(), vertices.x.data(), vertices.y.data(),
+      vertices.z.data(), current, static_cast<int>(positions.x.size()),
+      positions.x.data(), positions.y.data(), positions.z.data(),
+      result.x.data(), result.y.data(), result.z.data());
+  AddFromSoa(result, m_contribution);
 }  // AddVectorPotential for PolygonFilament
 
 // The current of a coil within a serial circuit.
