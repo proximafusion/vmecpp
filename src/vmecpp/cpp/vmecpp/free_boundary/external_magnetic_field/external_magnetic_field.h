@@ -83,9 +83,6 @@ class ExternalMagneticField {
   // number of field periods over which the axis polygon repeats
   int nvper_;
 
-  // whether the axis current flows on the circular axis, for nZeta == 1
-  bool circular_axis_;
-
   const Sizes& s_;
   const TangentialPartitioning& tp_;
 

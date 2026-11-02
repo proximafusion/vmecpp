@@ -19,7 +19,6 @@ ExternalMagneticField::ExternalMagneticField(
   // the axis polygon repeats over the field periods; an axisymmetric
   // (nZeta == 1) plasma carries the axis current on the circular axis instead
   nvper_ = s_.nfp;
-  circular_axis_ = s_.nZeta == 1;
 
   // nzeta points per each of the nvper toroidal replications,
   // and then one more point to close the loop
@@ -89,7 +88,10 @@ absl::Status ExternalMagneticField::update(const std::span<const double> rAxis,
 void ExternalMagneticField::AddAxisCurrentField(
     const std::span<const double> rAxis, const std::span<const double> zAxis,
     double netToroidalCurrent) {
-  if (circular_axis_) {
+  // store into member for being able to debug it
+  axis_current = netToroidalCurrent;
+
+  if (s_.nZeta == 1) {
     AddAxisCurrentFieldCircle(rAxis, zAxis, netToroidalCurrent);
     return;
   }
@@ -148,9 +150,6 @@ void ExternalMagneticField::AddAxisCurrentFieldAbscab(
 
   // TODO(jons): use callback for providing Cartesian axis geometry
   // --> VertexSupplier
-
-  // store into member for being able to debug it
-  axis_current = netToroidalCurrent;
 
   // Initialize target storage for axis-current magnetic field to zero,
   // since ABSCAB only adds to whatever is in there.
@@ -226,9 +225,6 @@ void ExternalMagneticField::AddAxisCurrentFieldSimple(
     surfaceXYZ[(kl - tp_.ztMin) * 3 + 1] = sg_.r1b[kl] * sg_.sin_phi[k];
     surfaceXYZ[(kl - tp_.ztMin) * 3 + 2] = sg_.z1b[kl];
   }  // kl
-
-  // store into member for being able to debug it
-  axis_current = netToroidalCurrent;
 
   // -------
   // Here, we have the (static in the context of this method) axis geometry
@@ -327,8 +323,6 @@ void ExternalMagneticField::AddAxisCurrentFieldCircle(
     surfaceXYZ[(kl - tp_.ztMin) * 3 + 1] = 0.0;
     surfaceXYZ[(kl - tp_.ztMin) * 3 + 2] = sg_.z1b[kl];
   }  // kl
-
-  axis_current = netToroidalCurrent;
 
   // ABSCAB adds to the target storage
   bCoilsXYZ.setZero();
