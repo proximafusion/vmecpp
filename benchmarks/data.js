@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793618791931,
+  "lastUpdate": 1793620475504,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26199,6 +26199,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.28869340099993224,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166746189+jurasic-pf@users.noreply.github.com",
+            "name": "Philipp Jurašić",
+            "username": "jurasic-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0bb9d05928cb97d669be4dbc3f55046c17347928",
+          "message": "Allow run(restart_from=...) to take a VmecWOut (#1041)\n\nA wout carries the geometry and the lasym, mpol and ntor the hot restart\nchecks, so it can seed a run without the input that produced it.",
+          "timestamp": "2026-11-02T12:47:21+01:00",
+          "tree_id": "0715d113f939f6cf2871ff449871949a76d27e88",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0bb9d05928cb97d669be4dbc3f55046c17347928"
+        },
+        "date": 1793620468494,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5932167859999936,
+            "range": "stddev: 0.0044747743014246395",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.735225501000002,
+            "range": "stddev: 0.025906151844740197",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0901293070000027,
+            "range": "stddev: 0.0035789460723353356",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.8555355683333232,
+            "range": "stddev: 0.051417857473840395",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2852351819999892,
+            "range": "stddev: 0.003803365472206337",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.573106330000011,
+            "range": "stddev: 0.02374296771479506",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 5.387088687000016,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.2935614100000521,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
