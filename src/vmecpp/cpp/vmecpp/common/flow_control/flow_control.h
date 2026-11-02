@@ -96,6 +96,10 @@ class FlowControl {
   // Sum of the normalized squared R and Z force residuals on the LCFS.
   double lcfs_force = 0.0;
 
+  // Sign of the stiffness of a rigid vertical shift in the radial
+  // preconditioner: a free-boundary lasym run measures it as it converges.
+  bool vertically_unstable = true;
+
   // Preconditioned cumulative force residuals (radial, vertical and lambda)
   // Populated by `evalFResPrecd`
   double fsqr1, fsqz1, fsql1;

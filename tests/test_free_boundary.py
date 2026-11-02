@@ -330,3 +330,49 @@ def test_magnetic_field_callable_errors():
 
     with pytest.raises(TypeError, match="magnetic_field must be"):
         vmecpp.run(vmec_input, 1.0, verbose=False)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("decay_index", [-0.5, 0.5])
+def test_raised_ring_descends_towards_the_midplane(decay_index):
+    """A ring raised above the midplane of its field descends, whether the field's decay
+    index makes a vertical shift unstable (n < 0) or stable (n > 0)."""
+    mu0 = 4.0e-7 * np.pi
+    r0, a, b0, current, raised = 2.5, 0.5, 1.0, 250.0e3, 1.0e-3
+    vertical = -mu0 * current / (4.0 * np.pi * r0) * (np.log(8.0 * r0 / a) - 1.25)
+    rbc, zbs, zbc = np.zeros((6, 1)), np.zeros((6, 1)), np.zeros((6, 1))
+    rbc[0, 0], rbc[1, 0], zbs[1, 0], zbc[0, 0] = r0, a, a, raised
+    ring = vmecpp.VmecInput(
+        lasym=True,
+        mpol=6,
+        ntor=0,
+        ntheta=24,
+        nzeta=1,
+        ns_array=np.array([25]),
+        ftol_array=np.array([1e-14]),
+        niter_array=np.array([5000]),
+        phiedge=np.pi * a**2 * b0,
+        ncurr=1,
+        pcurr_type="power_series",
+        ac=np.array([1.0]),
+        curtor=current,
+        am=np.array([0.0]),
+        pres_scale=0.0,
+        rbc=rbc,
+        zbs=zbs,
+        rbs=np.zeros((6, 1)),
+        zbc=zbc,
+        raxis_c=np.array([r0]),
+        zaxis_s=np.array([0.0]),
+        raxis_s=np.zeros(1),
+        zaxis_c=np.array([raised]),
+        lfreeb=True,
+        mgrid_file="NONE",
+        nvacskip=1,
+    )
+
+    def field(r, _phi, z):
+        b_z = vertical * (1.0 + 0.5 * decay_index * (1.0 - (r**2 - 2.0 * z**2) / r0**2))
+        return -vertical * decay_index * r * z / r0**2, b0 * r0 / r, b_z
+
+    wout = vmecpp.run(ring, field, verbose=False).wout
+    assert abs(np.asarray(wout.zmnc)[0, -1]) < raised

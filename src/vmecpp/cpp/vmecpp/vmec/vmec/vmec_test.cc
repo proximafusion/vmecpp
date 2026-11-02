@@ -948,12 +948,6 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   ASSERT_TRUE(indata->lasym);
   ASSERT_TRUE(indata->lfreeb);
 
-  // The antisymmetric free-boundary force residual limit-cycles near the 1e-8
-  // tolerance; accept the equilibrium at that level (as the axisymmetric
-  // reference test does) and validate the physics against the reference
-  // scalars.
-  indata->return_outputs_even_if_not_converged = true;
-
   const auto output = vmecpp::run(*indata);
   ASSERT_TRUE(output.ok());
   const auto& w = output->wout;
@@ -962,8 +956,10 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
   // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
   // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
-  // way as in SingularIntegrals::update.
-  const double tol = 1.0e-4;
+  // way as in SingularIntegrals::update. VMEC++ measures the sign of the
+  // vertical stiffness, which VMEC 8.52 assumes unstable, so the two stop at
+  // different points of this ftol's relaxation: the volume lies 4.5e-4 apart.
+  const double tol = 5.0e-4;
   EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
       << "aspect=" << w.aspect;
   EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
@@ -983,6 +979,24 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-4) << "rmns must be non-zero";
   EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-4) << "zmnc must be non-zero";
 }  // LasymFreeBoundaryMatchesEducationalVmec
+
+// The plasma of the test above is vertically stable. A preconditioner that
+// assumes it unstable drives it away and stalls its residuals near 3e-9.
+TEST(TestVmec, LasymFreeBoundaryConvergesBelowTheVerticalDrift) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  indata->ftol_array[0] = 1.0e-13;
+  indata->niter_array[0] = 3000;
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_LE(output->wout.fsqr, 1.0e-13);
+  EXPECT_LE(output->wout.fsqz, 1.0e-13);
+  EXPECT_LE(output->wout.fsql, 1.0e-13);
+}  // LasymFreeBoundaryConvergesBelowTheVerticalDrift
 
 // A multi-grid free-boundary equilibrium (cth_like_free_bdy with an added grid
 // step) must converge. The free-boundary (Nestor) solver, together with its

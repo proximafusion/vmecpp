@@ -1000,6 +1000,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
     return true;
   }
 
+  if (s_.lasym && m_fc_.lfreeb && r_.nsMaxF1 == m_fc_.ns &&
+      m_vacuum_pressure_state_ >= VacuumPressureState::kInitialized) {
+    UpdateVerticalStiffness(almost_converged, iter1, iter2);
+  }
+
   assembleRZPreconditioner();
   if (checkpoint == VmecCheckpoint::ASSEMBLE_RZ_PRECONDITIONER &&
       iter2 >= iterations_before_checkpointing) {
@@ -3804,18 +3809,17 @@ void IdealMhdModel::assembleRZPreconditioner() {
     }
 
     // STABILIZATION ALGORITHM FOR ZC_00(NS)
-    // FOR UNSTABLE CASE, HAVE TO FLIP SIGN OF -FAC -> +FAC FOR CONVERGENCE
-    // COEFFICIENT OF < Ru (R Pvac)> ~ -fac*(z-zeq) WHERE fac (EIGENVALUE, OR
-    // FIELD INDEX) DEPENDS ON THE EQUILIBRIUM MAGNETIC FIELD AND CURRENT,
-    // AND zeq IS THE EQUILIBRIUM EDGE VALUE OF Z00
+    // The interior does not resist a rigid vertical shift, so the edge row of
+    // this mode sums to the assumed stiffness of the vacuum, fac*Pedge/hs.
     double fac = 0.25;
     double multFact = std::min(fac, fac * m_fc_.deltaS * 15.0);
 
-    // METHOD 1: SUBTRACT (INSTABILITY) Pedge ~ fac*z/hs FROM PRECONDITIONER AT
-    // EDGE iflag parameter is used in Fortran VMEC to enable this feature only
-    // for Z forces !
+    // A stiffness of the wrong sign makes the shift grow: subtract it for an
+    // instability, add it where the vacuum restores the plasma.
     int idx_00 = (m_fc_.ns - 1 - r_.nsMinF) * s_.mpol * (s_.ntor + 1);
-    dz[idx_00] *= (1.0 - multFact) / (1.0 + edge_pedestal);
+    dz[idx_00] *=
+        (m_fc_.vertically_unstable ? 1.0 - multFact : 1.0 + multFact) /
+        (1.0 + edge_pedestal);
   }
 
   // ACCELERATE (IMPROVE) CONVERGENCE OF FREE BOUNDARY.
@@ -3842,6 +3846,42 @@ void IdealMhdModel::assembleRZPreconditioner() {
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+}
+
+void IdealMhdModel::UpdateVerticalStiffness(bool almost_converged, int iter1,
+                                            int iter2) {
+  // partial vacuum updates leave a sawtooth in the vacuum pressure
+  if (ivacskip != 0) {
+    return;
+  }
+
+  // The interior forces cancel in the net force on a rigid vertical shift, so
+  // dW/dZ = \oint P_vac n_Z dS, with n_Z dS = signgs R_u R dtheta dzeta.
+  const int edge = (r_.nsMaxF - 1 - r_.nsMinF) * s_.nZnT;
+  double vertical_slope = 0.0;
+  for (int kl = 0; kl < s_.nZnT; ++kl) {
+    vertical_slope += signOfJacobian * ruFull[edge + kl] * rBSq[kl];
+  }
+  const double boundary_height = m_h_.zCC_LCFS[0];
+
+  if (almost_converged && iter2 > iter1) {
+    const double height_change = boundary_height - boundary_height_;
+    const double stiffness_term =
+        (vertical_slope - vertical_slope_) * height_change;
+    vertical_stiffness_sum_ += stiffness_term;
+    vertical_stiffness_magnitude_ += std::abs(stiffness_term);
+    boundary_height_travel_ += std::abs(height_change);
+
+    // Other modes relaxing add terms of either sign, so the sum decides once it
+    // outweighs them; below this travel the height is round-off.
+    if (boundary_height_travel_ > 1.0e-9 * m_h_.rCC_LCFS[0] &&
+        std::abs(vertical_stiffness_sum_) >=
+            0.5 * vertical_stiffness_magnitude_) {
+      m_fc_.vertically_unstable = vertical_stiffness_sum_ < 0.0;
+    }
+  }
+  vertical_slope_ = vertical_slope;
+  boundary_height_ = boundary_height;
 }
 
 // serial variant
