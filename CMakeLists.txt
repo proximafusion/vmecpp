@@ -204,7 +204,7 @@ FetchContent_Declare(
 FetchContent_Declare(
   abscab-cpp
   GIT_REPOSITORY https://github.com/jonathanschilling/abscab-cpp.git
-  GIT_TAG 5cfa473b90aab06d7f70d986da0c46c46c1ebe9c
+  GIT_TAG 0027dd97325621dd6d7d7245b148be9347e03870
   GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(abscab-cpp)
