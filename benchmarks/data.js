@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793621932733,
+  "lastUpdate": 1793622545292,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26359,6 +26359,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.24535254599982181,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "130992531+jons-pf@users.noreply.github.com",
+            "name": "Jonathan Schilling",
+            "username": "jons-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7cd20e389e9e31f6f2a6efa7180a82a3b60b5b49",
+          "message": "Refactor rbc modification to use ntor (#1024)\n\nexample for modifying rbc might want to include info on which mode is being modified there",
+          "timestamp": "2026-11-02T13:20:25+01:00",
+          "tree_id": "f1fccaa87ac6ca0ae9e55f9bb5372724837b950b",
+          "url": "https://github.com/proximafusion/vmecpp/commit/7cd20e389e9e31f6f2a6efa7180a82a3b60b5b49"
+        },
+        "date": 1793622540054,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5015334933999952,
+            "range": "stddev: 0.00409157345983233",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.116752018999989,
+            "range": "stddev: 0.02900555667077037",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8921567403333484,
+            "range": "stddev: 0.0037918567916207105",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.3738294736666414,
+            "range": "stddev: 0.02924304348182431",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.2804407016666726,
+            "range": "stddev: 0.012363016244974876",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.61220174733332,
+            "range": "stddev: 0.01102265597982291",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.732161044999998,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3069182009999736,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
