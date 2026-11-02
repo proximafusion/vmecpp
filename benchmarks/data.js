@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793620831756,
+  "lastUpdate": 1793621604812,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26279,6 +26279,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.2935614100000521,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "198982749+Copilot@users.noreply.github.com",
+            "name": "Copilot",
+            "username": "Copilot"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0571ccca301dc29f7a73508078aed8f2e6a9af85",
+          "message": "Make `vmecpp -q` fully quiet (#1042)\n\n* Initial plan\n\n* Fix quiet CLI output\n\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>\n\n* Update test_cli_mgrid.py\n\n---------\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>\nCo-authored-by: jurasic-pf <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-11-02T13:02:29+01:00",
+          "tree_id": "5d485362470d070795e2cb7c0ae72697321df7c0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/0571ccca301dc29f7a73508078aed8f2e6a9af85"
+        },
+        "date": 1793621598650,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.518382745199915,
+            "range": "stddev: 0.006069570257625945",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.282908197333427,
+            "range": "stddev: 0.01817809083028853",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.9128812976665964,
+            "range": "stddev: 0.0014574834973767102",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6730656153333712,
+            "range": "stddev: 0.035460144818394934",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 1.0967717136666124,
+            "range": "stddev: 0.001353203337481909",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.399156617333347,
+            "range": "stddev: 0.020846967768514923",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.8560505420000482,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.24535254599982181,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
