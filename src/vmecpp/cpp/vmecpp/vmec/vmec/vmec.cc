@@ -1281,6 +1281,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #endif  // _OPENMP
       {
         fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        fc_.restart_reasons.back() = RestartReason::BAD_JACOBIAN;
       }
 
       RestartIteration(fc_.delt0r, thread_id);
@@ -1401,6 +1402,11 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #endif  // _OPENMP
 
     if (restart_reason != RestartReason::NO_RESTART) {
+      // the time step control decides after Evolve has recorded this iteration
+      if (r_[thread_id]->nsMaxF1 == fc_.ns) {
+        fc_.restart_reasons.back() = restart_reason;
+      }
+
       // Retrieve previous good state
       RestartIteration(fc_.delt0r, thread_id);
       // This code path does not increment the iter2 counter in VMEC 8.52, so we

@@ -346,6 +346,7 @@ def solve_equilibrium(
             # vmec.cc lines 906-942). RestartIteration reverts and bumps ijacob,
             # then delt0r is reset relative to the user step.
             if ijacob in (25, 50):
+                trace_rr[-1] = int(RestartReason.BAD_JACOBIAN)
                 model.restore_backup()
                 ijacob += 1
                 iter1 = iter2
@@ -395,6 +396,7 @@ def solve_equilibrium(
                 elif (iter2 - iter1) > 10 and (
                     fsq1 > _PARVMEC_BLOWUP * res0 or fsq0 > _PARVMEC_BLOWUP * res1
                 ):
+                    trace_rr[-1] = int(RestartReason.BAD_PROGRESS)
                     model.restore_backup()
                     delt0r /= 1.03
                     iter1 = iter2
@@ -423,6 +425,7 @@ def solve_equilibrium(
                     and iter2 > 2 * _PRECOND_INTERVAL
                     and (fsqr + fsqz) > 1.0e-2
                 ):
+                    trace_rr[-1] = int(RestartReason.BAD_PROGRESS)
                     model.restore_backup()
                     delt0r /= 1.03
                     iter1 = iter2
@@ -443,6 +446,7 @@ def solve_equilibrium(
                 res0 = min(res0, fsq1)
                 blew_up = fsq1 > _VMEC_8_52_BLOWUP * res0 and iter2 > iter1
                 if rr == RestartReason.BAD_JACOBIAN or blew_up:
+                    trace_rr[-1] = int(RestartReason.BAD_JACOBIAN)
                     model.restore_backup()
                     delt0r *= 0.9
                     ijacob += 1
@@ -458,6 +462,7 @@ def solve_equilibrium(
                     and iter2 > 2 * _PRECOND_INTERVAL
                     and (fsqr + fsqz) > 1.0e-2
                 ):
+                    trace_rr[-1] = int(RestartReason.BAD_PROGRESS)
                     model.restore_backup()
                     delt0r /= 1.03
                     iter1 = iter2
