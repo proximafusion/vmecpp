@@ -17,6 +17,7 @@ from simsopt.geo import SurfaceRZFourier
 from simsopt.mhd.profiles import ProfilePolynomial
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
+from vmecpp._free_boundary import MakegridParameters, write_mgrid_file
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -309,14 +310,20 @@ def test_pressure_and_iota_profiles_on_stellarators(input_file):
     np.testing.assert_allclose(vmec.wout.iotas[1:], iota(vmec.s_half_grid))
 
 
-def test_pressure_and_current_profiles_on_a_free_boundary():
+def test_pressure_and_current_profiles_on_a_free_boundary(tmp_path):
     """A free-boundary stellarator takes its pressure and current from SIMSOPT
     profiles."""
+    makegrid_parameters = MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_parameters.number_of_r_grid_points = 31
+    makegrid_parameters.number_of_z_grid_points = 20
+    mgrid_file = tmp_path / "mgrid_cth_like.nc"
+    write_mgrid_file(TEST_DATA_DIR / "coils.cth_like", makegrid_parameters, mgrid_file)
+
     vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "cth_like_free_bdy.json", verbose=False)
     assert vmec.indata is not None
-    vmec.indata.mgrid_file = str(
-        REPO_ROOT / "src" / "vmecpp" / "cpp" / vmec.indata.mgrid_file
-    )
+    vmec.indata.mgrid_file = str(mgrid_file)
     vmec.indata.pmass_type = "power_series"
     vmec.indata.pcurr_type = "power_series"
     total = 4.0e4
