@@ -1,3 +1,7 @@
 vmecpp/test_data/mgrid_cth_like.nc filter=lfs diff=lfs merge=lfs -text
 vmecpp/test_data/mgrid_cth_like_asym.nc filter=lfs diff=lfs merge=lfs -text
 vmecpp/test_data/mgrid_solovev.nc filter=lfs diff=lfs merge=lfs -text
+vmecpp/test_data/wout_cth_like_fixed_bdy_asym.nc filter=lfs diff=lfs merge=lfs -text
+vmecpp/test_data/wout_cth_like_fixed_bdy_asym_iota.nc filter=lfs diff=lfs merge=lfs -text
+vmecpp/test_data/wout_cth_like_free_bdy_asym.nc filter=lfs diff=lfs merge=lfs -text
+vmecpp/test_data/wout_cth_like_free_bdy_asym_iota.nc filter=lfs diff=lfs merge=lfs -text

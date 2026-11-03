@@ -150,3 +150,86 @@ filegroup(
         "li383_low_res.json",
     ],
 )
+
+filegroup(
+    name = "cth_like_free_bdy_iota",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_free_bdy_iota.json",
+        "input.cth_like_free_bdy_iota",
+        "mgrid_cth_like.nc",
+        "wout_cth_like_free_bdy_iota.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy_asym_iota",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_free_bdy_asym_iota.json",
+        "input.cth_like_free_bdy_asym_iota",
+        "mgrid_cth_like_asym.nc",
+        "wout_cth_like_free_bdy_asym_iota.nc",
+    ],
+)
+
+filegroup(
+    name = "solovev_free_bdy_current",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.solovev_free_bdy_current",
+        "mgrid_solovev.nc",
+        "solovev_free_bdy_current.json",
+        "wout_solovev_free_bdy_current.nc",
+    ],
+)
+
+filegroup(
+    name = "up_down_asym_free_bdy",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.up_down_asym_free_bdy",
+        "mgrid_solovev.nc",
+        "up_down_asym_free_bdy.json",
+        "wout_up_down_asym_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "up_down_asym_current_free_bdy",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.up_down_asym_current_free_bdy",
+        "mgrid_solovev.nc",
+        "up_down_asym_current_free_bdy.json",
+        "wout_up_down_asym_current_free_bdy.nc",
+    ],
+)
+
+filegroup(
+    name = "up_down_asym_wout",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.up_down_asym",
+        "wout_up_down_asym.nc",
+        "wout_up_down_asym_current.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_free_bdy_asym_wout",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.cth_like_free_bdy_asym",
+        "wout_cth_like_free_bdy_asym.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_fixed_bdy_asym_wout",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "wout_cth_like_fixed_bdy_asym.nc",
+        "wout_cth_like_fixed_bdy_asym_iota.nc",
+    ],
+)
