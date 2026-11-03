@@ -70,15 +70,27 @@ class Matching:
         )
 
     @functools.cached_property
+    def flips_theta(self):
+        """Whether the solver takes this boundary in theta -> pi - theta, by the sign of
+        the area of its m = 1 ellipse."""
+        inp = self.vmec_input
+        handedness = np.sum(inp.rbc[1]) * np.sum(inp.zbs[1])
+        if inp.lasym:
+            handedness -= np.sum(inp.rbs[1]) * np.sum(inp.zbc[1])
+        return handedness * inp.signgs > 0.0
+
+    @functools.cached_property
     def projection(self):
-        """Least-squares projection onto the shape modes of a function on the solver's
-        boundary grid, the end points of the half poloidal range at half weight."""
+        """Least-squares projection onto the shape modes, in the input's angles, of a
+        function on the solver's boundary grid, the end points of the half poloidal range
+        at half weight."""
         zeta, theta = self.grid
         weight = np.ones((len(zeta), len(theta)))
         if not self.vmec_input.lasym:
             weight[:, [0, -1]] = 0.5
         root = np.sqrt(weight.ravel())
-        return np.linalg.pinv(root[:, None] * self.basis(zeta, theta)) * root
+        input_theta = np.pi - theta if self.flips_theta else theta
+        return np.linalg.pinv(root[:, None] * self.basis(zeta, input_theta)) * root
 
     def reference(self, zeta, theta):
         """R, Z and the unit normal in the toroidal plane of the reference boundary."""

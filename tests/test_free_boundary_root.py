@@ -57,3 +57,28 @@ def test_vertical_stability(matched):
     )
     values, modes = free_boundary_root.stiffness(ring, x, Serial())
     assert np.sign(values[modes.index((1, 0, 1))]) == -np.sign(decay)
+
+
+def test_flipped_theta_keeps_the_stiffness(matched):
+    """The ring described with theta running the other way, which the solver flips back,
+    has the same stiffness in each shape mode."""
+    decay, ring, x, vertical, _ = matched
+    ring = dataclasses.replace(
+        ring, field=free_boundary_root.DecayField(decay, vertical), held=()
+    )
+    reversed_theta = dataclasses.replace(
+        ring,
+        vmec_input=ring.vmec_input.model_copy(update={"zbs": -ring.vmec_input.zbs}),
+    )
+    assert reversed_theta.flips_theta
+    values, modes = free_boundary_root.stiffness(ring, x, Serial())
+    reversed_values, reversed_modes = free_boundary_root.stiffness(
+        reversed_theta, x, Serial()
+    )
+    for mode in ((1, 0, 1), (1, 0, 0), (2, 0, 0)):
+        np.testing.assert_allclose(
+            reversed_values[reversed_modes.index(mode)],
+            values[modes.index(mode)],
+            rtol=1e-2,
+            err_msg=str(mode),
+        )
