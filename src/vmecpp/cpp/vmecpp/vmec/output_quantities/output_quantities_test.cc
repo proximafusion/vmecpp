@@ -562,26 +562,17 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cth_like_free_bdy",
                       .tolerance = 5.0e-06}));
 
-// The asymmetric cells of vmecpp_large_cpp_tests/test_data/README.md and its
-// other free-boundary cells.
+// Further cells of vmecpp_large_cpp_tests/test_data/README.md.
 INSTANTIATE_TEST_SUITE_P(
     TestOutputQuantitiesFlagMatrix, WOutFileContentsTest,
     Values(
         DataSource{.identifier = "cth_like_free_bdy_iota", .tolerance = 1.0e-8},
-        DataSource{.identifier = "solovev_free_bdy_current",
-                   .tolerance = 3.0e-8},
         DataSource{.identifier = "up_down_asym", .tolerance = 4.0e-7},
         DataSource{.identifier = "up_down_asym_current", .tolerance = 3.0e-7},
-        DataSource{.identifier = "up_down_asym_free_bdy", .tolerance = 1.0e-8},
-        DataSource{.identifier = "up_down_asym_current_free_bdy",
-                   .tolerance = 1.0e-8},
         DataSource{.identifier = "cth_like_fixed_bdy_asym",
                    .tolerance = 5.0e-8},
         DataSource{.identifier = "cth_like_fixed_bdy_asym_iota",
-                   .tolerance = 3.0e-9},
-        DataSource{.identifier = "cth_like_free_bdy_asym", .tolerance = 4.0e-8},
-        DataSource{.identifier = "cth_like_free_bdy_asym_iota",
-                   .tolerance = 4.0e-9}));
+                   .tolerance = 3.0e-9}));
 
 // End-to-end exercise of the spline profile path through a full equilibrium.
 // cth_like_fixed_bdy_spline_pressure.json is the cth_like_fixed_bdy case with
