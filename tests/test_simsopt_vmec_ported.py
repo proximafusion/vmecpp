@@ -13,7 +13,17 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from simsopt._core.optimizable import make_optimizable
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
+from simsopt.mhd.profiles import (
+    ProfilePolynomial,
+    ProfilePressure,
+    ProfileScaled,
+    ProfileSpline,
+)
+from simsopt.objectives.least_squares import LeastSquaresProblem
+from simsopt.solve.serial import least_squares_serial_solve
+from simsopt.util.constants import ELEMENTARY_CHARGE
 
 from vmecpp.simsopt_compat import Vmec
 
@@ -374,3 +384,242 @@ def test_write_input():
         vmec3 = Vmec(str(outfilename))
         assert vmec3.wout is not None
         np.testing.assert_allclose(vmec2.wout.rmnc, vmec3.wout.rmnc, atol=1e-10)
+
+
+@pytest.fixture
+def circular_tokamak() -> Vmec:
+    return Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
+
+
+def test_pressure_profile(circular_tokamak):
+    """A run takes the pressure of its SIMSOPT profile and follows that profile's dofs,
+    with a power series, splines or line segments in the input."""
+    vmec = circular_tokamak
+    vmec.indata.pres_scale = 5.0  # the profile replaces this with 1
+    pressure = ProfilePolynomial(1.0e4 * np.array([1, 1, -2.0]))
+    vmec.pressure_profile = pressure
+    vmec.run()
+    s = vmec.s_half_grid
+    np.testing.assert_allclose(vmec.wout.pres[1:], pressure(s))
+
+    pressure.local_unfix_all()
+    pressure.x = 1.0e4 * np.array([1, 2, -3.0])
+    vmec.run()
+    assert vmec.indata.pres_scale == 1.0
+    np.testing.assert_allclose(vmec.wout.pres[1:], 1.0e4 * (1 + 2 * s - 3 * s * s))
+    assert vmec.wout.pmass_type == "power_series"
+
+    # a spline profile in a power series
+    s_spline = np.linspace(0, 1, 5)
+    pressure2 = ProfileSpline(
+        s_spline, 1.0e4 * (2.0 + 0.6 * s_spline - 1.5 * s_spline**2)
+    )
+    vmec.pressure_profile = pressure2
+    vmec.run()
+    np.testing.assert_allclose(
+        vmec.wout.pres[1:], 1.0e4 * (2.0 + 0.6 * s - 1.5 * s * s)
+    )
+    assert vmec.wout.pmass_type == "power_series"
+
+    # a spline profile in splines
+    vmec.indata.pmass_type = "cubic_spline"
+    pressure2.local_full_x = 1.0e4 * (2.2 - 0.7 * s_spline - 1.1 * s_spline**2)
+    vmec.run()
+    np.testing.assert_allclose(
+        vmec.wout.pres[1:], 1.0e4 * (2.2 - 0.7 * s - 1.1 * s * s)
+    )
+    assert vmec.wout.pmass_type == "cubic_spline"
+
+    # a polynomial profile in fewer spline nodes
+    vmec.pressure_profile = pressure
+    vmec.n_pressure = 7
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.pres[1:], 1.0e4 * (1 + 2 * s - 3 * s * s))
+    assert vmec.wout.pmass_type == "cubic_spline"
+
+    # a spline profile in Akima splines
+    vmec.pressure_profile = pressure2
+    vmec.indata.pmass_type = "akima_spline"
+    vmec.run()
+    np.testing.assert_allclose(
+        vmec.wout.pres[1:], 1.0e4 * (2.2 - 0.7 * s - 1.1 * s * s), rtol=0.02
+    )
+    assert vmec.wout.pmass_type == "akima_spline"
+
+    # a polynomial profile in Akima splines
+    vmec.pressure_profile = pressure
+    vmec.run()
+    np.testing.assert_allclose(
+        vmec.wout.pres[1:], 1.0e4 * (1 + 2 * s - 3 * s * s), atol=250
+    )
+    assert vmec.wout.pmass_type == "akima_spline"
+
+    # a linear profile in line segments
+    vmec.pressure_profile = ProfilePolynomial([2.0e4, -1.9e4])
+    vmec.indata.pmass_type = "line_segment"
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.pres[1:], 2.0e4 - 1.9e4 * s)
+    assert vmec.wout.pmass_type == "line_segment"
+
+
+def test_current_profile(circular_tokamak):
+    """A run takes the current of its SIMSOPT profile, with curtor following the total
+    of the profile, whether the input's type sets I'(s) or I(s)."""
+    vmec = circular_tokamak
+    vmec.indata.ncurr = 1
+    vmec.indata.curtor = -3e6  # the profile replaces this
+    factor = 5.0e6
+    # the integral of this profile is factor
+    current = ProfilePolynomial(factor * np.array([1, 1, -1.5]))
+    vmec.current_profile = current
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.ctor, factor, rtol=1e-2)
+    s = vmec.s_full_grid[1:-1]
+    # jcurv is (dI/ds) / (2 pi), I(s) being the current the surface s encloses
+    np.testing.assert_allclose(
+        vmec.wout.jcurv[1:-1] * 2 * np.pi, factor * (1 + s - 1.5 * s**2), rtol=1e-3
+    )
+
+    current.local_unfix_all()
+    current.x = factor * np.array([1, 2, -2.2])
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.ctor, factor * 1.266666666, rtol=1e-2)
+    np.testing.assert_allclose(
+        vmec.wout.jcurv[1:-1] * 2 * np.pi, factor * (1 + 2 * s - 2.2 * s**2), rtol=1e-3
+    )
+    assert vmec.wout.pcurr_type == "power_series"
+
+    # a spline profile in a power series
+    s_spline = np.linspace(0, 1, 5)
+    current2 = ProfileSpline(
+        s_spline, factor * (2.0 + 0.6 * s_spline - 1.5 * s_spline**2)
+    )
+    vmec.current_profile = current2
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.ctor, factor * 1.8, rtol=1e-2)
+    np.testing.assert_allclose(
+        vmec.wout.jcurv[1:-1] * 2 * np.pi,
+        factor * (2.0 + 0.6 * s - 1.5 * s**2),
+        rtol=1e-3,
+    )
+    assert vmec.wout.pcurr_type == "power_series"
+
+    # a spline profile in splines of I'(s)
+    vmec.indata.pcurr_type = "cubic_spline_ip"
+    current2.local_unfix_all()
+    current2.x = factor * (1.0 + 1.0 * s_spline - 1.5 * s_spline**2)
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.ctor, factor * 1.0, rtol=1e-2)
+    np.testing.assert_allclose(
+        vmec.wout.jcurv[1:-1] * 2 * np.pi,
+        factor * (1.0 + 1.0 * s - 1.5 * s**2),
+        rtol=1e-3,
+    )
+    assert vmec.wout.pcurr_type == "cubic_spline_ip"
+
+    # a polynomial profile in fewer spline nodes
+    vmec.current_profile = current
+    vmec.n_current = 7
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.ctor, factor * 1.266666666, rtol=1e-2)
+    np.testing.assert_allclose(
+        vmec.wout.jcurv[1:-1] * 2 * np.pi, factor * (1 + 2 * s - 2.2 * s**2), rtol=1e-3
+    )
+    assert vmec.wout.pcurr_type == "cubic_spline_ip"
+
+    # a spline profile in splines of I(s), the total being its edge value
+    vmec.indata.pcurr_type = "cubic_spline_i"
+    current2.local_unfix_all()
+    current2.x = factor * (1.0 * s_spline - 0.4 * s_spline**2)
+    vmec.current_profile = current2
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.ctor, factor * 0.6, rtol=1e-2)
+    np.testing.assert_allclose(
+        vmec.wout.jcurv * 2 * np.pi,
+        factor * (1.0 - 0.8 * vmec.s_full_grid),
+        rtol=1e-3,
+    )
+    assert vmec.wout.pcurr_type == "cubic_spline_i"
+
+
+def test_iota_profile(circular_tokamak):
+    """A run takes the iota of its SIMSOPT profile and follows that profile's dofs."""
+    vmec = circular_tokamak
+    vmec.indata.ncurr = 0
+    iota = ProfilePolynomial(np.array([1, 1, -2.0]))
+    vmec.iota_profile = iota
+    vmec.run()
+    s = vmec.s_half_grid
+    np.testing.assert_allclose(vmec.wout.iotas[1:], iota(s))
+
+    iota.local_unfix_all()
+    iota.x = np.array([1, 2, -3.0])
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.iotas[1:], 1 + 2 * s - 3 * s * s)
+    assert vmec.wout.piota_type == "power_series"
+
+    # a spline profile in a power series
+    s_spline = np.linspace(0, 1, 5)
+    iota2 = ProfileSpline(s_spline, 2.0 + 0.6 * s_spline - 1.5 * s_spline**2)
+    vmec.iota_profile = iota2
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.iotas[1:], 2.0 + 0.6 * s - 1.5 * s * s)
+    assert vmec.wout.piota_type == "power_series"
+
+    # a spline profile in splines
+    vmec.indata.piota_type = "cubic_spline"
+    iota2.local_unfix_all()
+    iota2.x = 2.2 - 0.7 * s_spline - 1.1 * s_spline**2
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.iotas[1:], 2.2 - 0.7 * s - 1.1 * s * s)
+    assert vmec.wout.piota_type == "cubic_spline"
+
+    # a polynomial profile in fewer spline nodes
+    vmec.iota_profile = iota
+    vmec.n_iota = 7
+    vmec.run()
+    np.testing.assert_allclose(vmec.wout.iotas[1:], 1 + 2 * s - 3 * s * s)
+    assert vmec.wout.piota_type == "cubic_spline"
+
+
+def test_profile_invalid(circular_tokamak):
+    """A SIMSOPT profile needs a power series or a spline type in the input."""
+    circular_tokamak.pressure_profile = ProfilePolynomial(
+        1.0e4 * np.array([1, 1, -2.0])
+    )
+    circular_tokamak.indata.pmass_type = "two_power"
+    with pytest.raises(RuntimeError, match="power_series"):
+        circular_tokamak.run()
+
+
+def test_profile_demo(circular_tokamak):
+    """The example of SIMSOPT's docstring gives the beta that SIMSOPT's test holds
+    VMEC2000 to."""
+    ne = ProfilePolynomial(1.0e20 * np.array([1, 0, 0, 0, -0.9]))
+    Te = ProfilePolynomial(8.0e3 * np.array([1, -0.9]))
+    Ti = ProfileSpline([0, 0.5, 0.8, 1], 7.0e3 * np.array([1, 0.9, 0.8, 0.1]))
+    pressure = ProfilePressure(ne, Te, ne, Ti)
+    circular_tokamak.pressure_profile = ProfileScaled(pressure, ELEMENTARY_CHARGE)
+    circular_tokamak.indata.pmass_type = "cubic_spline"
+    circular_tokamak.n_pressure = 8
+    circular_tokamak.run()
+    np.testing.assert_allclose(circular_tokamak.wout.betatotal, 0.0127253894792956)
+
+
+def test_profile_optimization(circular_tokamak):
+    """An optimizer varies the pressure profile's scale until beta reaches its target,
+    the value SIMSOPT's test holds VMEC2000 to."""
+    pressure = ProfileScaled(ProfilePolynomial([1, -1]), 1.0e4)
+    pressure.local_unfix_all()
+    vmec = circular_tokamak
+    vmec.boundary.local_fix_all()
+    vmec.pressure_profile = pressure
+
+    def beta(vmec):
+        vmec.run()
+        return vmec.wout.betatotal
+
+    prob = LeastSquaresProblem.from_tuples([(make_optimizable(beta, vmec).J, 0.03, 1)])
+    assert len(prob.x) == 1
+    least_squares_serial_solve(prob, gtol=1e-15)
+    np.testing.assert_allclose(prob.x, [644053.93838138])
