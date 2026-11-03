@@ -294,8 +294,7 @@ def test_changing_mpol_ntor(vmec):
     "input_file", ["cth_like_fixed_bdy_iota.json", "cth_like_fixed_bdy_asym_iota.json"]
 )
 def test_pressure_and_iota_profiles_on_stellarators(input_file):
-    """A stellarator, with or without stellarator symmetry, takes its pressure and iota
-    from SIMSOPT profiles."""
+    """A stellarator takes its pressure and iota from SIMSOPT profiles."""
     vmec = simsopt_compat.Vmec(TEST_DATA_DIR / input_file, verbose=False)
     assert vmec.indata is not None
     vmec.indata.pmass_type = "power_series"
@@ -311,8 +310,7 @@ def test_pressure_and_iota_profiles_on_stellarators(input_file):
 
 
 def test_pressure_and_current_profiles_on_a_free_boundary(tmp_path):
-    """A free-boundary stellarator takes its pressure and current from SIMSOPT
-    profiles."""
+    """A free-boundary run takes its pressure and current from SIMSOPT profiles."""
     makegrid_parameters = MakegridParameters.from_file(
         TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
     )
@@ -343,8 +341,7 @@ def test_pressure_and_current_profiles_on_a_free_boundary(tmp_path):
 
 
 def test_written_input_holds_the_profile(tmp_path):
-    """A run of the input a Vmec with a SIMSOPT profile writes has that profile's
-    pressure."""
+    """A written input holds the pressure of a SIMSOPT profile."""
     vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
     pressure = ProfilePolynomial(1.0e4 * np.array([1, 1, -2.0]))
     vmec.pressure_profile = pressure
@@ -412,8 +409,7 @@ def test_current_profile_sets_the_total_current(pcurr_type, coefficients, total)
     ("ncurr", "profile"), [(0, "current_profile"), (1, "iota_profile")]
 )
 def test_profile_ncurr_does_not_select_warns(ncurr, profile, caplog):
-    """The input's ncurr selects iota or current, so a profile of the other is unused
-    and the run says so."""
+    """A profile that the input's ncurr does not select logs a warning."""
     vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
     assert vmec.indata is not None
     vmec.indata.ncurr = ncurr

@@ -60,14 +60,11 @@ class Vmec(Optimizable):
     https://github.com/hiddenSymmetries/simsopt/blob/master/src/simsopt/mhd/vmec.py.
 
     A SIMSOPT ``Profile`` assigned to ``pressure_profile``, ``current_profile`` or
-    ``iota_profile`` replaces that profile of the input in every run, and the run then
-    depends on its dofs. ``indata.pmass_type``, ``pcurr_type`` or ``piota_type`` chooses
-    a power series or a spline in s, with ``n_pressure``, ``n_current`` or ``n_iota``
-    terms or nodes, and ``indata.ncurr`` selects the iota or the current profile.
+    ``iota_profile`` replaces that profile of the input.
     """
 
     _boundary: SurfaceRZFourier
-    # SIMSOPT profiles that replace those of the input; None keeps the input's.
+    # SIMSOPT profiles replacing those of the input, or None.
     _pressure_profile: "Profile | None"
     _current_profile: "Profile | None"
     _iota_profile: "Profile | None"
@@ -523,8 +520,8 @@ class Vmec(Optimizable):
         return surface if updated_surface is None else updated_surface
 
     def set_profile(self, longname: str, shortname: str, letter: str) -> None:
-        """Transfer a SIMSOPT profile to indata, as the power series or the spline of
-        the input's profile type; a profile of None leaves indata as it is."""
+        """Transfer a SIMSOPT profile to indata as the power series or spline of the
+        input's profile type."""
         profile = getattr(self, f"{longname}_profile")
         if profile is None:
             return
@@ -551,12 +548,8 @@ class Vmec(Optimizable):
             raise RuntimeError(msg)
 
     def set_indata(self) -> None:
-        """Transfer data from simsopt objects to vmec.indata.
-
-        This function sets the boundary shape, the magnetic axis shape and the profiles
-        assigned to this object. This data transfer is performed before writing a Vmec
-        input file or running Vmec.
-        """
+        """Transfer the boundary shape, the magnetic axis shape and assigned profiles to
+        vmec.indata, before writing a Vmec input file or running Vmec."""
         if not self.runnable:
             msg = "Cannot access indata for a Vmec object that was initialized from a wout file."
             raise RuntimeError(msg)

@@ -392,8 +392,7 @@ def circular_tokamak() -> Vmec:
 
 
 def test_pressure_profile(circular_tokamak):
-    """A run takes the pressure of its SIMSOPT profile and follows that profile's dofs,
-    with a power series, splines or line segments in the input."""
+    """Each pressure type of the input takes its values from a SIMSOPT profile."""
     vmec = circular_tokamak
     vmec.indata.pres_scale = 5.0  # the profile replaces this with 1
     pressure = ProfilePolynomial(1.0e4 * np.array([1, 1, -2.0]))
@@ -463,8 +462,7 @@ def test_pressure_profile(circular_tokamak):
 
 
 def test_current_profile(circular_tokamak):
-    """A run takes the current of its SIMSOPT profile, with curtor following the total
-    of the profile, whether the input's type sets I'(s) or I(s)."""
+    """Each current type of the input takes values and total from a SIMSOPT profile."""
     vmec = circular_tokamak
     vmec.indata.ncurr = 1
     vmec.indata.curtor = -3e6  # the profile replaces this
@@ -475,7 +473,7 @@ def test_current_profile(circular_tokamak):
     vmec.run()
     np.testing.assert_allclose(vmec.wout.ctor, factor, rtol=1e-2)
     s = vmec.s_full_grid[1:-1]
-    # jcurv is (dI/ds) / (2 pi), I(s) being the current the surface s encloses
+    # jcurv is (dI/ds) / (2 pi)
     np.testing.assert_allclose(
         vmec.wout.jcurv[1:-1] * 2 * np.pi, factor * (1 + s - 1.5 * s**2), rtol=1e-3
     )
@@ -527,7 +525,7 @@ def test_current_profile(circular_tokamak):
     )
     assert vmec.wout.pcurr_type == "cubic_spline_ip"
 
-    # a spline profile in splines of I(s), the total being its edge value
+    # a spline profile in splines of I(s)
     vmec.indata.pcurr_type = "cubic_spline_i"
     current2.local_unfix_all()
     current2.x = factor * (1.0 * s_spline - 0.4 * s_spline**2)
@@ -543,7 +541,7 @@ def test_current_profile(circular_tokamak):
 
 
 def test_iota_profile(circular_tokamak):
-    """A run takes the iota of its SIMSOPT profile and follows that profile's dofs."""
+    """Each iota type of the input takes its values from a SIMSOPT profile."""
     vmec = circular_tokamak
     vmec.indata.ncurr = 0
     iota = ProfilePolynomial(np.array([1, 1, -2.0]))
@@ -593,8 +591,7 @@ def test_profile_invalid(circular_tokamak):
 
 
 def test_profile_demo(circular_tokamak):
-    """The example of SIMSOPT's docstring gives the beta that SIMSOPT's test holds
-    VMEC2000 to."""
+    """SIMSOPT's docstring example reproduces the VMEC2000 beta of SIMSOPT's test."""
     ne = ProfilePolynomial(1.0e20 * np.array([1, 0, 0, 0, -0.9]))
     Te = ProfilePolynomial(8.0e3 * np.array([1, -0.9]))
     Ti = ProfileSpline([0, 0.5, 0.8, 1], 7.0e3 * np.array([1, 0.9, 0.8, 0.1]))
@@ -607,8 +604,7 @@ def test_profile_demo(circular_tokamak):
 
 
 def test_profile_optimization(circular_tokamak):
-    """An optimizer varies the pressure profile's scale until beta reaches its target,
-    the value SIMSOPT's test holds VMEC2000 to."""
+    """Optimizing the pressure scale reproduces the VMEC2000 value of SIMSOPT's test."""
     pressure = ProfileScaled(ProfilePolynomial([1, -1]), 1.0e4)
     pressure.local_unfix_all()
     vmec = circular_tokamak
