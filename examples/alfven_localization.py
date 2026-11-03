@@ -8,12 +8,13 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from scipy.linalg import eigh_tridiagonal
+from scipy.linalg import eigh_tridiagonal, eigvalsh_tridiagonal
 
 import vmecpp
 
 POINTS_PER_PERIOD = 48  # grid points along the line per field period
 BIN = 0.05  # width of the table's bins of omega R / v_A
+CROSSING_PERIODS = 300  # field periods of the line for counting end-state crossings
 
 
 def line_coefficients(wout, js, zeta, slope=None, alpha=0.0):
@@ -104,6 +105,67 @@ def table(
     return rows
 
 
+def widest_gaps(wout, js, periods, omega_max, count, points=POINTS_PER_PERIOD):
+    """The widest gaps between the states not pinned to a line end, as omega R / v_A at
+    their edges and the rotation number there."""
+    h = 2.0 * np.pi / int(wout.nfp) / points
+    zeta = h * (0.5 + np.arange(points * periods))
+    diagonal, off_diagonal = operator(*line_coefficients(wout, js, zeta), h)
+    unit = abs(float(wout.b0)) / float(wout.Rmajor_p)
+    values = np.sort(states(diagonal, off_diagonal, 0.05 * unit, omega_max * unit)[0])
+    gaps = []
+    for i in np.sort(np.argsort(np.diff(values))[-count:]):
+        below = eigvalsh_tridiagonal(
+            diagonal,
+            off_diagonal,
+            select="v",
+            select_range=(0.0, values[i] ** 2 * (1.0 + 1e-7)),
+            lapack_driver="stebz",
+        )
+        rotation = np.pi * len(below) / zeta[-1]
+        gaps.append((values[i] / unit, values[i + 1] / unit, rotation))
+    return gaps
+
+
+def end_state_crossings(wout, js, periods, gaps, labels, points=POINTS_PER_PERIOD):
+    """For each gap, the net upward crossings of its middle by the states at each end of
+    a line as alpha advances by 2 pi, and the mean number of states in it at each
+    end."""
+    h = 2.0 * np.pi / int(wout.nfp) / points
+    zeta = h * (0.5 + np.arange(points * periods))
+    unit = abs(float(wout.b0)) / float(wout.Rmajor_p)
+    below = np.zeros((len(gaps), 2, labels), dtype=int)
+    above = np.zeros((len(gaps), 2, labels), dtype=int)
+    for a, alpha in enumerate(2.0 * np.pi * np.arange(labels) / labels):
+        diagonal, off_diagonal = operator(
+            *line_coefficients(wout, js, zeta, None, float(alpha)), h
+        )
+        for g, gap in enumerate(gaps):
+            low, high = gap[0] * unit, gap[1] * unit
+            margin = 0.02 * (high - low)
+            values, vectors = eigh_tridiagonal(
+                diagonal,
+                off_diagonal,
+                select="v",
+                select_range=((low + margin) ** 2, (high - margin) ** 2),
+                lapack_driver="stebz",
+            )
+            centroid = np.sum(vectors**2 * np.arange(len(diagonal))[:, None], axis=0)
+            lower = np.sqrt(np.maximum(values, 0.0)) < 0.5 * (low + high)
+            left = centroid < 0.5 * len(diagonal)
+            for end, mask in enumerate((left, ~left)):
+                below[g, end, a] = np.sum(mask & lower)
+                above[g, end, a] = np.sum(mask & ~lower)
+    rises = np.minimum(
+        below - np.roll(below, -1, axis=2), np.roll(above, -1, axis=2) - above
+    )
+    falls = np.minimum(
+        np.roll(below, -1, axis=2) - below, above - np.roll(above, -1, axis=2)
+    )
+    net = np.sum(np.maximum(rises, 0) - np.maximum(falls, 0), axis=2)
+    return net, np.mean(below + above, axis=2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -118,6 +180,12 @@ def main():
     parser.add_argument("--slope", type=float, help="in place of the transform")
     parser.add_argument("--alpha", type=float, default=0.0, help="field-line label")
     parser.add_argument("--points", type=int, default=POINTS_PER_PERIOD)
+    parser.add_argument(
+        "--crossings",
+        type=int,
+        default=0,
+        help="labels for counting the end states that cross the widest gaps",
+    )
     args = parser.parse_args()
 
     wout = vmecpp.run(vmecpp.VmecInput.from_file(args.input_file), verbose=False).wout
@@ -133,6 +201,18 @@ def main():
             print(
                 f"  {low:4.2f}-{low + BIN:4.2f}  {count:4d}  {extent:7.1f}  {extent_half:7.1f}"
             )
+        if args.crossings:
+            print("  gap in omega R / v_A, rotation number, net crossings at each end")
+            gaps = widest_gaps(
+                wout, js, CROSSING_PERIODS, args.omega_max, 8, args.points
+            )
+            net, _ = end_state_crossings(
+                wout, js, CROSSING_PERIODS, gaps, args.crossings, args.points
+            )
+            for gap, (left, right) in zip(gaps, net, strict=True):
+                print(
+                    f"  {gap[0]:.3f}-{gap[1]:.3f}  {gap[2]:.4f}  {left:+d} {right:+d}"
+                )
 
 
 if __name__ == "__main__":

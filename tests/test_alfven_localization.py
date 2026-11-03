@@ -80,6 +80,23 @@ def test_gaps_sit_at_their_labels(wout, surface):
     assert np.all(distance < 5e-3)
 
 
+def test_end_states_cross_each_gap_as_its_label_says(wout, surface):
+    """As alpha advances by 2 pi the states at one end of the line cross a gap of label
+    |m iota - n N| / 2 m times, and those at the other end the opposite way."""
+    js = surface[0]
+    iota, nfp = abs(float(wout.iotas[js])), int(wout.nfp)
+    periods, points = 200, 24
+    length = periods * 2.0 * np.pi / nfp
+    gaps = al.widest_gaps(wout, js, periods, 1.5, 3, points)
+    net, occupancy = al.end_state_crossings(wout, js, periods, gaps, 96, points)
+    for gap, (left, right), states_in_gap in zip(gaps, net, occupancy, strict=True):
+        assert states_in_gap.max() < 1.0
+        assert left == -right
+        assert left != 0
+        fits = [abs(abs(left * iota - n * nfp) / 2.0 - gap[2]) for n in range(-8, 9)]
+        assert min(fits) < 2.0 * np.pi / length
+
+
 def test_quasi_periodic_states_localize_and_periodic_ones_do_not(wout, surface):
     """In a window of the spectrum the states of the true line keep their extent as the
     line doubles, and at a rational slope they grow with it."""
