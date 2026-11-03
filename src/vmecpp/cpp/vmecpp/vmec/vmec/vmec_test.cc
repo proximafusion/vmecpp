@@ -956,23 +956,22 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
   // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
   // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
-  // way as in SingularIntegrals::update. VMEC++ measures the sign of the
-  // vertical stiffness, which VMEC 8.52 assumes unstable, so the two stop at
-  // different points of this ftol's relaxation: the volume lies 4.5e-4 apart.
-  const double tol = 5.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
+  // way as in SingularIntegrals::update, and the vertical stiffness measured
+  // as in IdealMhdModel::UpdateVerticalStiffness.
+  const double tol = 1.0e-4;
+  EXPECT_TRUE(IsCloseRelAbs(5.4333863735, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3072005386, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7716336115, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1420170697, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018727119, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512288681, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5743837607, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
