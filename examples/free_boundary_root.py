@@ -81,9 +81,8 @@ class Matching:
 
     @functools.cached_property
     def projection(self):
-        """Least-squares projection onto the shape modes, in the input's angles, of a
-        function on the solver's boundary grid, the end points of the half poloidal range
-        at half weight."""
+        """Least-squares projection in the input's angles of a function on the solver's
+        boundary grid onto the shape modes, the half range's ends at half weight."""
         zeta, theta = self.grid
         weight = np.ones((len(zeta), len(theta)))
         if not self.vmec_input.lasym:
