@@ -530,7 +530,6 @@ def test_refine_to_multigrid_ramp_converges():
         model.refine_to(15)
 
 
-# Reference iota profile computed at mpol=ntor=12, ns=100 and checked against DESC
 def test_restart_trace_holds_every_bad_jacobian_restart():
     """The trace holds the restarts of the time step control beside those of the forward
     model, so its bad-Jacobian entries match the solver's own count."""
@@ -553,6 +552,7 @@ def test_restart_trace_holds_every_bad_jacobian_restart():
     assert bad_jacobian == resets[-1]
 
 
+# Reference iota profile computed at mpol=ntor=12, ns=100 and checked against DESC
 _NEAR_AXIS_IOTA_REF = np.array(
     [
         0.93251064,
