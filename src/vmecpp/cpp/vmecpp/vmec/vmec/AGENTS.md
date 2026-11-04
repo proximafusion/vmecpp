@@ -53,7 +53,7 @@ misbehaves, the velocity `decomposed_v_` is zeroed and the state is rolled back 
 - `BAD_PROGRESS` (residuals not decaying): `delt0r /= 1.03`.
 - `NO_RESTART` (good path): back up the current state into `physical_x_backup_`.
 
-`Vmec::CountRevert()` counts the reverts since `fsq` last fell below half of `fc_.res_best`, the
+`CountRevert()` in `vmec.cc` counts the reverts since `fsq` last fell below half of `fc_.res_best`, the
 lowest `fsq` of the multigrid step. At `FlowControl::kMaxRevertsWithoutProgress` the step goes
 over to the PARVMEC control, deliberately deviating from VMEC 8.52.
 

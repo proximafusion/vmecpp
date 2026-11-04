@@ -273,6 +273,25 @@ int VacuumMpol(const vmecpp::VmecINDATA& indata) {
 int VacuumNtor(const vmecpp::VmecINDATA& indata) {
   return std::max(indata.vacuum_ntor, indata.ntor);
 }
+
+// The VMEC 8.52 control reverts without limit to a stored state.
+// That state can be worse than the one just reached.
+void CountRevert(vmecpp::FlowControl& m_fc, bool verbose) {
+  m_fc.reverts_without_progress++;
+  if (!m_fc.parvmec_control &&
+      m_fc.reverts_without_progress >=
+          vmecpp::FlowControl::kMaxRevertsWithoutProgress) {
+    m_fc.parvmec_control = true;
+    m_fc.res0 = -1;
+    m_fc.res1 = -1;
+    if (verbose) {
+      std::cout << absl::StrFormat(
+          "NO PROGRESS IN %d RESTARTS: CONTINUING WITH THE PARVMEC TIME-STEP "
+          "CONTROL\n",
+          m_fc.reverts_without_progress);
+    }
+  }
+}
 }  // namespace
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
@@ -1555,7 +1574,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 
       fc_.restart_reason = RestartReason::NO_RESTART;
 
-      CountRevert();
+      CountRevert(fc_, verbose_);
     }
 
   } else if (fc_.restart_reason == RestartReason::BAD_PROGRESS) {
@@ -1580,7 +1599,7 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 
       fc_.restart_reason = RestartReason::NO_RESTART;
 
-      CountRevert();
+      CountRevert(fc_, verbose_);
     }
   } else {
     // NO_RESTART or HUGE_INITIAL_FORCES
@@ -1597,24 +1616,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
-}
-
-void Vmec::CountRevert() {
-  // The VMEC 8.52 control reverts without limit to a stored state.
-  // That state can be worse than the one just reached.
-  fc_.reverts_without_progress++;
-  if (!fc_.parvmec_control &&
-      fc_.reverts_without_progress >= FlowControl::kMaxRevertsWithoutProgress) {
-    fc_.parvmec_control = true;
-    fc_.res0 = -1;
-    fc_.res1 = -1;
-    if (verbose_) {
-      std::cout << absl::StrFormat(
-          "NO PROGRESS IN %d RESTARTS: CONTINUING WITH THE PARVMEC TIME-STEP "
-          "CONTROL\n",
-          fc_.reverts_without_progress);
-    }
-  }
 }
 
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
