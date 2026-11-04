@@ -399,10 +399,6 @@ VMEC++:
 
 ### Limitations with respect to the Fortran implementations
 - `lrfp` flag is available for wout compatibility, but RFP-specific physics is not implemented yet - only stellarators/Tokamaks for now
-- several profile parameterizations are not fully implemented yet:
-   * `sum_cossq_s`
-   * `sum_cossq_sqrts`
-   * `sum_cossq_s_free`
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
