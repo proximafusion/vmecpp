@@ -1,29 +1,8 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Where a branch of equilibria ends, and how.
-
-Near the end mu_end of a branch of equilibria in a parameter mu, the critical
-eigenvalue of the force Jacobian at its equilibria vanishes as |mu - mu_end|^b. At a
-pitchfork, where the branch meets a branch of higher symmetry, b = 1; at a fold, where
-it meets a branch of saddle points, b = 1/2. Fitting lambda = c (mu - mu_end)^b to
-equilibria computed away from the end gives mu_end and the kind of end, without solving
-at mu_end, where the descent slows down.
-
-The configuration is a spherical tokamak of major radius 1.5, minor radius 1 and
-elongation 1.6, with q = 1 on the axis and low shear out to s = 0.5, and pres_scale as
-mu. Its axisymmetric equilibrium is unstable to the m = 1, n = 1 internal kink, and the
-helical-core equilibrium the kink leads to ends at a pitchfork, where it meets the
-axisymmetric equilibrium, which loses its stability there. A small m = 1, n = 1 ripple
-of the boundary breaks the mirror symmetry between the two helical cores, and the
-branch of the core the ripple opposes then ends at a fold. Each branch is followed down
-in pres_scale by continuation, every solve starting from the equilibrium before.
-
-The eigenvalues are those of the force Jacobian in the coordinates in which VMEC's
-preconditioner is the identity, assembled from Hessian-vector products on the free
-coefficients of the decomposed state of a ``VmecModel``. Near the end of a branch, the
-critical eigenvalue is the smallest one at its equilibria.
-"""
+"""Where a branch of equilibria ends, and whether at a pitchfork or a fold, from the
+critical eigenvalue of equilibria computed away from the end."""
 
 from __future__ import annotations
 
@@ -46,9 +25,8 @@ FOLD_MEASURED = FOLD_PATH[-4:]
 def case_input(
     pres_scale: float, ripple: float = 0.0, helical_seed: float = 0.0
 ) -> vmecpp.VmecInput:
-    """The spherical tokamak at pres_scale, with an m = 1, n = 1 boundary ripple of
-    amplitude ``ripple`` in R and Z, solved from a magnetic axis guess displaced
-    helically by ``helical_seed``."""
+    """The spherical tokamak at pres_scale, with an m = 1, n = 1 boundary ripple and the
+    magnetic axis guess displaced helically by ``helical_seed``."""
     vmec_input = vmecpp.VmecInput(
         lasym=False,
         nfp=1,
@@ -97,18 +75,13 @@ def solve(vmec_input: vmecpp.VmecInput, x_start: np.ndarray | None = None):
 
 
 def free_coefficients(model) -> np.ndarray:
-    """Indices of the state coefficients the solver evolves: those with a nonzero
-    preconditioned force at a state without symmetry."""
+    """The coefficients the solver evolves, from a state without symmetry."""
     model.evaluate(2, 2, True)
     return np.flatnonzero(np.asarray(model.get_forces()) != 0.0)
 
 
 def odd_n(model) -> np.ndarray:
-    """Mask of the state coefficients with odd toroidal mode number n.
-
-    The state holds R cos cos, R sin sin, Z sin cos, Z cos sin, lambda sin cos and
-    lambda cos sin, each ordered by surface, then m, then n.
-    """
+    """Mask of the state coefficients with odd toroidal mode number n."""
     n = np.indices((6, model.ns, model.mpol, model.ntor + 1))[3].ravel()
     return n % 2 == 1
 
@@ -129,8 +102,7 @@ def preconditioner_factor(model, x: np.ndarray, free: np.ndarray) -> np.ndarray:
 
 def smallest_eigenvalue(model, x: np.ndarray, free: np.ndarray, coordinates=None):
     """The smallest eigenvalue of the force Jacobian at x, in the coordinates in which
-    the preconditioner at x is the identity, on the given coordinates, all of them by
-    default."""
+    the preconditioner at x is the identity."""
     factor = preconditioner_factor(model, x, free)
     model.set_state(x)
     model.evaluate(2, 2, False)
@@ -145,9 +117,8 @@ def smallest_eigenvalue(model, x: np.ndarray, free: np.ndarray, coordinates=None
 
 
 def follow_branch(pres_scales, ripple, helical_seed, measured):
-    """Follow the branch reached from ``helical_seed`` at the first pres_scale down
-    through pres_scales by continuation, and return the critical eigenvalue at each
-    pres_scale in ``measured``."""
+    """The critical eigenvalue at each pres_scale in ``measured``, along the branch of
+    ``helical_seed`` followed down through pres_scales."""
     free = free_coefficients(create_model(case_input(pres_scales[0], ripple, 0.3)))
     x = None
     eigenvalues = []
@@ -159,11 +130,7 @@ def follow_branch(pres_scales, ripple, helical_seed, measured):
 
 
 def fit_branch_end(pres_scales, eigenvalues):
-    """The fit lambda = c (mu - mu_end)^b, as mu_end and b.
-
-    The fit is to log lambda, in mu measured from the lowest pres_scale in units of the
-    range of pres_scales.
-    """
+    """The fit lambda = c (mu - mu_end)^b, as mu_end and b."""
     mu = np.asarray(pres_scales)
     span = mu.max() - mu.min()
     s = (mu - mu.min()) / span
@@ -183,10 +150,7 @@ def fit_branch_end(pres_scales, eigenvalues):
 
 def axisymmetric_stability_limit(pres_scales):
     """The pres_scale at which the critical eigenvalue of the axisymmetric equilibrium
-    reaches zero, extrapolated linearly from two pres_scales above it.
-
-    The critical mode lies in the block of coefficients with odd toroidal mode number.
-    """
+    reaches zero, extrapolated linearly from two pres_scales above it."""
     probe = create_model(case_input(pres_scales[0], 0.0, 0.3))
     free = free_coefficients(probe)
     odd = np.flatnonzero(odd_n(probe)[free])

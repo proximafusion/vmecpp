@@ -16,10 +16,8 @@ import branch_end as example  # type: ignore # noqa: E402
 
 
 def test_the_helical_core_ends_at_a_pitchfork_and_with_a_ripple_at_a_fold() -> None:
-    """Without the ripple, the critical eigenvalue vanishes linearly, at the pres_scale
-    where the axisymmetric equilibrium loses its stability; with it, the branch the
-    ripple opposes ends at a higher pres_scale, where the eigenvalue vanishes as a
-    square root."""
+    """The critical eigenvalue vanishes linearly without the ripple, and as a square
+    root at a higher pres_scale with it."""
     mu_pitchfork, b_pitchfork = example.fit_branch_end(*example.pitchfork_case())
     mu_fold, b_fold = example.fit_branch_end(*example.fold_case())
     limit = example.axisymmetric_stability_limit([2.8e4, 2.7e4])
