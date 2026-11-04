@@ -49,7 +49,7 @@ See [below](#differences-with-respect-to-parvmecvmec2000) for more details.
 - [Usage](#usage)
   - [As a Python package](#as-a-python-package)
   - [With SIMSOPT](#with-simsopt)
-  - [With JAX for gradients](#differentiable-runs)
+  - [With JAX for gradients](#with-jax-for-gradients)
   - [As a command line tool](#as-a-command-line-tool)
   - [As a Docker image](#as-a-docker-image)
 - [Installation](#installation)
@@ -89,8 +89,10 @@ import vmecpp
 
 # Construct a VmecInput object, e.g. from a classic Fortran input file
 vmec_input = vmecpp.VmecInput.from_file("input.w7x")  # or VMEC++'s w7x.json format
+
 # This is a normal Python object: it can be constructed and modified programmatically
-vmec_input.rbc[0, 0] *= 1.1
+ntor = vmec_input.ntor
+vmec_input.rbc[0, ntor+0] *= 1.1 # m=0, n=0
 
 # Run VMEC++
 vmec_output = vmecpp.run(vmec_input)
@@ -118,7 +120,7 @@ vmec = vmecpp.simsopt_compat.Vmec("input.w7x")
 print(f"Computed plasma volume: {vmec.volume()}")
 ```
 
-## Differentiable runs
+### With JAX for gradients
 
 > [!NOTE]
 > The autodiff API is not yet stable. We are planning to make autodiff the default
@@ -159,8 +161,10 @@ In a terminal in which Python has access to the VMEC++ package:
 
 ```console
 # run on a given input file -> produce corresponding wout_w7x.nc
-# vmecpp is a python module and can be either run with `python -m` or directly as a script
 vmecpp examples/data/input.w7x
+
+# vmecpp is a python module and can also be run with `python -m`
+python -m vmecpp examples/data/input.w7x
 
 vmecpp -t 4 examples/data/input.w7x      # run with up to 4 threads
 vmecpp -q examples/data/input.w7x        # Suppress logging (quiet)
@@ -170,12 +174,19 @@ vmecpp --legacy examples/data/input.w7x  # use tabular output logging like in Fo
 vmecpp convert examples/data/input.w7x
 
 # compute an mgrid file from a coils file with MAKEGRID -> mgrid_<name>.nc
-# (the JSON file only defines the mgrid grid, it is not a VMEC input; `mgrid` is an alias of `makegrid`)
-vmecpp mgrid makegrid_parameters.json coils.<name>
+# (the JSON file only defines the mgrid grid, it is not a VMEC input)
+vmecpp makegrid examples/data/makegrid_parameters.json examples/data/coils.cth_like
 
-# print the version, or check all options
+# `mgrid` is an alias of `makegrid`
+vmecpp mgrid examples/data/makegrid_parameters.json examples/data/coils.cth_like
+
+# print the version number
 vmecpp --version
+
+# check all options, including for sub-commands
 vmecpp --help
+vmecpp convert --help
+vmecpp makegrid --help
 ```
 
 ### As a Docker image
@@ -387,10 +398,6 @@ VMEC++:
 - implements the iteration algorithm of Fortran VMEC 8.52, which sometimes has different convergence behavior from (PAR)VMEC 9.0: some configurations might converge with VMEC++ and not with (PAR)VMEC 9.0, and vice versa. One deliberate exception: at multigrid grid transitions, the rollback backup of the state vector is taken *after* the radial interpolation of the coarse-grid solution (matching PARVMEC/VMEC2000 since 2017-01-24, "SPH 012417"), not before it as in VMEC 8.52 -- with the 8.52 ordering, the first restart of a stage silently discards the interpolated state and the finer stages effectively re-solve from a cold start
 
 ### Limitations with respect to the Fortran implementations
-- several profile parameterizations are not fully implemented yet:
-   * `sum_cossq_s`
-   * `sum_cossq_sqrts`
-   * `sum_cossq_s_free`
 - 2D preconditioning using block-tridiagonal solver ([`BCYCLIC`](https://www.sciencedirect.com/science/article/abs/pii/S0021999110002536)) is not implemented;
   neither are the associated input fields `precon_type` and `prec2d_threshold`
 - VMEC++ only computes the output quantities if the run converged (can be overridden via `return_outputs_even_if_not_converged` input)
