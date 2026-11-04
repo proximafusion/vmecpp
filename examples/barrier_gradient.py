@@ -1,37 +1,8 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""The gradient of the energy barrier between two equilibria.
-
-The barrier between two equilibria is the energy of the transition state between
-them minus the energy of the lower one. Its derivative with respect to a parameter q
-of the input, a boundary coefficient or a profile parameter, is the difference of the
-derivatives of the MHD energy W along the two equilibrium branches. Along a branch
-x(q), defined by the force balance F(x(q), q) = 0, the implicit function theorem gives
-
-    dW/dq = dW/dq|_x - lambda^T dF/dq|_x,   J^T lambda = dW/dx,   J = dF/dx.
-
-The first term alone, the envelope theorem, is the derivative where W is stationary.
-VMEC's equilibria are stationary points of its augmented functional, the MHD energy
-plus the spectral-condensation constraint, and dW/dx does not vanish there; the
-example prints the first term beside the derivative. One solve for lambda per
-equilibrium serves every parameter; each parameter then costs four force evaluations.
-
-The force is a row-scaled gradient, so J is not symmetric and the adjoint system
-needs J^T. J and dW/dx are assembled densely on the free coefficients of the
-decomposed state of a ``VmecModel``, from Hessian-vector products and central
-differences of the energy.
-
-The configuration is a spherical tokamak of major radius 1.5, minor radius 1 and
-elongation 1.6, with q = 1 on the axis and low shear out to s = 0.5. Its axisymmetric
-equilibrium is unstable to the m = 1, n = 1 internal kink, which leads to a
-helical-core equilibrium. With the axisymmetric boundary and the stellarator symmetry
-of the input, that equilibrium comes as a pair of mirror images, half a toroidal turn
-apart, and the transition state between them is the axisymmetric equilibrium. The
-solver reaches each directly: the helical one from a helically displaced axis guess,
-the axisymmetric one from an axisymmetric guess, in which the n = 1 coefficients start
-at zero and stay there.
-"""
+"""The gradient of the energy barrier between two equilibria, from one adjoint solve per
+equilibrium and four force evaluations per parameter."""
 
 from __future__ import annotations
 
@@ -52,7 +23,7 @@ def helical_core_input(
     pres_scale: float = 1.2e5, elongation: float = 1.6, helical_seed: float = 0.0
 ) -> vmecpp.VmecInput:
     """The spherical tokamak, with the magnetic axis guess displaced helically by
-    ``helical_seed``; a seed of zero keeps the initial guess axisymmetric."""
+    ``helical_seed``."""
     vmec_input = vmecpp.VmecInput(
         lasym=False,
         nfp=1,
@@ -95,15 +66,14 @@ def solve(vmec_input: vmecpp.VmecInput):
 
 
 def free_coefficients(model) -> np.ndarray:
-    """Indices of the state coefficients the solver evolves: those with a nonzero
-    preconditioned force at a state without symmetry."""
+    """The coefficients the solver evolves, from a state without symmetry."""
     model.evaluate(2, 2, True)
     return np.flatnonzero(np.asarray(model.get_forces()) != 0.0)
 
 
 def energy_and_force(vmec_input: vmecpp.VmecInput, x: np.ndarray, free: np.ndarray):
-    """The MHD energy and the raw force of ``vmec_input`` at the free coefficients of x,
-    with the fixed coefficients, among them the boundary, taken from the input."""
+    """The MHD energy and the raw force of ``vmec_input`` at the free coefficients of
+    x."""
     model = create_model(vmec_input)
     state = np.asarray(model.get_state()).copy()
     state[free] = x[free]
@@ -113,12 +83,7 @@ def energy_and_force(vmec_input: vmecpp.VmecInput, x: np.ndarray, free: np.ndarr
 
 
 def adjoint(parameters: dict, x: np.ndarray, free: np.ndarray, step: float = 1.0e-6):
-    """The adjoint lambda of J^T lambda = dW/dx at the equilibrium x.
-
-    Both sides live on the free coefficients. The energy gradient dW/dx comes from
-    central differences of the energy, and J column by column from Hessian-vector
-    products, the directional derivatives of the force that VmecModel computes.
-    """
+    """The adjoint lambda of J^T lambda = dW/dx at the equilibrium x."""
     model = create_model(helical_core_input(**parameters))
     energy_gradient = objective_state_gradient(model, x, mhd_energy, step)[free]
     model.set_state(x)
@@ -150,11 +115,7 @@ def barrier(parameters: dict) -> float:
 
 def barrier_gradients(parameters: dict, explicit_steps: dict) -> dict:
     """The derivative of the barrier with respect to each parameter named in
-    explicit_steps, and its envelope term, as {name: (gradient, envelope term)}.
-
-    The steps are those of the central differences that give the explicit derivatives at
-    fixed state.
-    """
+    explicit_steps, and its envelope term, as {name: (gradient, envelope term)}."""
     free = free_coefficients(create_model(helical_core_input(helical_seed=0.3)))
     x_saddle, _ = solve(helical_core_input(**parameters))
     x_min, _ = solve(helical_core_input(**parameters, helical_seed=0.3))
