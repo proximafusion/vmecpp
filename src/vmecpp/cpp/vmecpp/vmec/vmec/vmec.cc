@@ -590,9 +590,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     return absl::InternalError(msg);
   }
 
-  // A run that ran out of iterations advanced its state after the last force
-  // evaluation, so the model is evaluated once more at the state it returns.
-  if (status_ == VmecStatus::NORMAL_TERMINATION) {
+  // Budget exhaustion and a callback stop can leave the geometry one step
+  // ahead of the last force evaluation. Refresh fields and residuals at the
+  // returned geometry without advancing it or invoking the callback again.
+  if (status_ == VmecStatus::NORMAL_TERMINATION || stopped_by_callback_) {
     absl::Status evaluated = EvaluateFinalState();
     if (!evaluated.ok()) {
       return evaluated;
