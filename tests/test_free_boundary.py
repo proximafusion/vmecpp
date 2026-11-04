@@ -112,6 +112,25 @@ def test_raise_invalid_nzeta():
         vmecpp.run(vmec_input, response, verbose=False)
 
 
+def test_raise_phiedge_sign_opposite_to_vacuum_field():
+    """A toroidal flux whose sign opposes the coils' toroidal field is refused."""
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_params.number_of_r_grid_points = 31
+    makegrid_params.number_of_phi_grid_points = 36
+    makegrid_params.number_of_z_grid_points = 20
+    response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+        TEST_DATA_DIR / "coils.cth_like", makegrid_params
+    )
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_free_bdy.json")
+    vmec_input.phiedge = -vmec_input.phiedge
+    with pytest.raises(
+        RuntimeError, match="rbtor and bsubvvac must have the same sign"
+    ):
+        vmecpp.run(vmec_input, response, verbose=False)
+
+
 def test_makegrid_parameters_conversion(makegrid_params):
     # Convert resolution parameters to C++ and back to Python
     cpp_params = makegrid_params._to_cpp_makegrid_parameters()
