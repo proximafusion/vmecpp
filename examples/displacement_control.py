@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 import numpy as np
 from scipy.optimize import brentq
+from scipy.sparse.linalg import LinearOperator, cg
 
 import vmecpp
 from vmecpp._iteration import RestartReason
@@ -167,7 +168,8 @@ class _Converged(Exception):
 class Saddle:
     """The saddle at the error field eps on the line from the minimum x_from to x_to.
 
-    Its amplitude tau is c . x, with x the free coefficients measured from x_from.
+    Its amplitude tau is c . x, with x the free coefficients measured from x_from and c
+    the direction of the line in the metric of the preconditioner.
     """
 
     def __init__(self, case, eps, model, x_from, x_to, free):
@@ -178,10 +180,13 @@ class Saddle:
         self.energy_minimum = model.mhd_energy
         self.rows = row_scale(model, free)
         direction = (x_to - x_from)[free]
-        self.length = np.linalg.norm(direction)
-        self.c = direction / self.length
-        self.along = precondition(model, free, self.c * self.rows)
-        self.c_along = self.c @ self.along
+        metric = LinearOperator(
+            (free.size, free.size),
+            matvec=lambda v: precondition(model, free, self.rows * v),
+        )
+        solved, _ = cg(metric, direction, rtol=1.0e-12)
+        self.length = np.sqrt(direction @ solved)
+        self.c, self.along = solved / self.length, direction / self.length
         self.x = np.zeros_like(direction)
 
     def state(self, x) -> np.ndarray:
@@ -194,7 +199,7 @@ class Saddle:
 
         Returns x and the force mu along the line.
         """
-        x = x + (tau - self.c @ x) / self.c_along * self.along
+        x = x + (tau - self.c @ x) * self.along
         step, momentum = self.case.heavy_ball
         velocity, previous = np.zeros_like(x), x
         for _ in range(MAX_STEPS):
@@ -206,13 +211,11 @@ class Saddle:
             previous = x
             force = np.asarray(self.model.get_forces())[self.free]
             descent = precondition(self.model, self.free, force)
-            mu = self.c @ descent / self.c_along
+            mu = self.c @ descent
             descent = descent - mu * self.along
             gradient = force / self.rows - mu * self.c
             size = np.sqrt(abs(gradient @ descent))
-            if residual(self.model) < self.model.ftolv or size < across * abs(
-                mu
-            ) * np.sqrt(self.c_along):
+            if residual(self.model) < self.model.ftolv or size < across * abs(mu):
                 return x, mu
             velocity = momentum * velocity - step * descent
             if velocity @ gradient > 0.0:

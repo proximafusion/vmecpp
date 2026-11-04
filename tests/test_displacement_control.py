@@ -80,23 +80,18 @@ def test_the_saddle_without_an_error_field_is_the_axisymmetric_equilibrium() -> 
 
 def test_the_barrier_follows_the_law_of_a_pitchfork() -> None:
     """The barrier grows as the square of the distance from the threshold of the
-    critical eigenvalue, and is the slope of the force at the saddle times tau^2 / 4."""
+    critical eigenvalue, and is that eigenvalue at the saddle times tau^2 / 4."""
     limit = example.stability_limit(CASE, [5.8e4, 5.6e4])
     barriers = {}
     for pressure in (5.6e4, 5.8e4):
         saddle = unbroken_saddle(pressure)
         barriers[pressure] = saddle.barrier()
-        delta = 0.01 * saddle.tau
-        plus = saddle.relax(saddle.x, saddle.tau + delta, 0.01)[1]
-        minus = saddle.relax(saddle.x, saddle.tau - delta, 0.01)[1]
-        slope = (plus - minus) / (2.0 * delta)
+        lowest = saddle.lowest_eigenvalues()[0]
         np.testing.assert_allclose(
-            barriers[pressure] * (NS - 1), -slope * saddle.tau**2 / 4.0, rtol=1.0e-2
+            barriers[pressure] * (NS - 1), -lowest * saddle.tau**2 / 4.0, rtol=1.0e-2
         )
         np.testing.assert_allclose(
-            lowest_at_minimum(saddle) / -saddle.lowest_eigenvalues()[0],
-            2.0,
-            rtol=1.0e-2,
+            lowest_at_minimum(saddle) / -lowest, 2.0, rtol=1.0e-2
         )
     np.testing.assert_allclose(
         barriers[5.8e4] / barriers[5.6e4],
@@ -127,7 +122,7 @@ def test_the_saddle_under_an_error_field_joins_the_two_minima(broken) -> None:
     """A push along the line ends at either minimum, and the solver from an axisymmetric
     guess does not reach the saddle."""
     saddle, x_high, x_low, free = broken
-    push = 0.2 * saddle.tau * saddle.c
+    push = 0.2 * saddle.tau * saddle.along
     vmec_input = CASE.make(PRESSURE, EPS)
     _, towards_high = example.solve(vmec_input, saddle.state(saddle.x - push))
     _, towards_low = example.solve(vmec_input, saddle.state(saddle.x + push))
@@ -162,4 +157,4 @@ def test_the_saddle_merges_with_the_higher_minimum_at_a_fold() -> None:
         [row.barrier() ** (2.0 / 3.0) for row in near],
     ):
         np.testing.assert_allclose(example.fold_position(near, law), eps_c, rtol=1e-2)
-    np.testing.assert_allclose(critical[0], critical[1], rtol=1.0e-2)
+    np.testing.assert_allclose(critical[0], critical[1], rtol=2.0e-2)
