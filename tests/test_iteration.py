@@ -433,11 +433,17 @@ def stalling_input(request):
     )
 
 
-def test_time_step_control_gives_up_on_reverts_without_progress(stalling_input):
+@pytest.mark.parametrize("max_threads", [1, 4])
+def test_time_step_control_gives_up_on_reverts_without_progress(
+    stalling_input, max_threads
+):
     """The run goes over to the PARVMEC control and converges."""
     states = []
     wout = vmecpp.run(
-        stalling_input, max_threads=1, verbose=False, iteration_callback=states.append
+        stalling_input,
+        max_threads=max_threads,
+        verbose=False,
+        iteration_callback=states.append,
     ).wout
     assert max(wout.fsqr, wout.fsqz, wout.fsql) <= wout.ftolv
     assert states[-1].delt > 0.1 * stalling_input.delt

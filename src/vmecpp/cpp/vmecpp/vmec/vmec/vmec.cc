@@ -1378,6 +1378,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
+    bool control_reverts = false;
     if (fc_.parvmec_control) {
       // PARVMEC control: store when both residual minima improve; revert via
       // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
@@ -1398,14 +1399,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       RestartIteration(fc_.delt0r, thread_id, indata_.backup_evaluated_state);
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
+      control_reverts = true;
 
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      {
-        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
-        CountRevert(fc_, verbose_);
-      }
+      fc_.restart_reason = RestartReason::BAD_JACOBIAN;
     } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
                iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
@@ -1418,14 +1417,12 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // the 45 test targets outside tolerance and 1e-4 moves 10. It may still
       // be the right thing for cases that stall at ~2e-3, but it needs the
       // reference outputs regenerated with it.
+      control_reverts = true;
 
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      {
-        fc_.restart_reason = RestartReason::BAD_PROGRESS;
-        CountRevert(fc_, verbose_);
-      }
+      fc_.restart_reason = RestartReason::BAD_PROGRESS;
     }
 
     const RestartReason restart_reason = fc_.restart_reason;
@@ -1441,9 +1438,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // have to keep track
       bad_resets++;
 #ifdef _OPENMP
-#pragma omp single nowait
+#pragma omp single
 #endif  // _OPENMP
-      iter1_ = iter2;
+      {
+        iter1_ = iter2;
+        if (control_reverts) {
+          CountRevert(fc_, verbose_);
+        }
+      }
     } else {
       // Increment time step and printout every nstep iterations
       // status report due or
