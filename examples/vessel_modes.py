@@ -1,17 +1,8 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-r"""The electromagnetic modes of the vessel of a magnetic confinement device, from a
-VMEC++ solve inside its wall, and their reach as a haloscope.
-
-The cavity modes solve \nabla \times \nabla \times E + (\omega_{pe}^2 / c^2) b (b \cdot
-E) = k^2 E with n \times E = 0 on the wall, for a thin plasma of electrons free along
-the field, in covariant components on edge elements in x = \sqrt{s} and harmonics in the
-angles. The fast wave is the parallel magnetic field \Psi of the compressional Alfven
-wave in a hydrogen plasma, -\nabla \cdot (\epsilon^{-1} \nabla \Psi) = k^2 \Psi with
-\epsilon = 1 + c^2 / v_A^2 and \Psi free on the wall. Reach is at signal to noise one
-against a thermal line.
-"""
+"""The electromagnetic modes of a vessel from a VMEC++ solve inside its wall, and their
+reach as a haloscope at signal to noise one."""
 
 import argparse
 import functools
@@ -41,7 +32,7 @@ EDGE_DENSITY = 1.0e-4  # density outside the plasma over its peak
 FAST_BAND = 1.5  # fast-wave modes compared, up to this multiple of the lowest k
 POLARIZATION = np.sqrt(1.0 / 3.0)  # rms of a random polarization along a direction
 B_HALO = np.sqrt(2.0 * RHO * MU0)  # field with the energy density of the halo, T
-# \kappa / g for the axion current \kappa B, with \kappa = g \sqrt{2 \rho}, in GeV / m
+# \kappa / g in GeV / m of the axion current \kappa B, \kappa = g \sqrt{2 \rho}
 KAPPA_PER_G = np.sqrt(2.0 * RHO_GEV_CM3 * (HBARC_GEV_M * 100.0) ** 3) / HBARC_GEV_M
 WALL_ABSORPTION = 0.026  # mean absorption of diffuse waves in the empty W7-X vessel
 WALL_FREQUENCY = 140.0e9  # the frequency of that measurement, Hz
@@ -55,10 +46,8 @@ TRACK_START = 1.0e13  # the density from which the mode is followed by doubling,
 
 
 def vessel_input(plasma, gap):
-    """The current-free input whose boundary is the plasma boundary moved out by gap
-    equivalent minor radii, along the normal in each cross-section, at the field
-    strength of the plasma; an axisymmetric vessel takes a small transform that nests
-    its surfaces."""
+    """The current-free input with the plasma boundary moved out along its normal by gap
+    minor radii."""
     nfp, mpol, ntor = int(plasma.nfp), int(plasma.mpol), int(plasma.ntor)
     lasym = plasma.lasym
     points_v = 4 * ntor + 16 if ntor else 1
@@ -98,7 +87,7 @@ def vessel_input(plasma, gap):
         phiedge=float(plasma.phiedge) * (1.0 + gap) ** 2,
         am=np.array([0.0]),
         ncurr=int(ntor > 0),
-        ai=np.array([0.05]),
+        ai=np.array([0.05]),  # nests the surfaces of an axisymmetric vessel
         ac=np.array([0.0]),
         rbc=fourier(r, cos),
         zbs=fourier(z, sin),
@@ -112,9 +101,8 @@ def vessel_input(plasma, gap):
 
 
 class Vessel:
-    r"""Geometry and field of a VMEC++ solve inside the wall, scaled to a volume and
-    mean field, on cells in x = \sqrt{s} and a grid of its angles over one field
-    period."""
+    r"""Geometry and field of a solve inside the wall on cells in x = \sqrt{s}, scaled
+    to a volume and a mean field."""
 
     def __init__(
         self, wout, edge, volume=None, field=None, cells=CELLS, kept=HARMONICS
@@ -137,7 +125,7 @@ class Vessel:
         half = np.sqrt((np.arange(1, ns) - 0.5) / (ns - 1))
 
         def splines(name, nodes, first, factor):
-            """The cosine and sine series of a quantity in x, one zero without lasym."""
+            """The cosine and sine series of a quantity in x."""
             c, s = (getattr(wout, f"{name}mn{kind}") for kind in "cs")
             zero = 0.0 * np.asarray(s if c is None else c)
             return [
@@ -148,7 +136,7 @@ class Vessel:
         self._r = splines("r", full, 0, scale)
         self._z = splines("z", full, 0, scale)
         self._b = splines("b", half, 1, field_scale)
-        # the contravariant components fall as the lengths grow, at a given |B|
+        # the contravariant components scale as |B| over the lengths
         self._bsupu = splines("bsupu", half, 1, field_scale / scale)
         self._bsupv = splines("bsupv", half, 1, field_scale / scale)
         self.ntheta = 4 * kept[0] + 8
@@ -158,7 +146,7 @@ class Vessel:
         self.zeta = 2.0 * np.pi / self.nfp * np.arange(self.nzeta) / self.nzeta
         self.grids = [self._grid(x) for x in self.xc]
         self.wall = self._grid(1.0)
-        # the volume over 4 \pi^2, the measure of the mass matrix
+        # the volume over 4 \pi^2
         self.measure = sum(np.sum(g["w"]) for g in self.grids) * self.dx
         weighted = sum(np.sum(g["w"] * g["b"]) for g in self.grids) * self.dx
         self.mean_field = weighted / self.measure
@@ -210,7 +198,7 @@ class Vessel:
         return np.cos(angle), np.sin(angle)
 
     def density(self, x):
-        """Density over its peak: 1 - x^4 inside the plasma, little outside it."""
+        """Density over its peak."""
         return np.maximum(1.0 - (x / self.plasma_edge) ** 4, EDGE_DENSITY)
 
     def harmonics(self, nu0):
@@ -226,24 +214,20 @@ class Vessel:
         return 1 if self.axisymmetric else 1 % self.nfp
 
     def direction(self, key, grid):
-        r"""The drive along z, or along x in cylindrical components.
-
-        With three periods or more x splits between the families of n = 1 and n = -1,
-        two modes that make one real standing mode, whose overlap is \sqrt{2} that of
-        the n = 1 phasor.
-        """
+        """The drive along z or along x in cylindrical components."""
         phi = grid["phi"]
         if key == "z":
             return np.stack([0.0 * phi, 0.0 * phi, 1.0 + 0.0 * phi])
         if self.axisymmetric or self.nfp > 2:
+            # n = 1 and n = -1 make one standing mode.
+            # Its overlap is \sqrt{2} that of this phasor.
             phasor = np.exp(-1j * phi) / np.sqrt(2.0)
             return np.stack([phasor, -1j * phasor, 0.0 * phi])
         return np.stack([np.cos(phi), -np.sin(phi), 0.0 * phi])
 
 
 class Forms:
-    """Hermitian forms and sources in the harmonics of a family, added cell by cell as
-    blocks between groups of unknowns, each one component at one radial position."""
+    """Hermitian forms and sources in the harmonics of a family, added cell by cell."""
 
     def __init__(self, vessel, nu0, total):
         modes = vessel.harmonics(nu0)
@@ -261,8 +245,8 @@ class Forms:
         self.keep = np.ones(total * self.size, dtype=bool)
 
     def nodal(self, component, left, right, factor):
-        """Table rows of a component linear between the unknowns at two nodes: component,
-        unknown, value at the midpoint of the cell, and slope in x."""
+        """Table rows (component, unknown, midpoint value, slope in x) of a component
+        linear between two nodes."""
         return [
             (component, left, 0.5 * factor, -factor / self.dx),
             (component, right, 0.5 * factor, factor / self.dx),
@@ -276,8 +260,10 @@ class Forms:
         ]
 
     def add(self, name, groups, table, tensor, dx=None):
-        """Add the form of a tensor over a cell, its linear profiles integrated exactly
-        at the tensor frozen on the cell."""
+        """Add the form of a tensor frozen on a cell.
+
+        Its linear profiles integrate exactly.
+        """
         dx = dx or self.dx
         store = self.blocks.setdefault(name, {})
         metric = {}
@@ -317,9 +303,9 @@ class Forms:
 
 
 def close_edges(forms, cells):
-    r"""Keep E_\theta = 0 and m = 0 of E_\zeta on the axis, and no tangential E on the
-    wall, on unknowns that run E_\theta, E_\zeta at node j as 3 j, 3 j + 1, and E_x in
-    cell c as 3 c + 2."""
+    r"""Set E_\theta = 0 and E_\zeta to m = 0 on the axis, and tangential E = 0 on the
+    wall."""
+    # E_\theta, E_\zeta at node j are unknowns 3 j, 3 j + 1, E_x in cell c is 3 c + 2
     forms.keep[: 2 * forms.size] = False
     forms.keep[forms.size + np.flatnonzero(forms.m == 0)] = True
     forms.keep[3 * cells * forms.size :] = False
@@ -327,10 +313,8 @@ def close_edges(forms, cells):
 
 @functools.cache
 def assemble_cavity(vessel, nu0):
-    r"""The curl-curl form a, mass m, density-weighted form d of E along the field and
-    form w of the tangential \nabla \times E on the wall, with the sources along x, z
-    and B, on the five unknowns of a cell: E_x, E_\theta at its nodes, E_\zeta at its
-    nodes."""
+    r"""The forms a (curl-curl), m (mass), d (density-weighted E along the field) and w
+    (\nabla \times E on the wall), and the sources along x, z and B."""
     cells, per_point = vessel.cells, vessel.per_point
     forms = Forms(vessel, nu0, 3 * cells + 2)
     d_t, d_v, one = forms.d_t, forms.d_v, forms.one
@@ -340,6 +324,7 @@ def assemble_cavity(vessel, nu0):
     curl += [*radial(1, 3, 4, -one), (2, 0, -d_t, none), *radial(2, 1, 2, one)]
 
     def cell_groups(c):
+        # E_x, E_\theta at the two nodes and E_\zeta at the two nodes
         return (3 * c + 2, 3 * c, 3 * c + 3, 3 * c + 1, 3 * c + 4)
 
     def covariant(grid):
@@ -369,9 +354,8 @@ def assemble_cavity(vessel, nu0):
 
 
 def assemble_fast(vessel, key, peak_density):
-    """The stiffness a with the inverse permittivity of the plasma, its part across the
-    surfaces p, mass m and the source along key, on piecewise linear radial elements
-    with m = 0 alone on the axis and the wall node free."""
+    """The forms a (stiffness), p (its part across the surfaces) and m (mass), and the
+    source along key, on linear radial elements."""
     forms = Forms(vessel, vessel.family(key), vessel.cells + 1)
     value = forms.nodal(0, 0, 1, forms.one)
     across = [*forms.radial(0, 0, 1, forms.one), *forms.nodal(1, 0, 1, forms.d_t)]
@@ -388,12 +372,13 @@ def assemble_fast(vessel, key, peak_density):
         across_b = np.cross(grid["unit"], grad, axisa=0, axisb=1, axisc=1)
         drive = vessel.direction(key, grid) * across_b
         forms.add_source("drive", groups, gradient, np.sum(drive, axis=1) * weight)
+    # m = 0 alone on the axis
     forms.keep[np.flatnonzero(forms.m != 0)] = False
     return forms.results()
 
 
 def modes_near(stiffness, mass, count, shift):
-    """The k^2 nearest a shift, ascending, with their vectors of unit norm in the
+    """The k^2 nearest a shift, ascending, and their vectors of unit norm in the
     mass."""
     values, vectors = eigsh(
         stiffness, k=count, M=mass, sigma=shift, which="LM", tol=1e-8
@@ -408,26 +393,27 @@ def quadratic(matrix, vectors):
 
 
 def noise_field(f, q, temperature, seconds):
-    r"""Peak amplitude of a mode of unit norm in the mass at signal to noise one: thermal
-    energy k T in a Lorentzian of width f / q, read over the linewidth of the halo for a
-    time. It gives the haloscope equation g^2 (\rho / m) B^2 V C q / 4 = k T
-    \sqrt{\Delta\nu / t}, for a receiver at critical coupling with q unloaded."""
+    r"""Peak amplitude of a mode of unit norm in the mass at signal to noise one.
+
+    It gives g^2 (\rho / m) B^2 V C q / 4 = k T \sqrt{\Delta\nu / t}.
+    """
     density = MU0 * K_B * temperature / np.pi**3
     return np.sqrt(density * q / f) * (f / Q_HALO) ** 0.25 / seconds**0.25
 
 
 def wall_resistance(f):
-    r"""Surface resistance of the first wall in ohm, from the absorption 16 R_s / (3
-    Z_0) of diffuse waves on a good conductor, scaled with the skin depth as
-    \sqrt{f}."""
+    r"""Surface resistance of the first wall in ohm.
+
+    It follows from the absorption 16 R_s / (3 Z_0) and grows as \sqrt{f}.
+    """
     return 3.0 / 16.0 * ETA0 * WALL_ABSORPTION * np.sqrt(f / WALL_FREQUENCY)
 
 
 def cavity_modes(
     vessel, nu0, peak_density, shift, seconds=1800.0, margin=Q_MARGIN, count=MODES
 ):
-    """The modes of a family nearest a shift in k^2: wave number, frequency, the Q from
-    the wall and the plasma, the noise temperature and field, and the overlaps."""
+    """The k, f, Q, noise temperature, noise field and overlaps of the modes of a family
+    nearest a shift in k^2."""
     matrices, sources = assemble_cavity(vessel, nu0)
     pe2 = peak_density * PE2_PER_DENSITY
     stiffness = matrices["a"] + pe2 * matrices["d"]
@@ -456,8 +442,10 @@ def cavity_modes(
 
 @functools.cache
 def tracked_mode(vessel, peak_density):
-    """The k^2 and the parallel share of the mode that couples best to an axion,
-    followed from the empty vessel through densities that double from TRACK_START."""
+    """The k^2 and the parallel share of the mode that couples best to an axion.
+
+    It is followed from the empty vessel through densities that double.
+    """
     if peak_density <= 0.0:
         shift = 1.2 * (2.405 / vessel.radius) ** 2
     else:
@@ -473,9 +461,8 @@ def tracked_mode(vessel, peak_density):
 
 
 def cavity_mode(vessel, peak_density=0.0, seconds=1800.0, margin=Q_MARGIN):
-    """The mode that couples best to an axion at a peak density of a thin plasma, with
-    its form factor and its reach in g, 1/GeV, then the modes near it that couple best
-    to a dark photon along z and along x, their reach the mixing eps."""
+    """The modes that couple best to an axion (reach g in 1/GeV and form factor) and to
+    a dark photon along z and along x (reach eps)."""
     shift = 1.02 * tracked_mode(vessel, peak_density)[0]
     axion = cavity_modes(vessel, 0, peak_density, shift, seconds, margin)
     photon = cavity_modes(
@@ -505,9 +492,8 @@ def cavity_mode(vessel, peak_density=0.0, seconds=1800.0, margin=Q_MARGIN):
 
 
 def fast_wave(vessel, key, peak_density, q=100.0, temperature=T_HOT, seconds=1800.0):
-    """The frequency of the lowest compressional mode of the plasma that closes across
-    the surfaces, and the frequency and reach for a dark photon along key of the best
-    mode within FAST_BAND of it."""
+    """The frequency of the lowest compressional mode closing across the surfaces, and
+    the frequency and reach along key of the best mode within FAST_BAND."""
     matrices, sources = assemble_fast(vessel, key, peak_density)
     speed = 1.0 / np.sqrt(1.0 + C**2 * MU0 * peak_density * MI / vessel.mean_field**2)
     # below every mode but the constant

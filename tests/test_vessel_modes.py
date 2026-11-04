@@ -65,15 +65,15 @@ def stellarator(stellarator_input):
 
 
 def filled(vessel):
-    """The vessel with the plasma edge far past its wall, a uniform density."""
+    """The vessel with the plasma edge far past its wall."""
     uniform = copy.copy(vessel)
     uniform.plasma_edge = 1.0e6
     return uniform
 
 
 def natural_units(vessel, f, temperature, seconds):
-    r"""Density, mass, volume and noise power of the haloscope equation with \hbar = c =
-    1, in eV^4, eV, 1/eV^3 and eV^2."""
+    r"""Density, mass, volume and noise power in eV^4, eV, 1/eV^3 and eV^2 for \hbar = c
+    = 1."""
     e, hbar = constants.e, constants.hbar
     hbarc = hbar * constants.c / e
     noise = constants.k * temperature * np.sqrt(f / vm.Q_HALO / seconds)
@@ -86,9 +86,8 @@ def natural_units(vessel, f, temperature, seconds):
 
 
 def exact_axisymmetric_mode(aspect, cells=320):
-    r"""The E_\phi = u / \sqrt{R} mode of a round wall of radius 1, -\nabla^2 u + (3 /
-    4) u / R^2 = k^2 u by finite differences: k b and the form factor in a field B ~ 1 /
-    R."""
+    r"""K b and the form factor in B ~ 1 / R of the mode E_\phi = u / \sqrt{R} of a
+    round wall, from -\nabla^2 u + (3 / 4) u / R^2 = k^2 u by finite differences."""
     h = 2.0 / cells
     axis = aspect - 1.0 + h * np.arange(cells + 1)
     height = -1.0 + h * np.arange(cells + 1)
@@ -127,8 +126,8 @@ def test_vessel_grids_reproduce_the_solve(stellarator):
 
 
 def test_curl_curl_form_annihilates_gradients(stellarator):
-    """The discrete gradient of any potential that vanishes on the wall has no curl, in
-    a three-dimensional vessel."""
+    """The discrete gradient of a potential that vanishes on the wall of a three-
+    dimensional vessel has no curl."""
     matrices, _ = vm.assemble_cavity(stellarator, 0)
     cells = stellarator.cells
     forms = vm.Forms(stellarator, 0, 3 * cells + 2)
@@ -233,13 +232,8 @@ def test_flipping_an_asymmetric_vessel_keeps_its_frequency():
 
 @pytest.mark.parametrize(("seconds", "margin"), [(1800.0, 0.5), (86400.0, 1.0)])
 def test_reach_of_the_cavity_mode_is_the_haloscope_equation(torus, seconds, margin):
-    r"""The reach solves k T \sqrt{\Delta\nu / t} = g^2 (\rho / m) B^2 V C Q / 4.
-
-    A dark photon of random polarization replaces the right side by \epsilon^2 \rho m V
-    C' Q / 4, with C' = C_z / 3 = 2 / (3 (x^2 - 1)) on the TE_{11} mode of k b = x along
-    z, and C' = C / 6 on the mode of E along the field along x, from the mean of
-    \sin^2 \phi.
-    """
+    r"""The reach solves k T \sqrt{\Delta\nu / t} = g^2 (\rho / m) B^2 V C Q / 4, and
+    for a dark photon \epsilon^2 \rho m V C' Q / 4."""
     row, along_z, along_x = vm.cavity_mode(torus, seconds=seconds, margin=margin)
     rho, mass, volume, noise = natural_units(
         torus, row["f"], row["temperature"], seconds
@@ -253,12 +247,14 @@ def test_reach_of_the_cavity_mode_is_the_haloscope_equation(torus, seconds, marg
     rho, mass, volume, noise = natural_units(
         torus, along_z["f"], along_z["temperature"], seconds
     )
+    # C' = C_z / 3 on the TE_{11} mode of k b = x
     form = 2.0 / (x**2 - 1.0)
     eps = np.sqrt(12.0 * noise / (rho * mass * volume * form * along_z["q"]))
     np.testing.assert_allclose(along_z["reach"], eps, rtol=0.03)
     rho, mass, volume, noise = natural_units(
         torus, along_x["f"], along_x["temperature"], seconds
     )
+    # C' = C / 6 from the mean of \sin^2 \phi
     eps = np.sqrt(
         4.0 * noise / (rho * mass * volume * row["form"] / 6.0 * along_x["q"])
     )
@@ -267,11 +263,7 @@ def test_reach_of_the_cavity_mode_is_the_haloscope_equation(torus, seconds, marg
 
 def test_fast_wave_of_a_filled_torus_is_the_first_magnetic_mode(torus):
     r"""Plasma out to the wall makes the lowest mode across the field k b = x at v_A,
-    with J_1'(x) = 0.
-
-    The drive along z is \epsilon^{-1} \oint \Psi n_R dl along the torus, with
-    \epsilon^{-1} = (k b / x)^2 at unit norm of \Psi.
-    """
+    where J_1'(x) = 0."""
     vessel = filled(torus)
     q, temperature, seconds = 100.0, 1000.0 * vm.E / vm.K_B, 1800.0
     row = vm.fast_wave(vessel, "z", 1.0e20, q, temperature, seconds)
@@ -281,6 +273,7 @@ def test_fast_wave_of_a_filled_torus_is_the_first_magnetic_mode(torus):
     )
     np.testing.assert_allclose(row["k"] * WALL / speed, x, rtol=0.05)
     assert row["across"] > 0.8
+    # \epsilon^{-1} \oint \Psi n_R dl along the torus, at unit norm of \Psi
     drive = (row["k"] * WALL / x) ** 2 * np.sqrt(
         2.0 * vessel.volume / WALL**2 / (1.0 - 1.0 / x**2)
     )
