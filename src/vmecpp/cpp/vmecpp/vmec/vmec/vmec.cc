@@ -278,9 +278,8 @@ int VacuumNtor(const vmecpp::VmecINDATA& indata) {
 // That state can be worse than the one just reached.
 void CountRevert(vmecpp::FlowControl& m_fc, bool verbose) {
   m_fc.reverts_without_progress++;
-  if (!m_fc.parvmec_control &&
-      m_fc.reverts_without_progress >=
-          vmecpp::FlowControl::kMaxRevertsWithoutProgress) {
+  if (m_fc.reverts_without_progress >=
+      vmecpp::FlowControl::kMaxRevertsWithoutProgress) {
     m_fc.parvmec_control = true;
     m_fc.res0 = -1;
     m_fc.res1 = -1;
@@ -1403,7 +1402,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+      {
+        fc_.restart_reason = RestartReason::BAD_JACOBIAN;
+        CountRevert(fc_, verbose_);
+      }
     } else if ((iter2 - iter1_) > fc_.kPreconditionerUpdateInterval / 2 &&
                iter2 > 2 * fc_.kPreconditionerUpdateInterval &&
                fc_.fsqr + fc_.fsqz > 1.0e-2) {
@@ -1420,7 +1422,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
 #ifdef _OPENMP
 #pragma omp single
 #endif  // _OPENMP
-      fc_.restart_reason = RestartReason::BAD_PROGRESS;
+      {
+        fc_.restart_reason = RestartReason::BAD_PROGRESS;
+        CountRevert(fc_, verbose_);
+      }
     }
 
     const RestartReason restart_reason = fc_.restart_reason;
@@ -1573,8 +1578,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
       iter1_ = iter2_;
 
       fc_.restart_reason = RestartReason::NO_RESTART;
-
-      CountRevert(fc_, verbose_);
     }
 
   } else if (fc_.restart_reason == RestartReason::BAD_PROGRESS) {
@@ -1598,8 +1601,6 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
       m_delt0r = m_delt0r / 1.03;
 
       fc_.restart_reason = RestartReason::NO_RESTART;
-
-      CountRevert(fc_, verbose_);
     }
   } else {
     // NO_RESTART or HUGE_INITIAL_FORCES

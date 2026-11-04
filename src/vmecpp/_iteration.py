@@ -355,7 +355,6 @@ def solve_equilibrium(
                 iter1 = iter2
                 delt0r = (0.98 if ijacob < 50 else 0.96) * delt_user
                 n_restarts += 1
-                reverts_without_progress += 1
                 pending_bad_jacobian_reinit = True
                 must_retry = True
                 break
@@ -487,6 +486,7 @@ def solve_equilibrium(
                     bad_resets += 0 if stores else 1
                     n_restarts += 1
                     restarted = True
+                    reverts_without_progress += 1 if blew_up else 0
                 elif stores:
                     model.save_evaluated_backup()
                     saved_backup = True
@@ -497,9 +497,7 @@ def solve_equilibrium(
                     bad_resets += 1
                     n_restarts += 1
                     restarted = True
-
-            if restarted:
-                reverts_without_progress += 1
+                    reverts_without_progress += 1
 
             if callback is not None:
                 callback(
