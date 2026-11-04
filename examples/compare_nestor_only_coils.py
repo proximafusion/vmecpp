@@ -34,7 +34,7 @@ ntheta = 101
 theta = np.linspace(0.0, 2.0 * np.pi, ntheta)
 for phi_degrees in [0, 18, 36]:
     phi = np.deg2rad(phi_degrees)
-    
+
     ref_kernel = np.outer(ref_xm, theta) - np.outer(ref_xn, phi)
     ref_cos_kernel = np.cos(ref_kernel)
     ref_sin_kernel = np.sin(ref_kernel)
