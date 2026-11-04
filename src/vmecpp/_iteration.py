@@ -78,6 +78,8 @@ _ROBUST = "robust"
 _VMEC_8_52_BLOWUP = 100.0
 _PARVMEC_BLOWUP = 1.0e4
 _ROBUST_BLOWUP = 1.0e3
+# FlowControl::kMaxRevertsWithoutProgress.
+_MAX_REVERTS_WITHOUT_PROGRESS = 8
 
 _logger = logging.getLogger(__name__)
 
@@ -206,6 +208,8 @@ def solve_equilibrium(
     fsq_prev = 1.0  # fc_.fsq is initialized to 1.0 in InitializeRadial
     res0 = -1.0  # running minimum of the preconditioned residual sum
     res1 = -1.0  # running minimum of the invariant residual sum (parvmec/robust)
+    res_best = math.inf  # lowest preconditioned residual sum of this solve
+    reverts_without_progress = 0  # reverts since res_best last halved
     iter1 = 1
     iter2 = 1
     ijacob = 0
@@ -351,12 +355,27 @@ def solve_equilibrium(
                 iter1 = iter2
                 delt0r = (0.98 if ijacob < 50 else 0.96) * delt_user
                 n_restarts += 1
+                reverts_without_progress += 1
                 pending_bad_jacobian_reinit = True
                 must_retry = True
                 break
             if ijacob >= 75:
                 failed = True
                 break
+
+            # The VMEC 8.52 control reverts without limit to a stored state.
+            # That state can be worse than the one just reached.
+            if (
+                not (parvmec or robust)
+                and reverts_without_progress >= _MAX_REVERTS_WITHOUT_PROGRESS
+            ):
+                parvmec = True
+                res0 = -1.0
+                res1 = -1.0
+
+            if fsq1 < 0.5 * res_best:
+                res_best = fsq1
+                reverts_without_progress = 0
 
             # Huge initial forces (forward model flags this only at iter2 == 1,
             # once the bad-Jacobian reguess has been used up so ijacob != 0): the
@@ -389,12 +408,22 @@ def solve_equilibrium(
                     res1 = fsq0
                 res0 = min(res0, fsq1)
                 res1 = min(res1, fsq0)
-                if fsq1 <= res0 and fsq0 <= res1:
+                stores = fsq1 <= res0 and fsq0 <= res1
+                blew_up = (iter2 - iter1) > 10 and (
+                    fsq1 > _PARVMEC_BLOWUP * res0 or fsq0 > _PARVMEC_BLOWUP * res1
+                )
+                if rr == RestartReason.BAD_JACOBIAN and (stores or not blew_up):
+                    model.restore_backup()
+                    delt0r *= 0.9
+                    ijacob += 1
+                    iter1 = iter2
+                    bad_resets += 0 if stores else 1
+                    n_restarts += 1
+                    restarted = True
+                elif stores:
                     model.save_evaluated_backup()
                     saved_backup = True
-                elif (iter2 - iter1) > 10 and (
-                    fsq1 > _PARVMEC_BLOWUP * res0 or fsq0 > _PARVMEC_BLOWUP * res1
-                ):
+                elif blew_up:
                     model.restore_backup()
                     delt0r /= 1.03
                     iter1 = iter2
@@ -441,29 +470,36 @@ def solve_equilibrium(
                 if iter2 == iter1 or res0 == -1.0:
                     res0 = fsq1
                 res0 = min(res0, fsq1)
+                stores = fsq1 <= res0 and (iter2 - iter1) > 10
                 blew_up = fsq1 > _VMEC_8_52_BLOWUP * res0 and iter2 > iter1
-                if rr == RestartReason.BAD_JACOBIAN or blew_up:
+                slow = (
+                    (iter2 - iter1) > _PRECOND_INTERVAL // 2
+                    and iter2 > 2 * _PRECOND_INTERVAL
+                    and (fsqr + fsqz) > 1.0e-2
+                )
+                if blew_up or (
+                    rr == RestartReason.BAD_JACOBIAN and (stores or not slow)
+                ):
                     model.restore_backup()
                     delt0r *= 0.9
                     ijacob += 1
                     iter1 = iter2
-                    bad_resets += 1
+                    bad_resets += 0 if stores else 1
                     n_restarts += 1
                     restarted = True
-                elif fsq1 <= res0 and (iter2 - iter1) > 10:
+                elif stores:
                     model.save_evaluated_backup()
                     saved_backup = True
-                elif (
-                    (iter2 - iter1) > _PRECOND_INTERVAL // 2
-                    and iter2 > 2 * _PRECOND_INTERVAL
-                    and (fsqr + fsqz) > 1.0e-2
-                ):
+                elif slow:
                     model.restore_backup()
                     delt0r /= 1.03
                     iter1 = iter2
                     bad_resets += 1
                     n_restarts += 1
                     restarted = True
+
+            if restarted:
+                reverts_without_progress += 1
 
             if callback is not None:
                 callback(

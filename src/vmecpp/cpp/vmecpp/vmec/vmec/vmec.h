@@ -261,6 +261,8 @@ class Vmec {
   // decomposed_x_ (already advanced by PerformTimeStep).
   void RestartIteration(double& m_delt0r, int thread_id,
                         bool backup_evaluated_state = false);
+  // Counts a revert and applies kMaxRevertsWithoutProgress. Runs in one thread.
+  void CountRevert();
   absl::StatusOr<bool> Evolve(VmecCheckpoint checkpoint, int maximum_iterations,
                               double time_step, int thread_id,
                               bool& m_liter_flag);

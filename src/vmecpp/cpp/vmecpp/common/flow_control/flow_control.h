@@ -37,6 +37,10 @@ class FlowControl {
   // ns4: number of iterations between update of radial preconditioner matrix
   static constexpr int kPreconditionerUpdateInterval = 25;
 
+  // Reverts without progress at which a multigrid step under the VMEC 8.52
+  // time-step control goes over to the PARVMEC one.
+  static constexpr int kMaxRevertsWithoutProgress = 8;
+
   FlowControl(bool lfreeb, double delt, int num_grids,
               std::optional<int> max_threads = std::nullopt);
 
@@ -118,6 +122,13 @@ class FlowControl {
   // Running minimum of the invariant residual sum (fsqr + fsqz + fsql); used
   // only by the PARVMEC time-step control.
   double res1;
+
+  // Lowest preconditioned residual sum of this multigrid step, and the reverts
+  // since it last halved.
+  double res_best;
+  int reverts_without_progress;
+  // Whether this multigrid step runs under the PARVMEC time-step control.
+  bool parvmec_control;
 
   Eigen::Vector3d fResInvar;
   Eigen::Vector3d fResPrecd;

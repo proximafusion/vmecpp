@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -718,6 +719,9 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   fc_.restart_reason = RestartReason::NO_RESTART;
   fc_.res0 = -1;
   fc_.res1 = -1;
+  fc_.res_best = std::numeric_limits<double>::infinity();
+  fc_.reverts_without_progress = 0;
+  fc_.parvmec_control = indata_.iteration_style == IterationStyle::PARVMEC;
   m_delt0 = indata_.delt;
 
   // INITIALIZE MESH-DEPENDENT SCALARS
@@ -1338,10 +1342,16 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // res0 is the best force residual we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
 
+      // Reverts reset res0 and leave res_best.
+      if (fc_.fsq < 0.5 * fc_.res_best) {
+        fc_.res_best = fc_.fsq;
+        fc_.reverts_without_progress = 0;
+      }
+
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
       // it (and its inputs) off the vmec_8_52 path so the default control stays
       // byte-for-byte unchanged.
-      if (indata_.iteration_style == IterationStyle::PARVMEC) {
+      if (fc_.parvmec_control) {
         const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
         if (iter2 == iter1_ || fc_.res1 == -1) {
           fc_.res1 = fsq_invariant;
@@ -1350,7 +1360,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
-    if (indata_.iteration_style == IterationStyle::PARVMEC) {
+    if (fc_.parvmec_control) {
       // PARVMEC control: store when both residual minima improve; revert via
       // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
       // minimum after 10 steps.
@@ -1544,6 +1554,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
       iter1_ = iter2_;
 
       fc_.restart_reason = RestartReason::NO_RESTART;
+
+      CountRevert();
     }
 
   } else if (fc_.restart_reason == RestartReason::BAD_PROGRESS) {
@@ -1567,6 +1579,8 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
       m_delt0r = m_delt0r / 1.03;
 
       fc_.restart_reason = RestartReason::NO_RESTART;
+
+      CountRevert();
     }
   } else {
     // NO_RESTART or HUGE_INITIAL_FORCES
@@ -1583,6 +1597,24 @@ void Vmec::RestartIteration(double& m_delt0r, int thread_id,
 #ifdef _OPENMP
 #pragma omp barrier
 #endif  // _OPENMP
+}
+
+void Vmec::CountRevert() {
+  // The VMEC 8.52 control reverts without limit to a stored state.
+  // That state can be worse than the one just reached.
+  fc_.reverts_without_progress++;
+  if (!fc_.parvmec_control &&
+      fc_.reverts_without_progress >= FlowControl::kMaxRevertsWithoutProgress) {
+    fc_.parvmec_control = true;
+    fc_.res0 = -1;
+    fc_.res1 = -1;
+    if (verbose_) {
+      std::cout << absl::StrFormat(
+          "NO PROGRESS IN %d RESTARTS: CONTINUING WITH THE PARVMEC TIME-STEP "
+          "CONTROL\n",
+          fc_.reverts_without_progress);
+    }
+  }
 }
 
 absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,

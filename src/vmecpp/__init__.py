@@ -495,7 +495,11 @@ class VmecInput(BaseModelWithNumpy):
         pydantic.Field(),
     ] = IterationStyle.VMEC_8_52
     """Time-step / restart control scheme for the equilibrium iteration (``"vmec_8_52"``
-    or ``"parvmec"``)."""
+    or ``"parvmec"``).
+
+    ``"vmec_8_52"`` goes over to ``"parvmec"`` in a multigrid step after 8 reverts
+    without progress.
+    """
 
     nstep: int = 10
     """Printout interval at which convergence progress is logged."""
