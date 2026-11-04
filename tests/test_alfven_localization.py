@@ -35,7 +35,7 @@ def surface(wout):
 
 
 def test_a_constant_is_the_zero_mode(surface):
-    """(P u_tau)_tau + W^2 P u = 0 keeps u = const at W = 0, whatever P is."""
+    """(P u_tau)_tau + W^2 P u = 0 keeps u = const at W = 0."""
     _, h, _, p, b_zeta = surface
     lowest = eigvalsh_tridiagonal(
         *al.operator(p, b_zeta, h), select="i", select_range=(0, 0)
@@ -44,7 +44,7 @@ def test_a_constant_is_the_zero_mode(surface):
 
 
 def test_counting_follows_the_alfven_time(surface):
-    """The states below W approach W tau / pi, Weyl's law on the line."""
+    """The states below W approach W tau / pi."""
     _, h, _, p, b_zeta = surface
     tau = np.sum(h / np.abs(b_zeta))
     w = 4.0 * np.pi * PERIODS / tau
@@ -57,7 +57,7 @@ def test_counting_follows_the_alfven_time(surface):
 
 
 def test_gaps_sit_at_their_labels(wout, surface):
-    """The widest gaps hold a rotation |m iota - n N| / 2, the gap labelling theorem."""
+    """The widest gaps hold a rotation |m iota - n N| / 2."""
     js, h, zeta, p, b_zeta = surface
     iota, nfp = abs(float(wout.iotas[js])), int(wout.nfp)
     unit = abs(float(wout.b0)) / float(wout.Rmajor_p)

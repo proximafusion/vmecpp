@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Shear-Alfven states along a field line, where a three-dimensional surface makes the
-operator quasi-periodic: a state localizes if its extent stays put as the line doubles."""
+"""Shear-Alfven states along a field line, and which of them localize."""
 
 import argparse
 from pathlib import Path
@@ -18,7 +17,7 @@ BIN = 0.05  # width of the table's bins of omega R / v_A
 
 def line_coefficients(wout, js, zeta, slope=None, alpha=0.0):
     """P = |grad s|^2 / B^2 and B^zeta on half-grid surface js along theta* = alpha +
-    slope zeta, slope being the rotational transform unless given."""
+    slope zeta."""
     slope = float(wout.iotas[js]) if slope is None else slope
     xm, xn = np.asarray(wout.xm, dtype=float), np.asarray(wout.xn, dtype=float)
     xm_nyq = np.asarray(wout.xm_nyq, dtype=float)
@@ -53,8 +52,10 @@ def line_coefficients(wout, js, zeta, slope=None, alpha=0.0):
 
 
 def operator(p, b_zeta, h):
-    """The symmetric tridiagonal form of (P u_tau)_tau + W^2 P u = 0 in the Alfven time
-    d tau = d zeta / B^zeta, W^2 = omega^2 mu0 rho, with natural ends."""
+    """The symmetric tridiagonal form with natural ends of (P u_tau)_tau + W^2 P u = 0.
+
+    Here d tau = d zeta / B^zeta and W^2 = omega^2 mu0 rho.
+    """
     dtau = h / np.abs(b_zeta)
     conductance = (p[:-1] + p[1:]) / (dtau[:-1] + dtau[1:])
     weight = p * dtau
@@ -64,8 +65,8 @@ def operator(p, b_zeta, h):
 
 
 def states(diagonal, off_diagonal, low, high):
-    """W and the extent in grid points, without the states pinned to a line end, of the
-    states with W in low..high."""
+    """W and the extent in grid points of the states with W in low..high not pinned to a
+    line end."""
     values, vectors = eigh_tridiagonal(
         diagonal,
         off_diagonal,
@@ -85,7 +86,7 @@ def states(diagonal, off_diagonal, low, high):
 def table(
     wout, js, periods, omega_max, slope=None, alpha=0.0, points=POINTS_PER_PERIOD
 ):
-    """Per bin of omega R / v_A: the states and their median extent in field periods on
+    """The states per bin of omega R / v_A and their median extent in field periods on
     lines of the given periods and half of them."""
     h = 2.0 * np.pi / int(wout.nfp) / points
     zeta = h * (0.5 + np.arange(points * periods))
