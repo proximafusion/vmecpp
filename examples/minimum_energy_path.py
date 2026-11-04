@@ -1,33 +1,8 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""The minimum-energy path between two equilibria, found by the string method.
-
-Equilibria are stationary points of VMEC's augmented functional, the MHD energy plus
-the spectral-condensation constraint. The minimum-energy path between two minima is
-the curve along which the force is everywhere tangent to the curve; its highest point
-is the transition state, and its height above a minimum is the energy barrier between
-the two equilibria. The string method (E, Ren and Vanden-Eijnden, J. Chem. Phys. 126,
-164103 (2007)) finds it from a chain of states between the minima: every state moves
-along the force, and after every step the chain is spread back to equal spacing along
-its length, so that only the force across the chain acts. The highest state moves with
-the force component along the chain reversed and climbs to the transition state
-(climbing image; Henkelman, Uberuaga and Jonsson, J. Chem. Phys. 113, 9901 (2000)).
-
-The configuration is a spherical tokamak of major radius 1.5, minor radius 1 and
-elongation 1.6, with q = 1 on the axis and low shear out to s = 0.5. Its axisymmetric
-equilibrium is unstable to the m = 1, n = 1 internal kink. With the axisymmetric
-boundary and the stellarator symmetry of the input, the helical-core equilibrium the
-kink leads to comes as a pair of mirror images, half a toroidal turn apart; in the
-state, the second follows from the first by flipping the sign of every coefficient with
-odd toroidal mode number n. The path between the two passes through the axisymmetric
-equilibrium, which the solver also reaches directly from an axisymmetric initial guess,
-because the n = 1 coefficients then start at zero and stay there.
-
-The chain lives on the free coefficients of the decomposed state of a ``VmecModel``,
-in coordinates y with x = x0 + L y, where L L^T is VMEC's preconditioner at the
-midpoint of the two minima.
-"""
+"""The minimum-energy path between two equilibria by the string method, with its highest
+state climbing to the transition state."""
 
 from __future__ import annotations
 
@@ -46,7 +21,7 @@ FTOL = 1.0e-13
 
 def helical_core_input(helical_seed: float = 0.0) -> vmecpp.VmecInput:
     """The spherical tokamak, with the magnetic axis guess displaced helically by
-    ``helical_seed``; a seed of zero keeps the initial guess axisymmetric."""
+    ``helical_seed``."""
     vmec_input = vmecpp.VmecInput(
         lasym=False,
         nfp=1,
@@ -89,27 +64,20 @@ def solve(vmec_input: vmecpp.VmecInput):
 
 
 def free_coefficients(model) -> np.ndarray:
-    """Indices of the state coefficients the solver evolves: those with a nonzero
-    preconditioned force at a state without symmetry."""
+    """The coefficients the solver evolves, from a state without symmetry."""
     model.evaluate(2, 2, True)
     return np.flatnonzero(np.asarray(model.get_forces()) != 0.0)
 
 
 def odd_n(model) -> np.ndarray:
-    """Mask of the state coefficients with odd toroidal mode number n.
-
-    The state holds R cos cos, R sin sin, Z sin cos, Z cos sin, lambda sin cos and
-    lambda cos sin, each ordered by surface, then m, then n.
-    """
+    """Mask of the state coefficients with odd toroidal mode number n."""
     n = np.indices((6, model.ns, model.mpol, model.ntor + 1))[3].ravel()
     return n % 2 == 1
 
 
 class Landscape:
-    """VMEC's augmented functional on the free coefficients, in coordinates y.
-
-    The state at y is x0 + L y, where L L^T is the preconditioner at x0.
-    """
+    """The force on the free coefficients, in coordinates y with x = x0 + L y, where L
+    L^T is the preconditioner at x0."""
 
     def __init__(self, model, x0: np.ndarray, free: np.ndarray):
         self.model = model
@@ -136,11 +104,7 @@ class Landscape:
         return np.linalg.solve(self.L, (x - self.x0)[self.free])
 
     def gradient(self, y: np.ndarray) -> np.ndarray:
-        """The raw force at y, in the coordinates y.
-
-        It is the gradient of the functional up to a positive row scaling. Leaves the
-        model evaluated at y.
-        """
+        """The raw force at y, in the coordinates y."""
         self.model.set_state(self.state(y))
         self.model.evaluate(2, 2, False)
         self.force_evaluations += 1
@@ -180,15 +144,7 @@ def string_method(
     max_iterations=10000,
 ):
     """The minimum-energy path from y_start to y_end, both minima, as a chain of
-    ``images`` states, and the energy of each state.
-
-    Interior states take heavy-ball steps along the force, with the velocity reset
-    whenever it points against the force, and the chain is respaced after every step.
-    After climb_after steps the highest interior state climbs instead: its force
-    component along the chain is reversed, and the respacing leaves it in place. The
-    search stops when the climbing state meets VMEC's convergence criterion and no
-    state moves by more than 1e-9 of the length of the chain in a step.
-    """
+    ``images`` states, and the energy of each state."""
     chain = np.array(
         [y_start + (y_end - y_start) * k / (images - 1) for k in range(images)]
     )
@@ -243,8 +199,7 @@ class MinimumEnergyPath:
 
 
 def path_between_mirror_images() -> MinimumEnergyPath:
-    """Solve for one helical-core equilibrium, mirror it, and run the string method
-    between the two."""
+    """The string method between a helical-core equilibrium and its mirror image."""
     minimum = solve(helical_core_input(helical_seed=0.3))
     odd = odd_n(minimum)
     x_start = np.asarray(minimum.get_state()).copy()
