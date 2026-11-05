@@ -40,7 +40,7 @@ r_b = r + J_x dn,   J = J_x T + J_b
 
 The boundary moves by `db` and the state by `dx`. `dn` is limited to 5% of the major radius `R`, in the step and in `r_b`. VMEC's descent then relaxes the state to the force tolerance, which takes no iterations when the step already meets it. A trial step on which VMEC raises is repeated without `dn`.
 
-The merit is `|r_b|^2`. Within the limit its error is of second order in the distance from force balance. The error is estimated as `2 |r_b| |J_x dn| |dn| / R` for the whole of `dn`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused before `H` is assembled if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop. A trial step refused after `H` is assembled tightens the force tolerance by a decade for the rest of the stage. The last state is relaxed to `NESTED_TOLERANCE`.
+The merit is `|r_b|^2`. Within the limit its error is of second order in the distance from force balance. The error is estimated as `2 |r_b| |J_x dn| |dn| / R` for the whole of `dn`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop, and has `H` assembled at its state at once if `|r|^2` lies below the merit by more than half the predicted drop. Otherwise its merit takes `dn` from GMRES on Hessian products at the trial state, preconditioned by the factors of the last point, until the preconditioned residual is 1% of `dn` or for at most 64 iterations, and `H` is assembled only if this merit falls. The merit on the trial state's own factors decides the step. A trial step refused on its merit tightens the force tolerance by a decade for the rest of the stage. The last state is relaxed to `NESTED_TOLERANCE`.
 
 `nested=True` converges each step to `NESTED_TOLERANCE` with the merit `|r|^2`. A stage ends after three steps in a row with a drop below 1%. A step whose gain exceeds 0.5 at a damping above its value at the start of the stage does not count, and the damping then falls ten times faster.
 
@@ -94,7 +94,6 @@ Residuals that are not finite at the first state raise a `ValueError`.
 ## Limitations
 
 - One `H` takes `3 * 6 * mpol * (ntor + 1)` Hessian products, about 2000 force evaluations at `ns` 51, `mpol` 7. `workers` runs them on one model per thread.
-- A trial step refused after the screen costs one `H`.
 - Slow modes next to the axis persist in VMEC's descent after the force tolerance is met. At `NESTED_TOLERANCE`, `|r|^2` of the nested baseline can differ from a cold run by 10%.
 - `dn` converges from states along a run. Far from force balance, such as the rotating ellipse with pressure, it does not, and VMEC's descent starts the run.
 - Where `H` is nearly singular, as at a start beyond an equilibrium limit, `dn` lies far outside its limit and the merit stays close to `|r|^2` until a step moves the boundary away.

@@ -17,10 +17,13 @@ from simsopt.mhd.vmec_diagnostics import QuasisymmetryRatioResidual
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore
 from vmecpp.joint import (
+    _NORMAL_ERROR,
+    _NORMAL_ITERATIONS,
     NESTED_TOLERANCE,
     JointProblem,
     QuasisymmetryProblem,
     Stage,
+    _gmres,
     _joint_point,
     _relaxed_further,
     _tightened,
@@ -251,6 +254,83 @@ def test_normal_steps_restore_force_balance(problem, keys, linearization) -> Non
         moved = moved + problem.balanced_residuals(boundary, moved, matrix)[2]
     assert norms[1] < 1.0e-2 * norms[0]
     assert norms[2] < 1.0e-2 * norms[1]
+
+
+def test_a_normal_step_on_the_factors_of_another_state_matches_its_own(
+    problem, keys, linearization
+) -> None:
+    """The residuals with the normal step at a moved state, by GMRES preconditioned with
+    the factors of the state it left and with its own."""
+    state, tangents, _, _ = linearization
+    delta = 1.0e-3 * np.random.default_rng(4).standard_normal(len(keys))
+    boundary = problem.boundary0.copy()
+    for key, value in zip(keys, delta, strict=True):
+        boundary[key] += value
+    moved = state + tangents @ delta
+    last = problem.force_jacobian(problem.create_model(problem.boundary0), state)
+    own = problem.force_jacobian(problem.create_model(boundary), moved)
+    values, on_last, _ = problem.balanced_residuals(boundary, moved, last)
+    _, on_own, _ = problem.balanced_residuals(boundary, moved, own)
+    np.testing.assert_allclose(
+        on_last,
+        on_own,
+        rtol=0.0,
+        atol=5.0e-2 * np.linalg.norm(on_own - values),
+        equal_nan=False,
+    )
+
+
+def test_gmres_stops_on_the_estimated_error_or_at_its_limit() -> None:
+    """A preconditioner that is wrong along the softest mode leaves the error above the
+    residual, and GMRES iterates until the preconditioned residual meets the tolerance.
+
+    The identity on an ill-conditioned matrix keeps the last iterate, which lowers the
+    residual.
+    """
+    generator = np.random.default_rng(0)
+    size = 40
+    rotation, _ = np.linalg.qr(generator.standard_normal((size, size)))
+    spectrum = np.logspace(-4.0, 2.0, size)
+    guess = spectrum * np.exp(generator.uniform(-0.2, 0.2, size))
+    guess[0] = 0.1 * spectrum[0]
+    matrix = rotation @ np.diag(spectrum) @ rotation.T
+    nearby = rotation @ np.diag(1.0 / guess) @ rotation.T
+    rhs = generator.standard_normal(size)
+    products = []
+
+    def apply(vector: np.ndarray) -> np.ndarray:
+        products.append(1)
+        return matrix @ vector
+
+    solution = _gmres(apply, lambda vector: nearby @ vector, rhs)
+    exact = np.linalg.solve(matrix, rhs)
+    assert len(products) < _NORMAL_ITERATIONS
+    assert np.linalg.norm(
+        nearby @ (rhs - matrix @ solution)
+    ) <= _NORMAL_ERROR * np.linalg.norm(solution)
+    assert np.linalg.norm(solution - exact) <= _NORMAL_ERROR * np.linalg.norm(exact)
+    size = 100
+    rotation, _ = np.linalg.qr(generator.standard_normal((size, size)))
+    matrix = rotation @ np.diag(np.logspace(-4.0, 2.0, size)) @ rotation.T
+    rhs = generator.standard_normal(size)
+    products.clear()
+    solution = _gmres(apply, lambda vector: vector, rhs)
+    assert len(products) == _NORMAL_ITERATIONS
+    assert np.linalg.norm(matrix @ solution - rhs) < np.linalg.norm(rhs)
+
+
+def test_a_normal_step_with_a_product_that_is_not_finite_has_no_merit(
+    problem, monkeypatch
+) -> None:
+    state = np.array(problem.relax(problem.boundary0, ftol=1.0e-8).get_state())
+    matrix = problem.force_jacobian(problem.create_model(problem.boundary0), state)
+    monkeypatch.setattr(
+        "vmecpp.joint.autodiff._force_product",
+        lambda _model, vector, **_kwargs: np.full(vector.size, np.nan),
+    )
+    _, balanced, normal = problem.balanced_residuals(problem.boundary0, state, matrix)
+    assert np.all(np.isnan(balanced))
+    assert np.all(np.isnan(normal))
 
 
 @needs_exact_products
@@ -507,7 +587,11 @@ class RaisesOnEveryStep(MeanIota):
 
 
 def test_steps_on_which_vmec_raises_end_the_stage() -> None:
-    result = optimize(RaisesOnEveryStep(rotating_ellipse(4, 4, 17), max_mode=1), (1,))
+    result = optimize(
+        RaisesOnEveryStep(rotating_ellipse(4, 4, 17), max_mode=1),
+        (1,),
+        error_fraction=0.3,
+    )
     assert result.steps == []
     assert result.stages[0].stopped == "no_step"
     assert result.stages[0].failed_solves == 24
@@ -551,6 +635,61 @@ def test_a_rise_of_the_residuals_refuses_a_step_before_its_force_jacobian() -> N
     assert result.stages[0].stopped == "no_step"
     assert result.stages[0].rejected_steps == 24
     assert problem.costs.assemblies == 2
+
+
+class HigherMeritOnEveryStep(MeanIota):
+    """At every boundary other than the first, the residuals keep their first value and
+    the merit rises."""
+
+    first = None
+
+    def evaluate(self, model, boundary):
+        evaluation = super().evaluate(model, boundary)
+        if not np.array_equal(boundary, self.boundary0):
+            evaluation.residuals = self.first.copy()
+        return evaluation
+
+    def balanced_residuals(self, boundary, state, matrix):
+        values, balanced, normal = super().balanced_residuals(boundary, state, matrix)
+        if np.array_equal(boundary, self.boundary0):
+            self.first = values
+        else:
+            balanced = balanced + 1.0
+        return values, balanced, normal
+
+
+def test_a_step_refused_on_its_merit_assembles_no_force_jacobian() -> None:
+    problem = HigherMeritOnEveryStep(rotating_ellipse(4, 4, 17), max_mode=1)
+    result = optimize(problem, (1,))
+    assert result.steps == []
+    assert result.stages[0].stopped == "no_step"
+    assert result.stages[0].rejected_steps == 24
+    assert problem.costs.assemblies == 2
+
+
+class LowerMeritOnlyOnOtherFactors(MeanIota):
+    """At every boundary other than the first, the merit falls on the factors of another
+    state and rises on the state's own."""
+
+    def force_jacobian(self, model, state):
+        matrix = super().force_jacobian(model, state)
+        matrix.state = np.array(state)
+        return matrix
+
+    def balanced_residuals(self, boundary, state, matrix):
+        values, balanced, normal = super().balanced_residuals(boundary, state, matrix)
+        if not np.array_equal(boundary, self.boundary0):
+            own = np.array_equal(matrix.state, state)
+            balanced = balanced + 1.0 if own else 0.5 * balanced
+        return values, balanced, normal
+
+
+def test_the_merit_on_its_own_factors_decides_a_step() -> None:
+    problem = LowerMeritOnlyOnOtherFactors(rotating_ellipse(4, 4, 17), max_mode=1)
+    result = optimize(problem, (1,))
+    assert result.steps == []
+    assert result.stages[0].rejected_steps > 0
+    assert problem.costs.assemblies > 2
 
 
 def test_a_state_that_cannot_be_relaxed_further_stays(monkeypatch) -> None:

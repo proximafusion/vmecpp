@@ -12,8 +12,10 @@ the interior of the state and its Jacobian ``H``. Eliminating the state gives
 ``dx = dn + T db`` with the normal step ``dn = -H^-1 F``, limited to a fraction of the
 major radius, and the state tangents ``T = -H^-1 F_b``. The merit of an iterate is
 ``|r + J_x dn|^2``. This is the objective with the force residual removed to first order.
-VMEC's own descent then relaxes the state as far as the error of the merit requires. The
-nested baseline converges the state at every step instead.
+VMEC's own descent then relaxes the state as far as the error of the merit requires. A
+trial step whose ``|r|^2`` shows no clear drop takes ``dn`` from GMRES on Hessian products
+at its own state, preconditioned by the factors of the last point, and ``H`` is assembled
+only if that merit falls. The nested baseline converges the state at every step instead.
 """
 
 from __future__ import annotations
@@ -46,10 +48,6 @@ RELAXATION_ITERATIONS = 3000
 _FIRST_TOLERANCE = 1.0e-6
 """Force tolerance of the first state of a run."""
 
-_REFACTOR_DISTANCE = 1.0e-2
-"""Largest move of the state, relaxing further, for which its factored Jacobian
-stands."""
-
 _NORMAL_RADIUS = 0.05
 """Largest normal step in one step, as a fraction of the major radius."""
 
@@ -58,6 +56,16 @@ _SMALLEST_DROP = 1.0e-5
 
 _FIRST_DAMPING = 1.0e-3
 """Damping at the start of a stage, above which the damping limits the step."""
+
+_CLEAR_DROP = 0.5
+"""Drop of ``|r|^2`` relative to the predicted drop above which a trial step has its
+force Jacobian assembled without a merit on the factors of the last point."""
+
+_NORMAL_ERROR = 1.0e-2
+"""Estimated relative error at which GMRES stops on a normal step."""
+
+_NORMAL_ITERATIONS = 64
+"""Largest number of GMRES iterations on a normal step."""
 
 _TANGENT_CHUNK = 16
 """Residual tangents per call of the compiled derivative, a size that compiles once."""
@@ -75,6 +83,43 @@ def boundary_modes(max_mode: int, ntor: int) -> list[tuple[int, int, int]]:
     ]
 
 
+def _gmres(apply, precondition, rhs: np.ndarray) -> np.ndarray:
+    """Right-preconditioned GMRES, to _NORMAL_ERROR or its last iterate.
+
+    The preconditioned residual estimates the error. Along the soft modes of the
+    operator the residual alone falls long before the error does.
+    """
+    norm = float(np.linalg.norm(rhs))
+    basis = [rhs / norm]
+    directions = []
+    hessenberg = np.zeros((_NORMAL_ITERATIONS + 1, _NORMAL_ITERATIONS))
+    weights = np.zeros(0)
+    for k in range(_NORMAL_ITERATIONS):
+        directions.append(precondition(basis[k]))
+        image = apply(directions[k])
+        if not np.all(np.isfinite(image)):
+            message = "a Hessian product is not finite"
+            raise ValueError(message)
+        for i in range(k + 1):
+            hessenberg[i, k] = image @ basis[i]
+            image = image - hessenberg[i, k] * basis[i]
+        hessenberg[k + 1, k] = np.linalg.norm(image)
+        block = hessenberg[: k + 2, : k + 1]
+        target = np.zeros(k + 2)
+        target[0] = norm
+        weights = np.linalg.lstsq(block, target, rcond=None)[0]
+        if hessenberg[k + 1, k] == 0.0:
+            break
+        basis.append(image / hessenberg[k + 1, k])
+        misfit = target - block @ weights
+        if np.linalg.norm(misfit) <= _NORMAL_ERROR * norm:
+            solution = np.stack(directions, axis=1) @ weights
+            error = np.linalg.norm(precondition(np.stack(basis, axis=1) @ misfit))
+            if error <= _NORMAL_ERROR * np.linalg.norm(solution):
+                break
+    return np.stack(directions, axis=1) @ weights
+
+
 @dataclass
 class Evaluation:
     """The residual vector at one state and its named parts."""
@@ -89,9 +134,11 @@ class Evaluation:
 
 @dataclass
 class Costs:
-    """Force evaluations and wall time by kind of work."""
+    """Force evaluations, Hessian products of the normal steps, force Jacobians and wall
+    time by kind of work."""
 
     force_evaluations: int = 0
+    normal_products: int = 0
     assemblies: int = 0
     solve_seconds: float = 0.0
     assembly_seconds: float = 0.0
@@ -328,9 +375,26 @@ class JointProblem:
         self.costs.objective_seconds += time.perf_counter() - start
         return self._evaluation(values), np.vstack(rows).T
 
+    def _normal_step(self, model, state, force, matrix) -> np.ndarray:
+        """``-H^-1 F`` on the interior, by GMRES on products at the state."""
+        model.evaluate(2, 2, True)
+
+        def apply(vector: np.ndarray) -> np.ndarray:
+            self.costs.normal_products += 1
+            full = np.zeros(state.size)
+            full[self.interior] = vector
+            return autodiff._force_product(model, full, exact=self.exact_products)[
+                self.interior
+            ]
+
+        return _gmres(apply, lambda vector: matrix.solve(vector[:, None])[:, 0], -force)
+
     def balanced_residuals(self, boundary, state, matrix):
         """The residuals at the state, the same residuals after the normal step to first
-        order, ``r + J_x dn`` with ``dn`` within its radius, and ``-H^-1 F``."""
+        order, ``r + J_x dn`` with ``dn`` within its radius, and ``-H^-1 F``.
+
+        ``matrix`` holds the factors of this state or a nearby one.
+        """
         start = time.perf_counter()
         state = np.ascontiguousarray(state)
         model = self.create_model(boundary)
@@ -341,8 +405,8 @@ class JointProblem:
         values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
         normal = np.zeros(state.size)
         try:
-            normal[self.interior] = matrix.solve(-force[:, None])[:, 0]
-        except ValueError:  # the force or the factors are not finite
+            normal[self.interior] = self._normal_step(model, state, force, matrix)
+        except ValueError:  # the force, the factors or a product are not finite
             normal[:] = np.nan
         change = np.full_like(values, np.nan)
         if np.all(np.isfinite(normal)):
@@ -471,9 +535,10 @@ class Result:
 class _Point:
     """A boundary and state, the residuals there and their value in force balance.
 
-    ``matrix`` is the factored force Jacobian. The nested baseline takes the residuals
-    as they are, and factors the Jacobian only for an accepted step. ``relaxable`` is
-    false once a further relaxation of the point has failed.
+    ``matrix`` is the factored force Jacobian, of this state or of the last accepted one.
+    The nested baseline takes the residuals as they are, and factors the Jacobian only for
+    an accepted step. ``relaxable`` is false once a further relaxation of the point has
+    failed.
     """
 
     boundary: np.ndarray
@@ -538,9 +603,11 @@ class _Trial:
     allowed_error: float
 
 
-def _joint_point(problem: JointProblem, boundary, state) -> _Point:
+def _joint_point(problem: JointProblem, boundary, state, matrix=None) -> _Point:
+    """The point with its merit on the given factors, or on its own."""
     state = np.ascontiguousarray(state)
-    matrix = problem.force_jacobian(problem.create_model(boundary), state)
+    if matrix is None:
+        matrix = problem.force_jacobian(problem.create_model(boundary), state)
     values, balanced, normal = problem.balanced_residuals(boundary, state, matrix)
     return _Point(boundary, state, values, balanced, normal, matrix)
 
@@ -595,16 +662,11 @@ def _tightened(
     problem: JointProblem, point: _Point, tolerance: float, allowed: float, end: Stage
 ) -> tuple[_Point, float]:
     """The point relaxed until the error of its merit is within the allowance, and the
-    tolerance this took; a state that moved far has its Jacobian factored again."""
-    origin = point.state
+    tolerance this took."""
     while (
         point.relaxable and point.merit_error > allowed and tolerance > NESTED_TOLERANCE
     ):
         point, tolerance = _decade_tighter(problem, point, tolerance, end)
-    if np.abs(point.state - origin).max() > _REFACTOR_DISTANCE:
-        factored = _joint_point(problem, point.boundary, point.state)
-        if np.isfinite(factored.merit):
-            point = factored
     return point, tolerance
 
 
@@ -688,18 +750,27 @@ def _first_accepted_step(
         # the descent stayed near force balance
         holds = force_residual <= max(30.0 * iterate.tolerance, 1.0e-4)
         if holds and not nested:
-            # refused before its force Jacobian is assembled
             plain = float(point.residuals @ point.residuals)
             holds = candidate.merit <= (
                 plain + abs(plain - point.merit) + 0.25 * predicted
             )
             if holds:
-                candidate = _joint_point(problem, trial, candidate.state)
+                # a clear drop of |r|^2 skips the merit on the last point's factors
+                clear = point.merit - candidate.merit > _CLEAR_DROP * predicted
+                candidate = _joint_point(
+                    problem, trial, candidate.state, None if clear else point.matrix
+                )
                 candidate, iterate.tolerance = _tightened(
                     problem, candidate, iterate.tolerance, allowed, end
                 )
         if holds:
             gain = (point.merit - candidate.merit) / max(predicted, 1.0e-300)
+            if not nested and gain > 1.0e-3 and candidate.matrix is point.matrix:
+                # the merit on the trial state's own factors decides
+                factored = _joint_point(problem, trial, candidate.state)
+                if np.isfinite(factored.merit):
+                    candidate = factored
+                    gain = (point.merit - candidate.merit) / max(predicted, 1.0e-300)
             if gain > 1.0e-3:
                 drop = (point.merit - candidate.merit) / point.merit
                 return _Trial(candidate, force_residual, gain, drop, allowed)
@@ -721,7 +792,7 @@ def optimize(
     stages=(1, 2, 3),
     *,
     nested: bool = False,
-    error_fraction: float = 0.3,
+    error_fraction: float = 0.01,
     max_steps: int = 120,
     log=None,
 ) -> Result:
