@@ -1,4 +1,7 @@
-"""Quasisymmetry objectives of a VMEC geometry, re-exported from vmecpp.simsopt_compat.
+"""Quasisymmetry objectives built only from the public geometry API.
+
+Re-exported from vmecpp.simsopt_compat, next to the SIMSOPT wrapper this
+mirrors; not part of the solver.
 
 The metric is the one SIMSOPT's ``QuasisymmetryRatioResidual`` implements: for
 quasisymmetry the ratio ``(B x grad B . grad psi) / (B . grad B)`` is constant
@@ -8,11 +11,17 @@ on a flux surface, so
                                 - (M G + N I) B . grad B ) ]^2 >
 
 with ``< . >`` the flux-surface average, ``G`` and ``I`` the poloidal and
-toroidal current profiles, and ``(M, N)`` the desired helicity. On a uniform
-``(theta, phi)`` grid over one field period, ``quasisymmetry_residuals`` returns
+toroidal current profiles, and ``(M, N)`` the desired helicity. Discretized on
+a uniform ``(theta, phi)`` grid over one field period this is a sum of squares,
 
     R = sqrt( w_j nfp dtheta dphi / V' * sqrt(g) ) / B^3
-        * ( (N - iota M) B x grad B . grad psi - (M G + N I) B . grad B ).
+        * ( (N - iota M) B x grad B . grad psi - (M G + N I) B . grad B ),
+
+which is what ``quasisymmetry_residuals`` returns.
+
+Everything is computed from the product-basis geometry contract in JAX. The
+flux-surface measure ``sqrt(g)`` matters: dropping it changes the objective,
+and its derivative is one of the two errors that only show up end to end.
 """
 
 from __future__ import annotations
@@ -24,8 +33,11 @@ import jax.numpy as jnp
 
 from vmecpp.geometry import Geometry, _radial_jet, evaluate
 
-# VMEC++'s Jacobian is negative, and its field components have the opposite sign
-# to the raw flux derivatives here; the frames divide by the magnitude of sqrt(g).
+# VMEC++ fixes the sign of the Jacobian to -1, and stores the field components
+# with the opposite sign to the one the raw flux derivatives give here. The
+# magnitudes agree; only the convention differs. G and I are averages of the
+# same covariant components, so the convention has to be applied consistently
+# or the two terms of the residual pick up different signs.
 _JACOBIAN_MAGNITUDE = jnp.abs
 
 
