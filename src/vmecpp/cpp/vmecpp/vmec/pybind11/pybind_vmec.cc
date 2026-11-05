@@ -1916,12 +1916,16 @@ PYBIND11_MODULE(_vmecpp, m) {
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
   // from Python (see vmecpp._iteration).
+  // The calls that do the work release the GIL, so that one model per Python
+  // thread can run them concurrently.
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
-                  py::arg("ns"), py::arg("initial_state") = std::nullopt)
+                  py::arg("ns"), py::arg("initial_state") = std::nullopt,
+                  py::call_guard<py::gil_scoped_release>())
       .def("evaluate", &VmecModel::Evaluate, py::arg("iter1"), py::arg("iter2"),
            py::arg("precondition") = true,
-           py::arg("always_fix_m1_gauge") = true)
+           py::arg("always_fix_m1_gauge") = true,
+           py::call_guard<py::gil_scoped_release>())
       .def_property_readonly("need_restart", &VmecModel::need_restart)
       .def_property_readonly("have_to_flip_theta",
                              &VmecModel::have_to_flip_theta)
@@ -1937,7 +1941,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reinitialize", &VmecModel::Reinitialize)
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
-      .def("solve", &VmecModel::Solve)
+      .def("solve", &VmecModel::Solve, py::call_guard<py::gil_scoped_release>())
       .def_property_readonly(
           "always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,
           "indata.always_fix_m1_gauge: zero the m=1 gauge force from the first "
@@ -1949,21 +1953,24 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("get_state", &VmecModel::GetState)
       .def("set_state", &VmecModel::SetState, py::arg("state"))
       .def("get_forces", &VmecModel::GetForces)
-      .def("get_geometry", &VmecModel::GetGeometry)
+      .def("get_geometry", &VmecModel::GetGeometry,
+           py::call_guard<py::gil_scoped_release>())
       .def("geometry_state_vjp", &VmecModel::GeometryStateVjp,
            py::arg("coefficient_bar"),
            py::arg("poloidal_flux_bar") = Eigen::VectorXd())
       .def("apply_preconditioner", &VmecModel::ApplyPreconditioner,
            py::arg("v"))
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
-           py::arg("v"), py::arg("eps_rel") = 1e-7)
+           py::arg("v"), py::arg("eps_rel") = 1e-7,
+           py::call_guard<py::gil_scoped_release>())
 #ifdef VMECPP_ENABLE_ENZYME
       // Both directions are required: the reverse adjoint needs H^T, and
       // deflating the augmented Hessian's structural null space needs both a
       // row and a column probe.
       .def("exact_hessian_vector_product",
            &VmecModel::ExactHessianVectorProduct, py::arg("v"),
-           py::arg("always_fix_m1_gauge") = true)
+           py::arg("always_fix_m1_gauge") = true,
+           py::call_guard<py::gil_scoped_release>())
       .def("exact_hessian_vector_product_transpose",
            &VmecModel::ExactHessianVectorProductTranspose, py::arg("w"),
            py::arg("always_fix_m1_gauge") = true)

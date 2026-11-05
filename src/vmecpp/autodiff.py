@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import collections
 import itertools
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import Any
 
 import jax
@@ -314,8 +316,22 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     return result
 
 
+def _force_product(model, vector: np.ndarray, *, exact: bool = True) -> np.ndarray:
+    """``H v``, from Enzyme or from a central difference of the force."""
+    product = (
+        model.exact_hessian_vector_product if exact else model.hessian_vector_product
+    )
+    return np.asarray(product(np.ascontiguousarray(vector)), dtype=np.float64)
+
+
 def _structural_nullfree_interior(
-    model, interior: np.ndarray, n_probe: int = 6, tol: float = 1.0e-9, seed: int = 0
+    model,
+    interior: np.ndarray,
+    n_probe: int = 6,
+    tol: float = 1.0e-9,
+    seed: int = 0,
+    *,
+    exact: bool = True,
 ) -> np.ndarray:
     """Interior DOFs that actually enter the force.
 
@@ -332,7 +348,8 @@ def _structural_nullfree_interior(
     ``i`` is zero iff ``(H^T v)[i] = 0`` for random ``v``, and row ``i`` is zero
     iff ``(H v)[i] = 0``, so a handful of probes finds every structural zero. The
     set depends only on the mode structure, not on the state, so it is detected
-    once per model and reused across adjoint solves.
+    once per model and reused across adjoint solves. Differenced products have no
+    transpose, and the rows alone then decide.
     """
     state_size = int(np.asarray(model.get_state()).size)
     generator = np.random.default_rng(seed)
@@ -340,21 +357,19 @@ def _structural_nullfree_interior(
     row = np.zeros(state_size)
     for _ in range(n_probe):
         probe = np.ascontiguousarray(generator.standard_normal(state_size))
-        column = np.maximum(
-            column,
-            np.abs(
-                np.asarray(
-                    model.exact_hessian_vector_product_transpose(probe),
-                    dtype=np.float64,
-                )
-            ),
-        )
-        row = np.maximum(
-            row,
-            np.abs(
-                np.asarray(model.exact_hessian_vector_product(probe), dtype=np.float64)
-            ),
-        )
+        if exact:
+            column = np.maximum(
+                column,
+                np.abs(
+                    np.asarray(
+                        model.exact_hessian_vector_product_transpose(probe),
+                        dtype=np.float64,
+                    )
+                ),
+            )
+        row = np.maximum(row, np.abs(_force_product(model, probe, exact=exact)))
+    if not exact:
+        column = row
     threshold = tol * max(column.max(), row.max(), 1.0)
     keep = [i for i in interior if column[i] > threshold and row[i] > threshold]
     if not keep:
@@ -459,8 +474,32 @@ class _BlockTridiagonal:
         return result
 
 
-def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
-    """``H^T`` restricted to ``solved``, exactly, from coloured Hessian products.
+def _map_on_models(function, models, items) -> list:
+    """``function(model, item)`` for every item, with one thread per model."""
+    items = list(items)
+    if len(models) == 1:
+        return [function(models[0], item) for item in items]
+    results: list = [None] * len(items)
+
+    def run(position: int) -> None:
+        for index in range(position, len(items), len(models)):
+            results[index] = function(models[position], items[index])
+
+    with ThreadPoolExecutor(len(models)) as pool:
+        list(pool.map(run, range(len(models))))
+    return results
+
+
+def _assemble_block_tridiagonal(
+    model,
+    solved: np.ndarray,
+    *,
+    transposed: bool = True,
+    extra_models=(),
+    exact: bool = True,
+) -> _BlockTridiagonal:
+    """``H^T``, or ``H``, restricted to ``solved``, from coloured Hessian products, on
+    one thread per model; ``extra_models`` hold the state of ``model``.
 
     The force on surface ``j`` depends only on the state on surfaces ``j - 1``,
     ``j`` and ``j + 1``, so the operator is block tridiagonal in the surface index.
@@ -489,23 +528,26 @@ def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
     # probed_position[j + 1]: position in solved of the probed entry on surface j,
     # padded so the neighbours j = -1 and j = ns of the edge surfaces read -1.
     probed_position = np.full(matrix.ns + 2, -1, dtype=np.int64)
-    for group in np.split(order, boundaries):
+    lock = Lock()
+
+    def probe_group(worker, group: np.ndarray) -> None:
         color = int(group_key[group[0]]) // n_modes
         probe = np.zeros(state_size)
         probe[solved[group]] = 1.0
-        product = np.asarray(
-            model.exact_hessian_vector_product(np.ascontiguousarray(probe)),
-            dtype=np.float64,
-        )[solved]
+        product = _force_product(worker, probe, exact=exact)[solved]
         hit = np.flatnonzero(product)
         hit_surface = solved_surface[hit]
         column_surface = hit_surface - ((hit_surface - color + 1) % 3 - 1)
-        probed_position[solved_surface[group] + 1] = group
-        column = probed_position[column_surface + 1]
-        probed_position[solved_surface[group] + 1] = -1
-        found = column >= 0
-        # (H^T)[column, row] = H[row, column]
-        matrix.set_entries(column[found], hit[found], product[hit[found]])
+        with lock:
+            probed_position[solved_surface[group] + 1] = group
+            column = probed_position[column_surface + 1]
+            probed_position[solved_surface[group] + 1] = -1
+            found = column >= 0
+            # (H^T)[column, row] = H[row, column]
+            rows, columns = (column, hit) if transposed else (hit, column)
+            matrix.set_entries(rows[found], columns[found], product[hit[found]])
+
+    _map_on_models(probe_group, [model, *extra_models], np.split(order, boundaries))
     return matrix
 
 
