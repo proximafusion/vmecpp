@@ -79,7 +79,7 @@ class MeanIota(JointProblem):
 
 | `Stage` field | Meaning |
 |---|---|
-| `stopped` | `"stalled"`: three steps below a drop of 1%. `"no_step"`: no trial step held. `"max_steps"`: step limit. |
+| `stopped` | `"stalled"`: three steps below a drop of 1%. `"no_step"`: no trial step held, also from the state relaxed to `NESTED_TOLERANCE`. `"max_steps"`: step limit. |
 | `rejected_steps` | Trial steps refused for their merit or force residual |
 | `failed_solves` | Trial steps on which VMEC raised |
 | `tightened` | Further relaxations for the accuracy of a merit |
@@ -95,5 +95,5 @@ Residuals that are not finite at the first state raise a `ValueError`.
 - The final merit depends on the path. Quasi-axisymmetry at `ns` 25 ends near 6.4e-6 or 7.9e-6 by either method.
 - `always_fix_m1_gauge` is on. Quasisymmetry from a free-gauge run depends on where the iteration froze the gauge, and differs by more than a factor of ten at low error.
 - Quasisymmetry residuals are not finite on a surface where the Jacobian changes sign. The rotating ellipse reaches this on its boundary between beta 0.66% and 1.1%.
-- Differenced products lose accuracy along soft modes. With pressure, a derivative of the mean iota can be off by 20%.
+- Differenced products use a relative step of 3e-9, where truncation and roundoff balance along the soft modes. Against exact products at `ns` 51, the state tangents agree to 4e-6 and the residual derivatives to 1.5e-4.
 - Fixed boundary and stellarator symmetry only. A multigrid input runs on the last entry of `ns_array`.

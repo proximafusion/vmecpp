@@ -316,12 +316,20 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     return result
 
 
+_DIFFERENCE_STEP = 3.0e-9
+"""Relative step of a differenced Hessian product, where truncation and roundoff balance
+along the soft modes."""
+
+
 def _force_product(model, vector: np.ndarray, *, exact: bool = True) -> np.ndarray:
     """``H v``, from Enzyme or from a central difference of the force."""
+    vector = np.ascontiguousarray(vector)
     product = (
-        model.exact_hessian_vector_product if exact else model.hessian_vector_product
+        model.exact_hessian_vector_product(vector)
+        if exact
+        else model.hessian_vector_product(vector, _DIFFERENCE_STEP)
     )
-    return np.asarray(product(np.ascontiguousarray(vector)), dtype=np.float64)
+    return np.asarray(product, dtype=np.float64)
 
 
 def _structural_nullfree_interior(

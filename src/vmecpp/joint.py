@@ -430,7 +430,8 @@ class Stage:
     """How one stage of boundary modes ended.
 
     ``stopped`` is "stalled" after three steps in a row below STAGE_DROP, "no_step" when
-    no trial step holds, and "max_steps" at the step limit. ``rejected_steps`` counts the
+    no trial step holds, also from the state in force balance, and "max_steps" at the
+    step limit. ``rejected_steps`` counts the
     trial steps refused for their merit or force residual, ``failed_solves`` those on
     which VMEC raised, and ``tightened`` the relaxations further for the accuracy of a
     merit.
@@ -577,6 +578,22 @@ def _tightened(
     return point, tolerance
 
 
+def _restored(problem: JointProblem, point: _Point, end: Stage) -> _Point:
+    """The point in force balance, with its Jacobian factored there."""
+    try:
+        model = problem.relax(
+            point.boundary,
+            point.state + point.normal_step(),
+            NESTED_TOLERANCE,
+            RELAXATION_ITERATIONS,
+        )
+    except RuntimeError:
+        return point
+    end.tightened += 1
+    restored = _joint_point(problem, point.boundary, model.get_state())
+    return restored if np.isfinite(restored.merit) else point
+
+
 def _first_accepted_step(
     problem: JointProblem,
     iterate: _Iterate,
@@ -706,6 +723,7 @@ def optimize(
         ends.append(end)
         iterate.damping = 1.0e-3
         slow = 0
+        restored = False
         for _ in range(max_steps):
             point = iterate.point
             model = problem.create_model(point.boundary)
@@ -713,6 +731,7 @@ def optimize(
             _, jacobian = problem.residual_jacobian(
                 model, point.state, point.boundary, keys, tangents
             )
+            refused = end.rejected_steps + end.failed_solves
             trial = _first_accepted_step(
                 problem,
                 iterate,
@@ -724,8 +743,20 @@ def optimize(
                 error_fraction=error_fraction,
             )
             if trial is None:
-                end.stopped = "no_step"
-                break
+                if (
+                    nested
+                    or restored
+                    or refused == (end.rejected_steps + end.failed_solves)
+                ):
+                    end.stopped = "no_step"
+                    break
+                # the merit of a loose state can hide a drop smaller than its error
+                iterate.point = _restored(problem, iterate.point, end)
+                iterate.tolerance = NESTED_TOLERANCE
+                iterate.damping = 1.0e-3
+                restored = True
+                continue
+            restored = False
             if trial.gain > 0.5:
                 iterate.damping = max(iterate.damping / 3.0, 1.0e-9)
             elif trial.gain < 0.25:

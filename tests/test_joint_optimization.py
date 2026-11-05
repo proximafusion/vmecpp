@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
 """vmecpp.joint against differences of the force and of the residuals, re-solved
 equilibria and SIMSOPT."""
 
@@ -156,8 +159,7 @@ def test_residual_jacobian_matches_converged_solves(
         jacobian[:, index],
         difference,
         rtol=0.0,
-        atol=(1.0e-4 if problem.exact_products else 1.0e-2)
-        * np.linalg.norm(difference),
+        atol=1.0e-4 * np.linalg.norm(difference),
         equal_nan=False,
     )
 
@@ -268,7 +270,7 @@ def test_differenced_products_match_the_exact_ones(
         approximate,
         jacobian,
         rtol=0.0,
-        atol=1.0e-3 * np.abs(jacobian).max(),
+        atol=1.0e-4 * np.abs(jacobian).max(),
         equal_nan=False,
     )
 
@@ -506,7 +508,8 @@ def test_steps_on_which_vmec_raises_end_the_stage() -> None:
     result = optimize(RaisesOnEveryStep(rotating_ellipse(4, 4, 17), max_mode=1), (1,))
     assert result.steps == []
     assert result.stages[0].stopped == "no_step"
-    assert result.stages[0].failed_solves == 12
+    assert result.stages[0].failed_solves == 24
+    assert result.stages[0].tightened == 1
     assert result.stages[0].rejected_steps == 0
 
 
@@ -525,8 +528,8 @@ def test_a_rise_of_the_residuals_refuses_a_step_before_its_force_jacobian() -> N
     result = optimize(problem, (1,))
     assert result.steps == []
     assert result.stages[0].stopped == "no_step"
-    assert result.stages[0].rejected_steps == 12
-    assert problem.costs.assemblies == 1
+    assert result.stages[0].rejected_steps == 24
+    assert problem.costs.assemblies == 2
 
 
 def test_a_state_that_cannot_be_relaxed_further_stays(monkeypatch) -> None:
