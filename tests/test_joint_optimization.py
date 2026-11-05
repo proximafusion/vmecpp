@@ -20,8 +20,10 @@ from vmecpp.joint import (
     NESTED_TOLERANCE,
     JointProblem,
     QuasisymmetryProblem,
+    Stage,
     _joint_point,
     _relaxed_further,
+    _tightened,
     boundary_modes,
     converged_input,
     optimize,
@@ -199,7 +201,7 @@ def test_balanced_residuals_match_the_converged_state(problem, solved) -> None:
     """The residuals of a state away from force balance, with the force residual removed
     to first order, against those of the converged state."""
     boundary = problem.boundary0
-    state = np.array(problem.relax(boundary, ftol=1.0e-9).get_state())
+    state = np.array(problem.relax(boundary, ftol=1.0e-10).get_state())
     matrix = problem.force_jacobian(problem.create_model(boundary), state)
     values, balanced, _ = problem.balanced_residuals(boundary, state, matrix)
     reference = problem.evaluate(solved, boundary).residuals
@@ -513,6 +515,25 @@ def test_steps_on_which_vmec_raises_end_the_stage() -> None:
     assert result.stages[0].rejected_steps == 0
 
 
+class RaisesOnTheLastNormalStep(MeanIota):
+    """VMEC raises once in the last relaxation, the first without an iteration limit."""
+
+    raised = False
+
+    def relax(self, boundary, state=None, ftol=None, niter=None):
+        if state is not None and niter is None and not self.raised:
+            self.raised = True
+            raise RuntimeError
+        return super().relax(boundary, state, ftol, niter)
+
+
+def test_a_run_keeps_its_result_when_the_last_normal_step_fails() -> None:
+    problem = RaisesOnTheLastNormalStep(rotating_ellipse(4, 4, 17), max_mode=1)
+    result = optimize(problem, (1,), max_steps=1)
+    assert problem.raised
+    assert result.force_residual <= 3.0 * NESTED_TOLERANCE
+
+
 class WorseOnEveryStep(MeanIota):
     """The residuals rise at every boundary other than the first."""
 
@@ -533,16 +554,59 @@ def test_a_rise_of_the_residuals_refuses_a_step_before_its_force_jacobian() -> N
 
 
 def test_a_state_that_cannot_be_relaxed_further_stays(monkeypatch) -> None:
-    problem = Constant(rotating_ellipse(4, 4, 17), max_mode=1)
+    problem = MeanIota(rotating_ellipse(4, 4, 17), max_mode=1)
     state = problem.relax(problem.boundary0, ftol=1.0e-5).get_state()
     point = _joint_point(problem, problem.boundary0, state)
     assert _relaxed_further(problem, point, 1.0e-6) is not None
+    relaxations = []
 
     def raises(*_args, **_kwargs):
+        relaxations.append(1)
         raise RuntimeError
 
     monkeypatch.setattr(problem, "relax", raises)
     assert _relaxed_further(problem, point, 1.0e-6) is None
+    relaxations.clear()
+    end = Stage(1)
+    for _ in range(2):
+        point, tolerance = _tightened(problem, point, 1.0e-5, 0.0, end)
+        assert tolerance == 1.0e-5
+    assert len(relaxations) == 1
+    assert end.tightened == 0
+
+
+def test_a_start_with_a_nearly_singular_force_jacobian_reaches_the_targets() -> None:
+    """The normal step of the first state is ten times the major radius."""
+    vmec_input = rotating_ellipse(5, 5, 25)
+    vmec_input.rbc[1, 5] = vmec_input.zbs[1, 5] = 0.12
+    vmec_input.rbc[1, 6], vmec_input.zbs[1, 6] = 0.02, -0.02
+    vmec_input.pres_scale = 10000.0
+    vmec_input.am = np.asarray([1.0, -1.0, 0.0])
+    problem = QuasisymmetryProblem(vmec_input, max_mode=1)
+    result = optimize(problem, (1,))
+    parts = result.steps[-1].evaluation.parts
+    np.testing.assert_allclose(parts["aspect"], problem.aspect, atol=1.0e-1)
+    np.testing.assert_allclose(parts["mean_iota"], problem.mean_iota, atol=5.0e-2)
+
+
+def test_the_merit_takes_the_normal_step_within_its_radius(
+    problem, loose, monkeypatch
+) -> None:
+    """The change of the residuals scales with the part of the normal step within its
+    radius, and the error estimate keeps the whole step."""
+    boundary = problem.boundary0
+    size = _joint_point(problem, boundary, loose[0]).normal_size
+    changes, steps, errors = [], [], []
+    for fraction in (0.2, 0.1):
+        radius = fraction * size / np.abs(boundary[0]).max()
+        monkeypatch.setattr("vmecpp.joint._NORMAL_RADIUS", radius)
+        point = _joint_point(problem, boundary, loose[0])
+        changes.append(point.balanced - point.residuals)
+        steps.append(np.abs(point.normal_step()).max())
+        errors.append(point.merit_error / np.linalg.norm(point.balanced))
+    np.testing.assert_allclose(changes[1], 0.5 * changes[0], rtol=1.0e-9, atol=1.0e-14)
+    np.testing.assert_allclose(steps, [0.2 * size, 0.1 * size])
+    np.testing.assert_allclose(errors[1], errors[0])
 
 
 def test_residuals_that_are_not_finite_raise() -> None:

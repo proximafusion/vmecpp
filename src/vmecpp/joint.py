@@ -3,14 +3,15 @@
 # SPDX-License-Identifier: MIT
 """Optimize a fixed boundary and its VMEC state under the constraint of force balance.
 
-Each Levenberg-Marquardt step solves
+Each Levenberg-Marquardt step solves::
 
     min |r + J_x dx + J_b db|^2 + damping |db|^2  subject to  F + H dx + F_b db = 0
 
 over the state ``x`` and the boundary ``b``, with the residuals ``r``, the force ``F`` on
 the interior of the state and its Jacobian ``H``. Eliminating the state gives
-``dx = -H^-1 F + T db`` with the state tangents ``T = -H^-1 F_b``. The merit of an iterate
-is ``|r - J_x H^-1 F|^2``, the objective with the force residual removed to first order.
+``dx = dn + T db`` with the normal step ``dn = -H^-1 F``, limited to a fraction of the
+major radius, and the state tangents ``T = -H^-1 F_b``. The merit of an iterate is
+``|r + J_x dn|^2``. This is the objective with the force residual removed to first order.
 VMEC's own descent then relaxes the state as far as the error of the merit requires. The
 nested baseline converges the state at every step instead.
 """
@@ -55,8 +56,11 @@ _NORMAL_RADIUS = 0.05
 _SMALLEST_DROP = 1.0e-5
 """Predicted drop, relative to the merit, below which no trial step is taken."""
 
+_FIRST_DAMPING = 1.0e-3
+"""Damping at the start of a stage, above which the damping limits the step."""
+
 _TANGENT_CHUNK = 16
-"""Residual tangents per call of the compiled derivative, which then compiles once."""
+"""Residual tangents per call of the compiled derivative, a size that compiles once."""
 
 
 def boundary_modes(max_mode: int, ntor: int) -> list[tuple[int, int, int]]:
@@ -102,9 +106,9 @@ class JointProblem:
     A subclass defines ``residuals``, which JAX must be able to differentiate.
     ``workers`` is the number of threads for the force Jacobian and the residual
     derivatives, by default one per processor. ``exact_products`` takes the Hessian
-    products of the force Jacobian from Enzyme, in a build that has it; otherwise they
-    are central differences of the force, which cost about the same. A multigrid input
-    runs on its last resolution.
+    products of the force Jacobian from Enzyme, in a build that has it. Otherwise they
+    are central differences of the force, at about the same cost. A multigrid input runs
+    on its last resolution.
     """
 
     vmec_input: Any
@@ -230,8 +234,10 @@ class JointProblem:
         )
 
     def _geometry_along(self, model, state, direction) -> np.ndarray:
-        """The flat geometry along a state direction, differenced through the model,
-        whose chi depends on the state when ncurr = 1."""
+        """The flat geometry along a state direction, differenced through the model.
+
+        Chi depends on the state when ncurr = 1.
+        """
         step = 1.0e-7 / max(np.abs(direction).max(), 1.0e-3)
         sides = []
         for sign in (1.0, -1.0):
@@ -244,8 +250,7 @@ class JointProblem:
         return Evaluation(residuals, self.parts(residuals))
 
     def evaluate(self, model, boundary) -> Evaluation:
-        """The residuals of the state the model holds, which need not be in force
-        balance."""
+        """The residuals of the state the model holds, in force balance or not."""
         model.evaluate(2, 2, False)
         return self._evaluation(
             np.asarray(
@@ -324,8 +329,8 @@ class JointProblem:
         return self._evaluation(values), np.vstack(rows).T
 
     def balanced_residuals(self, boundary, state, matrix):
-        """The residuals at the state, the same residuals with the force residual removed
-        to first order, ``r - J_x H^-1 F``, and the normal step ``-H^-1 F``."""
+        """The residuals at the state, the same residuals after the normal step to first
+        order, ``r + J_x dn`` with ``dn`` within its radius, and ``-H^-1 F``."""
         start = time.perf_counter()
         state = np.ascontiguousarray(state)
         model = self.create_model(boundary)
@@ -349,11 +354,17 @@ class JointProblem:
                 )
             )
         self.costs.objective_seconds += time.perf_counter() - start
-        return values, values + change, normal
+        return values, values + _normal_fraction(boundary, normal) * change, normal
 
 
 def _padded(rows: np.ndarray, padding: int) -> np.ndarray:
     return np.concatenate([rows, np.zeros((padding, *rows.shape[1:]))])
+
+
+def _normal_fraction(boundary: np.ndarray, normal: np.ndarray) -> float:
+    """The fraction of a normal step within its radius."""
+    radius = _NORMAL_RADIUS * np.abs(boundary[0]).max()
+    return min(1.0, radius / max(float(np.abs(normal).max()), 1.0e-300))
 
 
 @dataclass(kw_only=True)
@@ -429,12 +440,11 @@ class Step:
 class Stage:
     """How one stage of boundary modes ended.
 
-    ``stopped`` is "stalled" after three steps in a row below STAGE_DROP, "no_step" when
-    no trial step holds, also from the state in force balance, and "max_steps" at the
-    step limit. ``rejected_steps`` counts the
-    trial steps refused for their merit or force residual, ``failed_solves`` those on
-    which VMEC raised, and ``tightened`` the relaxations further for the accuracy of a
-    merit.
+    ``stopped`` is "stalled" after three steps in a row below STAGE_DROP that the damping
+    did not limit, "no_step" when no trial step predicts a drop or none holds, also from
+    the state in force balance, and "max_steps" at the step limit. ``rejected_steps`` counts the trial steps refused
+    for their merit or force residual, ``failed_solves`` those on which VMEC raised, and
+    ``tightened`` the relaxations further for the accuracy of a merit.
     """
 
     max_mode: int
@@ -462,7 +472,8 @@ class _Point:
     """A boundary and state, the residuals there and their value in force balance.
 
     ``matrix`` is the factored force Jacobian. The nested baseline takes the residuals
-    as they are, and factors the Jacobian only for an accepted step.
+    as they are, and factors the Jacobian only for an accepted step. ``relaxable`` is
+    false once a further relaxation of the point has failed.
     """
 
     boundary: np.ndarray
@@ -471,6 +482,7 @@ class _Point:
     balanced: np.ndarray
     normal: np.ndarray | None = None
     matrix: Any = None
+    relaxable: bool = True
 
     @property
     def merit(self) -> float:
@@ -484,13 +496,17 @@ class _Point:
         """The normal step, within its radius."""
         if self.normal is None or not np.isfinite(self.normal_size):
             return np.zeros_like(self.state)
-        radius = _NORMAL_RADIUS * np.abs(self.boundary[0]).max()
-        return min(1.0, radius / max(self.normal_size, 1.0e-300)) * self.normal
+        return _normal_fraction(self.boundary, self.normal) * self.normal
 
     @property
     def merit_error(self) -> float:
-        """Estimated error of the merit, ``2 |r_b| |r_b - r| |dn| / R``."""
-        change = np.linalg.norm(self.balanced - self.residuals)
+        """Estimated error of the merit, ``2 |r_b| |J_x dn| |dn| / R``, for the whole of
+        ``dn = -H^-1 F``."""
+        if self.normal is None:
+            return 0.0
+        change = np.linalg.norm(self.balanced - self.residuals) / _normal_fraction(
+            self.boundary, self.normal
+        )
         return float(
             2.0
             * np.linalg.norm(self.balanced)
@@ -502,11 +518,13 @@ class _Point:
 
 @dataclass
 class _Iterate:
-    """The current point, the force tolerance of the relaxations and the damping."""
+    """The current point, the force tolerance of the relaxations, its ceiling and the
+    damping."""
 
     point: _Point
     tolerance: float
-    damping: float = 1.0e-3
+    ceiling: float = LOOSEST_TOLERANCE
+    damping: float = _FIRST_DAMPING
 
 
 @dataclass
@@ -537,8 +555,10 @@ def _relaxed_further(
     problem: JointProblem, point: _Point, tolerance: float
 ) -> _Point | None:
     """The point relaxed to a tighter tolerance on its factored Jacobian, or None where
-    VMEC raises or the tighter state has no finite merit, which can be a surface whose
-    Jacobian changes sign."""
+    VMEC raises or the tighter state has no finite merit.
+
+    A surface whose Jacobian changes sign has no finite merit.
+    """
     try:
         model = problem.relax(
             point.boundary, point.state, tolerance, RELAXATION_ITERATIONS
@@ -558,19 +578,29 @@ def _relaxed_further(
     return further if np.isfinite(further.merit) else None
 
 
+def _decade_tighter(
+    problem: JointProblem, point: _Point, tolerance: float, end: Stage
+) -> tuple[_Point, float]:
+    """The point relaxed one decade further and its tolerance, or the point marked as
+    not relaxable."""
+    tighter = max(tolerance / 10.0, NESTED_TOLERANCE)
+    further = _relaxed_further(problem, point, tighter)
+    if further is None:
+        return replace(point, relaxable=False), tolerance
+    end.tightened += 1
+    return further, tighter
+
+
 def _tightened(
     problem: JointProblem, point: _Point, tolerance: float, allowed: float, end: Stage
 ) -> tuple[_Point, float]:
     """The point relaxed until the error of its merit is within the allowance, and the
     tolerance this took; a state that moved far has its Jacobian factored again."""
     origin = point.state
-    while point.merit_error > allowed and tolerance > NESTED_TOLERANCE:
-        tighter = max(tolerance / 10.0, NESTED_TOLERANCE)
-        further = _relaxed_further(problem, point, tighter)
-        if further is None:
-            break
-        point, tolerance = further, tighter
-        end.tightened += 1
+    while (
+        point.relaxable and point.merit_error > allowed and tolerance > NESTED_TOLERANCE
+    ):
+        point, tolerance = _decade_tighter(problem, point, tolerance, end)
     if np.abs(point.state - origin).max() > _REFACTOR_DISTANCE:
         factored = _joint_point(problem, point.boundary, point.state)
         if np.isfinite(factored.merit):
@@ -673,6 +703,13 @@ def _first_accepted_step(
             if gain > 1.0e-3:
                 drop = (point.merit - candidate.merit) / point.merit
                 return _Trial(candidate, force_residual, gain, drop, allowed)
+            if not nested and point.relaxable and iterate.tolerance > NESTED_TOLERANCE:
+                # the merit at this tolerance need not resolve the drop
+                iterate.point, iterate.tolerance = _decade_tighter(
+                    problem, point, iterate.tolerance, end
+                )
+                if iterate.point.relaxable:
+                    iterate.ceiling = iterate.tolerance
         end.rejected_steps += 1
         iterate.damping *= 4.0
         take_normal = take_normal and holds
@@ -721,7 +758,8 @@ def optimize(
         keys = boundary_modes(max_mode, problem.ntor)
         end = Stage(max_mode)
         ends.append(end)
-        iterate.damping = 1.0e-3
+        iterate.damping = _FIRST_DAMPING
+        iterate.ceiling = LOOSEST_TOLERANCE
         slow = 0
         restored = False
         for _ in range(max_steps):
@@ -753,12 +791,15 @@ def optimize(
                 # the merit of a loose state can hide a drop smaller than its error
                 iterate.point = _restored(problem, iterate.point, end)
                 iterate.tolerance = NESTED_TOLERANCE
-                iterate.damping = 1.0e-3
+                iterate.damping = _FIRST_DAMPING
                 restored = True
                 continue
             restored = False
+            limited = iterate.damping > _FIRST_DAMPING and trial.gain > 0.5
             if trial.gain > 0.5:
-                iterate.damping = max(iterate.damping / 3.0, 1.0e-9)
+                iterate.damping = max(
+                    iterate.damping / (10.0 if limited else 3.0), 1.0e-9
+                )
             elif trial.gain < 0.25:
                 iterate.damping *= 2.0
             iterate.point = trial.point
@@ -771,7 +812,7 @@ def optimize(
                         * trial.allowed_error
                         / max(trial.point.merit_error, 1.0e-300),
                         iterate.tolerance,
-                        min(10.0 * iterate.tolerance, LOOSEST_TOLERANCE),
+                        min(10.0 * iterate.tolerance, iterate.ceiling),
                     )
                 )
             evaluation = problem._evaluation(trial.point.balanced)
@@ -794,7 +835,11 @@ def optimize(
                     f" force {trial.force_residual:.1e}"
                     f" evals {problem.costs.force_evaluations}"
                 )
-            slow = slow + 1 if trial.drop < STAGE_DROP else 0
+            # a small drop from a step the damping limits is no stall
+            if trial.drop >= STAGE_DROP:
+                slow = 0
+            elif not limited:
+                slow += 1
             if slow >= 3:
                 end.stopped = "stalled"
                 break
@@ -806,9 +851,12 @@ def optimize(
                 f" {end.tightened} tightened"
             )
     point = iterate.point
-    model = problem.relax(
-        point.boundary, point.state + point.normal_step(), NESTED_TOLERANCE
-    )
+    try:
+        model = problem.relax(
+            point.boundary, point.state + point.normal_step(), NESTED_TOLERANCE
+        )
+    except RuntimeError:  # the normal step crossed flux surfaces
+        model = problem.relax(point.boundary, point.state, NESTED_TOLERANCE)
     force_residual = model.fsqr + model.fsqz + model.fsql
     return Result(
         point.boundary,

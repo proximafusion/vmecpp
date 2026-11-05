@@ -317,8 +317,8 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
 
 
 _DIFFERENCE_STEP = 3.0e-9
-"""Relative step of a differenced Hessian product, where truncation and roundoff balance
-along the soft modes."""
+"""Relative step of a differenced Hessian product at the balance of truncation and
+roundoff along the soft modes."""
 
 
 def _force_product(model, vector: np.ndarray, *, exact: bool = True) -> np.ndarray:

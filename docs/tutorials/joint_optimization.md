@@ -38,11 +38,11 @@ r_b = r + J_x dn,   J = J_x T + J_b
 (J^T J + damping D) db = -J^T r_b
 ```
 
-The boundary moves by `db` and the state by `dx`, with `dn` limited to 5% of the major radius `R`. VMEC's descent then relaxes the state to the force tolerance, which takes no iterations when the step already meets it. A trial step on which VMEC raises is repeated without `dn`.
+The boundary moves by `db` and the state by `dx`. `dn` is limited to 5% of the major radius `R`, in the step and in `r_b`. VMEC's descent then relaxes the state to the force tolerance, which takes no iterations when the step already meets it. A trial step on which VMEC raises is repeated without `dn`.
 
-The merit is `|r_b|^2`, with an error of second order in the distance from force balance. The error is estimated as `2 |r_b| |r_b - r| |dn| / R`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused before `H` is assembled if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop. The last state is relaxed to `NESTED_TOLERANCE`.
+The merit is `|r_b|^2`. Within the limit its error is of second order in the distance from force balance. The error is estimated as `2 |r_b| |J_x dn| |dn| / R` for the whole of `dn`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused before `H` is assembled if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop. A trial step refused after `H` is assembled tightens the force tolerance by a decade for the rest of the stage. The last state is relaxed to `NESTED_TOLERANCE`.
 
-`nested=True` converges each step to `NESTED_TOLERANCE` with the merit `|r|^2`. A stage ends after three steps in a row with a drop below 1%.
+`nested=True` converges each step to `NESTED_TOLERANCE` with the merit `|r|^2`. A stage ends after three steps in a row with a drop below 1%. A step whose gain exceeds 0.5 at a damping above its value at the start of the stage does not count, and the damping then falls ten times faster.
 
 ## Test problem
 
@@ -65,6 +65,11 @@ Quasi-axisymmetry after Landreman and Paul (PRL 2022).
 A subclass of `JointProblem` defines `residuals`, differentiable by JAX:
 
 ```python
+import jax.numpy as jnp
+
+from vmecpp.joint import JointProblem
+
+
 class MeanIota(JointProblem):
     def residuals(self, solved, boundary):
         mean_iota = (solved.poloidal_flux[-1] - solved.poloidal_flux[0]) / (
@@ -79,7 +84,7 @@ class MeanIota(JointProblem):
 
 | `Stage` field | Meaning |
 |---|---|
-| `stopped` | `"stalled"`: three steps below a drop of 1%. `"no_step"`: no trial step held, also from the state relaxed to `NESTED_TOLERANCE`. `"max_steps"`: step limit. |
+| `stopped` | `"stalled"`: three steps below a drop of 1% that the damping did not limit. `"no_step"`: no trial step predicted a drop, or none held, also from the state relaxed to `NESTED_TOLERANCE`. `"max_steps"`: step limit. |
 | `rejected_steps` | Trial steps refused for their merit or force residual |
 | `failed_solves` | Trial steps on which VMEC raised |
 | `tightened` | Further relaxations for the accuracy of a merit |
