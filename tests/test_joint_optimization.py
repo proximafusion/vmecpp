@@ -14,10 +14,11 @@ from simsopt.mhd.vmec_diagnostics import QuasisymmetryRatioResidual
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore
 from vmecpp.joint import (
+    NESTED_TOLERANCE,
     JointProblem,
     QuasisymmetryProblem,
-    _Iterate,
-    _relax_further,
+    _joint_point,
+    _relaxed_further,
     boundary_modes,
     converged_input,
     optimize,
@@ -190,6 +191,62 @@ def test_residual_jacobian_holds_at_an_unconverged_state(
         atol=1.0e-6 * np.linalg.norm(difference),
         equal_nan=False,
     )
+
+
+def test_balanced_residuals_match_the_converged_state(problem, solved) -> None:
+    """The residuals of a state away from force balance, with the force residual removed
+    to first order, against those of the converged state."""
+    boundary = problem.boundary0
+    state = np.array(problem.relax(boundary, ftol=1.0e-9).get_state())
+    matrix = problem.force_jacobian(problem.create_model(boundary), state)
+    values, balanced, _ = problem.balanced_residuals(boundary, state, matrix)
+    reference = problem.evaluate(solved, boundary).residuals
+    assert np.linalg.norm(balanced - reference) < 0.1 * np.linalg.norm(
+        values - reference
+    )
+
+
+def test_a_step_satisfies_the_linearized_force_balance(problem, keys, loose) -> None:
+    """F + H dx vanishes on the interior for dx = -H^-1 F + T db, away from force
+    balance, by a difference of the force."""
+    state, tangents = loose
+    boundary = problem.boundary0
+    matrix = problem.force_jacobian(problem.create_model(boundary), state)
+    _, _, normal = problem.balanced_residuals(boundary, state, matrix)
+    delta = 1.0e-3 * np.random.default_rng(2).standard_normal(len(keys))
+    model = problem.create_model(boundary)
+    model.set_state(np.ascontiguousarray(state))
+    model.evaluate(2, 2, False)
+    force = np.array(model.get_forces())[problem.interior]
+    product = np.asarray(
+        model.hessian_vector_product(np.ascontiguousarray(normal + tangents @ delta))
+    )[problem.interior]
+    np.testing.assert_allclose(
+        force + product,
+        0.0,
+        atol=1.0e-2 * np.linalg.norm(force),
+        equal_nan=False,
+    )
+
+
+def test_normal_steps_restore_force_balance(problem, keys, linearization) -> None:
+    """Newton steps on the force from the state of a tangential step converge."""
+    state, tangents, _, _ = linearization
+    delta = 1.0e-3 * np.random.default_rng(3).standard_normal(len(keys))
+    boundary = problem.boundary0.copy()
+    for key, value in zip(keys, delta, strict=True):
+        boundary[key] += value
+    moved = state + tangents @ delta
+    norms = []
+    for _ in range(3):
+        model = problem.create_model(boundary)
+        model.set_state(np.ascontiguousarray(moved))
+        model.evaluate(2, 2, False)
+        norms.append(np.linalg.norm(np.array(model.get_forces())[problem.interior]))
+        matrix = problem.force_jacobian(problem.create_model(boundary), moved)
+        moved = moved + problem.balanced_residuals(boundary, moved, matrix)[2]
+    assert norms[1] < 1.0e-2 * norms[0]
+    assert norms[2] < 1.0e-2 * norms[1]
 
 
 @needs_exact_products
@@ -414,8 +471,6 @@ def test_a_stage_reports_how_it_ended() -> None:
     assert [stage.stopped for stage in limited.stages] == ["max_steps"]
     stuck = optimize(Constant(rotating_ellipse(4, 4, 17), max_mode=1), (1,))
     assert [stage.stopped for stage in stuck.stages] == ["no_step"]
-    assert stuck.stages[0].rejected_steps == 12
-    assert stuck.stages[0].tightened > 0
     assert stuck.steps == []
 
 
@@ -455,22 +510,36 @@ def test_steps_on_which_vmec_raises_end_the_stage() -> None:
     assert result.stages[0].rejected_steps == 0
 
 
-def test_a_state_that_cannot_be_tightened_stays(monkeypatch) -> None:
+class WorseOnEveryStep(MeanIota):
+    """The residuals rise at every boundary other than the first."""
+
+    def evaluate(self, model, boundary):
+        evaluation = super().evaluate(model, boundary)
+        if not np.array_equal(boundary, self.boundary0):
+            evaluation.residuals = evaluation.residuals + 1.0
+        return evaluation
+
+
+def test_a_rise_of_the_residuals_refuses_a_step_before_its_force_jacobian() -> None:
+    problem = WorseOnEveryStep(rotating_ellipse(4, 4, 17), max_mode=1)
+    result = optimize(problem, (1,))
+    assert result.steps == []
+    assert result.stages[0].stopped == "no_step"
+    assert result.stages[0].rejected_steps == 12
+    assert problem.costs.assemblies == 1
+
+
+def test_a_state_that_cannot_be_relaxed_further_stays(monkeypatch) -> None:
     problem = Constant(rotating_ellipse(4, 4, 17), max_mode=1)
-    state = np.array(problem.relax(problem.boundary0, ftol=1.0e-5).get_state())
-    iterate = _Iterate(problem.boundary0, state, 1.0e-5, 1.0e-3)
-    # the noise stays measurable after a merit that was not finite
-    assert _relax_further(problem, iterate, 1.0e-6, np.nan) is not None
-    np.testing.assert_allclose(iterate.noise, 7.0e-4)
-    tightened = iterate.state
+    state = problem.relax(problem.boundary0, ftol=1.0e-5).get_state()
+    point = _joint_point(problem, problem.boundary0, state)
+    assert _relaxed_further(problem, point, 1.0e-6) is not None
 
     def raises(*_args, **_kwargs):
         raise RuntimeError
 
     monkeypatch.setattr(problem, "relax", raises)
-    assert _relax_further(problem, iterate, 1.0e-7, 1.0) is None
-    assert iterate.state is tightened
-    assert iterate.tolerance == 1.0e-6
+    assert _relaxed_further(problem, point, 1.0e-6) is None
 
 
 def test_residuals_that_are_not_finite_raise() -> None:
@@ -483,11 +552,11 @@ def test_residuals_that_are_not_finite_raise() -> None:
 @pytest.fixture(scope="module")
 def nested_and_joint():
     results = {}
-    for name, factor in (("nested", 0.0), ("joint", 0.3)):
+    for name in ("nested", "joint"):
         problem = QuasisymmetryProblem(
             rotating_ellipse(4, 4, 17), ntheta=24, nphi=24, max_mode=2
         )
-        results[name] = (problem, optimize(problem, (1, 2), factor))
+        results[name] = (problem, optimize(problem, (1, 2), nested=name == "nested"))
     return results
 
 
@@ -508,6 +577,15 @@ def test_both_methods_reach_the_targets_from_the_ellipse(
         np.mean(np.asarray(wout.iotas)[1:]), problem.mean_iota, atol=5.0e-3
     )
     assert _simsopt_quasisymmetry(problem, wout, tmp_path) < 5.0e-3
+
+
+@pytest.mark.parametrize("name", ["nested", "joint"])
+def test_a_run_ends_in_force_balance_at_its_last_merit(nested_and_joint, name) -> None:
+    _, result = nested_and_joint[name]
+    assert result.force_residual <= 3.0 * NESTED_TOLERANCE
+    np.testing.assert_allclose(
+        result.evaluation.merit, result.steps[-1].evaluation.merit, rtol=5.0e-2
+    )
 
 
 def test_joint_uses_fewer_force_evaluations_for_the_same_error(

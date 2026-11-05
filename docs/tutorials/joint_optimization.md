@@ -1,6 +1,6 @@
-# Boundary optimization without converging every step
+# Boundary optimization under force balance
 
-Each step of `vmecpp.joint` moves a fixed boundary and carries the VMEC state along with it, and VMEC's own descent then relaxes the state only as far as that step needs. It runs in any build. In a build with Enzyme, `vmecpp.has_exact_force_jacobian()`, the Hessian products of the force Jacobian are exact; otherwise they are central differences of the force, at the same cost.
+`vmecpp.joint` optimizes a fixed boundary and its VMEC state without converging VMEC between steps. Hessian products of the force Jacobian are exact in an Enzyme build (`vmecpp.has_exact_force_jacobian()`) and central differences of the force otherwise.
 
 ```python
 import jax
@@ -13,42 +13,56 @@ problem = QuasisymmetryProblem(vmec_input, aspect=6.0, mean_iota=0.42, max_mode=
 result = optimize(problem, stages=(1, 2, 3))
 ```
 
-`python examples/joint_optimization.py` runs the test problem below by this method and by the nested baseline, and checks each final boundary with a cold, fully converged run read by SIMSOPT. `workers` sets the threads for the force Jacobian and the residual derivatives, by default one per processor. A multigrid input runs on the last entry of its `ns_array`.
+`examples/joint_optimization.py` runs a problem by both methods and checks each final boundary with a cold run read by SIMSOPT.
 
-## The step
+| Problem | Options |
+|---|---|
+| Quasi-axisymmetry, `ns` 25 | none |
+| Quasi-axisymmetry, `ns` 51 | `--ns 51 --mpol 7 --stages 1 2 3 4 5` |
+| Quasi-helical symmetry | add `--nfp 4 --helicity-n 1 --aspect 8 --iota 1.2` |
+| Finite pressure | add `--pressure 10000` |
 
-Each step of Levenberg-Marquardt on the boundary coefficients:
+## Method
 
-1. factors the force Jacobian on the interior of the state,
-2. solves for the state tangent of every free boundary mode,
-3. differentiates the residuals along those tangents,
-4. takes the step in the boundary and moves the state along its tangent,
-5. relaxes the state by VMEC's own descent only as far as the step needs.
+Each Levenberg-Marquardt step solves
 
-The error of the merit grows with the square root of the force residual, with a coefficient that differs by orders of magnitude between problems and along a run. The driver measures that coefficient `K` by relaxing the state ten times further after each step, and relaxes each trial step to the force tolerance `(noise_fraction * predicted_drop / K)^2`, between `NESTED_TOLERANCE` and the smaller of `LOOSEST_TOLERANCE` and `MERIT_TOLERANCE` times the merit. Before a trial step that needs a tighter tolerance than the current state has, it relaxes the current state too, so that both sides of the comparison of merits have the accuracy of the step. `noise_fraction=0` converges every step to `NESTED_TOLERANCE`, which is the nested baseline with the same derivatives.
+```
+min |r + J_x dx + J_b db|^2 + damping |db|^2   subject to   F + H dx + F_b db = 0
+```
 
-A stage ends after three steps in a row that lower the merit by less than 1%.
+for the state `x` and the boundary coefficients `b`, where `r` are the residuals, `F` is the force on the interior of the state and `H` is its Jacobian. Eliminating `dx`:
 
-## The test problem
+```
+dx = dn + T db,   dn = -H^-1 F,   T = -H^-1 F_b
+r_b = r + J_x dn,   J = J_x T + J_b
+(J^T J + damping D) db = -J^T r_b
+```
 
-The example is the quasi-axisymmetric problem of Landreman and Paul (PRL 2022).
+The boundary moves by `db` and the state by `dx`, with `dn` limited to 5% of the major radius `R`. VMEC's descent then relaxes the state to the force tolerance, which takes no iterations when the step already meets it. A trial step on which VMEC raises is repeated without `dn`.
+
+The merit is `|r_b|^2`, with an error of second order in the distance from force balance. The error is estimated as `2 |r_b| |r_b - r| |dn| / R`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused before `H` is assembled if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop. The last state is relaxed to `NESTED_TOLERANCE`.
+
+`nested=True` converges each step to `NESTED_TOLERANCE` with the merit `|r|^2`. A stage ends after three steps in a row with a drop below 1%.
+
+## Test problem
+
+Quasi-axisymmetry after Landreman and Paul (PRL 2022).
 
 | Choice | Value |
 |---|---|
 | Field periods | 2 |
 | Helicity | (1, 0) |
 | Objective | SIMSOPT's `QuasisymmetryRatioResidual` on s = 0.1, 0.2, ..., 1.0 |
-| Targets | aspect ratio 6, mean iota 0.42 |
+| Targets | aspect ratio 6, mean iota 0.42, as residuals of unit weight |
 | Profiles | no pressure, no net current (`ncurr` 1, `curtor` 0) |
 | Flux | `phiedge` 0.08 |
-| Start | rotating ellipse: `rbc(0,0)` 1, `rbc(1,0)` = `zbs(1,0)` = 0.16, `rbc(1,1)` = -`zbs(1,1)` = 0.05 |
+| Start | `rbc(0,0)` 1, `rbc(1,0)` = `zbs(1,0)` = 0.16, `rbc(1,1)` = -`zbs(1,1)` = 0.05 |
 | Free modes | `rbc`, `zbs` with `m` from 0 to `max_mode` and `abs(n)` up to `max_mode`, except `m` = 0 with `n` <= 0 |
-
-The coefficients carry no bounds. The aspect ratio and the mean iota enter as residuals of unit weight, so they are met to the accuracy of the least-squares solution, and the example names any that the cold run misses by more than 1e-3.
+| Bounds | none |
 
 ## Other objectives
 
-A subclass of `JointProblem` defines `residuals`, a function of the geometry and the boundary that JAX can differentiate, and runs on the same driver:
+A subclass of `JointProblem` defines `residuals`, differentiable by JAX:
 
 ```python
 class MeanIota(JointProblem):
@@ -59,16 +73,27 @@ class MeanIota(JointProblem):
         return jnp.atleast_1d(mean_iota - 0.3)
 ```
 
-## How a run ends
+## Result
 
-`Result.stages` records how each stage of boundary modes ended. `stopped` is `"stalled"` after three steps in a row below a drop of 1%, `"no_step"` when twelve trial steps in a row fail, and `"max_steps"` at the step limit. `rejected_steps` counts the trial steps refused for their merit or force residual, `failed_solves` those on which VMEC raised, and `tightened` the times the current state was relaxed further before a step. Residuals that are not finite at the state of a step raise a `ValueError`.
+`Result` holds the final boundary, its state at `NESTED_TOLERANCE` with the residuals and force residual there, the accepted steps and one `Stage` per stage.
 
-## Numerical limitations
+| `Stage` field | Meaning |
+|---|---|
+| `stopped` | `"stalled"`: three steps below a drop of 1%. `"no_step"`: no trial step held. `"max_steps"`: step limit. |
+| `rejected_steps` | Trial steps refused for their merit or force residual |
+| `failed_solves` | Trial steps on which VMEC raised |
+| `tightened` | Further relaxations for the accuracy of a merit |
 
-- One force Jacobian takes `3 * 6 * mpol * (ntor + 1)` Hessian products, as much work as about 2000 force evaluations at `ns` 51 and `mpol` 7, so a step costs far more than its relaxation. The products are independent, and `workers` runs them on one thread per model.
-- Slow modes next to the axis move the quasisymmetry residuals until the force residual is near 1e-10, and below a merit of 1e-6 further still, so the last steps of a run need a tight tolerance and save few force evaluations.
-- The final merit depends on the path through local minima: quasi-axisymmetry at `ns` 25 ends near 6.4e-6 or 7.9e-6, by either method, depending on small changes of the settings.
-- The state is solved with `always_fix_m1_gauge`. Quasisymmetry computed from a run with a free gauge depends on where the iteration froze the gauge, and at low error the two differ by more than a factor of ten. Compare with a pinned run, and state the gauge of any independent check.
-- The quasisymmetry measure takes the square root of `sqrt(g)`, so its residuals are not finite on a surface where the Jacobian changes sign. The rotating ellipse reaches that point on its boundary between beta 0.66% and 1.1%. A trial step without a finite merit is refused, and a run that starts there raises.
-- Differenced products lose accuracy along the soft modes. With pressure, a derivative of the mean iota can be off by 20%, against 1e-4 of the norm of the residual derivatives with exact products. The descent still converges, because the relaxation corrects the state after each step.
-- Only fixed-boundary, stellarator-symmetric inputs are supported.
+Residuals that are not finite at the first state raise a `ValueError`.
+
+## Limitations
+
+- One `H` takes `3 * 6 * mpol * (ntor + 1)` Hessian products, about 2000 force evaluations at `ns` 51, `mpol` 7. `workers` runs them on one model per thread.
+- A trial step refused after the screen costs one `H`.
+- Slow modes next to the axis persist in VMEC's descent after the force tolerance is met. At `NESTED_TOLERANCE`, `|r|^2` of the nested baseline can differ from a cold run by 10%.
+- `dn` converges from states along a run. Far from force balance, such as the rotating ellipse with pressure, it does not, and VMEC's descent starts the run.
+- The final merit depends on the path. Quasi-axisymmetry at `ns` 25 ends near 6.4e-6 or 7.9e-6 by either method.
+- `always_fix_m1_gauge` is on. Quasisymmetry from a free-gauge run depends on where the iteration froze the gauge, and differs by more than a factor of ten at low error.
+- Quasisymmetry residuals are not finite on a surface where the Jacobian changes sign. The rotating ellipse reaches this on its boundary between beta 0.66% and 1.1%.
+- Differenced products lose accuracy along soft modes. With pressure, a derivative of the mean iota can be off by 20%.
+- Fixed boundary and stellarator symmetry only. A multigrid input runs on the last entry of `ns_array`.

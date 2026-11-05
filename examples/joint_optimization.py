@@ -83,12 +83,24 @@ def main() -> None:
     parser.add_argument("--ns", type=int, default=25)
     parser.add_argument("--mpol", type=int, default=5)
     parser.add_argument("--stages", type=int, nargs="+", default=[1, 2, 3])
+    parser.add_argument("--nfp", type=int, default=2)
+    parser.add_argument("--helicity-n", type=int, default=0)
+    parser.add_argument("--aspect", type=float, default=6.0)
+    parser.add_argument("--iota", type=float, default=0.42)
+    parser.add_argument("--pressure", type=float, default=0.0, help="on axis")
     args = parser.parse_args()
-    for name, fraction in (("nested", 0.0), ("joint", 0.3)):
+    for name, nested in (("nested", True), ("joint", False)):
+        vmec_input = rotating_ellipse(args.mpol, args.mpol, args.ns, args.nfp)
+        vmec_input.pres_scale = args.pressure
+        vmec_input.am = np.asarray([1.0, -1.0, 0.0])
         problem = QuasisymmetryProblem(
-            rotating_ellipse(args.mpol, args.mpol, args.ns), max_mode=max(args.stages)
+            vmec_input,
+            helicity_n=args.helicity_n,
+            aspect=args.aspect,
+            mean_iota=args.iota,
+            max_mode=max(args.stages),
         )
-        result = optimize(problem, tuple(args.stages), fraction, log=print)
+        result = optimize(problem, tuple(args.stages), nested=nested, log=print)
         costs = problem.costs
         print(
             f"{name}: {len(result.steps)} steps, {costs.force_evaluations} force"

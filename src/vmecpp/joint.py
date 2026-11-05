@@ -1,13 +1,18 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Optimize a fixed boundary without converging VMEC between steps.
+"""Optimize a fixed boundary and its VMEC state under the constraint of force balance.
 
-Each Levenberg-Marquardt step on the boundary moves the state along its tangent, and
-VMEC's own descent then relaxes the force residual only as far as the step needs: the
-error of the merit, which grows with the square root of the force residual, stays a
-fixed fraction of the drop the step predicts. A fraction of zero converges every step,
-the nested baseline.
+Each Levenberg-Marquardt step solves
+
+    min |r + J_x dx + J_b db|^2 + damping |db|^2  subject to  F + H dx + F_b db = 0
+
+over the state ``x`` and the boundary ``b``, with the residuals ``r``, the force ``F`` on
+the interior of the state and its Jacobian ``H``. Eliminating the state gives
+``dx = -H^-1 F + T db`` with the state tangents ``T = -H^-1 F_b``. The merit of an iterate
+is ``|r - J_x H^-1 F|^2``, the objective with the force residual removed to first order.
+VMEC's own descent then relaxes the state as far as the error of the merit requires. The
+nested baseline converges the state at every step instead.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from __future__ import annotations
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import jax
@@ -31,11 +36,24 @@ NESTED_TOLERANCE = 1.0e-12
 LOOSEST_TOLERANCE = 1.0e-5
 """Loosest force tolerance of a step."""
 
-MERIT_TOLERANCE = 1.0e-3
-"""Largest force tolerance of a step, as a fraction of the merit."""
-
 STAGE_DROP = 1.0e-2
 """Relative drop of the merit per step below which a stage has stalled."""
+
+RELAXATION_ITERATIONS = 3000
+"""Largest number of descent iterations of one relaxation between steps."""
+
+_FIRST_TOLERANCE = 1.0e-6
+"""Force tolerance of the first state of a run."""
+
+_REFACTOR_DISTANCE = 1.0e-2
+"""Largest move of the state, relaxing further, for which its factored Jacobian
+stands."""
+
+_NORMAL_RADIUS = 0.05
+"""Largest normal step in one step, as a fraction of the major radius."""
+
+_SMALLEST_DROP = 1.0e-5
+"""Predicted drop, relative to the merit, below which no trial step is taken."""
 
 _TANGENT_CHUNK = 16
 """Residual tangents per call of the compiled derivative, which then compiles once."""
@@ -137,6 +155,7 @@ class JointProblem:
             self.boundary_map[key] = column
         self._residuals = jax.jit(self._flat_residuals)
         self._linearized = jax.jit(self._linearized_residuals)
+        self._along = jax.jit(self._residuals_along)
 
     def residuals(self, solved: geometry.Geometry, boundary: jax.Array) -> jax.Array:
         """The residual vector of a state; ``boundary`` holds rbc, then zbs."""
@@ -200,10 +219,26 @@ class JointProblem:
         _, linear = jax.linearize(self._flat_residuals, flat, boundary)
         return jax.vmap(linear)(directions, boundary_directions)
 
+    def _residuals_along(self, flat, boundary, direction):
+        return jax.jvp(
+            lambda at: self._flat_residuals(at, boundary), (flat,), (direction,)
+        )[1]
+
     def _flat_geometry(self, model) -> np.ndarray:
         return autodiff._cpp_geometry_flat(
             model.get_geometry(), self.ns, self.mpol, self.ntor
         )
+
+    def _geometry_along(self, model, state, direction) -> np.ndarray:
+        """The flat geometry along a state direction, differenced through the model,
+        whose chi depends on the state when ncurr = 1."""
+        step = 1.0e-7 / max(np.abs(direction).max(), 1.0e-3)
+        sides = []
+        for sign in (1.0, -1.0):
+            model.set_state(np.ascontiguousarray(state + sign * step * direction))
+            model.evaluate(2, 2, False)
+            sides.append(self._flat_geometry(model))
+        return (sides[0] - sides[1]) / (2.0 * step)
 
     def _evaluation(self, residuals: np.ndarray) -> Evaluation:
         return Evaluation(residuals, self.parts(residuals))
@@ -218,8 +253,8 @@ class JointProblem:
             )
         )
 
-    def state_tangents(self, model, state, keys) -> np.ndarray:
-        """D state / D boundary at fixed force, one column per boundary mode."""
+    def force_jacobian(self, model, state):
+        """H at the state, factored, from Hessian products on one model per worker."""
         start = time.perf_counter()
         models = self._models_at(model, state, precondition=True)
         matrix = autodiff._assemble_block_tridiagonal(
@@ -232,7 +267,14 @@ class JointProblem:
         matrix.factorize()
         self.costs.assembly_seconds += time.perf_counter() - start
         self.costs.assemblies += 1
+        return matrix
+
+    def state_tangents(self, model, state, keys, matrix=None) -> np.ndarray:
+        """D state / D boundary at fixed force, one column per boundary mode."""
+        if matrix is None:
+            matrix = self.force_jacobian(model, state)
         start = time.perf_counter()
+        models = self._models_at(model, state, precondition=True)
         tangents = np.stack([self.boundary_map[key] for key in keys], axis=1)
         forcing = autodiff._map_on_models(
             lambda worker, i: autodiff._force_product(
@@ -250,21 +292,12 @@ class JointProblem:
         start = time.perf_counter()
         state = np.ascontiguousarray(state)
         models = self._models_at(model, state, precondition=False)
-
-        # differenced through the model, whose chi depends on the state when ncurr = 1
-        def direction(worker, i: int) -> np.ndarray:
-            step = 1.0e-7 / max(np.abs(tangents[:, i]).max(), 1.0e-3)
-            sides = []
-            for sign in (1.0, -1.0):
-                worker.set_state(
-                    np.ascontiguousarray(state + sign * step * tangents[:, i])
-                )
-                worker.evaluate(2, 2, False)
-                sides.append(self._flat_geometry(worker))
-            return (sides[0] - sides[1]) / (2.0 * step)
-
         directions = np.stack(
-            autodiff._map_on_models(direction, models, range(len(keys)))
+            autodiff._map_on_models(
+                lambda worker, i: self._geometry_along(worker, state, tangents[:, i]),
+                models,
+                range(len(keys)),
+            )
         )
         model.set_state(state)
         model.evaluate(2, 2, False)
@@ -289,6 +322,34 @@ class JointProblem:
             )
         self.costs.objective_seconds += time.perf_counter() - start
         return self._evaluation(values), np.vstack(rows).T
+
+    def balanced_residuals(self, boundary, state, matrix):
+        """The residuals at the state, the same residuals with the force residual removed
+        to first order, ``r - J_x H^-1 F``, and the normal step ``-H^-1 F``."""
+        start = time.perf_counter()
+        state = np.ascontiguousarray(state)
+        model = self.create_model(boundary)
+        model.set_state(state)
+        model.evaluate(2, 2, False)
+        flat = self._flat_geometry(model)
+        force = np.array(model.get_forces())[self.interior]
+        values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
+        normal = np.zeros(state.size)
+        try:
+            normal[self.interior] = matrix.solve(-force[:, None])[:, 0]
+        except ValueError:  # the force or the factors are not finite
+            normal[:] = np.nan
+        change = np.full_like(values, np.nan)
+        if np.all(np.isfinite(normal)):
+            change = np.asarray(
+                self._along(
+                    flat,
+                    jnp.asarray(boundary),
+                    jnp.asarray(self._geometry_along(model, state, normal)),
+                )
+            )
+        self.costs.objective_seconds += time.perf_counter() - start
+        return values, values + change, normal
 
 
 def _padded(rows: np.ndarray, padding: int) -> np.ndarray:
@@ -355,7 +416,7 @@ class QuasisymmetryProblem(JointProblem):
 
 @dataclass
 class Step:
-    """One accepted step of the optimization."""
+    """One accepted step of the optimization, with its merit in ``evaluation``."""
 
     max_mode: int
     evaluation: Evaluation
@@ -369,10 +430,10 @@ class Stage:
     """How one stage of boundary modes ended.
 
     ``stopped`` is "stalled" after three steps in a row below STAGE_DROP, "no_step" when
-    twelve trial steps in a row fail, and "max_steps" at the step limit.
-    ``rejected_steps`` counts the trial steps refused for their merit or force residual,
-    ``failed_solves`` those on which VMEC raised, and ``tightened`` the times the state
-    was relaxed further before a step.
+    no trial step holds, and "max_steps" at the step limit. ``rejected_steps`` counts the
+    trial steps refused for their merit or force residual, ``failed_solves`` those on
+    which VMEC raised, and ``tightened`` the relaxations further for the accuracy of a
+    merit.
     """
 
     max_mode: int
@@ -384,57 +445,136 @@ class Stage:
 
 @dataclass
 class Result:
-    """The final boundary and state, every accepted step and how each stage ended."""
+    """The final boundary, its state relaxed to NESTED_TOLERANCE with its residuals and
+    force residual, every accepted step and how each stage ended."""
 
     boundary: np.ndarray
     state: np.ndarray
+    evaluation: Evaluation
+    force_residual: float
     steps: list[Step]
     stages: list[Stage]
 
 
 @dataclass
-class _Iterate:
-    """The boundary and state of a run, the force tolerance the state was relaxed to,
-    and the measured change of the merit per square root of force residual."""
+class _Point:
+    """A boundary and state, the residuals there and their value in force balance.
+
+    ``matrix`` is the factored force Jacobian. The nested baseline takes the residuals
+    as they are, and factors the Jacobian only for an accepted step.
+    """
 
     boundary: np.ndarray
     state: np.ndarray
+    residuals: np.ndarray
+    balanced: np.ndarray
+    normal: np.ndarray | None = None
+    matrix: Any = None
+
+    @property
+    def merit(self) -> float:
+        return float(self.balanced @ self.balanced)
+
+    @property
+    def normal_size(self) -> float:
+        return 0.0 if self.normal is None else float(np.abs(self.normal).max())
+
+    def normal_step(self) -> np.ndarray:
+        """The normal step, within its radius."""
+        if self.normal is None or not np.isfinite(self.normal_size):
+            return np.zeros_like(self.state)
+        radius = _NORMAL_RADIUS * np.abs(self.boundary[0]).max()
+        return min(1.0, radius / max(self.normal_size, 1.0e-300)) * self.normal
+
+    @property
+    def merit_error(self) -> float:
+        """Estimated error of the merit, ``2 |r_b| |r_b - r| |dn| / R``."""
+        change = np.linalg.norm(self.balanced - self.residuals)
+        return float(
+            2.0
+            * np.linalg.norm(self.balanced)
+            * change
+            * self.normal_size
+            / np.abs(self.boundary[0]).max()
+        )
+
+
+@dataclass
+class _Iterate:
+    """The current point, the force tolerance of the relaxations and the damping."""
+
+    point: _Point
     tolerance: float
-    noise: float
+    damping: float = 1.0e-3
 
 
 @dataclass
 class _Trial:
-    """An accepted trial step and the merit it improved on."""
+    """An accepted trial step."""
 
-    boundary: np.ndarray
-    model: Any
-    evaluation: Evaluation
+    point: _Point
     force_residual: float
-    tolerance: float
     gain: float
-    merit_before: float
+    drop: float
+    allowed_error: float
 
 
-def _relax_further(
-    problem: JointProblem, iterate: _Iterate, tolerance: float, merit: float
-) -> Evaluation | None:
-    """Relax the state to a tighter tolerance, and measure the noise on the way.
+def _joint_point(problem: JointProblem, boundary, state) -> _Point:
+    state = np.ascontiguousarray(state)
+    matrix = problem.force_jacobian(problem.create_model(boundary), state)
+    values, balanced, normal = problem.balanced_residuals(boundary, state, matrix)
+    return _Point(boundary, state, values, balanced, normal, matrix)
 
-    The state stays as it is where VMEC raises or the tighter one has no finite merit,
-    which can be a surface whose Jacobian changes sign.
-    """
+
+def _nested_point(problem: JointProblem, boundary, model) -> _Point:
+    state = np.ascontiguousarray(np.array(model.get_state()))
+    values = problem.evaluate(model, boundary).residuals
+    return _Point(boundary, state, values, values)
+
+
+def _relaxed_further(
+    problem: JointProblem, point: _Point, tolerance: float
+) -> _Point | None:
+    """The point relaxed to a tighter tolerance on its factored Jacobian, or None where
+    VMEC raises or the tighter state has no finite merit, which can be a surface whose
+    Jacobian changes sign."""
     try:
-        model = problem.relax(iterate.boundary, iterate.state, tolerance)
+        model = problem.relax(
+            point.boundary, point.state, tolerance, RELAXATION_ITERATIONS
+        )
     except RuntimeError:
         return None
-    evaluation = problem.evaluate(model, iterate.boundary)
-    if not np.isfinite(evaluation.merit):
-        return None
-    change = abs(evaluation.merit - merit) / np.sqrt(iterate.tolerance)
-    iterate.noise = float(np.nanmax([change, 0.7 * iterate.noise, 1.0e-6]))
-    iterate.state, iterate.tolerance = np.array(model.get_state()), tolerance
-    return evaluation
+    state = np.ascontiguousarray(np.array(model.get_state()))
+    if point.matrix is None:
+        further = _nested_point(problem, point.boundary, model)
+    else:
+        values, balanced, normal = problem.balanced_residuals(
+            point.boundary, state, point.matrix
+        )
+        further = replace(
+            point, state=state, residuals=values, balanced=balanced, normal=normal
+        )
+    return further if np.isfinite(further.merit) else None
+
+
+def _tightened(
+    problem: JointProblem, point: _Point, tolerance: float, allowed: float, end: Stage
+) -> tuple[_Point, float]:
+    """The point relaxed until the error of its merit is within the allowance, and the
+    tolerance this took; a state that moved far has its Jacobian factored again."""
+    origin = point.state
+    while point.merit_error > allowed and tolerance > NESTED_TOLERANCE:
+        tighter = max(tolerance / 10.0, NESTED_TOLERANCE)
+        further = _relaxed_further(problem, point, tighter)
+        if further is None:
+            break
+        point, tolerance = further, tighter
+        end.tightened += 1
+    if np.abs(point.state - origin).max() > _REFACTOR_DISTANCE:
+        factored = _joint_point(problem, point.boundary, point.state)
+        if np.isfinite(factored.merit):
+            point = factored
+    return point, tolerance
 
 
 def _first_accepted_step(
@@ -442,136 +582,172 @@ def _first_accepted_step(
     iterate: _Iterate,
     keys,
     tangents,
-    current: Evaluation,
     jacobian,
-    noise_fraction: float,
-    damping: float,
     end: Stage,
-) -> tuple[_Trial | None, float]:
-    """The first trial step that holds, or None after twelve, and the damping it
-    took."""
+    *,
+    nested: bool,
+    error_fraction: float,
+) -> _Trial | None:
+    """The first trial step that holds, or None after twelve."""
     normal = jacobian.T @ jacobian
     # the floor bounds the step in weakly coupled modes when residuals are few
     scale = np.maximum(np.diag(normal), max(1.0e-4 * np.diag(normal).max(), 1.0e-10))
-    residuals, merit = current.residuals, current.merit
 
     def proposal():
+        balanced = iterate.point.balanced
         delta = -np.linalg.solve(
-            normal + damping * np.diag(scale), jacobian.T @ residuals
+            normal + iterate.damping * np.diag(scale), jacobian.T @ balanced
         )
-        predicted = merit - float(np.sum((residuals + jacobian @ delta) ** 2))
-        error = noise_fraction * predicted / iterate.noise
-        loosest = min(LOOSEST_TOLERANCE, MERIT_TOLERANCE * merit)
+        predicted = iterate.point.merit - float(
+            np.sum((balanced + jacobian @ delta) ** 2)
+        )
         return (
             delta,
             predicted,
-            float(np.clip(error**2, NESTED_TOLERANCE, max(loosest, NESTED_TOLERANCE))),
+            error_fraction * max(predicted, STAGE_DROP * iterate.point.merit),
         )
 
+    take_normal = not nested
     for _ in range(12):
-        delta, predicted, tolerance = proposal()
-        # both sides of the comparison of merits need the accuracy of the step
-        if tolerance < 0.5 * iterate.tolerance:
-            further = _relax_further(problem, iterate, tolerance, merit)
-            if further is not None:
-                end.tightened += 1
-                residuals, merit = further.residuals, further.merit
-                delta, predicted, tolerance = proposal()
-        trial = iterate.boundary.copy()
+        delta, predicted, allowed = proposal()
+        if predicted < _SMALLEST_DROP * iterate.point.merit:
+            return None
+        if not nested and iterate.point.merit_error > allowed:
+            iterate.point, iterate.tolerance = _tightened(
+                problem, iterate.point, iterate.tolerance, allowed, end
+            )
+            delta, predicted, allowed = proposal()
+        point = iterate.point
+        trial = point.boundary.copy()
         for key, value in zip(keys, delta, strict=True):
             trial[key] += value
+        moved = point.state + tangents @ delta
+        if take_normal:
+            moved = moved + point.normal_step()
         try:
-            relaxed = problem.relax(trial, iterate.state + tangents @ delta, tolerance)
+            relaxed = problem.relax(
+                trial,
+                moved,
+                iterate.tolerance,
+                None if nested else RELAXATION_ITERATIONS,
+            )
         except RuntimeError:  # the step crossed flux surfaces
             end.failed_solves += 1
-            damping *= 4.0
+            iterate.damping *= 4.0
+            take_normal = False
             continue
         force_residual = relaxed.fsqr + relaxed.fsqz + relaxed.fsql
-        evaluation = problem.evaluate(relaxed, trial)
-        gain = (merit - evaluation.merit) / max(predicted, 1.0e-300)
-        # the descent stayed near force balance and the merit fell
-        if force_residual <= max(30.0 * tolerance, 1.0e-4) and gain > 1.0e-3:
-            accepted = _Trial(
-                trial, relaxed, evaluation, force_residual, tolerance, gain, merit
+        candidate = _nested_point(problem, trial, relaxed)
+        # the descent stayed near force balance
+        holds = force_residual <= max(30.0 * iterate.tolerance, 1.0e-4)
+        if holds and not nested:
+            # refused before its force Jacobian is assembled
+            plain = float(point.residuals @ point.residuals)
+            holds = candidate.merit <= (
+                plain + abs(plain - point.merit) + 0.25 * predicted
             )
-            return accepted, damping
+            if holds:
+                candidate = _joint_point(problem, trial, candidate.state)
+                candidate, iterate.tolerance = _tightened(
+                    problem, candidate, iterate.tolerance, allowed, end
+                )
+        if holds:
+            gain = (point.merit - candidate.merit) / max(predicted, 1.0e-300)
+            if gain > 1.0e-3:
+                drop = (point.merit - candidate.merit) / point.merit
+                return _Trial(candidate, force_residual, gain, drop, allowed)
         end.rejected_steps += 1
-        damping *= 4.0
-    return None, damping
+        iterate.damping *= 4.0
+        take_normal = take_normal and holds
+    return None
 
 
 def optimize(
     problem: JointProblem,
     stages=(1, 2, 3),
-    noise_fraction: float = 0.3,
+    *,
+    nested: bool = False,
+    error_fraction: float = 0.3,
     max_steps: int = 120,
     log=None,
 ) -> Result:
-    """Levenberg-Marquardt on the boundary, adding boundary modes stage by stage.
+    """Levenberg-Marquardt on the boundary and the state, adding boundary modes stage by
+    stage.
 
-    Each trial step relaxes the state until the error of the merit is about
-    ``noise_fraction`` of the drop the step predicts, between NESTED_TOLERANCE and the
-    smaller of LOOSEST_TOLERANCE and MERIT_TOLERANCE times the merit. After each step the
-    state is relaxed ten times further, which measures the noise and starts the next
-    step. A fraction of zero converges every step to NESTED_TOLERANCE.
-    Residuals that are not finite raise a ValueError.
+    Each trial step relaxes the state until the estimated error of the merit is
+    ``error_fraction`` of the drop the step predicts, and of STAGE_DROP times the merit
+    at least, between NESTED_TOLERANCE and LOOSEST_TOLERANCE. The last state is relaxed
+    to NESTED_TOLERANCE. ``nested`` instead converges every step to NESTED_TOLERANCE and
+    takes the residuals as they are. Residuals that are not finite at the first state
+    raise a ValueError.
     """
     if max(stages) > problem.max_mode:
         message = f"stage {max(stages)} is above max_mode {problem.max_mode}"
         raise ValueError(message)
     start = time.perf_counter()
     boundary = problem.boundary0.copy()
-    model = problem.relax(boundary, ftol=1.0e-6)
-    merit = problem.evaluate(model, boundary).merit
-    iterate = _Iterate(boundary, np.array(model.get_state()), 1.0e-6, 1.0e-6)
-    _relax_further(problem, iterate, 1.0e-7, merit)
+    model = problem.relax(boundary, ftol=_FIRST_TOLERANCE)
+    if nested:
+        first = _nested_point(problem, boundary, model)
+        if np.isfinite(first.merit):
+            first = _relaxed_further(problem, first, NESTED_TOLERANCE) or first
+        iterate = _Iterate(first, NESTED_TOLERANCE)
+    else:
+        first = _joint_point(problem, boundary, model.get_state())
+        iterate = _Iterate(first, _FIRST_TOLERANCE)
+    if not np.isfinite(iterate.point.merit):
+        message = "the residuals are not finite at the first state"
+        raise ValueError(message)
     steps: list[Step] = []
     ends: list[Stage] = []
     for max_mode in stages:
         keys = boundary_modes(max_mode, problem.ntor)
         end = Stage(max_mode)
         ends.append(end)
-        damping = 1.0e-3
+        iterate.damping = 1.0e-3
         slow = 0
         for _ in range(max_steps):
-            model = problem.create_model(iterate.boundary)
-            tangents = problem.state_tangents(model, iterate.state, keys)
-            current, jacobian = problem.residual_jacobian(
-                model, iterate.state, iterate.boundary, keys, tangents
+            point = iterate.point
+            model = problem.create_model(point.boundary)
+            tangents = problem.state_tangents(model, point.state, keys, point.matrix)
+            _, jacobian = problem.residual_jacobian(
+                model, point.state, point.boundary, keys, tangents
             )
-            if not np.isfinite(current.merit):
-                message = f"the residuals are not finite after {len(steps)} steps"
-                raise ValueError(message)
-            trial, damping = _first_accepted_step(
+            trial = _first_accepted_step(
                 problem,
                 iterate,
                 keys,
                 tangents,
-                current,
                 jacobian,
-                noise_fraction,
-                damping,
                 end,
+                nested=nested,
+                error_fraction=error_fraction,
             )
             if trial is None:
                 end.stopped = "no_step"
                 break
             if trial.gain > 0.5:
-                damping = max(damping / 3.0, 1.0e-9)
+                iterate.damping = max(iterate.damping / 3.0, 1.0e-9)
             elif trial.gain < 0.25:
-                damping *= 2.0
-            merit = trial.evaluation.merit
-            drop = (trial.merit_before - merit) / trial.merit_before
-            iterate.boundary = trial.boundary
-            iterate.state = np.array(trial.model.get_state())
-            iterate.tolerance = trial.tolerance
-            # keeps the measured noise current
-            if trial.tolerance >= 10.0 * NESTED_TOLERANCE:
-                _relax_further(problem, iterate, trial.tolerance / 10.0, merit)
+                iterate.damping *= 2.0
+            iterate.point = trial.point
+            if not nested:
+                # the error scales with the force tolerance in the stiff modes
+                iterate.tolerance = float(
+                    np.clip(
+                        0.5
+                        * iterate.tolerance
+                        * trial.allowed_error
+                        / max(trial.point.merit_error, 1.0e-300),
+                        iterate.tolerance,
+                        min(10.0 * iterate.tolerance, LOOSEST_TOLERANCE),
+                    )
+                )
+            evaluation = problem._evaluation(trial.point.balanced)
             steps.append(
                 Step(
                     max_mode,
-                    trial.evaluation,
+                    evaluation,
                     trial.force_residual,
                     problem.costs.force_evaluations,
                     time.perf_counter() - start,
@@ -579,16 +755,15 @@ def optimize(
             )
             if log is not None:
                 named = "".join(
-                    f" {name} {value:.5g}"
-                    for name, value in trial.evaluation.parts.items()
+                    f" {name} {value:.5g}" for name, value in evaluation.parts.items()
                 )
                 log(
                     f"modes {max_mode} step {len(steps):3d}"
-                    f" merit {merit:.4e}{named}"
+                    f" merit {evaluation.merit:.4e}{named}"
                     f" force {trial.force_residual:.1e}"
                     f" evals {problem.costs.force_evaluations}"
                 )
-            slow = slow + 1 if drop < STAGE_DROP else 0
+            slow = slow + 1 if trial.drop < STAGE_DROP else 0
             if slow >= 3:
                 end.stopped = "stalled"
                 break
@@ -599,7 +774,19 @@ def optimize(
                 f" {end.failed_solves} failed solves,"
                 f" {end.tightened} tightened"
             )
-    return Result(iterate.boundary, iterate.state, steps, ends)
+    point = iterate.point
+    model = problem.relax(
+        point.boundary, point.state + point.normal_step(), NESTED_TOLERANCE
+    )
+    force_residual = model.fsqr + model.fsqz + model.fsql
+    return Result(
+        point.boundary,
+        np.array(model.get_state()),
+        problem.evaluate(model, point.boundary),
+        force_residual,
+        steps,
+        ends,
+    )
 
 
 def converged_input(problem: JointProblem, boundary, *, pin_gauge: bool, ns: int = 51):
@@ -619,8 +806,8 @@ def converged_input(problem: JointProblem, boundary, *, pin_gauge: bool, ns: int
 
 __all__ = [
     "LOOSEST_TOLERANCE",
-    "MERIT_TOLERANCE",
     "NESTED_TOLERANCE",
+    "RELAXATION_ITERATIONS",
     "STAGE_DROP",
     "Costs",
     "Evaluation",
