@@ -16,6 +16,8 @@ from vmecpp.cpp import _vmecpp  # type: ignore
 from vmecpp.joint import (
     JointProblem,
     QuasisymmetryProblem,
+    _Iterate,
+    _relax_further,
     boundary_modes,
     converged_input,
     optimize,
@@ -308,9 +310,9 @@ def test_a_relaxation_rolls_back_to_its_starting_state(problem, linearization) -
     np.testing.assert_array_equal(model.get_state(), state)
 
 
-def test_threads_reproduce_one_thread(linearization) -> None:
-    """Tangents and residual derivatives do not depend on the number of workers."""
-    state = linearization[0]
+def test_threads_reproduce_one_thread() -> None:
+    """Tangents and residual derivatives do not depend on the number of workers, at a
+    boundary other than the one the extra models start from."""
     results = []
     for workers in (1, 3):
         problem = QuasisymmetryProblem(
@@ -321,18 +323,20 @@ def test_threads_reproduce_one_thread(linearization) -> None:
             workers=workers,
         )
         keys = boundary_modes(1, problem.ntor)
-        model = problem.create_model(problem.boundary0)
+        boundary = problem.boundary0.copy()
+        boundary[keys[2]] += 1.0e-2
+        state = np.array(problem.relax(boundary, ftol=1.0e-8).get_state())
+        model = problem.create_model(boundary)
         tangents = problem.state_tangents(model, state, keys)
         results.append(
             (
+                state,
                 tangents,
-                problem.residual_jacobian(
-                    model, state, problem.boundary0, keys, tangents
-                )[1],
+                problem.residual_jacobian(model, state, boundary, keys, tangents)[1],
             )
         )
-    np.testing.assert_array_equal(results[0][0], results[1][0])
-    np.testing.assert_array_equal(results[0][1], results[1][1])
+    for one_thread, threads in zip(*results, strict=True):
+        np.testing.assert_array_equal(one_thread, threads)
 
 
 def test_single_precision_is_refused() -> None:
@@ -342,6 +346,35 @@ def test_single_precision_is_refused() -> None:
             JointProblem(rotating_ellipse(4, 4, 17))
     finally:
         jax.config.update("jax_enable_x64", True)
+
+
+@pytest.mark.parametrize(
+    ("update", "max_mode"),
+    [({"lasym": True}, 1), ({"lfreeb": True}, 1), ({}, 4), ({"ntor": 2}, 3)],
+    ids=["asymmetric", "free boundary", "max_mode at mpol", "max_mode above ntor"],
+)
+def test_inputs_outside_the_method_are_refused(update, max_mode: int) -> None:
+    vmec_input = rotating_ellipse(4, 4, 17).model_copy(update=update)
+    with pytest.raises(ValueError, match="needs"):
+        JointProblem(vmec_input, max_mode=max_mode)
+
+
+def test_a_multigrid_input_runs_on_its_last_resolution() -> None:
+    single = rotating_ellipse(4, 4, 17)
+    multigrid = single.model_copy(
+        update={
+            "ns_array": np.asarray([9, 17]),
+            "ftol_array": np.asarray([1.0e-6, 1.0e-11]),
+            "niter_array": np.asarray([1000, 30000]),
+        }
+    )
+    states = []
+    for vmec_input in (single, multigrid):
+        problem = JointProblem(vmec_input, max_mode=1)
+        model = problem.relax(problem.boundary0, ftol=1.0e-7)
+        assert max(model.fsqr, model.fsqz, model.fsql) <= 1.0e-7
+        states.append(np.array(model.get_state()))
+    np.testing.assert_array_equal(states[0], states[1])
 
 
 class MeanIota(JointProblem):
@@ -384,6 +417,60 @@ def test_a_stage_reports_how_it_ended() -> None:
     assert stuck.stages[0].rejected_steps == 12
     assert stuck.stages[0].tightened > 0
     assert stuck.steps == []
+
+
+def test_a_stage_above_max_mode_is_refused() -> None:
+    with pytest.raises(ValueError, match="above max_mode"):
+        optimize(Constant(rotating_ellipse(4, 4, 17), max_mode=1), (1, 2))
+
+
+def test_a_solve_that_raises_counts_its_force_evaluations(monkeypatch) -> None:
+    class Raises:
+        force_eval_count = 7
+
+        def solve(self) -> None:
+            raise RuntimeError
+
+    problem = Constant(rotating_ellipse(4, 4, 17), max_mode=1)
+    monkeypatch.setattr(problem, "create_model", lambda *_args: Raises())
+    with pytest.raises(RuntimeError):
+        problem.relax(problem.boundary0, ftol=1.0e-6)
+    assert problem.costs.force_evaluations == 7
+
+
+class RaisesOnEveryStep(MeanIota):
+    """VMEC raises at every boundary other than the first."""
+
+    def relax(self, boundary, state=None, ftol=None, niter=None):
+        if not np.array_equal(boundary, self.boundary0):
+            raise RuntimeError
+        return super().relax(boundary, state, ftol, niter)
+
+
+def test_steps_on_which_vmec_raises_end_the_stage() -> None:
+    result = optimize(RaisesOnEveryStep(rotating_ellipse(4, 4, 17), max_mode=1), (1,))
+    assert result.steps == []
+    assert result.stages[0].stopped == "no_step"
+    assert result.stages[0].failed_solves == 12
+    assert result.stages[0].rejected_steps == 0
+
+
+def test_a_state_that_cannot_be_tightened_stays(monkeypatch) -> None:
+    problem = Constant(rotating_ellipse(4, 4, 17), max_mode=1)
+    state = np.array(problem.relax(problem.boundary0, ftol=1.0e-5).get_state())
+    iterate = _Iterate(problem.boundary0, state, 1.0e-5, 1.0e-3)
+    # the noise stays measurable after a merit that was not finite
+    assert _relax_further(problem, iterate, 1.0e-6, np.nan) is not None
+    np.testing.assert_allclose(iterate.noise, 7.0e-4)
+    tightened = iterate.state
+
+    def raises(*_args, **_kwargs):
+        raise RuntimeError
+
+    monkeypatch.setattr(problem, "relax", raises)
+    assert _relax_further(problem, iterate, 1.0e-7, 1.0) is None
+    assert iterate.state is tightened
+    assert iterate.tolerance == 1.0e-6
 
 
 def test_residuals_that_are_not_finite_raise() -> None:

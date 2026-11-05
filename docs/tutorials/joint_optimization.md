@@ -13,7 +13,7 @@ problem = QuasisymmetryProblem(vmec_input, aspect=6.0, mean_iota=0.42, max_mode=
 result = optimize(problem, stages=(1, 2, 3))
 ```
 
-`python examples/joint_optimization.py` runs the test problem below by this method and by the nested baseline, and checks each final boundary with a cold, fully converged run read by SIMSOPT. `workers` sets the threads for the force Jacobian and the residual derivatives, by default one per processor.
+`python examples/joint_optimization.py` runs the test problem below by this method and by the nested baseline, and checks each final boundary with a cold, fully converged run read by SIMSOPT. `workers` sets the threads for the force Jacobian and the residual derivatives, by default one per processor. A multigrid input runs on the last entry of its `ns_array`.
 
 ## The step
 

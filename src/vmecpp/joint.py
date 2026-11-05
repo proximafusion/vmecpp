@@ -85,7 +85,8 @@ class JointProblem:
     ``workers`` is the number of threads for the force Jacobian and the residual
     derivatives, by default one per processor. ``exact_products`` takes the Hessian
     products of the force Jacobian from Enzyme, in a build that has it; otherwise they
-    are central differences of the force, which cost about the same.
+    are central differences of the force, which cost about the same. A multigrid input
+    runs on its last resolution.
     """
 
     vmec_input: Any
@@ -95,13 +96,22 @@ class JointProblem:
     costs: Costs = field(default_factory=Costs)
 
     def __post_init__(self) -> None:
-        if not jax.config.jax_enable_x64:
+        if not jax.config.read("jax_enable_x64"):
             message = "vmecpp.joint needs jax_enable_x64 for its residuals"
+            raise ValueError(message)
+        if self.vmec_input.lfreeb or self.vmec_input.lasym:
+            message = "vmecpp.joint needs a fixed-boundary, stellarator-symmetric input"
+            raise ValueError(message)
+        self.mpol, self.ntor = self.vmec_input.mpol, self.vmec_input.ntor
+        if self.max_mode >= self.mpol or self.max_mode > self.ntor:
+            message = "max_mode needs mpol above it and ntor at least as high"
             raise ValueError(message)
         self.template = self.vmec_input._to_cpp_vmecindata()
         self.template.always_fix_m1_gauge = True
         self.ns = int(np.asarray(self.vmec_input.ns_array)[-1])
-        self.mpol, self.ntor = self.vmec_input.mpol, self.vmec_input.ntor
+        self.template.ns_array = np.asarray([self.ns])
+        self.template.ftol_array = np.asarray(self.vmec_input.ftol_array)[-1:]
+        self.template.niter_array = np.asarray(self.vmec_input.niter_array)[-1:]
         self.boundary0 = np.stack(
             [np.asarray(self.vmec_input.rbc), np.asarray(self.vmec_input.zbs)]
         )
@@ -152,9 +162,11 @@ class JointProblem:
             model.set_state(np.ascontiguousarray(state))
             # a rollback of the descent otherwise restores the cold initial guess
             model.save_backup()
-        model.solve()
-        self.costs.force_evaluations += int(model.force_eval_count)
-        self.costs.solve_seconds += time.perf_counter() - start
+        try:
+            model.solve()
+        finally:
+            self.costs.force_evaluations += int(model.force_eval_count)
+            self.costs.solve_seconds += time.perf_counter() - start
         return model
 
     def _models_at(self, model, state, *, precondition: bool) -> list:
@@ -409,15 +421,18 @@ def _relax_further(
 ) -> Evaluation | None:
     """Relax the state to a tighter tolerance, and measure the noise on the way.
 
-    The state stays as it is where the tighter one has no finite merit, which can be a
-    surface whose Jacobian changes sign.
+    The state stays as it is where VMEC raises or the tighter one has no finite merit,
+    which can be a surface whose Jacobian changes sign.
     """
-    model = problem.relax(iterate.boundary, iterate.state, tolerance)
+    try:
+        model = problem.relax(iterate.boundary, iterate.state, tolerance)
+    except RuntimeError:
+        return None
     evaluation = problem.evaluate(model, iterate.boundary)
     if not np.isfinite(evaluation.merit):
         return None
     change = abs(evaluation.merit - merit) / np.sqrt(iterate.tolerance)
-    iterate.noise = max(change, 0.7 * iterate.noise, 1.0e-6)
+    iterate.noise = float(np.nanmax([change, 0.7 * iterate.noise, 1.0e-6]))
     iterate.state, iterate.tolerance = np.array(model.get_state()), tolerance
     return evaluation
 
@@ -501,6 +516,10 @@ def optimize(
     step. A fraction of zero converges every step to NESTED_TOLERANCE.
     Residuals that are not finite raise a ValueError.
     """
+    if max(stages) > problem.max_mode:
+        message = f"stage {max(stages)} is above max_mode {problem.max_mode}"
+        raise ValueError(message)
+    start = time.perf_counter()
     boundary = problem.boundary0.copy()
     model = problem.relax(boundary, ftol=1.0e-6)
     merit = problem.evaluate(model, boundary).merit
@@ -508,7 +527,6 @@ def optimize(
     _relax_further(problem, iterate, 1.0e-7, merit)
     steps: list[Step] = []
     ends: list[Stage] = []
-    start = time.perf_counter()
     for max_mode in stages:
         keys = boundary_modes(max_mode, problem.ntor)
         end = Stage(max_mode)
