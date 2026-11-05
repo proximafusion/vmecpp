@@ -444,37 +444,37 @@ class _BlockTridiagonal:
     def factorize(self) -> None:
         """Block Thomas elimination: LU-factor each Schur complement in place."""
         self.pivots = []
+        # contiguous copies of the factors, which a solve reads without copying
+        self.factors: list[np.ndarray] = []
         for j in range(self.ns):
             schur = self._block(self.diagonal, j, j)
             if j > 0:
                 # upper[j-1] <- D'[j-1]^{-1} upper[j-1], then D'[j] = D[j] - L[j] U'[j-1]
                 coupling = scipy.linalg.lu_solve(
-                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
+                    (self.factors[j - 1], self.pivots[j - 1]),
                     self._block(self.upper, j - 1, j),
                 )
                 self._block(self.upper, j - 1, j)[...] = coupling
                 schur -= self._block(self.lower, j, j - 1) @ coupling
             factor, pivots = scipy.linalg.lu_factor(schur, check_finite=False)
             self._block(self.diagonal, j, j)[...] = factor
+            self.factors.append(factor)
             self.pivots.append(pivots)
 
     def solve(self, rhs: np.ndarray) -> np.ndarray:
-        forward = np.zeros_like(rhs)
+        # D'[j]^{-1} f[j] from the forward sweep starts the backward sweep
+        solved = []
         for j, members in enumerate(self.members):
-            forward[members] = rhs[members]
+            forward = rhs[members]
             if j > 0:
-                forward[members] -= self._block(
-                    self.lower, j, j - 1
-                ) @ scipy.linalg.lu_solve(
-                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
-                    forward[self.members[j - 1]],
-                )
+                forward = forward - self._block(self.lower, j, j - 1) @ solved[j - 1]
+            solved.append(
+                scipy.linalg.lu_solve((self.factors[j], self.pivots[j]), forward)
+            )
         result = np.zeros_like(rhs)
         for j in range(self.ns - 1, -1, -1):
             members = self.members[j]
-            result[members] = scipy.linalg.lu_solve(
-                (self._block(self.diagonal, j, j), self.pivots[j]), forward[members]
-            )
+            result[members] = solved[j]
             if j + 1 < self.ns:
                 result[members] -= (
                     self._block(self.upper, j, j + 1) @ result[self.members[j + 1]]
