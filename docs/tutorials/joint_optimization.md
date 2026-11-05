@@ -97,7 +97,8 @@ Residuals that are not finite at the first state raise a `ValueError`.
 - A trial step refused after the screen costs one `H`.
 - Slow modes next to the axis persist in VMEC's descent after the force tolerance is met. At `NESTED_TOLERANCE`, `|r|^2` of the nested baseline can differ from a cold run by 10%.
 - `dn` converges from states along a run. Far from force balance, such as the rotating ellipse with pressure, it does not, and VMEC's descent starts the run.
-- The final merit depends on the path. Quasi-axisymmetry at `ns` 25 ends near 6.4e-6 or 7.9e-6 by either method.
+- Where `H` is nearly singular, as at a start beyond an equilibrium limit, `dn` lies far outside its limit and the merit stays close to `|r|^2` until a step moves the boundary away.
+- The final merit depends on the path. Quasi-axisymmetry at `ns` 25 ends near 6.4e-6 or 8.4e-6 by either method.
 - `always_fix_m1_gauge` is on. Quasisymmetry from a free-gauge run depends on where the iteration froze the gauge, and differs by more than a factor of ten at low error.
 - Quasisymmetry residuals are not finite on a surface where the Jacobian changes sign. The rotating ellipse reaches this on its boundary between beta 0.66% and 1.1%.
 - Differenced products use a relative step of 3e-9, where truncation and roundoff balance along the soft modes. Against exact products at `ns` 51, the state tangents agree to 4e-6 and the residual derivatives to 1.5e-4.
