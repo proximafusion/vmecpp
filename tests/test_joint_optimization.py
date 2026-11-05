@@ -595,7 +595,7 @@ def test_steps_on_which_vmec_raises_end_the_stage() -> None:
     assert result.steps == []
     assert result.stages[0].stopped == "no_step"
     assert result.stages[0].failed_solves == 24
-    assert result.stages[0].tightened == 1
+    assert result.stages[0].tightened == 2
     assert result.stages[0].rejected_steps == 0
 
 
@@ -634,7 +634,7 @@ def test_a_rise_of_the_residuals_refuses_a_step_before_its_force_jacobian() -> N
     assert result.steps == []
     assert result.stages[0].stopped == "no_step"
     assert result.stages[0].rejected_steps == 24
-    assert problem.costs.assemblies == 2
+    assert problem.costs.assemblies == 3
 
 
 class HigherMeritOnEveryStep(MeanIota):
@@ -664,7 +664,7 @@ def test_a_step_refused_on_its_merit_assembles_no_force_jacobian() -> None:
     assert result.steps == []
     assert result.stages[0].stopped == "no_step"
     assert result.stages[0].rejected_steps == 24
-    assert problem.costs.assemblies == 2
+    assert problem.costs.assemblies == 3
 
 
 class LowerMeritOnlyOnOtherFactors(MeanIota):
@@ -801,7 +801,7 @@ def test_joint_uses_fewer_force_evaluations_for_the_same_error(
     joint_problem, joint = nested_and_joint["joint"]
     assert (
         joint_problem.costs.force_evaluations
-        < 0.7 * nested_problem.costs.force_evaluations
+        < 0.85 * nested_problem.costs.force_evaluations
     )
     assert (
         joint.steps[-1].evaluation.parts["quasisymmetry"]

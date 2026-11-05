@@ -801,8 +801,9 @@ def optimize(
 
     Each trial step relaxes the state until the estimated error of the merit is
     ``error_fraction`` of the drop the step predicts, and of STAGE_DROP times the merit
-    at least, between NESTED_TOLERANCE and LOOSEST_TOLERANCE. The last state is relaxed
-    to NESTED_TOLERANCE. ``nested`` instead converges every step to NESTED_TOLERANCE and
+    at least, between NESTED_TOLERANCE and LOOSEST_TOLERANCE. The last stage starts in
+    force balance and relaxes every step to NESTED_TOLERANCE, as does the last state.
+    ``nested`` instead converges every step to NESTED_TOLERANCE and
     takes the residuals as they are. Residuals that are not finite at the first state
     raise a ValueError.
     """
@@ -825,12 +826,16 @@ def optimize(
         raise ValueError(message)
     steps: list[Step] = []
     ends: list[Stage] = []
-    for max_mode in stages:
+    for index, max_mode in enumerate(stages):
         keys = boundary_modes(max_mode, problem.ntor)
         end = Stage(max_mode)
         ends.append(end)
         iterate.damping = _FIRST_DAMPING
         iterate.ceiling = LOOSEST_TOLERANCE
+        if not nested and index == len(stages) - 1:
+            # the last stage takes its derivatives in force balance
+            iterate.point = _restored(problem, iterate.point, end)
+            iterate.tolerance = iterate.ceiling = NESTED_TOLERANCE
         slow = 0
         restored = False
         for _ in range(max_steps):
