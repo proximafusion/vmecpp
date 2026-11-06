@@ -1601,7 +1601,7 @@ PYBIND11_MODULE(_vmecpp, m) {
             if (!s.ok()) {
               const std::string msg =
                   "There was an error saving OutputQuantities to file '" +
-                  std::string(path) + "':\n" + std::string(s.message());
+                  path.string() + "':\n" + std::string(s.message());
               throw std::runtime_error(msg);
             }
           },
@@ -1611,8 +1611,7 @@ PYBIND11_MODULE(_vmecpp, m) {
         if (!maybe_oq.ok()) {
           const std::string msg =
               "There was an error loading OutputQuantities from file '" +
-              std::string(path) + "':\n" +
-              std::string(maybe_oq.status().message());
+              path.string() + "':\n" + std::string(maybe_oq.status().message());
           throw std::runtime_error(msg);
         }
         return maybe_oq.value();
