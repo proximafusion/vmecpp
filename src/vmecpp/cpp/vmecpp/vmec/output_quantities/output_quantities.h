@@ -1094,6 +1094,10 @@ struct WOutFileContents {
   // number of toroidal field periods
   int nfp;
 
+  // toroidal transits after which the domain closes; the mode number in phi of
+  // coefficient mn is xn[mn] / toroidal_transits; phi integrals cover a transit
+  int toroidal_transits = 1;
+
   // poloidal Fourier resolution; m = 0, 1, ..., (mpol-1)
   int mpol;
 

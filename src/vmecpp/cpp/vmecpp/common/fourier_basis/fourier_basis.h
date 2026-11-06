@@ -68,7 +68,7 @@ struct FourierBasisFastToroidalLayout {
 // coordinates (s, \theta, \zeta) where:
 //   s     = normalized toroidal flux (radial coordinate)
 //   \theta = poloidal angle
-//   \zeta  = toroidal angle = nfp * \phi (field period toroidal angle)
+//   \zeta  = field-period angle nfp \phi / toroidal_transits
 //
 // Physical quantities are expanded as:
 //   f(s,\theta,\zeta) = \sum_{m,n} f_{mn}(s) * basis_function(m*\theta,
@@ -163,16 +163,12 @@ class FourierBasis {
   // sinnv[idx(n,k)] = sin(n*\zeta[k]) * nscale[n]
   Eigen::VectorXd sinnv;
 
-  // [(nnyq2+1) * nZeta] Pre-scaled toroidal cosine derivative with nfp factor
-  // cosnvn[idx(n,k)] = n*nfp * cos(n*\zeta[k]) * nscale[n]
-  // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
-  // derivatives
+  // [(nnyq2+1) * nZeta] cosnvn[idx(n,k)] = n nfp_per_transit cos(n \zeta[k])
+  // nscale[n], the toroidal cosine derivative in \phi
   Eigen::VectorXd cosnvn;
 
-  // [(nnyq2+1) * nZeta] Pre-scaled toroidal sine derivative with nfp factor
-  // sinnvn[idx(n,k)] = -n*nfp * sin(n*\zeta[k]) * nscale[n]
-  // Factor nfp converts \partial/\partial\zeta to \partial/\partial\phi
-  // derivatives
+  // [(nnyq2+1) * nZeta] sinnvn[idx(n,k)] = -n nfp_per_transit sin(n \zeta[k])
+  // nscale[n], the toroidal sine derivative in \phi
   Eigen::VectorXd sinnvn;
 
   // ============================================================================
@@ -332,10 +328,8 @@ class FourierBasis {
   // Maps linear coefficient index mn to 2D mode (m,n) for spectral operations
   Eigen::VectorXi xm;
 
-  // [mnmax] Toroidal mode numbers for standard resolution Fourier coefficients
-  // Layout: xn[mn] = toroidal mode number n*nfp for the mn-th coefficient
-  // Factor nfp included to convert from field periods to geometric toroidal
-  // modes
+  // [mnmax] xn[mn] = n nfp of the mn-th coefficient; its toroidal mode number
+  // in \phi is xn[mn] / toroidal_transits
   Eigen::VectorXi xn;
 
   // [mnmax_nyq] Poloidal mode numbers for Nyquist-extended Fourier coefficients
@@ -353,7 +347,7 @@ class FourierBasis {
  private:
   const Sizes& s_;
 
-  void computeFourierBasis(int nfp);
+  void computeFourierBasis(double nfp_per_transit);
 };
 
 using FourierBasisFastPoloidal = FourierBasis<FourierBasisFastPoloidalLayout>;
