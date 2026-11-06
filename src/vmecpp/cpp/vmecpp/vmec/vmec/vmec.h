@@ -257,6 +257,12 @@ class Vmec {
       bool is_checkpoint_step = true);
   absl::StatusOr<bool> SolveEquilibrium(VmecCheckpoint checkpoint,
                                         int maximum_iterations);
+  // Set the state of thread thread_id to the initial guess, interpolated
+  // between the magnetic axis and the boundary, or between the inner boundary
+  // and the boundary for a plasma without a magnetic axis.
+  void SetInitialGuess(int thread_id);
+  // Set the m=1 gauge of thread thread_id to that of the initial guess.
+  void SetM1GaugeFromBoundaries(int thread_id);
   // backup_evaluated_state: on a store, back up last_evaluated_x_ instead of
   // decomposed_x_ (already advanced by PerformTimeStep).
   void RestartIteration(double& m_delt0r, int thread_id,
@@ -321,6 +327,9 @@ class Vmec {
   Sizes vacuum_s_;
   FourierBasisFastPoloidal t_;
   Boundaries b_;
+  // inner boundary of a plasma without a magnetic axis, set when
+  // indata_.inner_boundary_s > 0
+  std::optional<Boundaries> b_inner_;
   VmecConstants constants_;
   HandoverStorage h_;
   FlowControl fc_;

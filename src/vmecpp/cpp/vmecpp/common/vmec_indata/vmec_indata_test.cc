@@ -204,6 +204,13 @@ TEST(TestVmecINDATA, CheckDefaults) {
     EXPECT_FALSE(indata.rbs.has_value());
     EXPECT_FALSE(indata.zbc.has_value());
   }
+
+  // magnetic axis, no inner boundary
+  EXPECT_EQ(indata.inner_boundary_s, 0.0);
+  EXPECT_FALSE(indata.rbc_inner.has_value());
+  EXPECT_FALSE(indata.zbs_inner.has_value());
+  EXPECT_FALSE(indata.rbs_inner.has_value());
+  EXPECT_FALSE(indata.zbc_inner.has_value());
 }  // CheckDefaults
 
 TEST(TestVmecINDATA, CheckDeltBounds) {
@@ -898,6 +905,98 @@ TEST(TestVmecINDATA, CheckLasymNeedsTheAsymmetricArrays) {
   expect_rejected_without("zbc",
                           [](VmecINDATA& m_indata) { m_indata.zbc.reset(); });
 }  // CheckLasymNeedsTheAsymmetricArrays
+
+// The asymmetric CTH-like input with an inner boundary: the boundary with its
+// m >= 1 coefficients halved, at s = 0.25.
+VmecINDATA ShellIndata() {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_fixed_bdy_asym.json");
+  CHECK_OK(indata_json);
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  CHECK_OK(indata);
+  const auto shrunk = [](const RowMatrixXd& coefficients) {
+    RowMatrixXd result = 0.5 * coefficients;
+    result.row(0) = coefficients.row(0);
+    return result;
+  };
+  indata->inner_boundary_s = 0.25;
+  indata->rbc_inner = shrunk(indata->rbc);
+  indata->zbs_inner = shrunk(indata->zbs);
+  indata->rbs_inner = shrunk(*indata->rbs);
+  indata->zbc_inner = shrunk(*indata->zbc);
+  return *indata;
+}
+
+TEST(TestVmecINDATA, InnerBoundaryRoundTrips) {
+  const VmecINDATA indata = ShellIndata();
+  ASSERT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+
+  const absl::StatusOr<std::string> written = indata.ToJson();
+  ASSERT_TRUE(written.ok()) << written.status();
+  const absl::StatusOr<VmecINDATA> read_back = VmecINDATA::FromJson(*written);
+  ASSERT_TRUE(read_back.ok()) << read_back.status();
+  EXPECT_EQ(read_back->inner_boundary_s, indata.inner_boundary_s);
+  EXPECT_EQ(read_back->rbc_inner, indata.rbc_inner);
+  EXPECT_EQ(read_back->zbs_inner, indata.zbs_inner);
+  EXPECT_EQ(read_back->rbs_inner, indata.rbs_inner);
+  EXPECT_EQ(read_back->zbc_inner, indata.zbc_inner);
+
+  const fs::path test_dir = std::filesystem::temp_directory_path() /
+                            ("vmecpp_tests_" + std::to_string(getpid()));
+  std::error_code err;
+  fs::create_directory(test_dir, err);
+  ASSERT_FALSE(err) << "Could not create test directory " << test_dir
+                    << ", error was: " << err.message();
+  H5::H5File file(test_dir / "inner_boundary_test.h5", H5F_ACC_TRUNC);
+  absl::Status s = indata.WriteTo(file);
+  ASSERT_TRUE(s.ok()) << s;
+  VmecINDATA from_file;
+  s = VmecINDATA::LoadInto(from_file, file);
+  ASSERT_TRUE(s.ok()) << s;
+  EXPECT_EQ(from_file.inner_boundary_s, indata.inner_boundary_s);
+  EXPECT_EQ(from_file.rbc_inner, indata.rbc_inner);
+  EXPECT_EQ(from_file.zbs_inner, indata.zbs_inner);
+  EXPECT_EQ(from_file.rbs_inner, indata.rbs_inner);
+  EXPECT_EQ(from_file.zbc_inner, indata.zbc_inner);
+
+  // the arrays follow mpol and ntor
+  VmecINDATA resized = indata;
+  resized.SetMpolNtor(indata.mpol + 1, indata.ntor + 1);
+  EXPECT_TRUE(IsConsistent(resized, /*enable_info_messages=*/false).ok());
+  EXPECT_DOUBLE_EQ((*resized.rbc_inner)(1, resized.ntor),
+                   (*indata.rbc_inner)(1, indata.ntor));
+}  // InnerBoundaryRoundTrips
+
+TEST(TestVmecINDATA, CheckInnerBoundaryInput) {
+  const auto expect_rejected = [](auto modify, const std::string& message) {
+    VmecINDATA indata = ShellIndata();
+    modify(indata);
+    const absl::Status status =
+        IsConsistent(indata, /*enable_info_messages=*/false);
+    EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << message;
+    EXPECT_THAT(std::string(status.message()), testing::HasSubstr(message));
+  };
+  expect_rejected([](VmecINDATA& m_indata) { m_indata.inner_boundary_s = 1.0; },
+                  "has to be in [0, 1)");
+  expect_rejected(
+      [](VmecINDATA& m_indata) { m_indata.inner_boundary_s = -0.1; },
+      "has to be in [0, 1)");
+  expect_rejected([](VmecINDATA& m_indata) { m_indata.lfreeb = true; },
+                  "requires a fixed boundary");
+  expect_rejected([](VmecINDATA& m_indata) { m_indata.zbs_inner.reset(); },
+                  "'zbs_inner' has to be set if and only if");
+  expect_rejected([](VmecINDATA& m_indata) { m_indata.rbs_inner.reset(); },
+                  "'rbs_inner' has to be set if and only if");
+  expect_rejected([](VmecINDATA& m_indata) { m_indata.inner_boundary_s = 0.0; },
+                  "'rbc_inner' has to be set if and only if");
+  expect_rejected(
+      [](VmecINDATA& m_indata) {
+        *m_indata.rbc_inner = RowMatrixXd::Zero(2, 2 * m_indata.ntor + 1);
+      },
+      "'rbc_inner' has wrong shape");
+  expect_rejected([](VmecINDATA& m_indata) { *m_indata.zbs_inner *= -1.0; },
+                  "opposite poloidal direction");
+}  // CheckInnerBoundaryInput
 
 TEST(TestVmecINDATA, CopyMethod) {
   const VmecINDATA indata =

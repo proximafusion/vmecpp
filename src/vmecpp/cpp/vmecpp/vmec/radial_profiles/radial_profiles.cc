@@ -1147,9 +1147,17 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
   double local_rmsPhiP = 0.0;
 
+  // The ns surfaces divide [inner_boundary_s, 1] evenly; inner_boundary_s is 0
+  // for a plasma with a magnetic axis.
+  const double s_inner = id_.inner_boundary_s;
+  sInner = s_inner;
+  sqrtSInner = std::sqrt(s_inner);
+  phipIntegralInner = maxToroidalFlux * torflux(s_inner);
+
   // half-grid
   for (int jH = r_.nsMinH; jH < r_.nsMaxH; ++jH) {
-    const double halfGridPos = (jH + 0.5) / (fc_.ns - 1.0);
+    const double halfGridPos =
+        s_inner + (jH + 0.5) * (1.0 - s_inner) / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
     sqrtSH[jH - r_.nsMinH] = std::sqrt(halfGridPos);
@@ -1201,7 +1209,7 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
 
   // full-grid
   for (int jF1 = r_.nsMinF1; jF1 < r_.nsMaxF1; ++jF1) {
-    const double fullGridPos = jF1 / (fc_.ns - 1.0);
+    const double fullGridPos = s_inner + jF1 * (1.0 - s_inner) / (fc_.ns - 1.0);
 
     // normalized toroidal flux array
     sqrtSF[jF1 - r_.nsMinF1] = std::sqrt(fullGridPos);
@@ -1228,9 +1236,12 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     // This is Eqn. (8c) in Hirshman, Schwenn & Nuehrenberg (1990).
     // The innermost full-grid point (== magnetic axis)
     // gets sqrt(s) of the innermost actual flux surface at j=1.
-    // This is a constant extrapolation towards the axis.
-    scalxc[(jF1 - r_.nsMinF1) * 2 + kOddParity] =
-        1.0 / std::max(sqrtSF[jF1 - r_.nsMinF1], sqrtS1);
+    // This is a constant extrapolation towards the axis. With an inner
+    // boundary, sqrt(s) > 0 on every surface.
+    const double sqrt_s_odd = r_.has_inner_boundary()
+                                  ? sqrtSF[jF1 - r_.nsMinF1]
+                                  : std::max(sqrtSF[jF1 - r_.nsMinF1], sqrtS1);
+    scalxc[(jF1 - r_.nsMinF1) * 2 + kOddParity] = 1.0 / sqrt_s_odd;
   }
 
   // avoid round-off errors
@@ -1242,11 +1253,11 @@ void RadialProfiles::evalRadialProfiles(bool haveToFlipTheta,
     const int jFi = jH;
     const int jFo = jH + 1;
     sm[jH - r_.nsMinH] = sqrtSH[jH - r_.nsMinH] / sqrtSF[jFo - r_.nsMinF1];
-    if (jH > 0) {
+    if (jH > 0 || r_.has_inner_boundary()) {
       sp[jH - r_.nsMinH] = sqrtSH[jH - r_.nsMinH] / sqrtSF[jFi - r_.nsMinF1];
     }
   }  // jH
-  if (r_.nsMinH == 0) {
+  if (r_.nsMinH == 0 && !r_.has_inner_boundary()) {
     // cannot divide by sqrtSF[0]==0, so extrapolate as constant from next point
     sp[0] = sm[0];
   }

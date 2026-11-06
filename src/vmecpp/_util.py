@@ -172,6 +172,10 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     """Convert a dictionary with the contents of a VMEC++ JSON input file to the
     corresponding contents of a VMEC2000 INDATA file."""
 
+    if vmecpp_json.get("inner_boundary_s", 0.0) > 0.0:
+        msg = "A VMEC2000 INDATA file has no inner boundary (inner_boundary_s > 0)"
+        raise ValueError(msg)
+
     indata: str = "&INDATA\n"
 
     indata += "\n  ! numerical resolution, symmetry assumption\n"

@@ -21,6 +21,11 @@ class FourierForces : public FourierCoeffs {
   FourierForces& operator=(FourierForces&& other) noexcept;
 
   void zeroZForceForM1();
+
+  // Zero the R and Z forces on surface 0, the inner boundary of a plasma
+  // without a magnetic axis, which holds its geometry fixed.
+  void ZeroGeometryOnInnerBoundary();
+
   void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
   double lcfsRZResidual() const;
 

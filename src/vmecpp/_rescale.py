@@ -62,6 +62,9 @@ def rescale(
         scaled_input.rbs *= r_scale
     if scaled_input.zbc is not None:
         scaled_input.zbc *= r_scale
+    for name in ("rbc_inner", "zbs_inner", "rbs_inner", "zbc_inner"):
+        if getattr(scaled_input, name) is not None:
+            setattr(scaled_input, name, getattr(scaled_input, name) * r_scale)
 
     scaled_input.raxis_c *= r_scale
     scaled_input.zaxis_s *= r_scale

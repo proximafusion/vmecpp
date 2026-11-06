@@ -139,6 +139,14 @@ class RadialProfiles {
   Eigen::VectorXd sqrtSF;
   Eigen::VectorXd radialBlending;
 
+  // s and sqrt(s) on the inner boundary; 0 for a plasma with a magnetic axis
+  double sInner = 0.0;
+  double sqrtSInner = 0.0;
+
+  // integral of phi' from s = 0 to the inner boundary; 0 for a plasma with a
+  // magnetic axis
+  double phipIntegralInner = 0.0;
+
   // ---------------------------------
 
   double currv;

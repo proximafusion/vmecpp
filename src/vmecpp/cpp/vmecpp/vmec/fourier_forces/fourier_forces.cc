@@ -102,6 +102,29 @@ void FourierForces::zeroZForceForM1() {
   }  // j
 }
 
+void FourierForces::ZeroGeometryOnInnerBoundary() {
+  if (nsMin_ > 0) {
+    // surface 0 is not in this thread
+    return;
+  }
+  for (int idx_fc = 0; idx_fc < s_.mpol * (s_.ntor + 1); ++idx_fc) {
+    frcc[idx_fc] = 0.0;
+    fzsc[idx_fc] = 0.0;
+    if (s_.lthreed) {
+      frss[idx_fc] = 0.0;
+      fzcs[idx_fc] = 0.0;
+    }
+    if (s_.lasym) {
+      frsc[idx_fc] = 0.0;
+      fzcc[idx_fc] = 0.0;
+      if (s_.lthreed) {
+        frcs[idx_fc] = 0.0;
+        fzss[idx_fc] = 0.0;
+      }
+    }
+  }
+}
+
 /** Compute the force residuals and write them into the provided [3] array. */
 void FourierForces::residuals(Eigen::Vector3d& fRes,
                               bool includeEdgeRZForces) const {
