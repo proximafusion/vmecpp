@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793959847001,
+  "lastUpdate": 1793961037789,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26839,6 +26839,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.4826942020000615,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fdc8db9250bcff46b810185666ca923d422201cb",
+          "message": "Evaluate the quasisymmetry residuals as tensor contractions (#1058)\n\n* Evaluate the quasisymmetry residuals as tensor contractions and test the asymmetric terms\n\n* Keep the module docstring and the sign comment of the quasisymmetry objectives\n\n* End each docstring sentence at its fact\n\n---------\n\nCo-authored-by: Philipp Jurašić <166746189+jurasic-pf@users.noreply.github.com>",
+          "timestamp": "2026-11-06T11:22:48+01:00",
+          "tree_id": "984f7e611d77ba1775afe0642837d8d2691fbc25",
+          "url": "https://github.com/proximafusion/vmecpp/commit/fdc8db9250bcff46b810185666ca923d422201cb"
+        },
+        "date": 1793961032402,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7180260218000057,
+            "range": "stddev: 0.012455915577125092",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6486882769999816,
+            "range": "stddev: 0.018517375559894408",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.098717545999989,
+            "range": "stddev: 0.0035316300872529688",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6784043473333365,
+            "range": "stddev: 0.02927694473509135",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.6285108866666747,
+            "range": "stddev: 0.002447282022614332",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.869125098666662,
+            "range": "stddev: 0.02090961350222853",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.3816362800000093,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4861539359999938,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
