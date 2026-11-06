@@ -123,7 +123,9 @@ if(WIN32)
     -DZLIB_LIBRARY=${_native_deps_lib}/zlib_static.lib
     -DZLIB_INCLUDE_DIR=${_native_deps_include}
     "-DCMAKE_C_FLAGS=-w -I${_native_deps_include}"
-    "-DCMAKE_CXX_FLAGS=/EHsc -w -I${_native_deps_include}")
+    "-DCMAKE_CXX_FLAGS=/EHsc -w -I${_native_deps_include}"
+    -DHDF5_BUILD_UTILS=OFF
+    -DHDF5_ENABLE_MIRROR_VFD=OFF)
 endif()
 
 if(APPLE)
