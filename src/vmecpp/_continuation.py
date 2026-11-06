@@ -270,6 +270,7 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
         threed1_axis=source.threed1_axis,
         threed1_betas=source.threed1_betas,
         threed1_shafranov_integrals=source.threed1_shafranov_integrals,
+        threed1_free_boundary=source.threed1_free_boundary,
     )
 
 
