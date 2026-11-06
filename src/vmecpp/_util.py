@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -101,6 +102,10 @@ def indata_to_json(
     if not filename.exists():
         msg = f"{filename} does not exist."
         raise FileNotFoundError(msg)
+
+    if sys.platform == "win32":
+        msg = "INDATA conversion is not available on Windows; use a VMEC++ JSON input."
+        raise NotImplementedError(msg)
 
     indata_to_json_exe = (
         distribution_root() / "cpp" / "third_party" / "indata2json" / "indata2json"
