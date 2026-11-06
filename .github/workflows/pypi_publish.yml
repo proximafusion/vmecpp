@@ -116,6 +116,8 @@ jobs:
           CC: clang-cl
           CXX: clang-cl
           CMAKE_GENERATOR: Ninja
+          # Report all compile errors of a run, not just the first.
+          SKBUILD_BUILD_TOOL_ARGS: "-k 0"
         with:
           package-dir: .
           output-dir: wheelhouse
