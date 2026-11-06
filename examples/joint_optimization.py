@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Quasi-axisymmetry from a rotating ellipse, by vmecpp.joint and by the nested
-baseline, each checked with a cold, fully converged run read by SIMSOPT."""
+"""Quasi-axisymmetry from a rotating ellipse by vmecpp.joint and by the nested baseline.
+
+A cold, fully converged run read by SIMSOPT checks each result.
+"""
 
 import argparse
 import tempfile
@@ -25,8 +27,7 @@ CONSTRAINT_TOLERANCE = 1.0e-3
 
 
 def rotating_ellipse(mpol: int, ntor: int, ns: int, nfp: int = 2) -> vmecpp.VmecInput:
-    """A vacuum-like input with no pressure or current, bounded by a rotating
-    ellipse."""
+    """A vacuum-like input with no pressure or current inside a rotating ellipse."""
     vmec_input = vmecpp.VmecInput.from_file(CTH_LIKE)
     vmec_input.nfp, vmec_input.mpol, vmec_input.ntor = nfp, mpol, ntor
     vmec_input.ntheta, vmec_input.nzeta = 0, 0

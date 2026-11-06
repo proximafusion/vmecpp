@@ -322,7 +322,7 @@ roundoff along the soft modes."""
 
 
 def _force_product(model, vector: np.ndarray, *, exact: bool = True) -> np.ndarray:
-    """``H v``, from Enzyme or from a central difference of the force."""
+    """``H v`` from Enzyme or from a central difference of the force."""
     vector = np.ascontiguousarray(vector)
     product = (
         model.exact_hessian_vector_product(vector)
@@ -444,7 +444,7 @@ class _BlockTridiagonal:
     def factorize(self) -> None:
         """Block Thomas elimination: LU-factor each Schur complement in place."""
         self.pivots = []
-        # contiguous copies of the factors, which a solve reads without copying
+        # a solve reads these contiguous factors without a copy
         self.factors: list[np.ndarray] = []
         for j in range(self.ns):
             schur = self._block(self.diagonal, j, j)
@@ -483,7 +483,7 @@ class _BlockTridiagonal:
 
 
 def _map_on_models(function, models, items) -> list:
-    """``function(model, item)`` for every item, with one thread per model."""
+    """``function(model, item)`` for every item on one thread per model."""
     items = list(items)
     if len(models) == 1:
         return [function(models[0], item) for item in items]
@@ -506,8 +506,10 @@ def _assemble_block_tridiagonal(
     extra_models=(),
     exact: bool = True,
 ) -> _BlockTridiagonal:
-    """``H^T``, or ``H``, restricted to ``solved``, from coloured Hessian products, on
-    one thread per model; ``extra_models`` hold the state of ``model``.
+    """``H^T`` or ``H`` restricted to ``solved`` from coloured Hessian products on one
+    thread per model.
+
+    ``extra_models`` hold the state of ``model``.
 
     The force on surface ``j`` depends only on the state on surfaces ``j - 1``,
     ``j`` and ``j + 1``, so the operator is block tridiagonal in the surface index.

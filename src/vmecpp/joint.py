@@ -7,15 +7,16 @@ Each Levenberg-Marquardt step solves::
 
     min |r + J_x dx + J_b db|^2 + damping |db|^2  subject to  F + H dx + F_b db = 0
 
-over the state ``x`` and the boundary ``b``, with the residuals ``r``, the force ``F`` on
-the interior of the state and its Jacobian ``H``. Eliminating the state gives
-``dx = dn + T db`` with the normal step ``dn = -H^-1 F``, limited to a fraction of the
-major radius, and the state tangents ``T = -H^-1 F_b``. The merit of an iterate is
-``|r + J_x dn|^2``. This is the objective with the force residual removed to first order.
-VMEC's own descent then relaxes the state as far as the error of the merit requires. A
-trial step whose ``|r|^2`` shows no clear drop takes ``dn`` from GMRES on Hessian products
-at its own state, preconditioned by the factors of the last point, and ``H`` is assembled
-only if that merit falls. The nested baseline converges the state at every step instead.
+over the state ``x`` and the boundary ``b``. ``r`` are the residuals, ``F`` is the force
+on the interior of the state and ``H`` is its Jacobian. Eliminating the state gives
+``dx = dn + T db`` with the normal step ``dn = -H^-1 F`` and the state tangents
+``T = -H^-1 F_b``. The normal step is limited to a fraction of the major radius. The
+merit of an iterate is ``|r + J_x dn|^2``. This is the objective with the force residual
+removed to first order. VMEC's own descent then relaxes the state as far as the error of
+the merit requires. A trial step whose ``|r|^2`` shows no clear drop takes ``dn`` from
+GMRES on Hessian products at its own state. The factors of the last point precondition
+GMRES. ``H`` is assembled only if that merit falls. The nested baseline converges the
+state at every step instead.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from vmecpp import _qs, autodiff, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 NESTED_TOLERANCE = 1.0e-12
-"""Force tolerance of the steps of the nested baseline, and the tightest of any step."""
+"""Force tolerance of the steps of the nested baseline and the tightest of any step."""
 
 LOOSEST_TOLERANCE = 1.0e-5
 """Loosest force tolerance of a step."""
@@ -49,13 +50,16 @@ _FIRST_TOLERANCE = 1.0e-6
 """Force tolerance of the first state of a run."""
 
 _NORMAL_RADIUS = 0.05
-"""Largest normal step in one step, as a fraction of the major radius."""
+"""Largest normal step in one step as a fraction of the major radius."""
 
 _SMALLEST_DROP = 1.0e-5
-"""Predicted drop, relative to the merit, below which no trial step is taken."""
+"""Predicted drop relative to the merit below which no trial step is taken."""
 
 _FIRST_DAMPING = 1.0e-3
-"""Damping at the start of a stage, above which the damping limits the step."""
+"""Damping at the start of a stage.
+
+A damping above it limits the step.
+"""
 
 _CLEAR_DROP = 0.5
 """Drop of ``|r|^2`` relative to the predicted drop above which a trial step has its
@@ -68,12 +72,17 @@ _NORMAL_ITERATIONS = 64
 """Largest number of GMRES iterations on a normal step."""
 
 _TANGENT_CHUNK = 16
-"""Residual tangents per call of the compiled derivative, a size that compiles once."""
+"""Residual tangents per call of the compiled derivative.
+
+A fixed size compiles once.
+"""
 
 
 def boundary_modes(max_mode: int, ntor: int) -> list[tuple[int, int, int]]:
-    """Indices (row, m, ntor + n) of the free boundary coefficients; rbc(0, 0) is
-    fixed."""
+    """Indices (row, m, ntor + n) of the free boundary coefficients.
+
+    rbc(0, 0) is fixed.
+    """
     return [
         (row, m, ntor + n)
         for row in (0, 1)
@@ -84,7 +93,7 @@ def boundary_modes(max_mode: int, ntor: int) -> list[tuple[int, int, int]]:
 
 
 def _gmres(apply, precondition, rhs: np.ndarray) -> np.ndarray:
-    """Right-preconditioned GMRES, to _NORMAL_ERROR or its last iterate.
+    """Right-preconditioned GMRES to _NORMAL_ERROR or to its last iterate.
 
     The preconditioned residual estimates the error. Along the soft modes of the
     operator the residual alone falls long before the error does.
@@ -150,12 +159,12 @@ class Costs:
 class JointProblem:
     """A least-squares objective over a fixed boundary and its state.
 
-    A subclass defines ``residuals``, which JAX must be able to differentiate.
-    ``workers`` is the number of threads for the force Jacobian and the residual
-    derivatives, by default one per processor. ``exact_products`` takes the Hessian
-    products of the force Jacobian from Enzyme, in a build that has it. Otherwise they
-    are central differences of the force, at about the same cost. A multigrid input runs
-    on its last resolution.
+    A subclass defines ``residuals``. JAX must be able to differentiate them. ``workers``
+    is the number of threads for the force Jacobian and the residual derivatives. Its
+    default is one per processor. ``exact_products`` takes the Hessian products of the
+    force Jacobian from Enzyme in a build that has it. Otherwise they are central
+    differences of the force. Both cost about the same. A multigrid input runs on its
+    last resolution.
     """
 
     vmec_input: Any
@@ -209,11 +218,14 @@ class JointProblem:
         self._along = jax.jit(self._residuals_along)
 
     def residuals(self, solved: geometry.Geometry, boundary: jax.Array) -> jax.Array:
-        """The residual vector of a state; ``boundary`` holds rbc, then zbs."""
+        """The residual vector of a state.
+
+        ``boundary`` holds rbc and then zbs.
+        """
         raise NotImplementedError
 
     def parts(self, residuals: np.ndarray) -> dict[str, float]:  # noqa: ARG002
-        """Named parts of the residual vector, for the log and the result."""
+        """Named parts of the residual vector for the log and the result."""
         return {}
 
     def create_model(self, boundary, ftol=None, niter=None):
@@ -225,7 +237,7 @@ class JointProblem:
         return _vmecpp.VmecModel.create(indata, self.ns)
 
     def relax(self, boundary, state=None, ftol=None, niter=None):
-        """VMEC's own descent from the state, to the force tolerance."""
+        """VMEC's own descent from the state to the force tolerance."""
         start = time.perf_counter()
         model = self.create_model(boundary, ftol, niter)
         if state is not None:
@@ -240,7 +252,10 @@ class JointProblem:
         return model
 
     def _models_at(self, model, state, *, precondition: bool) -> list:
-        """The model and one more per further worker, all evaluated at the state."""
+        """The model and one more per further worker.
+
+        All are evaluated at the state.
+        """
 
         def at_state(index: int):
             worker = model if index == 0 else self.create_model(self.boundary0)
@@ -281,7 +296,7 @@ class JointProblem:
         )
 
     def _geometry_along(self, model, state, direction) -> np.ndarray:
-        """The flat geometry along a state direction, differenced through the model.
+        """The flat geometry along a state direction by a difference through the model.
 
         Chi depends on the state when ncurr = 1.
         """
@@ -297,7 +312,10 @@ class JointProblem:
         return Evaluation(residuals, self.parts(residuals))
 
     def evaluate(self, model, boundary) -> Evaluation:
-        """The residuals of the state the model holds, in force balance or not."""
+        """The residuals of the state the model holds.
+
+        The state need not be in force balance.
+        """
         model.evaluate(2, 2, False)
         return self._evaluation(
             np.asarray(
@@ -306,7 +324,7 @@ class JointProblem:
         )
 
     def force_jacobian(self, model, state):
-        """H at the state, factored, from Hessian products on one model per worker."""
+        """The factored H at the state from Hessian products on one model per worker."""
         start = time.perf_counter()
         models = self._models_at(model, state, precondition=True)
         matrix = autodiff._assemble_block_tridiagonal(
@@ -322,7 +340,7 @@ class JointProblem:
         return matrix
 
     def state_tangents(self, model, state, keys, matrix=None) -> np.ndarray:
-        """D state / D boundary at fixed force, one column per boundary mode."""
+        """D state / D boundary at fixed force with one column per boundary mode."""
         if matrix is None:
             matrix = self.force_jacobian(model, state)
         start = time.perf_counter()
@@ -376,7 +394,7 @@ class JointProblem:
         return self._evaluation(values), np.vstack(rows).T
 
     def _normal_step(self, model, state, force, matrix) -> np.ndarray:
-        """``-H^-1 F`` on the interior, by GMRES on products at the state."""
+        """``-H^-1 F`` on the interior by GMRES on products at the state."""
         model.evaluate(2, 2, True)
 
         def apply(vector: np.ndarray) -> np.ndarray:
@@ -390,10 +408,10 @@ class JointProblem:
         return _gmres(apply, lambda vector: matrix.solve(vector[:, None])[:, 0], -force)
 
     def balanced_residuals(self, boundary, state, matrix):
-        """The residuals at the state, the same residuals after the normal step to first
-        order, ``r + J_x dn`` with ``dn`` within its radius, and ``-H^-1 F``.
+        """The residuals ``r`` at the state, ``r + J_x dn`` and ``-H^-1 F``.
 
-        ``matrix`` holds the factors of this state or a nearby one.
+        ``r + J_x dn`` are the residuals after the normal step to first order with ``dn``
+        within its radius. ``matrix`` holds the factors of this state or a nearby one.
         """
         start = time.perf_counter()
         state = np.ascontiguousarray(state)
@@ -433,7 +451,7 @@ def _normal_fraction(boundary: np.ndarray, normal: np.ndarray) -> float:
 
 @dataclass(kw_only=True)
 class QuasisymmetryProblem(JointProblem):
-    """SIMSOPT's QuasisymmetryRatioResidual with aspect-ratio and mean-iota targets, as
+    """SIMSOPT's QuasisymmetryRatioResidual with aspect-ratio and mean-iota targets as
     residuals of unit weight."""
 
     surfaces: tuple[float, ...] = tuple(np.arange(1, 11) / 10.0)
@@ -463,7 +481,7 @@ class QuasisymmetryProblem(JointProblem):
         return volume / (2.0 * jnp.pi**2 * minor_radius**3)
 
     def residuals(self, solved: geometry.Geometry, boundary: jax.Array) -> jax.Array:
-        """Aspect ratio and mean iota against their targets, then the residuals of
+        """Aspect ratio and mean iota against their targets followed by the residuals of
         SIMSOPT's QuasisymmetryRatioResidual."""
         quasisymmetry = _qs.quasisymmetry_residuals(
             solved,
@@ -491,7 +509,10 @@ class QuasisymmetryProblem(JointProblem):
 
 @dataclass
 class Step:
-    """One accepted step of the optimization, with its merit in ``evaluation``."""
+    """One accepted step of the optimization.
+
+    ``evaluation`` holds its merit.
+    """
 
     max_mode: int
     evaluation: Evaluation
@@ -505,10 +526,11 @@ class Stage:
     """How one stage of boundary modes ended.
 
     ``stopped`` is "stalled" after three steps in a row below STAGE_DROP that the damping
-    did not limit, "no_step" when no trial step predicts a drop or none holds, also from
-    the state in force balance, and "max_steps" at the step limit. ``rejected_steps`` counts the trial steps refused
-    for their merit or force residual, ``failed_solves`` those on which VMEC raised, and
-    ``tightened`` the relaxations further for the accuracy of a merit.
+    did not limit. It is "no_step" when no trial step predicts a drop or when none holds
+    even from the state in force balance. It is "max_steps" at the step limit.
+    ``rejected_steps`` counts the trial steps refused for their merit or force residual.
+    ``failed_solves`` counts those on which VMEC raised. ``tightened`` counts the
+    relaxations further for the accuracy of a merit.
     """
 
     max_mode: int
@@ -535,8 +557,8 @@ class Result:
 class _Point:
     """A boundary and state, the residuals there and their value in force balance.
 
-    ``matrix`` is the factored force Jacobian, of this state or of the last accepted one.
-    The nested baseline takes the residuals as they are, and factors the Jacobian only for
+    ``matrix`` is the factored force Jacobian of this state or of the last accepted one.
+    The nested baseline takes the residuals as they are. It factors the Jacobian only for
     an accepted step. ``relaxable`` is false once a further relaxation of the point has
     failed.
     """
@@ -558,14 +580,14 @@ class _Point:
         return 0.0 if self.normal is None else float(np.abs(self.normal).max())
 
     def normal_step(self) -> np.ndarray:
-        """The normal step, within its radius."""
+        """The normal step within its radius."""
         if self.normal is None or not np.isfinite(self.normal_size):
             return np.zeros_like(self.state)
         return _normal_fraction(self.boundary, self.normal) * self.normal
 
     @property
     def merit_error(self) -> float:
-        """Estimated error of the merit, ``2 |r_b| |J_x dn| |dn| / R``, for the whole of
+        """Estimated error ``2 |r_b| |J_x dn| |dn| / R`` of the merit for the whole of
         ``dn = -H^-1 F``."""
         if self.normal is None:
             return 0.0
@@ -604,7 +626,7 @@ class _Trial:
 
 
 def _joint_point(problem: JointProblem, boundary, state, matrix=None) -> _Point:
-    """The point with its merit on the given factors, or on its own."""
+    """The point with its merit on the given factors or on its own."""
     state = np.ascontiguousarray(state)
     if matrix is None:
         matrix = problem.force_jacobian(problem.create_model(boundary), state)
@@ -621,10 +643,10 @@ def _nested_point(problem: JointProblem, boundary, model) -> _Point:
 def _relaxed_further(
     problem: JointProblem, point: _Point, tolerance: float
 ) -> _Point | None:
-    """The point relaxed to a tighter tolerance on its factored Jacobian, or None where
-    VMEC raises or the tighter state has no finite merit.
+    """The point relaxed to a tighter tolerance on its factored Jacobian or None.
 
-    A surface whose Jacobian changes sign has no finite merit.
+    The result is None where VMEC raises or the tighter state has no finite merit. A
+    surface whose Jacobian changes sign has no finite merit.
     """
     try:
         model = problem.relax(
@@ -648,8 +670,8 @@ def _relaxed_further(
 def _decade_tighter(
     problem: JointProblem, point: _Point, tolerance: float, end: Stage
 ) -> tuple[_Point, float]:
-    """The point relaxed one decade further and its tolerance, or the point marked as
-    not relaxable."""
+    """The point relaxed one decade further and its tolerance or the point marked as not
+    relaxable."""
     tighter = max(tolerance / 10.0, NESTED_TOLERANCE)
     further = _relaxed_further(problem, point, tighter)
     if further is None:
@@ -661,8 +683,8 @@ def _decade_tighter(
 def _tightened(
     problem: JointProblem, point: _Point, tolerance: float, allowed: float, end: Stage
 ) -> tuple[_Point, float]:
-    """The point relaxed until the error of its merit is within the allowance, and the
-    tolerance this took."""
+    """The point and its tolerance after relaxing until the error of its merit is within
+    the allowance."""
     while (
         point.relaxable and point.merit_error > allowed and tolerance > NESTED_TOLERANCE
     ):
@@ -671,7 +693,7 @@ def _tightened(
 
 
 def _restored(problem: JointProblem, point: _Point, end: Stage) -> _Point:
-    """The point in force balance, with its Jacobian factored there."""
+    """The point in force balance with its Jacobian factored there."""
     try:
         model = problem.relax(
             point.boundary,
@@ -697,7 +719,7 @@ def _first_accepted_step(
     nested: bool,
     error_fraction: float,
 ) -> _Trial | None:
-    """The first trial step that holds, or None after twelve."""
+    """The first trial step that holds or None after twelve."""
     normal = jacobian.T @ jacobian
     # the floor bounds the step in weakly coupled modes when residuals are few
     scale = np.maximum(np.diag(normal), max(1.0e-4 * np.diag(normal).max(), 1.0e-10))
@@ -796,16 +818,16 @@ def optimize(
     max_steps: int = 120,
     log=None,
 ) -> Result:
-    """Levenberg-Marquardt on the boundary and the state, adding boundary modes stage by
-    stage.
+    """Levenberg-Marquardt on the boundary and the state with boundary modes added stage
+    by stage.
 
     Each trial step relaxes the state until the estimated error of the merit is
-    ``error_fraction`` of the drop the step predicts, and of STAGE_DROP times the merit
-    at least, between NESTED_TOLERANCE and LOOSEST_TOLERANCE. The last stage starts in
-    force balance and relaxes every step to NESTED_TOLERANCE, as does the last state.
-    ``nested`` instead converges every step to NESTED_TOLERANCE and
-    takes the residuals as they are. Residuals that are not finite at the first state
-    raise a ValueError.
+    ``error_fraction`` of the larger of the drop the step predicts and STAGE_DROP times
+    the merit. The force tolerance stays between NESTED_TOLERANCE and LOOSEST_TOLERANCE.
+    The last stage starts in force balance and relaxes every step to NESTED_TOLERANCE.
+    The final state is relaxed to NESTED_TOLERANCE. ``nested`` instead converges every
+    step to NESTED_TOLERANCE and takes the residuals as they are. Residuals that are not
+    finite at the first state raise a ValueError.
     """
     if max(stages) > problem.max_mode:
         message = f"stage {max(stages)} is above max_mode {problem.max_mode}"
@@ -945,7 +967,7 @@ def optimize(
 
 
 def converged_input(problem: JointProblem, boundary, *, pin_gauge: bool, ns: int = 51):
-    """The boundary as a fully converged multigrid run, cold from its own initial
+    """The boundary as a fully converged multigrid run from its own cold initial
     guess."""
     return problem.vmec_input.model_copy(
         update={

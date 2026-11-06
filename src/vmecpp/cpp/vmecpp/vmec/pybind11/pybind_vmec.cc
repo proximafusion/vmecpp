@@ -1916,8 +1916,8 @@ PYBIND11_MODULE(_vmecpp, m) {
   // Single-resolution iteration model: exposes the forward model and the
   // time-step / restart primitives so the equilibrium iteration can be driven
   // from Python (see vmecpp._iteration).
-  // The calls that do the work release the GIL, so that one model per Python
-  // thread can run them concurrently.
+  // The calls that do the work release the GIL. Models on separate Python
+  // threads then run them concurrently.
   py::class_<VmecModel>(m, "VmecModel")
       .def_static("create", &VmecModel::Create, py::arg("indata"),
                   py::arg("ns"), py::arg("initial_state") = std::nullopt,

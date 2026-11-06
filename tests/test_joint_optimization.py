@@ -43,8 +43,10 @@ needs_exact_products = pytest.mark.skipif(
 )
 
 PRESSURE = 6000.0
-"""The pressure on axis of the finite-beta case: beta 0.66%, with the axis moved by
-0.47 of the minor radius."""
+"""The pressure on axis of the finite-beta case.
+
+It gives beta 0.66% and moves the axis by 0.47 of the minor radius.
+"""
 
 
 @pytest.fixture(scope="module", params=[0.0, PRESSURE], ids=["vacuum", "pressure"])
@@ -117,8 +119,8 @@ def test_targets_and_quasisymmetry_match_the_wout_and_simsopt(
 def test_state_tangents_keep_the_force_balance(
     problem, keys, linearization, loose, balance
 ) -> None:
-    """H t vanishes on the interior, by the exact product and by a difference of the
-    force, at the solved state and away from force balance."""
+    """H t vanishes on the interior by the exact product and by a difference of the
+    force at the solved state and away from force balance."""
     state, tangents = (
         linearization[:2] if balance == "converged" else (loose[0], loose[1])
     )
@@ -174,7 +176,7 @@ def test_residual_jacobian_holds_at_an_unconverged_state(
     problem, keys, loose, index
 ) -> None:
     """The residual derivative along a tangent against a difference of the residuals of
-    the two displaced states, away from force balance."""
+    the two displaced states away from force balance."""
     state, tangents = loose
     model = problem.create_model(problem.boundary0)
     _, jacobian = problem.residual_jacobian(
@@ -201,8 +203,11 @@ def test_residual_jacobian_holds_at_an_unconverged_state(
 
 
 def test_balanced_residuals_match_the_converged_state(problem, solved) -> None:
-    """The residuals of a state away from force balance, with the force residual removed
-    to first order, against those of the converged state."""
+    """The residuals of a state away from force balance against those of the converged
+    state.
+
+    The force residual is removed to first order.
+    """
     boundary = problem.boundary0
     state = np.array(problem.relax(boundary, ftol=1.0e-10).get_state())
     matrix = problem.force_jacobian(problem.create_model(boundary), state)
@@ -214,8 +219,8 @@ def test_balanced_residuals_match_the_converged_state(problem, solved) -> None:
 
 
 def test_a_step_satisfies_the_linearized_force_balance(problem, keys, loose) -> None:
-    """F + H dx vanishes on the interior for dx = -H^-1 F + T db, away from force
-    balance, by a difference of the force."""
+    """A difference of the force shows F + H dx vanishing on the interior for dx = -H^-1
+    F + T db away from force balance."""
     state, tangents = loose
     boundary = problem.boundary0
     matrix = problem.force_jacobian(problem.create_model(boundary), state)
@@ -259,7 +264,7 @@ def test_normal_steps_restore_force_balance(problem, keys, linearization) -> Non
 def test_a_normal_step_on_the_factors_of_another_state_matches_its_own(
     problem, keys, linearization
 ) -> None:
-    """The residuals with the normal step at a moved state, by GMRES preconditioned with
+    """The residuals with the normal step at a moved state by GMRES preconditioned with
     the factors of the state it left and with its own."""
     state, tangents, _, _ = linearization
     delta = 1.0e-3 * np.random.default_rng(4).standard_normal(len(keys))
@@ -282,9 +287,10 @@ def test_a_normal_step_on_the_factors_of_another_state_matches_its_own(
 
 def test_gmres_stops_on_the_estimated_error_or_at_its_limit() -> None:
     """A preconditioner that is wrong along the softest mode leaves the error above the
-    residual, and GMRES iterates until the preconditioned residual meets the tolerance.
+    residual.
 
-    The identity on an ill-conditioned matrix keeps the last iterate, which lowers the
+    GMRES iterates until the preconditioned residual meets the tolerance. The identity
+    on an ill-conditioned matrix keeps the last iterate. That iterate lowers the
     residual.
     """
     generator = np.random.default_rng(0)
@@ -359,7 +365,7 @@ def test_differenced_products_match_the_exact_ones(
 
 @needs_exact_products
 def test_exact_derivatives_hold_at_an_unconverged_state(problem) -> None:
-    """The exact product against a directional difference of the force, away from
+    """The exact product against a directional difference of the force away from
     balance."""
     model = problem.relax(problem.boundary0, ftol=1.0e-5)
     state = np.array(model.get_state())
@@ -444,7 +450,10 @@ def test_gradient_at_a_loose_state_points_along_the_converged_one(
 
 
 def test_a_relaxation_rolls_back_to_its_starting_state(problem, linearization) -> None:
-    """A tolerance already met takes no iterations, so the backup is still the first."""
+    """A tolerance already met takes no iterations.
+
+    The backup is then still the first.
+    """
     state = linearization[0]
     model = problem.relax(problem.boundary0, state, ftol=1.0e-5)
     model.restore_backup()
@@ -452,7 +461,7 @@ def test_a_relaxation_rolls_back_to_its_starting_state(problem, linearization) -
 
 
 def test_threads_reproduce_one_thread() -> None:
-    """Tangents and residual derivatives do not depend on the number of workers, at a
+    """Tangents and residual derivatives do not depend on the number of workers at a
     boundary other than the one the extra models start from."""
     results = []
     for workers in (1, 3):
@@ -519,7 +528,7 @@ def test_a_multigrid_input_runs_on_its_last_resolution() -> None:
 
 
 class MeanIota(JointProblem):
-    """Mean iota against a target, alone."""
+    """Mean iota against a target as the only residual."""
 
     def residuals(self, solved, boundary):  # noqa: ARG002
         mean_iota = (solved.poloidal_flux[-1] - solved.poloidal_flux[0]) / (
@@ -540,7 +549,10 @@ def test_another_objective_runs_on_the_same_driver() -> None:
 
 
 class Constant(JointProblem):
-    """Residuals with no derivative, so no trial step lowers the merit."""
+    """Residuals with no derivative.
+
+    No trial step lowers the merit.
+    """
 
     value = 1.0
 
@@ -600,7 +612,10 @@ def test_steps_on_which_vmec_raises_end_the_stage() -> None:
 
 
 class RaisesOnTheLastNormalStep(MeanIota):
-    """VMEC raises once in the last relaxation, the first without an iteration limit."""
+    """VMEC raises once in the last relaxation.
+
+    It is the first relaxation without an iteration limit.
+    """
 
     raised = False
 
@@ -732,7 +747,10 @@ def test_the_merit_takes_the_normal_step_within_its_radius(
     problem, loose, monkeypatch
 ) -> None:
     """The change of the residuals scales with the part of the normal step within its
-    radius, and the error estimate keeps the whole step."""
+    radius.
+
+    The error estimate keeps the whole step.
+    """
     boundary = problem.boundary0
     size = _joint_point(problem, boundary, loose[0]).normal_size
     changes, steps, errors = [], [], []
@@ -770,7 +788,7 @@ def nested_and_joint():
 def test_both_methods_reach_the_targets_from_the_ellipse(
     nested_and_joint, name, tmp_path
 ) -> None:
-    """A cold, converged run of the final boundary, read by SIMSOPT."""
+    """A cold converged run of the final boundary read by SIMSOPT."""
     problem, result = nested_and_joint[name]
     wout = vmecpp.run(
         converged_input(problem, result.boundary, pin_gauge=True),

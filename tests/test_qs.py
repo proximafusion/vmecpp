@@ -165,10 +165,10 @@ def asymmetric():
 
 
 def test_asymmetric_field_strength_matches_the_vmec_spectrum(asymmetric) -> None:
-    """|B| and its angular derivatives against ``bmnc`` and ``bmns``, and the part of
-    |B| odd under (theta, zeta) -> (-theta, -zeta) against ``bmns`` alone.
+    """|B| and its angular derivatives against ``bmnc`` and ``bmns``.
 
-    The half-grid spectrum agrees to first order in the radial spacing.
+    The part of |B| odd under (theta, zeta) -> (-theta, -zeta) is checked against
+    ``bmns`` alone. The half-grid spectrum agrees to first order in the radial spacing.
     """
     solved, wout = asymmetric
     surface = int(0.6 * (wout.ns - 1))
@@ -295,8 +295,10 @@ def rippled():
 def test_angles_shifted_by_grid_cells_shift_the_residuals(
     rippled, cells_theta: int, cells_zeta: int, helicity_n: int
 ) -> None:
-    """A symmetric equilibrium in shifted angles fills the asymmetric arrays, and its
-    residuals are the same numbers moved along the grid."""
+    """A symmetric equilibrium in shifted angles fills the asymmetric arrays.
+
+    Its residuals are the same numbers moved along the grid.
+    """
     ntheta, nphi = 16, 12
     surfaces = [0.3, 0.7]
 
