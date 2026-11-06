@@ -121,7 +121,9 @@ if(WIN32)
   list(APPEND _native_deps_cmake_args
     -DZLIB_ROOT=${_native_deps_prefix}
     -DZLIB_LIBRARY=${_native_deps_lib}/zlib_static.lib
-    -DZLIB_INCLUDE_DIR=${_native_deps_include})
+    -DZLIB_INCLUDE_DIR=${_native_deps_include}
+    "-DCMAKE_C_FLAGS=-w"
+    "-DCMAKE_CXX_FLAGS=/EHsc -w")
 endif()
 
 if(APPLE)
