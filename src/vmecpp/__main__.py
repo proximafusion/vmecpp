@@ -187,7 +187,8 @@ def main() -> None:
     wout_file = Path(f"wout_{configuration_name}.nc")
     output.wout.save(wout_file)
 
-    print(f"\nOutput written to {wout_file}")  # noqa: T201
+    if not args.quiet:
+        print(f"\nOutput written to {wout_file}")  # noqa: T201
 
 
 if __name__ == "__main__":

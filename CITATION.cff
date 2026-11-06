@@ -3,6 +3,9 @@ abstract: <p>From-scratch C++ and Python reimplementation of the Variational Mom
 authors:
 - name: Proxima Fusion GmbH, Munich, Germany
 - affiliation: Proxima Fusion GmbH, Munich, Germany
+  family-names: Jura\v{s}i\'c
+  given-names: Philipp
+- affiliation: Proxima Fusion GmbH, Munich, Germany
   family-names: Schilling
   given-names: Jonathan
 - affiliation: Proxima Fusion GmbH, Munich, Germany

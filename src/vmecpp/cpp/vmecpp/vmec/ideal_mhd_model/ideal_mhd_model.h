@@ -643,6 +643,12 @@ class IdealMhdModel {
   // Add the radial slice of force_source_ owned by this thread.
   void addForceSource(FourierForces& m_decomposed_f) const;
 
+#ifdef VMECPP_ENABLE_ENZYME
+  // The scratch of applyExactForceJacobian is zeroed once. Each forward pass
+  // writes the same entries before it reads them.
+  std::vector<double> exact_work_, exact_dwork_, exact_force_, exact_dforce_;
+#endif  // VMECPP_ENABLE_ENZYME
+
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
   // Created once at construction and reused across iterations. Execution is
