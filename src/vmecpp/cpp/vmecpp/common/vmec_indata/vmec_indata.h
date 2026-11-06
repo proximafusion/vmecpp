@@ -250,6 +250,10 @@ class VmecINDATA {
   // equilibrium iteration is unchanged.
   bool lbsubs;
 
+  // poloidal flux as radial coordinate and ai as q = 1/iota, as lRFP in Fortran
+  // VMEC: chi' constant, phi' = q chi', phiedge the enclosed toroidal flux
+  bool lrfp;
+
   // If true, restart backups hold the state of the last force evaluation; if
   // false, they hold the advanced state, as in educational_VMEC.
   bool backup_evaluated_state;

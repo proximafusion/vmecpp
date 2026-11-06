@@ -1,0 +1,102 @@
+{
+    "lasym": true,
+    "nfp": 1,
+    "mpol": 6,
+    "ntor": 0,
+    "ns_array": [
+        11,
+        31
+    ],
+    "ftol_array": [
+        1e-12,
+        1e-12
+    ],
+    "niter_array": [
+        5000,
+        20000
+    ],
+    "delt": 0.9,
+    "phiedge": 0.2,
+    "nstep": 250,
+    "pmass_type": "power_series",
+    "am": [
+        0.0
+    ],
+    "pres_scale": 1.0,
+    "gamma": 0.0,
+    "spres_ped": 1.0,
+    "piota_type": "power_series",
+    "ai": [
+        0.2,
+        -0.27
+    ],
+    "curtor": 0.0,
+    "bloat": 1.0,
+    "ntheta": 0,
+    "nzeta": 0,
+    "tcon0": 1.0,
+    "aphi": [
+        1.0
+    ],
+    "ncurr": 0,
+    "lrfp": true,
+    "lfreeb": false,
+    "mgrid_file": "NONE",
+    "nvacskip": 1,
+    "lforbal": false,
+    "raxis_c": [
+        1.5
+    ],
+    "zaxis_s": [
+        0.0
+    ],
+    "raxis_s": [
+        0.0
+    ],
+    "zaxis_c": [
+        0.0
+    ],
+    "rbc": [
+        {
+            "n": 0,
+            "m": 0,
+            "value": 1.5
+        },
+        {
+            "n": 0,
+            "m": 1,
+            "value": 0.5
+        },
+        {
+            "n": 0,
+            "m": 2,
+            "value": 0.03
+        }
+    ],
+    "zbs": [
+        {
+            "n": 0,
+            "m": 1,
+            "value": 0.5
+        },
+        {
+            "n": 0,
+            "m": 2,
+            "value": 0.02
+        }
+    ],
+    "rbs": [
+        {
+            "n": 0,
+            "m": 2,
+            "value": 0.02
+        }
+    ],
+    "zbc": [
+        {
+            "n": 0,
+            "m": 2,
+            "value": 0.03
+        }
+    ]
+}

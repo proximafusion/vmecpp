@@ -555,6 +555,10 @@ class VmecInput(BaseModelWithNumpy):
     https://proximafusion.github.io/vmecpp/tutorials/fixed_boundary.html
     """
 
+    lrfp: bool = False
+    """Normalized poloidal flux as radial coordinate and ai as q = 1/iota, as lRFP in
+    Fortran VMEC; phiedge stays the enclosed toroidal flux, and ncurr must be 0."""
+
     backup_evaluated_state: bool = True
     """If true, restart backups hold the state of the last force evaluation; if false,
     they hold the advanced state, as in educational_VMEC and the reference files."""
