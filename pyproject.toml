@@ -120,7 +120,7 @@ test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/te
 [tool.cibuildwheel.windows]
 # The extension links LLVM's libomp, which delvewheel bundles into the wheel.
 before-build = "pip install delvewheel"
-repair-wheel-command = 'delvewheel repair --add-path "C:\\Program Files\\LLVM\bin" -w {dest_dir} {wheel}'
+repair-wheel-command = 'delvewheel repair --add-path "C:\Program Files\LLVM\bin" -w {dest_dir} {wheel}'
 test-command = "pytest {package}/tests/test_free_boundary.py {package}/tests/test_hessian.py"
 
 [tool.cibuildwheel.linux]
