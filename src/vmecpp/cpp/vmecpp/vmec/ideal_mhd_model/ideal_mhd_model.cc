@@ -2651,21 +2651,25 @@ void IdealMhdModel::applyExactForceJacobian(const double* geomP,
   LocalForceComposition comp = makeLocalForceComposition(geom_stride);
   const int nForce = comp.force_stride;
 
-  const int nWork = LocalForceWorkSize(comp);
-  std::vector<double> work(nWork, 0.0);
-  std::vector<double> dwork(nWork, 0.0);
-  std::vector<double> force(kLocalForceBlocks * nForce, 0.0);
-  std::vector<double> dforce(kLocalForceBlocks * nForce, 0.0);
+  const std::size_t nWork = static_cast<std::size_t>(LocalForceWorkSize(comp));
+  const std::size_t nForceTotal =
+      static_cast<std::size_t>(kLocalForceBlocks) * nForce;
+  if (exact_work_.size() != nWork || exact_force_.size() != nForceTotal) {
+    exact_work_.assign(nWork, 0.0);
+    exact_dwork_.assign(nWork, 0.0);
+    exact_force_.assign(nForceTotal, 0.0);
+    exact_dforce_.assign(nForceTotal, 0.0);
+  }
 
   // single nonlinear forward pass: J_g . (T v)
-  ExactForceDensityJvp(geomP, dgeom, work.data(), dwork.data(), force.data(),
-                       dforce.data(), &comp);
+  ExactForceDensityJvp(geomP, dgeom, exact_work_.data(), exact_dwork_.data(),
+                       exact_force_.data(), exact_dforce_.data(), &comp);
 
   // scatter the force-density tangent into the real-space force members
   auto put = [&](int block, Eigen::VectorXd& dst) {
     const int n = static_cast<int>(dst.size());
     for (int i = 0; i < n; ++i) {
-      dst[i] = dforce[block * nForce + i];
+      dst[i] = exact_dforce_[block * nForce + i];
     }
   };
   put(0, armn_e);

@@ -392,3 +392,26 @@ def test_exact_hessian_vector_product_is_the_derivative_of_the_force() -> None:
         assert np.linalg.norm(product - difference) < 1.0e-6 * np.linalg.norm(
             difference
         )
+
+
+def test_a_repeated_exact_hessian_vector_product_is_bitwise_equal() -> None:
+    """A product repeated after a product of another direction at another state is the
+    same to the last bit."""
+    indata = _small_3d_input()
+    _requires_exact_derivatives(indata)
+    model = autodiff._solve_model(indata._to_cpp_vmecindata(), _boundary(indata))
+    state = np.asarray(model.get_state(), dtype=np.float64).copy()
+    generator = np.random.default_rng(1)
+    first, second = (generator.standard_normal(state.size) for _ in range(2))
+
+    def product(value, direction):
+        model.set_state(np.ascontiguousarray(value))
+        model.evaluate(2, 2, True)
+        return np.asarray(
+            model.exact_hessian_vector_product(np.ascontiguousarray(direction)),
+            dtype=np.float64,
+        ).copy()
+
+    before = product(state, first)
+    product(state * (1.0 + 1.0e-6 * generator.standard_normal(state.size)), second)
+    np.testing.assert_allclose(product(state, first), before, rtol=0.0, atol=0.0)
