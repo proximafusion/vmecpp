@@ -10,13 +10,25 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
+if(WIN32)
+  # clang-cl: MSVC's OpenMP 2.0 lacks `omp atomic write`, LLVM's libomp has it.
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "Windows builds require clang-cl (CC=clang-cl CXX=clang-cl)")
+  endif()
+  set(CMAKE_CXX_FLAGS "/EHsc /clang:-fno-math-errno")
+  # M_PI in <cmath>.
+  add_compile_definitions(_USE_MATH_DEFINES NOMINMAX WIN32_LEAN_AND_MEAN)
+else()
+  set(CMAKE_CXX_FLAGS "-fPIC -Wall -Wextra")
+  set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-math-errno")
+endif()
 
 # LTO: cross-TU inlining and dead-code elimination, ~1/3 smaller binaries.
 include(CheckIPOSupported)
-check_ipo_supported(RESULT VMECPP_IPO_SUPPORTED OUTPUT VMECPP_IPO_ERROR)
+if(NOT WIN32)
+  check_ipo_supported(RESULT VMECPP_IPO_SUPPORTED OUTPUT VMECPP_IPO_ERROR)
+endif()
 if(VMECPP_IPO_SUPPORTED)
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 else()
@@ -29,8 +41,11 @@ endif()
 add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=32 EIGEN_MAX_STATIC_ALIGN_BYTES=32)
 
 # use ccache if available
-find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
-if(EXISTS ${CCACHE_COMMAND})
+# (Not on Windows, where ccache-swig is a SWIG shim rather than a compiler cache.)
+if(NOT WIN32)
+  find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
+endif()
+if(CCACHE_COMMAND AND EXISTS ${CCACHE_COMMAND})
   message(STATUS "Found ccache: ${CCACHE_COMMAND}")
   set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_COMMAND})
   set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_COMMAND})
@@ -53,10 +68,40 @@ set(_native_deps_include "${_native_deps_prefix}/include")
 # INTERFACE_INCLUDE_DIRECTORIES below must exist already at generate time.
 file(MAKE_DIRECTORY "${_native_deps_include}")
 
+# Backslashes in a Windows path break the generated ExternalProject scripts.
+file(TO_CMAKE_PATH "${CMAKE_MAKE_PROGRAM}" _native_deps_make_program)
+
 # HDF5 is built with zlib support (required by netCDF-4), but as a static
 # lib it doesn't bundle zlib's own object code, so it must be linked in
 # explicitly wherever hdf5_c is used.
-find_package(ZLIB REQUIRED)
+if(WIN32)
+  # No system zlib on Windows: build it into the native-deps prefix first.
+  ExternalProject_Add(zlib_native
+    URL "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz"
+    URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    LOG_OUTPUT_ON_FAILURE ON
+    CMAKE_ARGS
+      -DCMAKE_INSTALL_PREFIX=${_native_deps_prefix}
+      -DCMAKE_BUILD_TYPE=Release
+      -DCMAKE_MAKE_PROGRAM=${_native_deps_make_program}
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      -DZLIB_BUILD_EXAMPLES=OFF
+      -DZLIB_BUILD_SHARED=OFF
+    BUILD_BYPRODUCTS "${_native_deps_lib}/zlib_static.lib")
+  # The installed archive is named zs.lib or zlibstatic.lib depending on the
+  # zlib version; give it a fixed name.
+  ExternalProject_Add_Step(zlib_native normalize_name
+    DEPENDEES install
+    COMMAND ${CMAKE_COMMAND} -DLIB_DIR=${_native_deps_lib}
+            -P ${PROJECT_SOURCE_DIR}/cmake/normalize_zlib_name.cmake)
+  add_library(ZLIB::ZLIB STATIC IMPORTED GLOBAL)
+  set_target_properties(ZLIB::ZLIB PROPERTIES
+    IMPORTED_LOCATION "${_native_deps_lib}/zlib_static.lib"
+    INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}")
+  add_dependencies(ZLIB::ZLIB zlib_native)
+else()
+  find_package(ZLIB REQUIRED)
+endif()
 if(APPLE)
   # The macOS SDK is already on Clang's implicit system include path. Adding
   # its usr/include directory explicitly breaks libc++'s system-header wrappers.
@@ -68,12 +113,25 @@ set(_native_deps_cmake_args
   -DCMAKE_INSTALL_LIBDIR=lib
   -DCMAKE_PREFIX_PATH=${_native_deps_prefix}
   -DCMAKE_BUILD_TYPE=Release
-  -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+  -DCMAKE_MAKE_PROGRAM=${_native_deps_make_program}
   -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
   -DBUILD_TESTING=OFF
   -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
   -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER})
+
+if(WIN32)
+  list(APPEND _native_deps_cmake_args
+    -DZLIB_ROOT=${_native_deps_prefix}
+    -DZLIB_LIBRARY=${_native_deps_lib}/zlib_static.lib
+    -DZLIB_INCLUDE_DIR=${_native_deps_include}
+    "-DCMAKE_C_FLAGS=-w -I${_native_deps_include}"
+    "-DCMAKE_CXX_FLAGS=/EHsc -w -I${_native_deps_include}"
+    -DHDF5_BUILD_UTILS=OFF
+    -DHDF5_ENABLE_MIRROR_VFD=OFF
+    # FindHDF5 otherwise defines H5_BUILT_AS_DYNAMIC_LIB (dllimport) for netCDF.
+    -DHDF5_USE_STATIC_LIBRARIES=ON)
+endif()
 
 if(APPLE)
   # CC=brew's gcc-14 (set by some CI jobs) chokes on Apple's SDK math.h for
@@ -83,7 +141,32 @@ if(APPLE)
     -DCMAKE_CXX_COMPILER=/usr/bin/c++)
 endif()
 
+# Static library file names: libhdf5.lib / netcdf.lib on Windows, lib*.a elsewhere.
+if(WIN32)
+  set(_static_prefix "lib")
+  set(_netcdf_static_prefix "")
+  set(_static_suffix ".lib")
+else()
+  set(_static_prefix "lib")
+  set(_netcdf_static_prefix "lib")
+  set(_static_suffix ".a")
+endif()
+set(_hdf5_extra_deps "")
+if(WIN32)
+  set(_hdf5_extra_deps zlib_native)
+endif()
+
+# HDF5 passes its zlib header name as a quoted per-source definition, which the
+# clang-cl command line drops; spell the include out.
+set(_hdf5_patch_command "")
+if(WIN32)
+  set(_hdf5_patch_command PATCH_COMMAND ${CMAKE_COMMAND} -DHDF5_SRC=<SOURCE_DIR>
+      -P ${PROJECT_SOURCE_DIR}/cmake/patch_hdf5_zlib_include.cmake)
+endif()
+
 ExternalProject_Add(hdf5_native
+  DEPENDS ${_hdf5_extra_deps}
+  ${_hdf5_patch_command}
   URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz"
   URL_HASH SHA256=df5ee33c74d5efb59738075ef96f4201588e1f1eeb233f047ac7fd1072dee1f6
   LOG_DOWNLOAD ON
@@ -100,12 +183,12 @@ ExternalProject_Add(hdf5_native
     -DHDF5_BUILD_EXAMPLES=OFF
     -DHDF5_BUILD_TOOLS=OFF
   BUILD_BYPRODUCTS
-    "${_native_deps_lib}/libhdf5.a"
-    "${_native_deps_lib}/libhdf5_cpp.a"
-    "${_native_deps_lib}/libhdf5_hl.a")
+    "${_native_deps_lib}/${_static_prefix}hdf5${_static_suffix}"
+    "${_native_deps_lib}/${_static_prefix}hdf5_cpp${_static_suffix}"
+    "${_native_deps_lib}/${_static_prefix}hdf5_hl${_static_suffix}")
 
 ExternalProject_Add(netcdf_native
-  DEPENDS hdf5_native
+  DEPENDS hdf5_native ${_hdf5_extra_deps}
   URL "https://github.com/Unidata/netcdf-c/archive/refs/tags/v4.9.3.tar.gz"
   URL_HASH SHA256=990f46d49525d6ab5dc4249f8684c6deeaf54de6fec63a187e9fb382cc0ffdff
   LOG_DOWNLOAD ON
@@ -123,26 +206,31 @@ ExternalProject_Add(netcdf_native
     -DNETCDF_ENABLE_TESTS=OFF
     -DNETCDF_BUILD_UTILITIES=OFF
   BUILD_BYPRODUCTS
-    "${_native_deps_lib}/libnetcdf.a")
+    "${_native_deps_lib}/${_netcdf_static_prefix}netcdf${_static_suffix}")
 
 # Imported targets pointing at the static libraries the ExternalProjects
 # above install at build time
 add_library(hdf5_c STATIC IMPORTED GLOBAL)
+set(_hdf5_c_link_libs ZLIB::ZLIB)
+if(WIN32)
+  # Windows system libraries the static HDF5 refers to (StrStrIA, sockets).
+  list(APPEND _hdf5_c_link_libs shlwapi ws2_32)
+endif()
 set_target_properties(hdf5_c PROPERTIES
-  IMPORTED_LOCATION "${_native_deps_lib}/libhdf5.a"
+  IMPORTED_LOCATION "${_native_deps_lib}/${_static_prefix}hdf5${_static_suffix}"
   INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}"
-  INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+  INTERFACE_LINK_LIBRARIES "${_hdf5_c_link_libs}")
 add_dependencies(hdf5_c hdf5_native)
 
 add_library(hdf5_hl STATIC IMPORTED GLOBAL)
 set_target_properties(hdf5_hl PROPERTIES
-  IMPORTED_LOCATION "${_native_deps_lib}/libhdf5_hl.a"
+  IMPORTED_LOCATION "${_native_deps_lib}/${_static_prefix}hdf5_hl${_static_suffix}"
   INTERFACE_LINK_LIBRARIES hdf5_c)
 add_dependencies(hdf5_hl hdf5_native)
 
 add_library(hdf5_cpp STATIC IMPORTED GLOBAL)
 set_target_properties(hdf5_cpp PROPERTIES
-  IMPORTED_LOCATION "${_native_deps_lib}/libhdf5_cpp.a"
+  IMPORTED_LOCATION "${_native_deps_lib}/${_static_prefix}hdf5_cpp${_static_suffix}"
   INTERFACE_LINK_LIBRARIES hdf5_c)
 add_dependencies(hdf5_cpp hdf5_native)
 
@@ -150,7 +238,7 @@ add_dependencies(hdf5_cpp hdf5_native)
 # too even though vmecpp's own code never calls it directly.
 add_library(netcdf STATIC IMPORTED GLOBAL)
 set_target_properties(netcdf PROPERTIES
-  IMPORTED_LOCATION "${_native_deps_lib}/libnetcdf.a"
+  IMPORTED_LOCATION "${_native_deps_lib}/${_netcdf_static_prefix}netcdf${_static_suffix}"
   INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}"
   INTERFACE_LINK_LIBRARIES "hdf5_hl;hdf5_c")
 add_dependencies(netcdf netcdf_native)
@@ -189,12 +277,15 @@ FetchContent_Declare(
   GIT_TAG 255c84dadd029fd8ad25c5efb5933e47beaa00c7
   GIT_SHALLOW TRUE
 )
-FetchContent_Declare(
-  indata2json
-  GIT_REPOSITORY https://github.com/jonathanschilling/indata2json.git
-  GIT_TAG a29c5e3e932df15dd2beab0341b1d7bbe7eb32eb
-  GIT_SHALLOW TRUE
-)
+if(NOT WIN32)
+  # Fortran tool for INDATA -> JSON conversion; not available on Windows.
+  FetchContent_Declare(
+    indata2json
+    GIT_REPOSITORY https://github.com/jonathanschilling/indata2json.git
+    GIT_TAG a29c5e3e932df15dd2beab0341b1d7bbe7eb32eb
+    GIT_SHALLOW TRUE
+  )
+endif()
 FetchContent_Declare(
   pybind11
   GIT_REPOSITORY https://github.com/pybind/pybind11.git
@@ -213,7 +304,10 @@ set(abscab_sources "${abscab-cpp_SOURCE_DIR}/abscab/abscab.cc" "${abscab-cpp_SOU
 
 # Fix deprecation warning, abseil will change this default soon.
 set(ABSL_PROPAGATE_CXX_STD "ON")
-FetchContent_MakeAvailable(abseil-cpp indata2json)
+FetchContent_MakeAvailable(abseil-cpp)
+if(NOT WIN32)
+  FetchContent_MakeAvailable(indata2json)
+endif()
 include_directories(${abseil-cpp_SOURCE_DIR})
 
 # Allow to retain include paths as used for Bazel build.
@@ -233,7 +327,12 @@ add_subdirectory(src)
 function(vmecpp_add_core target)
   cmake_parse_arguments(CORE "" "HWCAPS_SUBDIR" "COMPILE_OPTIONS" ${ARGN})
 
-  add_library(${target} SHARED ${vmecpp_sources})
+  # Windows DLLs need explicit exports; the extension module links the core statically.
+  if(WIN32)
+    add_library(${target} STATIC ${vmecpp_sources})
+  else()
+    add_library(${target} SHARED ${vmecpp_sources})
+  endif()
   set_target_properties(${target} PROPERTIES OUTPUT_NAME vmecpp_core)
   if(CORE_HWCAPS_SUBDIR)
     set_target_properties(${target} PROPERTIES
@@ -256,7 +355,10 @@ function(vmecpp_add_core target)
       "${_fftx_dir}/include"                                         # for fftx_minimal.hpp
       "${_fftx_dir}/lib_fftx_iprdftbat_cpu_srcs"
       "${_fftx_dir}/lib_fftx_prdftbat_cpu_srcs")
-    target_compile_options(${target}_fftx PRIVATE -fPIC ${CORE_COMPILE_OPTIONS})
+    if(NOT WIN32)
+      target_compile_options(${target}_fftx PRIVATE -fPIC)
+    endif()
+    target_compile_options(${target}_fftx PRIVATE ${CORE_COMPILE_OPTIONS})
     target_link_libraries(${target} PRIVATE ${target}_fftx)
     target_compile_definitions(${target} PUBLIC VMECPP_USE_FFTX)
   endif()
@@ -274,7 +376,11 @@ endfunction()
 # The codelets are vendored under src/vmecpp/cpp/third_party/fftx_codelets/;
 # see that directory's README.md for what they cover and how to regenerate.
 # Pass -DVMECPP_USE_FFTX=OFF to fall back to the partial-DFT path.
-option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ON)
+set(_vmecpp_use_fftx_default ON)
+if(WIN32)
+  set(_vmecpp_use_fftx_default OFF)
+endif()
+option(VMECPP_USE_FFTX "Use FFTX/SPIRAL kernels for toroidal transforms" ${_vmecpp_use_fftx_default})
 if(VMECPP_USE_FFTX)
   set(_fftx_dir "${PROJECT_SOURCE_DIR}/src/vmecpp/cpp/third_party/fftx_codelets")
   file(GLOB _fftx_iprdft_srcs CONFIGURE_DEPENDS
@@ -334,15 +440,19 @@ endif()
 
 set_target_properties(_vmecpp PROPERTIES
                       INSTALL_RPATH "${_vmecpp_loader_path}")
-install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/.)
+install(TARGETS _vmecpp LIBRARY DESTINATION vmecpp/cpp/. RUNTIME DESTINATION vmecpp/cpp/.)
 # glibc >= 2.33 prefers glibc-hwcaps/ subdirectories; older loaders ignore
 # them and pick up the baseline next to the extension module.
-install(TARGETS vmecpp_core LIBRARY DESTINATION vmecpp/cpp/.)
+if(NOT WIN32)
+  install(TARGETS vmecpp_core LIBRARY DESTINATION vmecpp/cpp/.)
+endif()
 if(VMECPP_HWCAPS_DISPATCH)
   install(TARGETS vmecpp_core_v3
           LIBRARY DESTINATION vmecpp/cpp/glibc-hwcaps/x86-64-v3/.)
 endif()
-install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
+if(NOT WIN32)
+  install(TARGETS indata2json DESTINATION vmecpp/cpp/third_party/indata2json/)
+endif()
 
 # Optional Enzyme automatic-differentiation target: exact autodiff (forward and
 # reverse) of a real VMEC nonlinear kernel, the half-grid Jacobian. Enzyme

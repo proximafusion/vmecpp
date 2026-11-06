@@ -20,6 +20,7 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Operating System :: POSIX :: Linux",
   "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -36,7 +37,8 @@ dependencies = [
   "jaxtyping>=0.2.6",
   "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
   "jax!=0.5.1", # To prevent a circular import bug in jax on arch Linux
-  "simsopt>=1.8.1",
+  # simsopt publishes no Windows wheels; vmecpp.simsopt_compat is unavailable there.
+  "simsopt>=1.8.1; sys_platform != 'win32'",
 ]
 
 [project.scripts]
@@ -114,6 +116,12 @@ skip = ["*-musllinux*", "cp314*-macosx_x86_64"]
 build-frontend = "build[uv]" # More modern package manager than pip, with faster builds
 test-requires = "pytest"
 test-command = "pytest {package}/tests/test_simsopt_compat.py {package}/tests/test_free_boundary.py"
+
+[tool.cibuildwheel.windows]
+# The extension links LLVM's libomp, which delvewheel bundles into the wheel.
+before-build = "pip install delvewheel"
+repair-wheel-command = 'delvewheel repair --add-path "C:\Program Files\LLVM\bin" -w {dest_dir} {wheel}'
+test-command = "pytest {package}/tests/test_free_boundary.py {package}/tests/test_hessian.py"
 
 [tool.cibuildwheel.linux]
 before-build = "yum install -y zlib-devel epel-release && yum install -y ccache"

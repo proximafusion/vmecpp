@@ -108,7 +108,7 @@ absl::Status MGridProvider::LoadFile(const std::filesystem::path& filename,
   }
 
   int ncid = 0;
-  if (nc_open(filename.c_str(), NC_NOWRITE, &ncid) != NC_NOERR) {
+  if (nc_open(filename.string().c_str(), NC_NOWRITE, &ncid) != NC_NOERR) {
     return absl::InternalError(
         absl::StrFormat("NetCDF couldn't open '%s', despite passing "
                         "preconditions. The file may be corrupted.",
