@@ -511,6 +511,12 @@ class VmecInput(BaseModelWithNumpy):
     tcon0: float = 1.0
     """Constraint force scaling factor for ns --> 0."""
 
+    tcon_axis_factor: float = 1.0
+    """Factor on the constraint force on the axis.
+
+    It tapers linearly to 1 at s = 0.2. 1.0 is the profile of VMEC 8.52.
+    """
+
     lgiveup: bool = False
     """Abandon the whole multigrid sequence when a step ends with any residual still
     above ``fgiveup`` times its tolerance, rather than carrying a state that far out
