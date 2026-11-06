@@ -417,7 +417,8 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     // instead of slowly activating it (as we would in a regular free-bdy
     // solve). If the initial guess completely off, jacob_off>0 will trigger a
     // retry with VacuumPressureState::kOff anyway.
-    if (fc_.lfreeb && initial_state.has_value()) {
+    fc_.free_boundary_hot_restart = fc_.lfreeb && initial_state.has_value();
+    if (fc_.free_boundary_hot_restart) {
       vacuum_pressure_state_ = VacuumPressureState::kInitialized;
     }
 
@@ -451,6 +452,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         // recovery pass, which drops back to a three-surface mesh, so that
         // solution no longer corresponds to the geometry being solved.
         vacuum_pressure_state_ = VacuumPressureState::kOff;
+        fc_.free_boundary_hot_restart = false;
       } else {
         // proceed regularly with ns values from ns_array
         fc_.nsval = indata_.ns_array[igrid];

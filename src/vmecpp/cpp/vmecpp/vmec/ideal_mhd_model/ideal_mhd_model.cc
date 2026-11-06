@@ -962,12 +962,11 @@ absl::StatusOr<bool> IdealMhdModel::update(
   // iter1 is set at the start of a multigrid stage and at every bad-Jacobian
   // restart, so the window counts iterations since whichever came last.
   bool almost_converged = (m_fc.fsqr + m_fc.fsqz) < 1.0e-6;
-  // In iter==1, the forces are initialized to 1.0 so includeEdgeRZForces
-  // wouldn't trigger without special handling for the hot-restart case.
-  bool hot_restart = (iter2 == 1 && m_vacuum_pressure_state_ ==
-                                        VacuumPressureState::kInitialized);
+  // A free-boundary hot restart counts the edge after every restart, since a
+  // rollback can return it to an interior that already meets ftol.
   bool includeEdgeRZForces =
-      ((iter2 - iter1) < 50 && (almost_converged || hot_restart));
+      ((iter2 - iter1) < 50 &&
+       (almost_converged || m_fc.free_boundary_hot_restart));
   Eigen::Vector3d localFResInvar;
   localFResInvar.setZero();
   m_decomposed_f.residuals(localFResInvar, includeEdgeRZForces);

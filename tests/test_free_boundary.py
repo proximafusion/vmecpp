@@ -68,6 +68,50 @@ def test_run_free_boundary_from_response_table():
     )
 
 
+def test_hot_restart_from_fixed_boundary():
+    """A free-boundary run hot-started from the fixed-boundary solution of its boundary
+    reaches the equilibrium of a cold start: a current ring in a vertical field."""
+    radius, current = 0.0447, 2.39e5
+    vertical = -1.0e-7 * current * (np.log(8.0 / radius) - 1.25)
+    rbc, zbs = np.zeros((8, 1)), np.zeros((8, 1))
+    rbc[0, 0], rbc[1, 0], zbs[1, 0] = 1.0, radius, radius
+    vmec_input = vmecpp.VmecInput(
+        lfreeb=True,
+        mpol=8,
+        ntor=0,
+        ntheta=40,
+        nzeta=1,
+        ns_array=np.array([25]),
+        ftol_array=np.array([1e-13]),
+        niter_array=np.array([30000]),
+        phiedge=9.03e-3,
+        ncurr=1,
+        pcurr_type="power_series",
+        ac=np.array([1.0]),
+        curtor=current,
+        pmass_type="power_series",
+        am=np.array([0.0]),
+        pres_scale=0.0,
+        rbc=rbc,
+        zbs=zbs,
+        raxis_c=np.array([1.0]),
+        zaxis_s=np.array([0.0]),
+        nvacskip=1,
+    )
+
+    def field(r, *_):
+        return np.zeros_like(r), 1.0 / r, np.full_like(r, vertical)
+
+    cold = vmecpp.run(vmec_input, field, max_threads=1, verbose=False)
+    fixed_input = vmec_input.model_copy(update={"lfreeb": False})
+    fixed = vmecpp.run(fixed_input, max_threads=1, verbose=False)
+    hot = vmecpp.run(
+        vmec_input, field, restart_from=fixed, max_threads=1, verbose=False
+    )
+    np.testing.assert_allclose(hot.wout.rmnc, cold.wout.rmnc, rtol=0, atol=1e-7)
+    np.testing.assert_allclose(hot.wout.zmns, cold.wout.zmns, rtol=0, atol=1e-7)
+
+
 def test_vacuum_potential_cutoffs():
     """The vacuum potential's cutoffs default to the plasma's, must not fall below them,
     and a run with larger ones converges on the same grid."""
