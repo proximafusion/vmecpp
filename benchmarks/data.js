@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793919976611,
+  "lastUpdate": 1793959440168,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -26759,6 +26759,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.47811950300001627,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e1f4c31b4a5987008648264b42f9361cc8d5f486",
+          "message": "Keep the scratch of the exact Hessian-vector product between calls (#1061)\n\n* Keep the scratch of the exact Hessian-vector product between calls\n\n* Move the repeated exact product test to the tests the Enzyme job runs",
+          "timestamp": "2026-11-06T10:55:55+01:00",
+          "tree_id": "d1dbb6b11c17db20ecc1c9e2a9bd5eda928b68e0",
+          "url": "https://github.com/proximafusion/vmecpp/commit/e1f4c31b4a5987008648264b42f9361cc8d5f486"
+        },
+        "date": 1793959430442,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.651219194600003,
+            "range": "stddev: 0.018183522773254763",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.6175107893333234,
+            "range": "stddev: 0.02582296403741529",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0954436623333852,
+            "range": "stddev: 0.0020561213357403662",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6454948413332886,
+            "range": "stddev: 0.011938999628485866",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.6375852476666827,
+            "range": "stddev: 0.0055345644746282036",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.862735386666638,
+            "range": "stddev: 0.02626281152060626",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.5022652549999975,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.4826942020000615,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
