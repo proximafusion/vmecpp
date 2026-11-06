@@ -332,6 +332,7 @@ VmecINDATA::VmecINDATA() {
   aphi[0] = 1.0;
   delt = 1.0;
   tcon0 = 1.0;
+  tcon_axis_factor = 1.0;
   lforbal = false;
   lambda_preconditioner_scale = 0.5;
   lambda_precondition_checkerboard_terms = 1e-3;
@@ -467,6 +468,7 @@ absl::Status VmecINDATA::WriteTo(H5::H5File& file) const {
   WriteH5Dataset(nstep, "/indata/nstep", file);
   WriteH5Dataset(delt, "/indata/delt", file);
   WriteH5Dataset(tcon0, "/indata/tcon0", file);
+  WriteH5Dataset(tcon_axis_factor, "/indata/tcon_axis_factor", file);
   WriteH5Dataset(lforbal, "/indata/lforbal", file);
   WriteH5Dataset(lambda_preconditioner_scale,
                  "/indata/lambda_preconditioner_scale", file);
@@ -596,6 +598,12 @@ absl::Status VmecINDATA::LoadInto(VmecINDATA& m_indata, H5::H5File& from_file) {
                   "/indata/lambda_preconditioner_scale", from_file);
   } else {
     m_indata.lambda_preconditioner_scale = 0.5;
+  }
+  if (H5Lexists(from_file.getId(), "/indata/tcon_axis_factor", 0) == 1) {
+    ReadH5Dataset(m_indata.tcon_axis_factor, "/indata/tcon_axis_factor",
+                  from_file);
+  } else {
+    m_indata.tcon_axis_factor = 1.0;
   }
   if (H5Lexists(from_file.getId(),
                 "/indata/lambda_precondition_checkerboard_terms", 0) == 1) {
@@ -1144,6 +1152,14 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
         maybe_lambda_preconditioner_scale->value();
   }
 
+  auto maybe_tcon_axis_factor = JsonReadDouble(j, "tcon_axis_factor");
+  if (!maybe_tcon_axis_factor.ok()) {
+    return maybe_tcon_axis_factor.status();
+  }
+  if (maybe_tcon_axis_factor->has_value()) {
+    vmec_indata.tcon_axis_factor = maybe_tcon_axis_factor->value();
+  }
+
   auto maybe_lambda_precondition_checkerboard_terms =
       JsonReadDouble(j, "lambda_precondition_checkerboard_terms");
   if (!maybe_lambda_precondition_checkerboard_terms.ok()) {
@@ -1523,6 +1539,7 @@ absl::StatusOr<std::string> VmecINDATA::ToJson() const {
   output["aphi"] = aphi;
   output["delt"] = delt;
   output["tcon0"] = tcon0;
+  output["tcon_axis_factor"] = tcon_axis_factor;
   output["lforbal"] = lforbal;
   output["lambda_preconditioner_scale"] = lambda_preconditioner_scale;
   output["lambda_precondition_checkerboard_terms"] =
@@ -1909,6 +1926,14 @@ absl::Status IsConsistent(const VmecINDATA& vmec_indata,
         "input variable 'lambda_preconditioner_scale' has to be positive and "
         "finite, but is %g\n",
         vmec_indata.lambda_preconditioner_scale));
+  }
+
+  if (!std::isfinite(vmec_indata.tcon_axis_factor) ||
+      vmec_indata.tcon_axis_factor < 1.0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "input variable 'tcon_axis_factor' has to be finite and at least 1, "
+        "but is %g\n",
+        vmec_indata.tcon_axis_factor));
   }
 
   if (!std::isfinite(vmec_indata.lambda_precondition_checkerboard_terms)) {

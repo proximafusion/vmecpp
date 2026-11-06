@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -221,6 +222,44 @@ TEST(TestVmecINDATA, CheckDeltBounds) {
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
   indata.delt = -0.5;
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+TEST(TestVmecINDATA, CheckTconAxisFactor) {
+  VmecINDATA indata;
+  EXPECT_EQ(indata.tcon_axis_factor, 1.0);
+  indata.tcon_axis_factor = 2.5;
+  EXPECT_TRUE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.tcon_axis_factor = 0.5;
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+  indata.tcon_axis_factor = std::numeric_limits<double>::infinity();
+  EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
+}
+
+TEST(TestVmecINDATA, TconAxisFactorRoundTrips) {
+  const absl::StatusOr<std::string> json =
+      file_io::ReadFile("vmecpp/test_data/solovev.json");
+  ASSERT_TRUE(json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*json);
+  ASSERT_TRUE(indata.ok());
+  indata->tcon_axis_factor = 2.5;
+
+  const absl::StatusOr<std::string> written = indata->ToJson();
+  ASSERT_TRUE(written.ok());
+  const absl::StatusOr<VmecINDATA> from_json = VmecINDATA::FromJson(*written);
+  ASSERT_TRUE(from_json.ok());
+  EXPECT_EQ(from_json->tcon_axis_factor, 2.5);
+
+  const fs::path test_dir =
+      std::filesystem::temp_directory_path() /
+      ("vmecpp_tcon_axis_factor_" + std::to_string(getpid()));
+  std::error_code err;
+  fs::create_directory(test_dir, err);
+  ASSERT_FALSE(err);
+  H5::H5File file(test_dir / "indata.h5", H5F_ACC_TRUNC);
+  ASSERT_TRUE(indata->WriteTo(file).ok());
+  VmecINDATA from_file;
+  ASSERT_TRUE(VmecINDATA::LoadInto(from_file, file).ok());
+  EXPECT_EQ(from_file.tcon_axis_factor, 2.5);
 }
 
 // An unusable profile parameterization silently evaluates to zero in the

@@ -370,14 +370,16 @@ IdealMhdModel::IdealMhdModel(
   }
 }
 
-void IdealMhdModel::setFromINDATA(
-    int ncurr, double adiabaticIndex, double tcon0, bool lforbal,
-    double lambda_preconditioner_scale,
-    double lambda_precondition_checkerboard_terms) {
+void IdealMhdModel::setFromINDATA(int ncurr, double adiabaticIndex,
+                                  double tcon0, bool lforbal,
+                                  double lambda_preconditioner_scale,
+                                  double lambda_precondition_checkerboard_terms,
+                                  double tcon_axis_factor) {
   this->ncurr = ncurr;
   this->lambda_preconditioner_scale_ = lambda_preconditioner_scale;
   this->lambda_precondition_checkerboard_terms_ =
       lambda_precondition_checkerboard_terms;
+  this->tcon_axis_factor_ = tcon_axis_factor;
   this->adiabaticIndex = adiabaticIndex;
   this->tcon0 = tcon0;
   // The m=1 trig weights below are built on the reduced poloidal grid, so the
@@ -2479,7 +2481,8 @@ absl::Status IdealMhdModel::constraintForceMultiplier() {
     // Fortran bcovar.f90: tcon(js) = min(...) * tcon_mul * (32*hs)**2, with hs
     // the radial step. The two factors here are that (32 * deltaS)**2.
     tcon[jF - r_.nsMinF] =
-        tcon_base * tcon_multiplier * 32 * m_fc_.deltaS * 32 * m_fc_.deltaS;
+        tcon_base * tcon_multiplier * 32 * m_fc_.deltaS * 32 * m_fc_.deltaS *
+        ConstraintAxisFactor(tcon_axis_factor_, jF * m_fc_.deltaS);
   }  // j
 
   // nsMaxF1 will always include bdy, even in fixed-bdy mode
@@ -2633,6 +2636,7 @@ LocalForceComposition IdealMhdModel::makeLocalForceComposition(
   comp.faccon = faccon.data();
   comp.ns = m_fc_.ns;
   comp.tcon_multiplier = constraintMultiplierScale();
+  comp.tcon_axis_factor = tcon_axis_factor_;
   comp.sinmui = t_.sinmui.data();
   comp.cosmui = t_.cosmui.data();
   comp.cosnv = t_.cosnv.data();
