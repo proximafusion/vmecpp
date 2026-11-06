@@ -14,6 +14,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 from simsopt._core.optimizable import make_optimizable
+from simsopt.field import BiotSavart, Current, coils_via_symmetries
+from simsopt.geo import create_equally_spaced_curves
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
 from simsopt.mhd.profiles import (
     ProfilePolynomial,
@@ -119,57 +121,42 @@ def test_external_current():
     assert np.allclose(external_current, vmec.external_current())
 
 
-# TODO(eguiraud): This test is present in SIMSOPT's master branch but not in the
-# version that we currently use (v0.18.1): it has been introduced by
-# https://github.com/hiddenSymmetries/simsopt/pull/341, and with v0.18.1
-# the test fails because it's missing the corresponding fix to the free-boundary logic.
-# To be uncommented once we update the SIMSOPT version we use.
-# def test_curve_orientation_sign_for_free_boundary(self):
-#         """
-#         For free-boundary equilibrium calculations to work following stage-2
-#         optimization, the sign of the toroidal field created by the coils must
-#         match the sign of the toroidal field in the original target equilibrium.
-#         This is a particular issue for the finite-beta case, in which the
-#         Btarget from virtual casing has a definite sign. Associated with this
-#         issue, in the ``stage_two_optimization_finite_beta.py`` example, there is a
-#         sign
-#         associated with ``vmec.external_current()`` that must be consistent with the
-#         direction of the coils created by ``create_equally_spaced_curves()``.
-#         """
-#         # The code that follows is extracted from
-#         # stage_two_optimization_finite_beta.py
-#         n_coils_per_half_period = 5
-#         R0 = 5.5
-#         R1 = 1.25
-#         order = 6
-#         filename = 'wout_W7-X_without_coil_ripple_beta0p05_d23p4_tm_reference.nc'
-#         vmec_file = TEST_DIR / filename
-#         vmec = Vmec(vmec_file)
-#         s = vmec.boundary
-#         total_current = vmec.external_current() / (2 * s.nfp)
-#         base_curves = create_equally_spaced_curves(
-#            n_coils_per_half_period,
-#            s.nfp,
-#            stellsym=True,
-#            R0=R0,
-#            R1=R1,
-#            order=order,
-#            numquadpoints=128)
-#         base_currents = [
-#              Current(total_current
-#              / n_coils_per_half_period * 1e-5)
-#              * 1e5 for _ in range(n_coils_per_half_period-1)
-#         ]
-#         total_current = Current(total_current)
-#         total_current.fix_all()
-#         base_currents += [total_current - sum(base_currents)]
-#
-#         coils = coils_via_symmetries(base_curves, base_currents, s.nfp, True)
-#         bs = BiotSavart(coils)
-#         bs.set_points(np.array([[vmec.wout.Rmajor_p, 0, 0]]))
-#         B = bs.B()
-#         print("B:", B)
-#         self.assertGreater(B[0, 1], 0)
+@pytest.mark.parametrize(
+    "wout_file",
+    # positive and negative toroidal flux
+    ["wout_li383_low_res_reference.nc", "wout_cth_like_fixed_bdy.nc"],
+)
+def test_curve_orientation_sign_for_free_boundary(wout_file):
+    """Coils carrying external_current() have the equilibrium's mean R B_phi."""
+    vmec = Vmec(str(TEST_DATA_DIR / wout_file))
+    assert vmec.wout is not None
+    nfp = vmec.boundary.nfp
+    radius = vmec.wout.Rmajor_p
+    ncoils = 5
+    base_curves = create_equally_spaced_curves(
+        ncoils,
+        nfp,
+        stellsym=True,
+        R0=radius,
+        R1=3 * vmec.wout.Aminor_p,
+        order=6,
+        numquadpoints=128,
+    )
+    current = vmec.external_current() / (2 * nfp * ncoils)
+    base_currents = [Current(current) for _ in base_curves]
+    biot_savart = BiotSavart(
+        coils_via_symmetries(base_curves, base_currents, nfp, True)
+    )
+
+    phi = np.linspace(0, 2 * np.pi, 360, endpoint=False)
+    biot_savart.set_points(
+        radius * np.column_stack([np.cos(phi), np.sin(phi), 0 * phi])
+    )
+    b_x, b_y, _ = biot_savart.B().T
+    b_phi = b_y * np.cos(phi) - b_x * np.sin(phi)
+
+    # Ampere's law on a circle that links every coil once.
+    np.testing.assert_allclose(radius * b_phi.mean(), vmec.wout.rbtor, rtol=1e-13)
 
 
 def test_error_on_rerun():

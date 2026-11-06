@@ -753,7 +753,9 @@ class VmecModel {
     RequireLforbalDisabledForExactDerivatives();
     vmecpp::IdealMhdModel &model = *vmec_->m_[0];
     const int gS = static_cast<int>(model.r1_e.size());
-    Eigen::VectorXd dgeom = Eigen::VectorXd::Zero(20 * gS);
+    if (exact_dgeom_.size() != static_cast<Eigen::Index>(20 * gS)) {
+      exact_dgeom_.setZero(20 * gS);
+    }
     // The primal geometry depends only on the current state, not on v, so cache
     // it: a Krylov solve calls this many times at the same state. SetState
     // invalidates the cache. The geometry tangent is the same linear pre-chain
@@ -769,9 +771,9 @@ class VmecModel {
     vmec_->physical_x_backup_[0]->setZero();
     UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
     model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
-                       dgeom.data(), gS, /*primal=*/false);
+                       exact_dgeom_.data(), gS, /*primal=*/false);
     model.applyExactForceJacobian(
-        exact_primal_.data(), dgeom.data(), gS, *vmec_->physical_f_[0],
+        exact_primal_.data(), exact_dgeom_.data(), gS, *vmec_->physical_f_[0],
         *vmec_->decomposed_f_[0], always_fix_m1_gauge);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
   }
@@ -970,6 +972,10 @@ class VmecModel {
   // SetState. Mutable so SetState (const) can clear it.
   mutable Eigen::VectorXd exact_primal_;
   mutable bool exact_primal_valid_ = false;
+
+  // The geometry tangent of the exact product is zeroed once. packGeometry
+  // writes the same entries on every call.
+  Eigen::VectorXd exact_dgeom_;
 
   // Preconditioner / Nestor update bookkeeping, mirroring the like-named Vmec
   // members; the Python loop drives the iteration counters via Evaluate, so the
