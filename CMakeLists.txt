@@ -128,7 +128,9 @@ if(WIN32)
     "-DCMAKE_C_FLAGS=-w -I${_native_deps_include}"
     "-DCMAKE_CXX_FLAGS=/EHsc -w -I${_native_deps_include}"
     -DHDF5_BUILD_UTILS=OFF
-    -DHDF5_ENABLE_MIRROR_VFD=OFF)
+    -DHDF5_ENABLE_MIRROR_VFD=OFF
+    # FindHDF5 otherwise defines H5_BUILT_AS_DYNAMIC_LIB (dllimport) for netCDF.
+    -DHDF5_USE_STATIC_LIBRARIES=ON)
 endif()
 
 if(APPLE)
@@ -209,10 +211,15 @@ ExternalProject_Add(netcdf_native
 # Imported targets pointing at the static libraries the ExternalProjects
 # above install at build time
 add_library(hdf5_c STATIC IMPORTED GLOBAL)
+set(_hdf5_c_link_libs ZLIB::ZLIB)
+if(WIN32)
+  # Windows system libraries the static HDF5 refers to (StrStrIA, sockets).
+  list(APPEND _hdf5_c_link_libs shlwapi ws2_32)
+endif()
 set_target_properties(hdf5_c PROPERTIES
   IMPORTED_LOCATION "${_native_deps_lib}/${_static_prefix}hdf5${_static_suffix}"
   INTERFACE_INCLUDE_DIRECTORIES "${_native_deps_include}"
-  INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+  INTERFACE_LINK_LIBRARIES "${_hdf5_c_link_libs}")
 add_dependencies(hdf5_c hdf5_native)
 
 add_library(hdf5_hl STATIC IMPORTED GLOBAL)
