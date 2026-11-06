@@ -446,6 +446,24 @@ TEST(TestVmecINDATA, CheckSplineKnotsIncreaseAndSpanTheRadius) {
   EXPECT_FALSE(IsConsistent(indata, /*enable_info_messages=*/false).ok());
 }
 
+// INDATA files pad the knots of a spline profile with zeros, as VMEC's
+// fixed-size arrays do; the knot list ends where the padding starts.
+TEST(TestVmecINDATA, SplineKnotPaddingIsDropped) {
+  const absl::StatusOr<std::string> text =
+      file_io::ReadFile("vmecpp/test_data/cth_like_free_bdy.json");
+  ASSERT_TRUE(text.ok());
+  json j = json::parse(*text);
+  j["pcurr_type"] = "cubic_spline_ip";
+  j["ac_aux_s"] = {0.0, 0.25, 0.5, 0.75, 1.0, 0.0, 0.0, 0.0};
+  j["ac_aux_f"] = {1.0, 0.8, 0.5, 0.2, 0.0, 0.0, 0.0, 0.0};
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(j.dump());
+  ASSERT_TRUE(indata.ok()) << indata.status();
+  EXPECT_EQ(indata->ac_aux_s.size(), 5);
+  EXPECT_EQ(indata->ac_aux_s[4], 1.0);
+  EXPECT_EQ(indata->ac_aux_f.size(), 5);
+  EXPECT_TRUE(IsConsistent(*indata, /*enable_info_messages=*/false).ok());
+}
+
 // The vacuum potential's cutoffs default to the plasma's, may only exceed
 // them, and the toroidal grid has to carry the toroidal one.
 TEST(TestVmecINDATA, VacuumCutoffsStayAboveThePlasmaResolution) {
