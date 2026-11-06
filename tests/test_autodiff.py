@@ -1,10 +1,7 @@
-from typing import Any
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from scipy.sparse.linalg import LinearOperator, gmres
 
 import vmecpp
 from vmecpp import autodiff, geometry, qs
@@ -223,92 +220,9 @@ def test_geometry_state_vjp_is_the_transpose_in_three_dimensions(signgs: int) ->
     )
 
 
-def _tangent_through_the_solve(indata, boundary, seed_state):
-    """Forward sensitivity of the solve, using the same exact operator the adjoint uses
-    but in the opposite direction."""
-    model = autodiff._solve_model(indata._to_cpp_vmecindata(), boundary)
-    state = np.asarray(model.get_state(), dtype=np.float64)
-    interior, edge = autodiff._interior_and_boundary(model)
-    # The pinned m=1 gauge entries are prescribed by the boundary, like the
-    # edge entries; the parser tangent below carries their sqrt(s) profile.
-    gauge = autodiff._gauge_entries(model)
-    edge = np.concatenate([edge, gauge])
-    interior = np.setdiff1d(interior, gauge)
-    model.set_state(np.ascontiguousarray(state))
-    model.evaluate(2, 2, True)
-    keep = autodiff._structural_nullfree_interior(model, interior)
-    size = state.size
-
-    def forward(value):
-        return np.asarray(
-            model.exact_hessian_vector_product(np.ascontiguousarray(value)),
-            dtype=np.float64,
-        )
-
-    def restricted(value):
-        embedded = np.zeros(size)
-        embedded[keep] = value
-        return forward(embedded)[keep]
-
-    def precondition(value):
-        embedded = np.zeros(size)
-        embedded[keep] = value
-        return np.asarray(
-            model.apply_preconditioner(np.ascontiguousarray(embedded)),
-            dtype=np.float64,
-        )[keep]
-
-    factory: Any = LinearOperator
-    operator = factory((keep.size, keep.size), matvec=restricted, dtype=np.float64)
-    preconditioner = factory(
-        (keep.size, keep.size), matvec=precondition, dtype=np.float64
-    )
-    seeded = np.zeros(size)
-    seeded[edge] = seed_state[edge]
-    tangent, info = gmres(
-        operator,
-        -forward(seeded)[keep],
-        M=preconditioner,
-        rtol=1.0e-12,
-        restart=200,
-        maxiter=400,
-    )
-    assert info == 0
-    state_tangent = np.zeros(size)
-    state_tangent[keep] = tangent
-    state_tangent[edge] = seed_state[edge]
-
-    step = 1.0e-6  # MakeGeometry is linear in the state, so this is exact
-
-    def flat(value):
-        model.set_state(np.ascontiguousarray(value))
-        return autodiff._cpp_geometry_flat(
-            model.get_geometry(), model.ns, model.mpol, model.ntor
-        )
-
-    result = (
-        flat(state + step * state_tangent) - flat(state - step * state_tangent)
-    ) / (2.0 * step)
-    model.set_state(np.ascontiguousarray(state))
-    return result
-
-
-def _parser_state_tangent(indata, boundary, direction):
-    """The fixed-boundary parser is linear, so this difference is exact."""
-    ns = int(np.asarray(indata.ns_array)[-1])
-    step = 1.0e-6
-
-    def state(value):
-        perturbed = indata.model_copy(update={"rbc": value[0], "zbs": value[1]})
-        model = _vmecpp.VmecModel.create(perturbed._to_cpp_vmecindata(), ns)
-        return np.asarray(model.get_state(), dtype=np.float64)
-
-    return (state(boundary + step * direction) - state(boundary - step * direction)) / (
-        2.0 * step
-    )
-
-
-def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity() -> None:
+def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity(
+    forward_sensitivity,
+) -> None:
     """The adjoint is validated against the tangent, not against a finite difference of
     the nonlinear solve.
 
@@ -326,8 +240,7 @@ def test_solve_vjp_is_the_transpose_of_the_forward_sensitivity() -> None:
     direction = generator.standard_normal(boundary.shape)
     cotangent = generator.standard_normal(solver.output_shape)
 
-    seed_state = _parser_state_tangent(indata, boundary, direction)
-    tangent = _tangent_through_the_solve(indata, boundary, seed_state)
+    tangent = forward_sensitivity(indata, boundary, direction)
     adjoint = solver._backward_callback(boundary, cotangent)[0]
 
     np.testing.assert_allclose(

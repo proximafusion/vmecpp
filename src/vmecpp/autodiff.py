@@ -14,13 +14,14 @@ With the gauge pinned, the gauge entries of the state are a linear function of
 the boundary, and the VJP pulls them back to the boundary like the boundary
 entries themselves.
 
-The first public parameterization is the fixed-boundary case, with either a
+The public parameterization is the fixed-boundary case, with either a
 prescribed iota or a prescribed toroidal current profile (``ncurr``). The
-differentiable parameter is one dense array with rows ``rbc`` and ``zbs`` and
-shape ``(2, mpol, 2 * ntor + 1)``. This first solver wrapper deliberately
-supports the stellarator-symmetric fixed-boundary case. The geometry API
-itself already supports asymmetric snapshots. Power-series profile parameters
-are differentiable as well; free-boundary parameters are not.
+differentiable parameter is one dense array with rows ``rbc`` and ``zbs``, and
+for ``lasym`` also ``rbs`` and ``zbc``, of shape ``(rows, mpol, 2 * ntor + 1)``.
+An asymmetric boundary is rotated in the poloidal angle by an angle that
+depends on its m = 1, n = 0 coefficients before the solve; the VJP includes
+that dependence. Power-series profile parameters are differentiable as well;
+free-boundary parameters are not.
 """
 
 from __future__ import annotations
@@ -68,10 +69,27 @@ def _cpp_geometry_flat(value, ns: int, mpol: int, ntor: int) -> np.ndarray:
     return np.concatenate(arrays)
 
 
+def _geometry_from_flat(flat, vmec_input) -> tuple[geometry.Geometry, Any]:
+    """The geometry at the front of a flat solver output, and the entries after it."""
+    ns = int(np.asarray(vmec_input.ns_array)[-1])
+    mpol = vmec_input.mpol
+    ntor = vmec_input.ntor
+    modes = ns * mpol * (ntor + 1)
+    arrays = [flat[:ns], flat[ns : 2 * ns]]
+    offset = 2 * ns
+    for _ in _GEOMETRY_COEFFICIENTS:
+        arrays.append(flat[offset : offset + modes].reshape(ns, mpol, ntor + 1))
+        offset += modes
+    return geometry.Geometry(*arrays, nfp=vmec_input.nfp), flat[offset:]
+
+
 def _make_indata(template, boundary: np.ndarray, profiles=None):
     indata = template.copy()
     indata.rbc[...] = boundary[0]
     indata.zbs[...] = boundary[1]
+    if indata.lasym:
+        indata.rbs[...] = boundary[2]
+        indata.zbc[...] = boundary[3]
     for name, value in (profiles or {}).items():
         setattr(indata, name, float(value) if np.ndim(value) == 0 else value)
     return indata
@@ -197,35 +215,54 @@ def _interior_and_boundary(model) -> tuple[np.ndarray, np.ndarray]:
     return interior_array, boundary_array
 
 
+def _gauge_spans(model) -> list[str]:
+    """The spans whose ``m = 1`` slot holds a pinned gauge combination."""
+    if model.mpol_geometry <= 1:
+        return []
+    return (["z_cs"] if model.lthreed else []) + (
+        ["z_cc"] if model.lasym and model.lthreed else []
+    )
+
+
 def _gauge_entries(model) -> np.ndarray:
     """State entries holding the m=1 poloidal-origin gauge on interior surfaces.
 
     ``FourierCoeffs::m1Constraint`` stores ``(r_ss - z_cs) / 2`` for ``m = 1``
-    in the ``z_cs`` slot. Its force is zeroed when the gauge is fixed, so with
+    in the ``z_cs`` slot, and for ``lasym`` ``(r_sc - z_cc) / 2`` in the ``z_cc``
+    slot. Their forces are zeroed when the gauge is fixed, so with
     ``always_fix_m1_gauge`` the solve leaves these entries at the initial guess:
     the boundary value scaled by ``sqrt(s)`` on every surface. The ``n = 0``
-    entry is identically zero and is left to the structural deflation. Modes
+    entries are identically zero, the asymmetric one by the poloidal-origin
+    shift of the boundary, and are left to the structural deflation. Modes
     excluded by the geometry resolution are zeroed during force evaluation.
     """
-    if not model.lthreed or model.mpol_geometry <= 1:
-        return np.zeros(0, dtype=np.int64)
     slices = _span_slices(model)
     modes_per_surface = model.mpol * (model.ntor + 1)
-    span = slices["z_cs"]
     entries = [
-        span.start + j * modes_per_surface + 1 * (model.ntor + 1) + n
+        slices[name].start + j * modes_per_surface + 1 * (model.ntor + 1) + n
+        for name in _gauge_spans(model)
         for j in range(1, model.ns - 1)
         for n in range(1, model.ntor_geometry + 1)
     ]
     return np.asarray(entries, dtype=np.int64)
 
 
+def _gauge_span_starts(model, gauge: np.ndarray) -> np.ndarray:
+    starts = np.asarray(
+        [_span_slices(model)[name].start for name in _gauge_spans(model)]
+    )
+    if starts.size == 0:
+        return np.zeros_like(gauge)
+    span_size = model.ns * model.mpol * (model.ntor + 1)
+    index = np.searchsorted(starts + span_size, gauge, side="right")
+    return starts[index]
+
+
 def _gauge_radial_weight(model, gauge: np.ndarray) -> np.ndarray:
     """``sqrt(s_j)`` for every gauge entry: the factor mapping the boundary gauge
     to surface ``j`` in ``FourierGeometry::interpFromBoundaryAndAxis``."""
     modes_per_surface = model.mpol * (model.ntor + 1)
-    span_start = _span_slices(model)["z_cs"].start
-    surface = (gauge - span_start) // modes_per_surface
+    surface = (gauge - _gauge_span_starts(model, gauge)) // modes_per_surface
     return np.sqrt(surface / (model.ns - 1.0))
 
 
@@ -235,7 +272,7 @@ def _pull_gauge_back_to_boundary(
     """Fold the gauge cotangents onto the boundary gauge entries they derive from."""
     result = state_bar.copy()
     modes_per_surface = model.mpol * (model.ntor + 1)
-    span_start = _span_slices(model)["z_cs"].start
+    span_start = _gauge_span_starts(model, gauge)
     mode = (gauge - span_start) % modes_per_surface
     edge = span_start + (model.ns - 1) * modes_per_surface + mode
     np.add.at(result, edge, _gauge_radial_weight(model, gauge) * state_bar[gauge])
@@ -243,20 +280,34 @@ def _pull_gauge_back_to_boundary(
     return result
 
 
-def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
-    """Transpose the fixed-boundary parser for a symmetric input."""
-    if model.lasym:
-        error_message = (
-            "DifferentiableVmec currently requires lasym=false; the asymmetric "
-            "poloidal-origin shift is not a differentiable parameterization"
-        )
-        raise RuntimeError(error_message)
+def _poloidal_origin_shift(model, boundary: np.ndarray) -> tuple[float, float]:
+    """The angle ``delta`` by which ``Boundaries::parseToInternalArrays`` rotates an
+    asymmetric boundary, and the sign ``sigma`` of the gauge it targets."""
+    ntor = model.ntor
+    handedness = boundary[0, 1].sum() * boundary[1, 1].sum() - (
+        boundary[2, 1].sum() * boundary[3, 1].sum()
+    )
+    sign_of_jacobian = -1.0
+    will_flip_theta = handedness * sign_of_jacobian > 0.0
+    sigma = -sign_of_jacobian * (-1.0 if will_flip_theta else 1.0)
+    delta = np.arctan2(
+        boundary[2, 1, ntor] - sigma * boundary[3, 1, ntor],
+        boundary[0, 1, ntor] + sigma * boundary[1, 1, ntor],
+    )
+    return float(delta), sigma
+
+
+def _boundary_from_state_vjp(
+    model, state_bar: np.ndarray, boundary: np.ndarray | None = None
+) -> np.ndarray:
+    """Transpose the fixed-boundary parser; an asymmetric input needs ``boundary``."""
     slices = _span_slices(model)
     mpol = model.mpol
     ntor = model.ntor
     modes_per_surface = mpol * (ntor + 1)
     edge = model.ns - 1
-    result = np.zeros((2, mpol, 2 * ntor + 1), dtype=np.float64)
+    rows = 4 if model.lasym else 2
+    result = np.zeros((rows, mpol, 2 * ntor + 1), dtype=np.float64)
 
     def edge_value(name: str, m: int, n: int) -> float:
         if name not in slices:
@@ -267,10 +318,8 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     # Undo the state scaling and the m=1 gauge transform used by
     # Boundaries::ensureM1Constrained. The boundary parser itself is the
     # transpose of the positive/negative-toroidal-mode accumulation below.
-    rbcc_bar = np.zeros((mpol, ntor + 1))
-    zbsc_bar = np.zeros((mpol, ntor + 1))
-    rbss_bar = np.zeros((mpol, ntor + 1))
-    zbcs_bar = np.zeros((mpol, ntor + 1))
+    names = ["r_cc", "z_sc", "r_ss", "z_cs", "r_sc", "z_cc", "r_cs", "z_ss"]
+    bar = {name: np.zeros((mpol, ntor + 1)) for name in names}
     for m in range(mpol):
         for n in range(ntor + 1):
             if m >= model.mpol_geometry or n > model.ntor_geometry:
@@ -278,40 +327,93 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
             scale = (1.0 if m == 0 else np.sqrt(2.0)) * (
                 1.0 if n == 0 else np.sqrt(2.0)
             )
-            rbcc_bar[m, n] = edge_value("r_cc", m, n) / scale
-            zbsc_bar[m, n] = edge_value("z_sc", m, n) / scale
-            if model.lthreed:
-                rbss_bar[m, n] = edge_value("r_ss", m, n) / scale
-                zbcs_bar[m, n] = edge_value("z_cs", m, n) / scale
-    if model.lthreed and mpol > 1:
-        for n in range(ntor + 1):
-            r_bar = rbss_bar[1, n]
-            z_bar = zbcs_bar[1, n]
-            rbss_bar[1, n] = 0.5 * (r_bar + z_bar)
-            zbcs_bar[1, n] = 0.5 * (r_bar - z_bar)
+            for name in names:
+                bar[name][m, n] = edge_value(name, m, n) / scale
+    for r_name, z_name in (("r_ss", "z_cs"), ("r_sc", "z_cc")):
+        if r_name in slices and z_name in slices and mpol > 1:
+            r_bar = bar[r_name][1].copy()
+            z_bar = bar[z_name][1].copy()
+            bar[r_name][1] = 0.5 * (r_bar + z_bar)
+            bar[z_name][1] = 0.5 * (r_bar - z_bar)
 
     if model.have_to_flip_theta:
         for m in range(1, mpol):
             parity = 1.0 if m % 2 == 0 else -1.0
-            rbcc_bar[m] *= parity
-            zbsc_bar[m] *= -parity
-            if model.lthreed:
-                rbss_bar[m] *= -parity
-                zbcs_bar[m] *= parity
+            for name, factor in (
+                ("r_cc", 1),
+                ("z_sc", -1),
+                ("r_ss", -1),
+                ("z_cs", 1),
+                ("r_sc", -1),
+                ("z_cc", 1),
+                ("r_cs", 1),
+                ("z_ss", -1),
+            ):
+                bar[name][m] *= factor * parity
 
+    # cotangents of the (rotated) rbc, zbs, rbs, zbc the parser sorts
     for m in range(mpol):
         for signed_n in range(-ntor, ntor + 1):
             source = ntor + signed_n
             target = abs(signed_n)
             sign = 1.0 if signed_n > 0 else -1.0 if signed_n < 0 else 0.0
-            result[0, m, source] += rbcc_bar[m, target]
-            if model.lthreed and m > 0:
-                result[0, m, source] += sign * rbss_bar[m, target]
+            result[0, m, source] += bar["r_cc"][m, target]
             if m > 0:
-                result[1, m, source] += zbsc_bar[m, target]
-            if model.lthreed:
-                result[1, m, source] -= sign * zbcs_bar[m, target]
-    return result
+                result[0, m, source] += sign * bar["r_ss"][m, target]
+                result[1, m, source] += bar["z_sc"][m, target]
+            result[1, m, source] -= sign * bar["z_cs"][m, target]
+            if model.lasym:
+                if m > 0:
+                    result[2, m, source] += bar["r_sc"][m, target]
+                    result[3, m, source] += sign * bar["z_ss"][m, target]
+                result[2, m, source] -= sign * bar["r_cs"][m, target]
+                result[3, m, source] += bar["z_cc"][m, target]
+    if not model.lasym:
+        return result
+    if boundary is None:
+        error_message = "the asymmetric boundary parser transpose needs the boundary"
+        raise ValueError(error_message)
+
+    # Transpose of the rotation by \delta(rbc, zbs, rbs, zbc at m = 1, n = 0):
+    # rbc' = rbc \cos(m \delta) + rbs \sin(m \delta), zbs' = zbs \cos - zbc \sin,
+    # rbs' = rbs \cos - rbc \sin, zbc' = zbc \cos + zbs \sin.
+    delta, sigma = _poloidal_origin_shift(model, boundary)
+    m_index = np.arange(mpol)[:, None]
+    cos, sin = np.cos(m_index * delta), np.sin(m_index * delta)
+    rbc, zbs, rbs, zbc = (np.asarray(row, dtype=np.float64) for row in boundary)
+    rotated = (
+        rbc * cos + rbs * sin,
+        zbs * cos - zbc * sin,
+        rbs * cos - rbc * sin,
+        zbc * cos + zbs * sin,
+    )
+    delta_bar = float(
+        np.sum(
+            m_index
+            * (
+                result[0] * rotated[2]
+                - result[1] * rotated[3]
+                - result[2] * rotated[0]
+                + result[3] * rotated[1]
+            )
+        )
+    )
+    unrotated = np.stack(
+        [
+            result[0] * cos - result[2] * sin,
+            result[1] * cos + result[3] * sin,
+            result[0] * sin + result[2] * cos,
+            -result[1] * sin + result[3] * cos,
+        ]
+    )
+    x = rbc[1, ntor] + sigma * zbs[1, ntor]
+    y = rbs[1, ntor] - sigma * zbc[1, ntor]
+    radius2 = x * x + y * y
+    unrotated[0, 1, ntor] -= delta_bar * y / radius2
+    unrotated[1, 1, ntor] -= delta_bar * sigma * y / radius2
+    unrotated[2, 1, ntor] += delta_bar * x / radius2
+    unrotated[3, 1, ntor] -= delta_bar * sigma * x / radius2
+    return unrotated
 
 
 def _structural_nullfree_interior(
@@ -540,9 +642,13 @@ def _implicit_vjps(
     geometry_bars: np.ndarray,
     with_profiles: bool = False,
     factorization: _Factorization | None = None,
+    boundary: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, _Factorization | None]:
     """Boundary and half-grid profile cotangents of each row of ``geometry_bars``, and
-    the factorization of the transposed interior system that serves them all."""
+    the factorization of the transposed interior system that serves them all.
+
+    ``boundary`` is the differentiated parameter, needed for an asymmetric input.
+    """
     if not getattr(model, "has_exact_force_jacobian", False):
         error_message = (
             "This VMEC++ build has no exact residual transpose. Rebuild with "
@@ -606,17 +712,20 @@ def _implicit_vjps(
             poloidal_flux_bar = geometry_bar[ns : 2 * ns]
             profile_bar = np.stack(model.profile_vjp(-embedded, poloidal_flux_bar))
             profile_bar[1] *= -1.0 if model.have_to_flip_theta else 1.0
-        boundary_bars.append(_boundary_from_state_vjp(model, full_state_bar))
+        boundary_bars.append(_boundary_from_state_vjp(model, full_state_bar, boundary))
         profile_bars.append(profile_bar)
     return np.stack(boundary_bars), np.stack(profile_bars), factorization
 
 
 def _implicit_vjp(
-    model, geometry_bar: np.ndarray, with_profiles: bool = False
+    model,
+    geometry_bar: np.ndarray,
+    with_profiles: bool = False,
+    boundary: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """The boundary cotangent and that of :func:`autodiff_wout.half_grid_profiles`."""
     boundary_bars, profile_bars, _ = _implicit_vjps(
-        model, np.asarray(geometry_bar)[None], with_profiles
+        model, np.asarray(geometry_bar)[None], with_profiles, boundary=boundary
     )
     return boundary_bars[0], profile_bars[0]
 
@@ -642,12 +751,6 @@ class DifferentiableVmec:
         if self.vmec_input.lfreeb:
             error_message = "DifferentiableVmec currently requires lfreeb=false"
             raise ValueError(error_message)
-        if self.vmec_input.lasym:
-            error_message = (
-                "DifferentiableVmec currently requires lasym=false; use the "
-                "product-basis geometry API for asymmetric snapshots"
-            )
-            raise ValueError(error_message)
         if not isinstance(self.vmec_input.mpol, int) or not isinstance(
             self.vmec_input.ntor, int
         ):
@@ -660,7 +763,9 @@ class DifferentiableVmec:
 
     @property
     def parameter_shape(self) -> tuple[int, int, int]:
-        return (2, self.vmec_input.mpol, 2 * self.vmec_input.ntor + 1)
+        """Rows ``rbc``, ``zbs`` and, for ``lasym``, ``rbs``, ``zbc``."""
+        rows = 4 if self.vmec_input.lasym else 2
+        return (rows, self.vmec_input.mpol, 2 * self.vmec_input.ntor + 1)
 
     @property
     def ns(self) -> int:
@@ -753,6 +858,7 @@ class DifferentiableVmec:
             geometry_bars,
             with_profiles=bool(profiles),
             factorization=solve.get("factorization"),
+            boundary=boundary,
         )
         return boundary_bars, profile_bars
 
@@ -862,16 +968,7 @@ class DifferentiableVmec:
             return (*bars, jax.tree.map(jnp.zeros_like, values))
 
         solve_flat.defvjp(solve_fwd, solve_bwd)
-        flat = solve_flat(boundary, half, values)
-        mpol = self.vmec_input.mpol
-        ntor = self.vmec_input.ntor
-        modes = ns * mpol * (ntor + 1)
-        arrays = [flat[:ns], flat[ns : 2 * ns]]
-        offset = 2 * ns
-        for _ in _GEOMETRY_COEFFICIENTS:
-            arrays.append(flat[offset : offset + modes].reshape(ns, mpol, ntor + 1))
-            offset += modes
-        return geometry.Geometry(*arrays, nfp=self.vmec_input.nfp), flat[offset:]
+        return _geometry_from_flat(solve_flat(boundary, half, values), self.vmec_input)
 
 
 def make_solver(vmec_input) -> DifferentiableVmec:
@@ -906,7 +1003,7 @@ class _RunSolver(DifferentiableVmec):
     """:class:`DifferentiableVmec` whose forward solve is a pinned-gauge C++ run.
 
     The C++ output of the forward solve supplies what the JAX output stage does
-    not compute (jxbout, mercier, threed1, the solver diagnostics) and, as the
+    not compute (mercier, threed1, the solver diagnostics) and, as the
     outputs after the geometry, the half-grid mass, iota and buco profiles and the
     sign the solver gives iota. The VJP
     linearizes at the state of a ``VmecModel`` hot-restarted from the forward
