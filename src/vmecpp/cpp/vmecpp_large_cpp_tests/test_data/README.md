@@ -14,7 +14,7 @@ All combinations of the following choices should be tested:
 | `solovev_analytical`           | F | F | T | F |
 | TODO                           | F | F | T | T |
 | `cth_like_fixed_bdy_iota`      | F | T | F | F |
-| TODO                           | F | T | F | T |
+| `cth_like_free_bdy_iota`       | F | T | F | T |
 | `cth_like_fixed_bdy`           | F | T | T | F |
 | `cth_like_free_bdy`            | F | T | T | T |
 | `up_down_asym`                 | T | F | F | F |
