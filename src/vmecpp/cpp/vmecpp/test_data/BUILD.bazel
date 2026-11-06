@@ -152,6 +152,14 @@ filegroup(
 )
 
 filegroup(
+    name = "constellaration_nfp5",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "constellaration_nfp5.json",
+    ],
+)
+
+filegroup(
     name = "cth_like_free_bdy_iota",
     visibility = ["//visibility:public"],
     srcs = [
