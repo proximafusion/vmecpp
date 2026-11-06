@@ -29,7 +29,6 @@ import collections
 import itertools
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from threading import Lock
 from typing import Any
 
 import jax
@@ -406,23 +405,10 @@ class _BlockTridiagonal:
         for members in self.members:
             self.local[members] = np.arange(members.size)
         width = max(members.size for members in self.members)
-        self.diagonal = np.zeros((self.ns, width, width))
-        self.lower = np.zeros((self.ns, width, width))
-        self.upper = np.zeros((self.ns, width, width))
+        # the lower, diagonal and upper blocks in one array, set by flat position
+        self.blocks = np.zeros((3, self.ns, width, width))
+        self.lower, self.diagonal, self.upper = self.blocks
         self.pivots: list[np.ndarray] = []
-
-    def set_entries(self, rows: np.ndarray, columns: np.ndarray, values) -> None:
-        offset = self.surface[columns] - self.surface[rows]
-        if np.any(np.abs(offset) > 1):
-            error_message = "entry outside the block tridiagonal band"
-            raise ValueError(error_message)
-        for band, blocks in ((-1, self.lower), (0, self.diagonal), (1, self.upper)):
-            mask = offset == band
-            blocks[
-                self.surface[rows[mask]],
-                self.local[rows[mask]],
-                self.local[columns[mask]],
-            ] = values[mask]
 
     def _block(self, blocks: np.ndarray, j: int, k: int) -> np.ndarray:
         return blocks[j, : self.members[j].size, : self.members[k].size]
@@ -535,27 +521,38 @@ def _assemble_block_tridiagonal(
     group_key = (solved_surface % 3) * n_modes + mode[solved]
     order = np.argsort(group_key, kind="stable")
     boundaries = np.flatnonzero(np.diff(group_key[order])) + 1
-    # probed_position[j + 1]: position in solved of the probed entry on surface j,
-    # padded so the neighbours j = -1 and j = ns of the edge surfaces read -1.
-    probed_position = np.full(matrix.ns + 2, -1, dtype=np.int64)
-    lock = Lock()
+    # entry[j + 1, m]: position in solved of mode m on surface j, padded so the
+    # neighbours j = -1 and j = ns of the edge surfaces read -1.
+    entry = np.full((matrix.ns + 2, n_modes), -1, dtype=np.int64)
+    entry[solved_surface + 1, mode[solved]] = np.arange(solved.size)
+    width = matrix.blocks.shape[-1]
+    # per color, the probed surface of each row and the flat position of its entry
+    # without the term of the probed entry's local index
+    probed, start = [], []
+    for color in range(3):
+        column_surface = solved_surface - ((solved_surface - color + 1) % 3 - 1)
+        band = column_surface - solved_surface + 1
+        if transposed:
+            # (H^T)[column, row] = H[row, column]
+            start.append(
+                ((2 - band) * matrix.ns + column_surface) * width**2 + matrix.local
+            )
+        else:
+            start.append(
+                ((band * matrix.ns + solved_surface) * width + matrix.local) * width
+            )
+        probed.append(column_surface + 1)
+    stride = width if transposed else 1
+    flat = matrix.blocks.reshape(-1)
 
     def probe_group(worker, group: np.ndarray) -> None:
-        color = int(group_key[group[0]]) // n_modes
+        color, probed_mode = divmod(int(group_key[group[0]]), n_modes)
         probe = np.zeros(state_size)
         probe[solved[group]] = 1.0
         product = _force_product(worker, probe, exact=exact)[solved]
-        hit = np.flatnonzero(product)
-        hit_surface = solved_surface[hit]
-        column_surface = hit_surface - ((hit_surface - color + 1) % 3 - 1)
-        with lock:
-            probed_position[solved_surface[group] + 1] = group
-            column = probed_position[column_surface + 1]
-            probed_position[solved_surface[group] + 1] = -1
-            found = column >= 0
-            # (H^T)[column, row] = H[row, column]
-            rows, columns = (column, hit) if transposed else (hit, column)
-            matrix.set_entries(rows[found], columns[found], product[hit[found]])
+        column = entry[probed[color], probed_mode]
+        hit = (product != 0.0) & (column >= 0)
+        flat[start[color][hit] + stride * matrix.local[column[hit]]] = product[hit]
 
     _map_on_models(probe_group, [model, *extra_models], np.split(order, boundaries))
     return matrix
