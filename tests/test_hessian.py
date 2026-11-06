@@ -8,15 +8,18 @@ The Hessian-vector product is a central directional derivative of the analytic
 force (the gradient of VMEC's augmented functional), computed inside VMEC++:
 H v = (F(x + eps v) - F(x - eps v)) / (2 eps). It must be linear in v and agree
 with an independent finite difference of the force, and it restores the state.
+The exact product of an Enzyme build repeats to the last bit.
 """
 
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 SOLOVEV = Path(__file__).resolve().parents[1] / "examples" / "data" / "solovev.json"
+CTH_LIKE = SOLOVEV.with_name("cth_like_fixed_bdy.json")
 
 
 def _model(ns: int = 11):
@@ -62,3 +65,28 @@ def test_hvp_restores_state():
     v = rng.standard_normal(x0.size)
     m.hessian_vector_product(np.ascontiguousarray(v))
     assert np.allclose(np.asarray(m.get_state(), float), x0)
+
+
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="the exact product needs an Enzyme-enabled build",
+)
+def test_a_repeated_exact_hvp_is_bitwise_equal():
+    """An exact product repeated after a product of another direction at another state
+    is the same to the last bit."""
+    m = _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(CTH_LIKE)), 11)
+    m.evaluate(2, 2, True)
+    x = np.asarray(m.get_state(), float).copy()
+    rng = np.random.default_rng(3)
+    first, second = rng.standard_normal(x.size), rng.standard_normal(x.size)
+
+    def product(state, direction):
+        m.set_state(np.ascontiguousarray(state))
+        m.evaluate(2, 2, True)
+        return np.asarray(
+            m.exact_hessian_vector_product(np.ascontiguousarray(direction)), float
+        ).copy()
+
+    before = product(x, first)
+    product(x * (1.0 + 1.0e-6 * rng.standard_normal(x.size)), second)
+    np.testing.assert_allclose(product(x, first), before, rtol=0.0, atol=0.0)

@@ -158,3 +158,33 @@ filegroup(
         "constellaration_nfp5.json",
     ],
 )
+
+filegroup(
+    name = "cth_like_free_bdy_iota",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "cth_like_free_bdy_iota.json",
+        "input.cth_like_free_bdy_iota",
+        "mgrid_cth_like.nc",
+        "wout_cth_like_free_bdy_iota.nc",
+    ],
+)
+
+filegroup(
+    name = "up_down_asym_wout",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "input.up_down_asym",
+        "wout_up_down_asym.nc",
+        "wout_up_down_asym_current.nc",
+    ],
+)
+
+filegroup(
+    name = "cth_like_fixed_bdy_asym_wout",
+    visibility = ["//visibility:public"],
+    srcs = [
+        "wout_cth_like_fixed_bdy_asym.nc",
+        "wout_cth_like_fixed_bdy_asym_iota.nc",
+    ],
+)

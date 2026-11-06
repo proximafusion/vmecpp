@@ -627,6 +627,12 @@ class IdealMhdModel {
   VacuumPressureState& m_vacuum_pressure_state_;
   std::int64_t force_evaluation_count_ = 0;
 
+#ifdef VMECPP_ENABLE_ENZYME
+  // The scratch of applyExactForceJacobian is zeroed once. Each forward pass
+  // writes the same entries before it reads them.
+  std::vector<double> exact_work_, exact_dwork_, exact_force_, exact_dforce_;
+#endif  // VMECPP_ENABLE_ENZYME
+
 #ifdef VMECPP_USE_FFTX
   // Pre-computed FFTX kernels for the toroidal (zeta) Fourier transforms.
   // Created once at construction and reused across iterations. Execution is
