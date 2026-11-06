@@ -122,7 +122,6 @@ if(WIN32)
     -DZLIB_ROOT=${_native_deps_prefix}
     -DZLIB_LIBRARY=${_native_deps_lib}/zlib_static.lib
     -DZLIB_INCLUDE_DIR=${_native_deps_include}
-    -DH5_ZLIB_HEADER=zlib.h
     "-DCMAKE_C_FLAGS=-w -I${_native_deps_include}"
     "-DCMAKE_CXX_FLAGS=/EHsc -w -I${_native_deps_include}")
 endif()
@@ -150,8 +149,17 @@ if(WIN32)
   set(_hdf5_extra_deps zlib_native)
 endif()
 
+# HDF5 passes its zlib header name as a quoted per-source definition, which the
+# clang-cl command line drops; spell the include out.
+set(_hdf5_patch_command "")
+if(WIN32)
+  set(_hdf5_patch_command PATCH_COMMAND ${CMAKE_COMMAND} -DHDF5_SRC=<SOURCE_DIR>
+      -P ${PROJECT_SOURCE_DIR}/cmake/patch_hdf5_zlib_include.cmake)
+endif()
+
 ExternalProject_Add(hdf5_native
   DEPENDS ${_hdf5_extra_deps}
+  ${_hdf5_patch_command}
   URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_3.tar.gz"
   URL_HASH SHA256=df5ee33c74d5efb59738075ef96f4201588e1f1eeb233f047ac7fd1072dee1f6
   LOG_DOWNLOAD ON
