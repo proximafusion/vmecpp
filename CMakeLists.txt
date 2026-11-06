@@ -41,8 +41,11 @@ endif()
 add_compile_definitions(EIGEN_MAX_ALIGN_BYTES=32 EIGEN_MAX_STATIC_ALIGN_BYTES=32)
 
 # use ccache if available
-find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
-if(EXISTS ${CCACHE_COMMAND})
+# (Not on Windows, where ccache-swig is a SWIG shim rather than a compiler cache.)
+if(NOT WIN32)
+  find_program(CCACHE_COMMAND NAMES ccache ccache-swig)
+endif()
+if(CCACHE_COMMAND AND EXISTS ${CCACHE_COMMAND})
   message(STATUS "Found ccache: ${CCACHE_COMMAND}")
   set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_COMMAND})
   set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_COMMAND})
