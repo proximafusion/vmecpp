@@ -5,10 +5,11 @@
 
 import logging
 from pathlib import Path
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 
 import jaxtyping as jt
 import numpy as np
+from scipy.integrate import quad
 from simsopt._core.optimizable import Optimizable
 from simsopt._core.util import ObjectiveFailure
 from simsopt.geo.surfacerzfourier import SurfaceRZFourier
@@ -28,6 +29,9 @@ from vmecpp._qs import (  # noqa: F401
     quasisymmetry_residuals,
     quasisymmetry_total,
 )
+
+if TYPE_CHECKING:
+    from simsopt.mhd.profiles import Profile
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +58,16 @@ class Vmec(Optimizable):
 
     Based on the original SIMSOPT wrapper for VMEC, see
     https://github.com/hiddenSymmetries/simsopt/blob/master/src/simsopt/mhd/vmec.py.
+
+    A SIMSOPT ``Profile`` assigned to ``pressure_profile``, ``current_profile`` or
+    ``iota_profile`` replaces that profile of the input.
     """
 
     _boundary: SurfaceRZFourier
+    # SIMSOPT profiles replacing those of the input, or None.
+    _pressure_profile: "Profile | None"
+    _current_profile: "Profile | None"
+    _iota_profile: "Profile | None"
     # Corresponds to the keep_all_files flag passed to __init__:
     # if True, WOutFileContents are saved as a NetCDF3 file compatible
     # with Fortran VMEC.
@@ -116,6 +127,9 @@ class Vmec(Optimizable):
         self._should_save_outputs = keep_all_files
 
         # default values from original SIMSOPT wrapper
+        self._pressure_profile = None
+        self._current_profile = None
+        self._iota_profile = None
         self.n_pressure = 10
         self.n_current = 10
         self.n_iota = 10
@@ -443,6 +457,41 @@ class Vmec(Optimizable):
             self.append_parent(boundary)
             self.need_to_run_code = True
 
+    @property
+    def pressure_profile(self) -> "Profile | None":
+        return self._pressure_profile
+
+    @pressure_profile.setter
+    def pressure_profile(self, pressure_profile: "Profile | None") -> None:
+        self._replace_profile("_pressure_profile", pressure_profile)
+
+    @property
+    def current_profile(self) -> "Profile | None":
+        return self._current_profile
+
+    @current_profile.setter
+    def current_profile(self, current_profile: "Profile | None") -> None:
+        self._replace_profile("_current_profile", current_profile)
+
+    @property
+    def iota_profile(self) -> "Profile | None":
+        return self._iota_profile
+
+    @iota_profile.setter
+    def iota_profile(self, iota_profile: "Profile | None") -> None:
+        self._replace_profile("_iota_profile", iota_profile)
+
+    def _replace_profile(self, attribute: str, profile: "Profile | None") -> None:
+        old_profile = getattr(self, attribute)
+        if profile is old_profile:
+            return
+        if old_profile is not None:
+            self.remove_parent(old_profile)
+        setattr(self, attribute, profile)
+        if profile is not None:
+            self.append_parent(profile)
+            self.need_to_run_code = True
+
     @staticmethod
     def _last_mpol_ntor(indata: vmecpp.VmecInput) -> tuple[int, int]:
         """(indata.mpol, indata.ntor) as plain ints.
@@ -470,13 +519,37 @@ class Vmec(Optimizable):
         updated_surface = surface.change_resolution(mpol, ntor)
         return surface if updated_surface is None else updated_surface
 
-    def set_indata(self) -> None:
-        """Transfer data from simsopt objects to vmec.indata.
+    def set_profile(self, longname: str, shortname: str, letter: str) -> None:
+        """Transfer a SIMSOPT profile to indata as the power series or spline of the
+        input's profile type."""
+        profile = getattr(self, f"{longname}_profile")
+        if profile is None:
+            return
 
-        Presently, this function sets the boundary shape and magnetic axis shape.  In
-        the future, the input profiles will be set here as well. This data transfer is
-        performed before writing a Vmec input file or running Vmec.
-        """
+        assert self.indata is not None
+        n = getattr(self, f"n_{longname}")
+        profile_type = getattr(self.indata, f"p{shortname}_type").lower()
+        if profile_type.startswith("power_series"):
+            # the Gauss-Legendre points keep the polynomial fit well conditioned
+            nodes, _ = np.polynomial.legendre.leggauss(n)
+            s = 0.5 * nodes + 0.5
+            fit = np.polynomial.Polynomial.fit(s, profile(s), n - 1, domain=[0, 1])
+            setattr(self.indata, f"a{letter}", fit.convert().coef)
+        elif profile_type.startswith(("cubic_spline", "akima_spline", "line_segment")):
+            s = np.linspace(0, 1, n)
+            setattr(self.indata, f"a{letter}_aux_s", s)
+            setattr(self.indata, f"a{letter}_aux_f", profile(s))
+        else:
+            msg = (
+                f"A SIMSOPT {longname} profile needs p{shortname}_type to be "
+                f"power_series, cubic_spline, akima_spline or line_segment, with _i or "
+                f"_ip for the current, not {profile_type}."
+            )
+            raise RuntimeError(msg)
+
+    def set_indata(self) -> None:
+        """Transfer the boundary shape, the magnetic axis shape and assigned profiles to
+        vmec.indata, before writing a Vmec input file or running Vmec."""
         if not self.runnable:
             msg = "Cannot access indata for a Vmec object that was initialized from a wout file."
             raise RuntimeError(msg)
@@ -526,16 +599,24 @@ class Vmec(Optimizable):
             vi.raxis_s.fill(0.0)
             vi.zaxis_c.fill(0.0)
 
-        # TODO(eguiraud): Starfinder does not use profiles yet
-        # Set profiles, if they are not None
-        # self.set_profile("pressure", "mass", "m")
-        # self.set_profile("current", "curr", "c")
-        # self.set_profile("iota", "iota", "i")
-        # if self.pressure_profile is not None:
-        #     vi.pres_scale = 1.0
-        # if self.current_profile is not None:
-        #     integral, _ = quad(self.current_profile, 0, 1)
-        #     vi.curtor = integral
+        self.set_profile("pressure", "mass", "m")
+        self.set_profile("current", "curr", "c")
+        self.set_profile("iota", "iota", "i")
+        if self.pressure_profile is not None:
+            vi.pres_scale = 1.0
+        if self.current_profile is not None:
+            # the types ending in _i give I(s), and the others I'(s)
+            if vi.pcurr_type.lower().endswith("_i"):
+                vi.curtor = float(self.current_profile(1.0))
+            else:
+                vi.curtor = quad(self.current_profile, 0, 1)[0]
+
+        unused_profile = "current" if vi.ncurr == 0 else "iota"
+        if getattr(self, f"{unused_profile}_profile") is not None:
+            logger.warning(
+                f"{unused_profile}_profile has no effect: indata.ncurr = {vi.ncurr} "
+                "selects the other of the iota and current profiles."
+            )
 
     def get_input(self) -> str:
         """Generate a VMEC++ input file (in JSON format).
