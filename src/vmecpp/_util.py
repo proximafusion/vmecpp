@@ -172,6 +172,10 @@ def vmecpp_json_to_indata(vmecpp_json: dict[str, Any]) -> str:
     """Convert a dictionary with the contents of a VMEC++ JSON input file to the
     corresponding contents of a VMEC2000 INDATA file."""
 
+    if vmecpp_json.get("toroidal_transits", 1) != 1:
+        msg = "VMEC2000 solves domains that close after one toroidal transit only"
+        raise ValueError(msg)
+
     indata: str = "&INDATA\n"
 
     indata += "\n  ! numerical resolution, symmetry assumption\n"

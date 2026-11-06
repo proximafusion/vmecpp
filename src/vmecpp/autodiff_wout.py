@@ -171,6 +171,10 @@ def wout_quantities(
         The fields listed in :data:`WOUT_QUANTITIES`, in the layout of
         :class:`vmecpp.VmecWOut`.
     """
+    if getattr(vmec_input, "toroidal_transits", 1) != 1:
+        # the derivatives and the mode tables take the toroidal mode numbers as n * nfp
+        msg = "wout_quantities requires toroidal_transits = 1"
+        raise NotImplementedError(msg)
     # A run that stops early at a coarser ns_array step returns that step's geometry.
     sizes = _sizes(vmec_input, ns=np.shape(geometry.toroidal_flux)[0])
     profiles = _profiles(vmec_input, sizes, mass_half)

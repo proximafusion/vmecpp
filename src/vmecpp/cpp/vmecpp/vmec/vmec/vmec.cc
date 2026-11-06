@@ -94,6 +94,12 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
         absl::InvalidArgumentError(absl::StrCat(msg_start, "ntor", msg_end)));
   }
 
+  // the toroidal angle of every harmonic depends on the transits of the domain
+  if (initial_state.indata.toroidal_transits != indata.toroidal_transits) {
+    return HotRestartMismatch(absl::InvalidArgumentError(
+        absl::StrCat(msg_start, "toroidal_transits", msg_end)));
+  }
+
   // check for matching `ns`: the state is read from the wout, one column per
   // flux surface
   if (initial_state.wout.ns != indata.ns_array[0]) {
@@ -1780,6 +1786,7 @@ HalfGridFields Vmec::HalfGridState() const {
       .ntheta_eff = s_.nThetaEff,
       .nzeta = s_.nZeta,
       .nfp = s_.nfp,
+      .toroidal_transits = s_.toroidal_transits,
       .signgs = indata_.signgs,
   };
   for (std::size_t thread_id = 0; thread_id < r_.size(); ++thread_id) {
