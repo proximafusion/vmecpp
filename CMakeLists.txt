@@ -65,6 +65,9 @@ set(_native_deps_include "${_native_deps_prefix}/include")
 # INTERFACE_INCLUDE_DIRECTORIES below must exist already at generate time.
 file(MAKE_DIRECTORY "${_native_deps_include}")
 
+# Backslashes in a Windows path break the generated ExternalProject scripts.
+file(TO_CMAKE_PATH "${CMAKE_MAKE_PROGRAM}" _native_deps_make_program)
+
 # HDF5 is built with zlib support (required by netCDF-4), but as a static
 # lib it doesn't bundle zlib's own object code, so it must be linked in
 # explicitly wherever hdf5_c is used.
@@ -77,7 +80,7 @@ if(WIN32)
     CMAKE_ARGS
       -DCMAKE_INSTALL_PREFIX=${_native_deps_prefix}
       -DCMAKE_BUILD_TYPE=Release
-      -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+      -DCMAKE_MAKE_PROGRAM=${_native_deps_make_program}
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5
       -DZLIB_BUILD_EXAMPLES=OFF
       -DZLIB_BUILD_SHARED=OFF
@@ -107,7 +110,7 @@ set(_native_deps_cmake_args
   -DCMAKE_INSTALL_LIBDIR=lib
   -DCMAKE_PREFIX_PATH=${_native_deps_prefix}
   -DCMAKE_BUILD_TYPE=Release
-  -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+  -DCMAKE_MAKE_PROGRAM=${_native_deps_make_program}
   -DBUILD_SHARED_LIBS=OFF
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
   -DBUILD_TESTING=OFF
