@@ -122,8 +122,9 @@ if(WIN32)
     -DZLIB_ROOT=${_native_deps_prefix}
     -DZLIB_LIBRARY=${_native_deps_lib}/zlib_static.lib
     -DZLIB_INCLUDE_DIR=${_native_deps_include}
-    "-DCMAKE_C_FLAGS=-w"
-    "-DCMAKE_CXX_FLAGS=/EHsc -w")
+    -DH5_ZLIB_HEADER=zlib.h
+    "-DCMAKE_C_FLAGS=-w -I${_native_deps_include}"
+    "-DCMAKE_CXX_FLAGS=/EHsc -w -I${_native_deps_include}")
 endif()
 
 if(APPLE)
