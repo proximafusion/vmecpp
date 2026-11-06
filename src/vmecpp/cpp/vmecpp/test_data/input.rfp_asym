@@ -1,0 +1,32 @@
+&INDATA
+DELT = 0.9
+LASYM = T
+NFP = 1
+NSTEP = 250
+GAMMA = 0.0
+PHIEDGE = 0.2
+BLOAT = 1.0
+CURTOR = 0.0
+SPRES_PED = 1.0
+PRES_SCALE = 1.0
+PMASS_TYPE = "power_series"
+MPOL = 6
+NTOR = 0
+NS_ARRAY = 11 31
+NITER_ARRAY = 5000 20000
+FTOL_ARRAY = 1e-12 1e-12
+AM = 0.0
+PIOTA_TYPE = "power_series"
+AI = 0.2 -0.27
+NCURR = 0
+LRFP = T
+RAXIS_CC = 1.5
+ZAXIS_CS = 0.0
+RBC(0,0) = 1.5
+RBC(0,1) = 0.5
+RBC(0,2) = 0.03
+ZBS(0,1) = 0.5
+ZBS(0,2) = 0.02
+RBS(0,2) = 0.02
+ZBC(0,2) = 0.03
+/
