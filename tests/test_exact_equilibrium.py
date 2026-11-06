@@ -15,8 +15,13 @@ converge at second order. They hold "vacuum", a member of Sengupta et al.'s elli
 family with zero pressure and zero current, to tolerances at ns = 25 inside its exact
 boundary, check that its field is curl-free, divergence-free and tangent to the surfaces
 of its label, and that the formulas give the axis transforms the paper states for two
-of its members. The script's suites scan the members in ns, and "sheared" also in mpol
-and ntor.
+of its members. They check that the closed forms of Issan, Jose, Landreman, Citrin and
+Tracey (arXiv:2611.07672) give equilibria with the field periods, stellarator symmetry,
+transform, toroidal flux and current the paper states, for a member of each of their
+three families with three field periods, and that VMEC++'s force residuals at the exact
+states of these members fall at first order in the radial grid spacing, the lambda
+residual at order 1.5. The script's suites scan the members in ns, and "sheared" also
+in mpol and ntor.
 """
 
 import math
@@ -253,3 +258,123 @@ LAMBDA_72 = 21.0 * math.sqrt(2.0) - 28.0
 def test_vacuum_axis_transform(member, iota0, tolerance):
     """The flux integrals give the axis transforms of the paper's members."""
     assert abs(abs(member.iota_of_s(0.0)) - iota0) <= tolerance
+
+
+def _cartesian_derivatives(member, x, h=1e-5):
+    """The field and psi at the points x, and d[j, i], the derivative of B_x, B_y, B_z,
+    psi (i) along x, y, z (j), by central differences."""
+    f = np.array(member.field(*x))
+    d = np.array(
+        [
+            (
+                np.array(member.field(*(x + h * e)))
+                - np.array(member.field(*(x - h * e)))
+            )
+            / (2.0 * h)
+            for e in np.eye(3)[:, :, None, None]
+        ]
+    )
+    return f, d
+
+
+# Members of the three families of Issan, Jose, Landreman, Citrin and Tracey with three
+# field periods: the first family's member with reflection symmetry (their figure 3(a)),
+# the second family's member of their figure 3(b), and a member of the third family,
+# whose field lines turn three times about the axis.
+CLOSED_LINES = [ee.LORTZ_N3, ee.IOTA0_N3, ee.IOTA3]
+
+
+@pytest.mark.parametrize("member", CLOSED_LINES, ids=lambda m: m.name)
+def test_closed_line_members_are_equilibria(member):
+    """On the boundary psi = delta, J x B = grad p with p = 2 (delta - psi) and div B = 0
+    hold to the accuracy of central differences, and the field and psi repeat with the
+    field period and under stellarator symmetry."""
+    theta, phi = np.meshgrid(
+        np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False),
+        np.linspace(0.0, 2.0 * np.pi / member.nfp, 6, endpoint=False),
+    )
+    r, z = member.boundary(theta, phi)
+    x = np.array([r * np.cos(phi), r * np.sin(phi), z])
+    f, d = _cartesian_derivatives(member, x, h=1e-6)
+    b = f[:3]
+    j = np.array([d[1, 2] - d[2, 1], d[2, 0] - d[0, 2], d[0, 1] - d[1, 0]])
+    force = np.cross(j, b, axis=0) + 2.0 * d[:, 3]
+    scale = np.linalg.norm(j, axis=0) * np.linalg.norm(b, axis=0)
+    np.testing.assert_allclose(f[3], member.delta, rtol=1e-10)
+    assert np.max(np.linalg.norm(force, axis=0) / scale) <= 1e-6
+    assert np.max(np.abs(d[0, 0] + d[1, 1] + d[2, 2])) <= 1e-6 * np.max(
+        np.abs(d[:, :3])
+    )
+    angle = 2.0 * np.pi / member.nfp
+    rotation = np.array(
+        [
+            [np.cos(angle), -np.sin(angle), 0.0],
+            [np.sin(angle), np.cos(angle), 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    rotated = np.array(member.field(*np.einsum("ij,j...->i...", rotation, x)))
+    np.testing.assert_allclose(
+        rotated[:3], np.einsum("ij,j...->i...", rotation, b), atol=1e-11
+    )
+    np.testing.assert_allclose(rotated[3], f[3], rtol=1e-11)
+    # the rotation by pi about the x axis takes (Bx, By, Bz) at x to (-Bx, By, Bz)
+    flipped = np.array(member.field(x[0], -x[1], -x[2]))
+    np.testing.assert_allclose(
+        flipped[:3], b * np.array([-1.0, 1.0, 1.0])[:, None, None], atol=1e-11
+    )
+    np.testing.assert_allclose(flipped[3], f[3], rtol=1e-11)
+
+
+@pytest.mark.parametrize(
+    ("member", "iota"),
+    [
+        pytest.param(m, i, id=m.name)
+        for m, i in zip(CLOSED_LINES, (0.0, 0.0, 3.0), strict=True)
+    ],
+)
+def test_closed_line_members_have_the_papers_transform(member, iota):
+    """VMEC++ is given the turns of a field line about the axis as iota: -s N on the
+    third family's branch and none on the others'."""
+    np.testing.assert_allclose(member.vmec_input(13, 4, 3).ai, [iota])
+
+
+@pytest.mark.parametrize("member", CLOSED_LINES, ids=lambda m: m.name)
+def test_closed_line_flux_and_current(member):
+    """The volume inside the boundary is 2 pi times its toroidal flux (their sections
+    3.2 and 4.3), and the circulation of B around the boundary in the plane phi = 0 is 2
+    pi buco."""
+    nth, nph = 128, 64
+    theta = 2.0 * np.pi * np.arange(nth) / nth
+    phi = 2.0 * np.pi * np.arange(nph) / (nph * member.nfp)
+    th, ph = np.meshgrid(theta, phi, indexing="ij")
+    r, z = member.boundary(th, ph)
+    k = np.fft.fftfreq(nth, 1.0 / nth)[:, None]
+    z_theta = np.real(np.fft.ifft(1j * k * np.fft.fft(z, axis=0), axis=0))
+    r_theta = np.real(np.fft.ifft(1j * k * np.fft.fft(r, axis=0), axis=0))
+    # the area integral of R over each section, integrated over phi
+    volume = 2.0 * np.pi * np.mean(0.5 * r * r * z_theta) * 2.0 * np.pi
+    np.testing.assert_allclose(
+        volume, 2.0 * np.pi * member.profiles["phi_edge"], rtol=1e-9
+    )
+    x = np.array([r[:, 0], 0.0 * r[:, 0], z[:, 0]])
+    bx, _, bz, _ = member.field(*x)
+    circulation = np.mean(bx * r_theta[:, 0] + bz * z_theta[:, 0])
+    np.testing.assert_allclose(
+        circulation, member.buco_of_s(1.0), rtol=1e-8, atol=1e-12
+    )
+
+
+@pytest.mark.parametrize("member", CLOSED_LINES, ids=lambda m: m.name)
+def test_closed_line_residuals_fall_at_the_order_of_the_discretization(member):
+    """Halving the radial grid spacing halves VMEC++'s R and Z force residuals at the
+    exact state and divides the lambda residual by about 2^1.5."""
+    mpol, ntor = ee.CLOSED_LINE_MODES[member.name]
+    coarse, fine = (ee.exact_residual(member, ns, mpol, ntor) for ns in (NS_COARSE, NS))
+    least = {
+        "R residual": 2.0**0.95,
+        "Z residual": 2.0**0.95,
+        "lambda residual": 2.0**1.4,
+    }
+    ratios = {key: coarse[key] / fine[key] for key in least}
+    assert all(ratios[key] >= value for key, value in least.items()), ratios
