@@ -202,6 +202,31 @@ def test_residual_jacobian_holds_at_an_unconverged_state(
     )
 
 
+def test_geometry_directions_match_a_difference_through_the_model(
+    problem, loose
+) -> None:
+    """The coefficient map and the difference of chi against a central difference of the
+    whole geometry through the model."""
+    state, tangents = loose
+    model = problem.create_model(problem.boundary0)
+    directions = problem._geometry_directions([model], state, tangents[:, :3])
+    for i in range(3):
+        step = 1.0e-7 / max(np.abs(tangents[:, i]).max(), 1.0e-3)
+        sides = []
+        for sign in (1.0, -1.0):
+            model.set_state(np.ascontiguousarray(state + sign * step * tangents[:, i]))
+            model.evaluate(2, 2, False)
+            sides.append(problem._flat_geometry(model))
+        difference = (sides[0] - sides[1]) / (2.0 * step)
+        np.testing.assert_allclose(
+            directions[i],
+            difference,
+            rtol=0.0,
+            atol=1.0e-8 * np.abs(difference).max(),
+            equal_nan=False,
+        )
+
+
 def test_balanced_residuals_match_the_converged_state(problem, solved) -> None:
     """The residuals of a state away from force balance against those of the converged
     state.

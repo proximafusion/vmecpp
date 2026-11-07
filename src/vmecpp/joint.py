@@ -213,6 +213,16 @@ class JointProblem:
                 np.asarray(self.create_model(shifted).get_state()) - base
             )[self.prescribed] / 1.0e-3
             self.boundary_map[key] = column
+        # each geometry coefficient is a multiple of state entries at its surface and mode
+        span = self.ns * self.mpol * (self.ntor + 1)
+        self.coefficient_map = np.stack(
+            [
+                np.asarray(
+                    model.geometry_state_vjp(np.kron(np.eye(12)[block], np.ones(span)))
+                ).reshape(-1, span)
+                for block in range(12)
+            ]
+        )
         self._residuals = jax.jit(self._flat_residuals)
         self._linearized = jax.jit(self._linearized_residuals)
         self._along = jax.jit(self._residuals_along)
@@ -295,18 +305,40 @@ class JointProblem:
             model.get_geometry(), self.ns, self.mpol, self.ntor
         )
 
-    def _geometry_along(self, model, state, direction) -> np.ndarray:
-        """The flat geometry along a state direction by a difference through the model.
-
-        Chi depends on the state when ncurr = 1.
-        """
+    def _poloidal_flux_along(self, model, state, direction) -> np.ndarray:
+        """Chi along a state direction by a central difference through the model."""
         step = 1.0e-7 / max(np.abs(direction).max(), 1.0e-3)
         sides = []
         for sign in (1.0, -1.0):
             model.set_state(np.ascontiguousarray(state + sign * step * direction))
             model.evaluate(2, 2, False)
-            sides.append(self._flat_geometry(model))
+            sides.append(np.asarray(model.get_geometry().poloidal_flux, dtype=float))
         return (sides[0] - sides[1]) / (2.0 * step)
+
+    def _geometry_directions(self, models, state, directions) -> np.ndarray:
+        """The flat geometry along each column of ``directions``, one row per column.
+
+        The coefficients are linear in the state. With ncurr = 1, chi depends on the
+        state and takes a difference through the models.
+        """
+        ns, count = self.ns, directions.shape[1]
+        blocks, arrays, span = self.coefficient_map.shape
+        parts = directions.reshape(arrays, span, count)
+        coefficients = np.zeros((blocks, span, count))
+        for block, array in np.argwhere(np.any(self.coefficient_map, axis=-1)):
+            weights = self.coefficient_map[block, array, :, None]
+            coefficients[block] += weights * parts[array]
+        result = np.zeros((count, 2 * ns + blocks * span))
+        result[:, 2 * ns :] = coefficients.transpose(2, 0, 1).reshape(count, -1)
+        if self.vmec_input.ncurr != 0:
+            result[:, ns : 2 * ns] = autodiff._map_on_models(
+                lambda worker, i: self._poloidal_flux_along(
+                    worker, state, directions[:, i]
+                ),
+                models,
+                range(count),
+            )
+        return result
 
     def _evaluation(self, residuals: np.ndarray) -> Evaluation:
         return Evaluation(residuals, self.parts(residuals))
@@ -362,13 +394,7 @@ class JointProblem:
         start = time.perf_counter()
         state = np.ascontiguousarray(state)
         models = self._models_at(model, state, precondition=False)
-        directions = np.stack(
-            autodiff._map_on_models(
-                lambda worker, i: self._geometry_along(worker, state, tangents[:, i]),
-                models,
-                range(len(keys)),
-            )
-        )
+        directions = self._geometry_directions(models, state, tangents)
         model.set_state(state)
         model.evaluate(2, 2, False)
         flat = self._flat_geometry(model)
@@ -376,20 +402,22 @@ class JointProblem:
         for i, key in enumerate(keys):
             boundary_directions[(i, *key)] = 1.0
         values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
-        rows = []
-        for first in range(0, len(keys), _TANGENT_CHUNK):
+
+        def linearized(first: int) -> np.ndarray:
             chunk = range(first, min(first + _TANGENT_CHUNK, len(keys)))
             padding = _TANGENT_CHUNK - len(chunk)
-            rows.append(
-                np.asarray(
-                    self._linearized(
-                        flat,
-                        jnp.asarray(boundary),
-                        jnp.asarray(_padded(directions[chunk], padding)),
-                        jnp.asarray(_padded(boundary_directions[chunk], padding)),
-                    )
-                )[: len(chunk)]
-            )
+            return np.asarray(
+                self._linearized(
+                    flat,
+                    jnp.asarray(boundary),
+                    jnp.asarray(_padded(directions[chunk], padding)),
+                    jnp.asarray(_padded(boundary_directions[chunk], padding)),
+                )
+            )[: len(chunk)]
+
+        firsts = range(0, len(keys), _TANGENT_CHUNK)
+        with ThreadPoolExecutor(min(self.workers, len(firsts))) as pool:
+            rows = list(pool.map(linearized, firsts))
         self.costs.objective_seconds += time.perf_counter() - start
         return self._evaluation(values), np.vstack(rows).T
 
@@ -428,12 +456,9 @@ class JointProblem:
             normal[:] = np.nan
         change = np.full_like(values, np.nan)
         if np.all(np.isfinite(normal)):
+            direction = self._geometry_directions([model], state, normal[:, None])[0]
             change = np.asarray(
-                self._along(
-                    flat,
-                    jnp.asarray(boundary),
-                    jnp.asarray(self._geometry_along(model, state, normal)),
-                )
+                self._along(flat, jnp.asarray(boundary), jnp.asarray(direction))
             )
         self.costs.objective_seconds += time.perf_counter() - start
         return values, values + _normal_fraction(boundary, normal) * change, normal
