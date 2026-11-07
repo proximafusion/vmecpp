@@ -346,6 +346,10 @@ class IdealMhdModel {
   // preconditioner matrix.
   void assembleRZPreconditioner();
 
+  // On the boundary's thread: sets the sign of the preconditioner's vertical
+  // stiffness from how the net vertical force follows the boundary's height.
+  void UpdateVerticalStiffness(bool almost_converged, int iter1, int iter2);
+
   // Applies the radial preconditioner for R and Z (solves a tri-diagonal system
   // of equations).
   absl::Status applyRZPreconditioner(FourierForces& m_decomposed_f);
@@ -652,6 +656,15 @@ class IdealMhdModel {
   // [mnsize] minimum flux surface index for which to apply radial
   // preconditioner for R and Z
   Eigen::VectorXi jMin;
+
+  // The energy's slope in the boundary's height and that height at the last
+  // full vacuum update, and over this multigrid step the sum of the products of
+  // their changes, of those products' magnitudes and of the height's changes.
+  double vertical_slope_ = 0.0;
+  double boundary_height_ = 0.0;
+  double vertical_stiffness_sum_ = 0.0;
+  double vertical_stiffness_magnitude_ = 0.0;
+  double boundary_height_travel_ = 0.0;
 
   // ****** IDENTICAL THREAD LOCALS *******
   // In multi-thread runs, the following data members

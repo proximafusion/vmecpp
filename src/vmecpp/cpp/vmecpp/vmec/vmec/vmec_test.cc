@@ -948,12 +948,6 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   ASSERT_TRUE(indata->lasym);
   ASSERT_TRUE(indata->lfreeb);
 
-  // The antisymmetric free-boundary force residual limit-cycles near the 1e-8
-  // tolerance; accept the equilibrium at that level (as the axisymmetric
-  // reference test does) and validate the physics against the reference
-  // scalars.
-  indata->return_outputs_even_if_not_converged = true;
-
   const auto output = vmecpp::run(*indata);
   ASSERT_TRUE(output.ok());
   const auto& w = output->wout;
@@ -962,27 +956,46 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
   // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
   // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
-  // way as in SingularIntegrals::update.
+  // way as in SingularIntegrals::update, and the vertical stiffness measured
+  // as in IdealMhdModel::UpdateVerticalStiffness.
   const double tol = 1.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
+  EXPECT_TRUE(IsCloseRelAbs(5.4333863735, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3072005386, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7716336115, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1420170697, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018727119, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512288681, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5743837607, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
   EXPECT_GT(w.rmns.cwiseAbs().maxCoeff(), 1.0e-4) << "rmns must be non-zero";
   EXPECT_GT(w.zmnc.cwiseAbs().maxCoeff(), 1.0e-4) << "zmnc must be non-zero";
 }  // LasymFreeBoundaryMatchesEducationalVmec
+
+// The plasma of the test above is vertically stable. A preconditioner that
+// assumes it unstable drives it away and stalls its residuals near 3e-9.
+TEST(TestVmec, LasymFreeBoundaryConvergesBelowTheVerticalDrift) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_asym.json");
+  ASSERT_TRUE(indata_json.ok());
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+  indata->ftol_array[0] = 1.0e-13;
+  indata->niter_array[0] = 3000;
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok()) << output.status();
+  EXPECT_LE(output->wout.fsqr, 1.0e-13);
+  EXPECT_LE(output->wout.fsqz, 1.0e-13);
+  EXPECT_LE(output->wout.fsql, 1.0e-13);
+}  // LasymFreeBoundaryConvergesBelowTheVerticalDrift
 
 // A multi-grid free-boundary equilibrium (cth_like_free_bdy with an added grid
 // step) must converge. The free-boundary (Nestor) solver, together with its
