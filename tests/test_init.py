@@ -275,6 +275,31 @@ def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
     assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == ""
 
 
+def test_axisymmetric_free_boundary_equilibrium_does_not_depend_on_nfp(tmp_path):
+    """solovev_free_bdy at nfp = 5, with a copy of its mgrid file that declares nfp = 5,
+    reproduces the equilibrium at nfp = 1."""
+    mgrid_file = tmp_path / "mgrid_solovev_nfp5.nc"
+    shutil.copy(TEST_DATA_DIR / "mgrid_solovev.nc", mgrid_file)
+    with netCDF4.Dataset(mgrid_file, "r+") as fnc:
+        fnc.variables["nfp"].assignValue(5)
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev_free_bdy.json")
+    vmec_input.mgrid_file = str(TEST_DATA_DIR / "mgrid_solovev.nc")
+    reference = vmecpp.run(vmec_input, verbose=False).wout
+
+    vmec_input.nfp = 5
+    vmec_input.mgrid_file = str(mgrid_file)
+    wout = vmecpp.run(vmec_input, verbose=False).wout
+
+    for name in ["rmnc", "zmns", "lmns", "iotaf", "bmnc"]:
+        np.testing.assert_allclose(
+            getattr(wout, name),
+            getattr(reference, name),
+            rtol=0,
+            atol=1e-12,
+            err_msg=name,
+        )
+
+
 def test_vmecinput_io():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     with tempfile.TemporaryDirectory() as tmp_dir:
