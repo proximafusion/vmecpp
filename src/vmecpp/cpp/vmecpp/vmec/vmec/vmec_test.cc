@@ -963,22 +963,22 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   // mgrid, interpolated cubically as in the mgrid provider, with the sign of
   // the metric and curvature cross terms in NESTOR's analytic add-back
   // (analyt.f90 adp/adm, azp1u/azm1u) corrected the same way as in
-  // SingularIntegrals::update, and with the kink values of
-  // RegularizedIntegrals::update in greenf.f90.
+  // SingularIntegrals::update, and with the kink values and the source-point
+  // defects of RegularizedIntegrals::update in greenf.f90.
   const double tol = 1.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4331887325, w.aspect, tol))
+  EXPECT_TRUE(IsCloseRelAbs(5.4331872885, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3071380734, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3071394657, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7715625963, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7715636255, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1420091652, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1420093924, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018728528, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018728599, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512431350, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512431298, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5744458770, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5744445982, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
