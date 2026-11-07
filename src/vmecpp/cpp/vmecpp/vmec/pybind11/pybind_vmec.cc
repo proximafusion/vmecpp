@@ -16,6 +16,7 @@
 #include <tuple>
 #include <type_traits>  // std::is_same_v
 #include <utility>      // std::move
+#include <vector>
 
 #include "vmecpp/common/magnetic_configuration_lib/magnetic_configuration_lib.h"
 #include "vmecpp/common/makegrid_lib/makegrid_lib.h"
@@ -755,6 +756,7 @@ class VmecModel {
     const int gS = static_cast<int>(model.r1_e.size());
     if (exact_dgeom_.size() != static_cast<Eigen::Index>(20 * gS)) {
       exact_dgeom_.setZero(20 * gS);
+      exact_dgeom_surfaces_.clear();
     }
     // The primal geometry depends only on the current state, not on v, so cache
     // it: a Krylov solve calls this many times at the same state. SetState
@@ -770,8 +772,9 @@ class VmecModel {
     }
     vmec_->physical_x_backup_[0]->setZero();
     UnflattenActive(*vmec_->physical_x_backup_[0], vmec_->s_, v);
-    model.packGeometry(*vmec_->physical_x_backup_[0], *vmec_->physical_x_[0],
-                       exact_dgeom_.data(), gS, /*primal=*/false);
+    model.packGeometryTangent(*vmec_->physical_x_backup_[0],
+                              *vmec_->physical_x_[0], exact_dgeom_.data(), gS,
+                              exact_dgeom_surfaces_);
     model.applyExactForceJacobian(
         exact_primal_.data(), exact_dgeom_.data(), gS, *vmec_->physical_f_[0],
         *vmec_->decomposed_f_[0], always_fix_m1_gauge);
@@ -973,9 +976,10 @@ class VmecModel {
   mutable Eigen::VectorXd exact_primal_;
   mutable bool exact_primal_valid_ = false;
 
-  // The geometry tangent of the exact product is zeroed once. packGeometry
-  // writes the same entries on every call.
+  // The geometry tangent of the exact product is zeroed once. Each call zeroes
+  // the surfaces of the last one in exact_dgeom_surfaces_ before writing.
   Eigen::VectorXd exact_dgeom_;
+  std::vector<int> exact_dgeom_surfaces_;
 
   // Preconditioner / Nestor update bookkeeping, mirroring the like-named Vmec
   // members; the Python loop drives the iteration counters via Evaluate, so the

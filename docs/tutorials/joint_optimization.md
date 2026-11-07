@@ -93,7 +93,7 @@ Residuals that are not finite at the first state raise a `ValueError`.
 
 ## Limitations
 
-- One `H` takes `3 * 6 * mpol * (ntor + 1)` Hessian products, about 2000 force evaluations at `ns` 51, `mpol` 7. `workers` runs them on one model per thread.
+- One `H` takes `3 * 6 * mpol * (ntor + 1)` Hessian products, about 1000 force evaluations at `ns` 51, `mpol` 7, or 2000 with differenced products. `workers` runs them on one model per thread.
 - Slow modes next to the axis persist in VMEC's descent after the force tolerance is met. At `NESTED_TOLERANCE`, `|r|^2` of the nested baseline can differ from a cold run by 10%.
 - `dn` converges from states along a run. Far from force balance, such as the rotating ellipse with pressure, it does not, and VMEC's descent starts the run.
 - Where `H` is nearly singular, as at a start beyond an equilibrium limit, `dn` lies far outside its limit and the merit stays close to `|r|^2` until a step moves the boundary away.
