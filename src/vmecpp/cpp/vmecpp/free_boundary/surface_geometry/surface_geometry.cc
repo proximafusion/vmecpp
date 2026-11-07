@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: MIT
 #include "vmecpp/free_boundary/surface_geometry/surface_geometry.h"
 
+#include <array>
+
 namespace vmecpp {
 
 SurfaceGeometry::SurfaceGeometry(const Sizes* s,
@@ -59,6 +61,9 @@ SurfaceGeometry::SurfaceGeometry(const Sizes* s,
   avv.resize(numLocal);
 
   drv.resize(numLocal);
+
+  rtay.resize(kTaylorTerms, numLocal);
+  ztay.resize(kTaylorTerms, numLocal);
 
   // Non-stellarator-symmetric antisymmetric pieces (only allocated for lasym).
   if (s_.lasym) {
@@ -116,6 +121,10 @@ void SurfaceGeometry::update(
 #endif  // _OPENMP
 
   derivedSurfaceQuantities(signOfJacobian, fullUpdate);
+
+  if (fullUpdate) {
+    ComputeTaylorCoefficients(rCC, rSS, rSC, rCS, zSC, zCS, zCC, zSS);
+  }
 
 #ifdef _OPENMP
 #pragma omp barrier
@@ -471,6 +480,88 @@ void SurfaceGeometry::derivedSurfaceQuantities(int signOfJacobian,
       rsinuv[kl] = r1b[kl] * sin_phi[k];
     }  // kl
   }
+}
+
+// The Taylor coefficients of R and Z about each thread-local point, from the
+// sums over m of the coefficients times the derivatives of the poloidal basis
+// and their products with the derivatives of the toroidal basis. Points beyond
+// theta = pi take the basis of the reflected point, with sin(m theta) of the
+// opposite sign.
+void SurfaceGeometry::ComputeTaylorCoefficients(
+    const std::span<const double> rCC, const std::span<const double> rSS,
+    const std::span<const double> rSC, const std::span<const double> rCS,
+    const std::span<const double> zSC, const std::span<const double> zCS,
+    const std::span<const double> zCC, const std::span<const double> zSS) {
+  static constexpr std::array<double, kTaylorDegree + 1> kFactorial = {
+      1.0, 1.0, 2.0, 6.0, 24.0};
+  rtay.setZero();
+  ztay.setZero();
+  const int l_first = tp_.ztMin / s_.nZeta;
+  const int l_last = (tp_.ztMax - 1) / s_.nZeta;
+  for (int l = l_first; l <= l_last; ++l) {
+    const bool reflected = l >= s_.nThetaReduced;
+    const int l_basis = reflected ? s_.nThetaEven - l : l;
+    const double sin_sign = reflected ? -1.0 : 1.0;
+    const int k_first = (l == l_first) ? tp_.ztMin % s_.nZeta : 0;
+    const int k_last =
+        (l == l_last) ? (tp_.ztMax - 1) % s_.nZeta : s_.nZeta - 1;
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      // [basis][i]: sum over m of the coefficient of rCC, rSS, zSC, zCS, rSC,
+      // rCS, zCC and zSS times the i-th theta derivative of its poloidal basis
+      std::array<std::array<double, kTaylorDegree + 1>, 8> poloidal = {};
+      for (int m = 0; m < s_.mpol; ++m) {
+        const int idx_mn = n * s_.mpol + m;
+        const double cos_mu = fb_.cosmu[l_basis * (s_.mnyq2 + 1) + m];
+        const double sin_mu =
+            sin_sign * fb_.sinmu[l_basis * (s_.mnyq2 + 1) + m];
+        // the theta derivatives of cos(m theta) and sin(m theta), over m^i
+        const std::array<double, 4> d_cos = {cos_mu, -sin_mu, -cos_mu, sin_mu};
+        const std::array<double, 4> d_sin = {sin_mu, cos_mu, -sin_mu, -cos_mu};
+        double m_power = 1.0;
+        for (int i = 0; i <= kTaylorDegree; ++i) {
+          const double c = m_power * d_cos[i % 4];
+          const double s = m_power * d_sin[i % 4];
+          poloidal[0][i] += rCC[idx_mn] * c;
+          poloidal[1][i] += rSS[idx_mn] * s;
+          poloidal[2][i] += zSC[idx_mn] * s;
+          poloidal[3][i] += zCS[idx_mn] * c;
+          if (s_.lasym) {
+            poloidal[4][i] += rSC[idx_mn] * s;
+            poloidal[5][i] += rCS[idx_mn] * c;
+            poloidal[6][i] += zCC[idx_mn] * c;
+            poloidal[7][i] += zSS[idx_mn] * s;
+          }
+          m_power *= m;
+        }  // i
+      }  // m
+
+      for (int k = k_first; k <= k_last; ++k) {
+        const int local = l * s_.nZeta + k - tp_.ztMin;
+        const double cos_nv = fb_.cosnv[n * s_.nZeta + k];
+        const double sin_nv = fb_.sinnv[n * s_.nZeta + k];
+        // the zeta derivatives of cos(n zeta) and sin(n zeta), over n^j
+        const std::array<double, 4> d_cos = {cos_nv, -sin_nv, -cos_nv, sin_nv};
+        const std::array<double, 4> d_sin = {sin_nv, cos_nv, -sin_nv, -cos_nv};
+        double n_power = 1.0;
+        for (int j = 0; j <= kTaylorDegree; ++j) {
+          const double c = n_power * d_cos[j % 4];
+          const double s = n_power * d_sin[j % 4];
+          for (int i = 0; i + j <= kTaylorDegree; ++i) {
+            double r = poloidal[0][i] * c + poloidal[1][i] * s;
+            double z = poloidal[2][i] * c + poloidal[3][i] * s;
+            if (s_.lasym) {
+              r += poloidal[4][i] * c + poloidal[5][i] * s;
+              z += poloidal[6][i] * c + poloidal[7][i] * s;
+            }
+            const double norm = 1.0 / (kFactorial[i] * kFactorial[j]);
+            rtay(TaylorIndex(i, j), local) += norm * r;
+            ztay(TaylorIndex(i, j), local) += norm * z;
+          }  // i
+          n_power *= n;
+        }  // j
+      }  // k
+    }  // n
+  }  // l
 }
 
 }  // namespace vmecpp
