@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import collections
 import itertools
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -314,8 +315,30 @@ def _boundary_from_state_vjp(model, state_bar: np.ndarray) -> np.ndarray:
     return result
 
 
+_DIFFERENCE_STEP = 3.0e-9
+"""Relative step of a differenced Hessian product at the balance of truncation and
+roundoff along the soft modes."""
+
+
+def _force_product(model, vector: np.ndarray, *, exact: bool = True) -> np.ndarray:
+    """``H v`` from Enzyme or from a central difference of the force."""
+    vector = np.ascontiguousarray(vector)
+    product = (
+        model.exact_hessian_vector_product(vector)
+        if exact
+        else model.hessian_vector_product(vector, _DIFFERENCE_STEP)
+    )
+    return np.asarray(product, dtype=np.float64)
+
+
 def _structural_nullfree_interior(
-    model, interior: np.ndarray, n_probe: int = 6, tol: float = 1.0e-9, seed: int = 0
+    model,
+    interior: np.ndarray,
+    n_probe: int = 6,
+    tol: float = 1.0e-9,
+    seed: int = 0,
+    *,
+    exact: bool = True,
 ) -> np.ndarray:
     """Interior DOFs that actually enter the force.
 
@@ -332,7 +355,8 @@ def _structural_nullfree_interior(
     ``i`` is zero iff ``(H^T v)[i] = 0`` for random ``v``, and row ``i`` is zero
     iff ``(H v)[i] = 0``, so a handful of probes finds every structural zero. The
     set depends only on the mode structure, not on the state, so it is detected
-    once per model and reused across adjoint solves.
+    once per model and reused across adjoint solves. Differenced products have no
+    transpose, and the rows alone then decide.
     """
     state_size = int(np.asarray(model.get_state()).size)
     generator = np.random.default_rng(seed)
@@ -340,21 +364,19 @@ def _structural_nullfree_interior(
     row = np.zeros(state_size)
     for _ in range(n_probe):
         probe = np.ascontiguousarray(generator.standard_normal(state_size))
-        column = np.maximum(
-            column,
-            np.abs(
-                np.asarray(
-                    model.exact_hessian_vector_product_transpose(probe),
-                    dtype=np.float64,
-                )
-            ),
-        )
-        row = np.maximum(
-            row,
-            np.abs(
-                np.asarray(model.exact_hessian_vector_product(probe), dtype=np.float64)
-            ),
-        )
+        if exact:
+            column = np.maximum(
+                column,
+                np.abs(
+                    np.asarray(
+                        model.exact_hessian_vector_product_transpose(probe),
+                        dtype=np.float64,
+                    )
+                ),
+            )
+        row = np.maximum(row, np.abs(_force_product(model, probe, exact=exact)))
+    if not exact:
+        column = row
     threshold = tol * max(column.max(), row.max(), 1.0)
     keep = [i for i in interior if column[i] > threshold and row[i] > threshold]
     if not keep:
@@ -383,23 +405,10 @@ class _BlockTridiagonal:
         for members in self.members:
             self.local[members] = np.arange(members.size)
         width = max(members.size for members in self.members)
-        self.diagonal = np.zeros((self.ns, width, width))
-        self.lower = np.zeros((self.ns, width, width))
-        self.upper = np.zeros((self.ns, width, width))
+        # the lower, diagonal and upper blocks in one array, set by flat position
+        self.blocks = np.zeros((3, self.ns, width, width))
+        self.lower, self.diagonal, self.upper = self.blocks
         self.pivots: list[np.ndarray] = []
-
-    def set_entries(self, rows: np.ndarray, columns: np.ndarray, values) -> None:
-        offset = self.surface[columns] - self.surface[rows]
-        if np.any(np.abs(offset) > 1):
-            error_message = "entry outside the block tridiagonal band"
-            raise ValueError(error_message)
-        for band, blocks in ((-1, self.lower), (0, self.diagonal), (1, self.upper)):
-            mask = offset == band
-            blocks[
-                self.surface[rows[mask]],
-                self.local[rows[mask]],
-                self.local[columns[mask]],
-            ] = values[mask]
 
     def _block(self, blocks: np.ndarray, j: int, k: int) -> np.ndarray:
         return blocks[j, : self.members[j].size, : self.members[k].size]
@@ -421,37 +430,37 @@ class _BlockTridiagonal:
     def factorize(self) -> None:
         """Block Thomas elimination: LU-factor each Schur complement in place."""
         self.pivots = []
+        # a solve reads these contiguous factors without a copy
+        self.factors: list[np.ndarray] = []
         for j in range(self.ns):
             schur = self._block(self.diagonal, j, j)
             if j > 0:
                 # upper[j-1] <- D'[j-1]^{-1} upper[j-1], then D'[j] = D[j] - L[j] U'[j-1]
                 coupling = scipy.linalg.lu_solve(
-                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
+                    (self.factors[j - 1], self.pivots[j - 1]),
                     self._block(self.upper, j - 1, j),
                 )
                 self._block(self.upper, j - 1, j)[...] = coupling
                 schur -= self._block(self.lower, j, j - 1) @ coupling
             factor, pivots = scipy.linalg.lu_factor(schur, check_finite=False)
             self._block(self.diagonal, j, j)[...] = factor
+            self.factors.append(factor)
             self.pivots.append(pivots)
 
     def solve(self, rhs: np.ndarray) -> np.ndarray:
-        forward = np.zeros_like(rhs)
+        # D'[j]^{-1} f[j] from the forward sweep starts the backward sweep
+        solved = []
         for j, members in enumerate(self.members):
-            forward[members] = rhs[members]
+            forward = rhs[members]
             if j > 0:
-                forward[members] -= self._block(
-                    self.lower, j, j - 1
-                ) @ scipy.linalg.lu_solve(
-                    (self._block(self.diagonal, j - 1, j - 1), self.pivots[j - 1]),
-                    forward[self.members[j - 1]],
-                )
+                forward = forward - self._block(self.lower, j, j - 1) @ solved[j - 1]
+            solved.append(
+                scipy.linalg.lu_solve((self.factors[j], self.pivots[j]), forward)
+            )
         result = np.zeros_like(rhs)
         for j in range(self.ns - 1, -1, -1):
             members = self.members[j]
-            result[members] = scipy.linalg.lu_solve(
-                (self._block(self.diagonal, j, j), self.pivots[j]), forward[members]
-            )
+            result[members] = solved[j]
             if j + 1 < self.ns:
                 result[members] -= (
                     self._block(self.upper, j, j + 1) @ result[self.members[j + 1]]
@@ -459,8 +468,34 @@ class _BlockTridiagonal:
         return result
 
 
-def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
-    """``H^T`` restricted to ``solved``, exactly, from coloured Hessian products.
+def _map_on_models(function, models, items) -> list:
+    """``function(model, item)`` for every item on one thread per model."""
+    items = list(items)
+    if len(models) == 1:
+        return [function(models[0], item) for item in items]
+    results: list = [None] * len(items)
+
+    def run(position: int) -> None:
+        for index in range(position, len(items), len(models)):
+            results[index] = function(models[position], items[index])
+
+    with ThreadPoolExecutor(len(models)) as pool:
+        list(pool.map(run, range(len(models))))
+    return results
+
+
+def _assemble_block_tridiagonal(
+    model,
+    solved: np.ndarray,
+    *,
+    transposed: bool = True,
+    extra_models=(),
+    exact: bool = True,
+) -> _BlockTridiagonal:
+    """``H^T`` or ``H`` restricted to ``solved`` from coloured Hessian products on one
+    thread per model.
+
+    ``extra_models`` hold the state of ``model``.
 
     The force on surface ``j`` depends only on the state on surfaces ``j - 1``,
     ``j`` and ``j + 1``, so the operator is block tridiagonal in the surface index.
@@ -486,26 +521,40 @@ def _assemble_block_tridiagonal(model, solved: np.ndarray) -> _BlockTridiagonal:
     group_key = (solved_surface % 3) * n_modes + mode[solved]
     order = np.argsort(group_key, kind="stable")
     boundaries = np.flatnonzero(np.diff(group_key[order])) + 1
-    # probed_position[j + 1]: position in solved of the probed entry on surface j,
-    # padded so the neighbours j = -1 and j = ns of the edge surfaces read -1.
-    probed_position = np.full(matrix.ns + 2, -1, dtype=np.int64)
-    for group in np.split(order, boundaries):
-        color = int(group_key[group[0]]) // n_modes
+    # entry[j + 1, m]: position in solved of mode m on surface j, padded so the
+    # neighbours j = -1 and j = ns of the edge surfaces read -1.
+    entry = np.full((matrix.ns + 2, n_modes), -1, dtype=np.int64)
+    entry[solved_surface + 1, mode[solved]] = np.arange(solved.size)
+    width = matrix.blocks.shape[-1]
+    # per color, the probed surface of each row and the flat position of its entry
+    # without the term of the probed entry's local index
+    probed, start = [], []
+    for color in range(3):
+        column_surface = solved_surface - ((solved_surface - color + 1) % 3 - 1)
+        band = column_surface - solved_surface + 1
+        if transposed:
+            # (H^T)[column, row] = H[row, column]
+            start.append(
+                ((2 - band) * matrix.ns + column_surface) * width**2 + matrix.local
+            )
+        else:
+            start.append(
+                ((band * matrix.ns + solved_surface) * width + matrix.local) * width
+            )
+        probed.append(column_surface + 1)
+    stride = width if transposed else 1
+    flat = matrix.blocks.reshape(-1)
+
+    def probe_group(worker, group: np.ndarray) -> None:
+        color, probed_mode = divmod(int(group_key[group[0]]), n_modes)
         probe = np.zeros(state_size)
         probe[solved[group]] = 1.0
-        product = np.asarray(
-            model.exact_hessian_vector_product(np.ascontiguousarray(probe)),
-            dtype=np.float64,
-        )[solved]
-        hit = np.flatnonzero(product)
-        hit_surface = solved_surface[hit]
-        column_surface = hit_surface - ((hit_surface - color + 1) % 3 - 1)
-        probed_position[solved_surface[group] + 1] = group
-        column = probed_position[column_surface + 1]
-        probed_position[solved_surface[group] + 1] = -1
-        found = column >= 0
-        # (H^T)[column, row] = H[row, column]
-        matrix.set_entries(column[found], hit[found], product[hit[found]])
+        product = _force_product(worker, probe, exact=exact)[solved]
+        column = entry[probed[color], probed_mode]
+        hit = (product != 0.0) & (column >= 0)
+        flat[start[color][hit] + stride * matrix.local[column[hit]]] = product[hit]
+
+    _map_on_models(probe_group, [model, *extra_models], np.split(order, boundaries))
     return matrix
 
 
