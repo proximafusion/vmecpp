@@ -3325,7 +3325,8 @@ def is_vmec2000_input(input_file: Path) -> bool:
             stripped_line = line.strip()
             if not stripped_line or stripped_line.startswith("!"):
                 continue
-            return stripped_line == "&INDATA"
+            # Fortran namelist group names are case-insensitive
+            return stripped_line.split()[0].upper() == "&INDATA"
     return False
 
 
