@@ -10,10 +10,9 @@ from vmecpp.cpp import _vmecpp  # type: ignore
 
 TEST_DATA = Path(__file__).resolve().parents[1] / "src/vmecpp/cpp/vmecpp/test_data"
 CTH_LIKE = TEST_DATA / "cth_like_fixed_bdy.json"
-DRIFT = TEST_DATA / "constellaration_m1_gauge_drift.json"
-
-STALLING = {"always_fix_m1_gauge": False, "tcon0": 0.5}
-"""The m = 1 gauge floats and the constraint is weak enough for ns = 71 to stall."""
+VACUUM = TEST_DATA / "vacuum_axis_stall.json"
+"""The exact vacuum field of examples/exact_equilibria.py's Vacuum with k 0.04, m_g
+0.05, u0 2 F(pi/4 | m_g) and dpsi 0.24, at mpol 12 and ns 51."""
 
 
 def _raw_forces(factor: float, ns: int = 21) -> tuple[np.ndarray, np.ndarray]:
@@ -84,15 +83,9 @@ def test_exact_force_jacobian_carries_the_factor() -> None:
 
 
 def test_factor_converges_a_stalling_boundary() -> None:
-    """A boundary at tcon0 0.5 with a free gauge stalls at ns = 71 without the
-    factor."""
-    vmec_input = vmecpp.VmecInput.from_file(DRIFT)
-    for name, value in STALLING.items():
-        setattr(vmec_input, name, value)
+    """An exact vacuum field stalls at the default settings without the factor."""
+    vmec_input = vmecpp.VmecInput.from_file(VACUUM)
     vmec_input.return_outputs_even_if_not_converged = True
-    vmec_input.niter_array = np.asarray(
-        [*np.asarray(vmec_input.niter_array)[:-1], 6000]
-    )
     stalled = vmecpp.run(vmec_input, verbose=False, max_threads=2).wout
     assert max(stalled.fsqr, stalled.fsqz, stalled.fsql) > stalled.ftolv
     vmec_input.tcon_axis_factor = 2.0
