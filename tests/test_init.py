@@ -275,6 +275,32 @@ def test_free_boundary_run_with_mgrid_mode_none(tmp_path):
     assert vmecpp.VmecWOut.from_wout_file(wout_filename).mgrid_mode == ""
 
 
+def test_axisymmetric_free_boundary_equilibrium_does_not_depend_on_nfp():
+    """solovev_free_bdy at nfp = 5 reproduces the equilibrium at nfp = 1, each with the
+    field of its coils on the grid of its mgrid file."""
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "solovev_free_bdy.json")
+    makegrid_params = vmecpp.MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_solovev.json"
+    )
+    wouts = []
+    for nfp in [1, 5]:
+        vmec_input.nfp = nfp
+        makegrid_params.number_of_field_periods = nfp
+        response = vmecpp.MagneticFieldResponseTable.from_coils_file(
+            TEST_DATA_DIR / "coils.solovev", makegrid_params
+        )
+        wouts.append(vmecpp.run(vmec_input, response, verbose=False).wout)
+
+    for name in ["rmnc", "zmns", "lmns", "iotaf", "bmnc"]:
+        np.testing.assert_allclose(
+            getattr(wouts[1], name),
+            getattr(wouts[0], name),
+            rtol=0,
+            atol=1e-12,
+            err_msg=name,
+        )
+
+
 def test_vmecinput_io():
     vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
     with tempfile.TemporaryDirectory() as tmp_dir:
