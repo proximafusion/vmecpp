@@ -48,7 +48,12 @@ def test_half_grid_profiles_match_the_solver(ncurr: int) -> None:
     indata = _cth_like(ncurr)
     wout = vmecpp.run(indata, max_threads=1, verbose=False).wout
     mass, iota, current = autodiff_wout.half_grid_profiles(indata, wout.ns, {})
-    np.testing.assert_allclose(mass, wout.mass[1:] * autodiff_wout.MU_0, rtol=1e-14)
+    # the CUDA build evaluates the profile on the device, whose fused multiply-adds
+    # round the vanishing edge entry differently
+    expected_mass = wout.mass[1:] * autodiff_wout.MU_0
+    np.testing.assert_allclose(
+        mass, expected_mass, rtol=1e-14, atol=1e-15 * np.abs(expected_mass).max()
+    )
     if ncurr == 0:
         np.testing.assert_allclose(iota, wout.iotas[1:], rtol=1e-14)
     else:  # <B_u> meets the prescribed current through the chi' solve

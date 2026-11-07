@@ -122,6 +122,63 @@ class FlowControl {
   Eigen::Vector3d fResInvar;
   Eigen::Vector3d fResPrecd;
 
+  // Per-configuration state of a batched CUDA run, filled from the device
+  // buffers; the scalar fields above govern a single-configuration run.
+  std::vector<RestartReason> restart_reason_per_cfg;
+  // Nonzero while the configuration iterates; bytes rather than
+  // std::vector<bool> so the mask copies straight to the device.
+  std::vector<std::uint8_t> active_per_cfg;
+  // Per-configuration scalar invariant residuals corresponding to the
+  // single-configuration fsqr, fsqz, fsql values above.
+  std::vector<double> fsqr_per_cfg, fsqz_per_cfg, fsql_per_cfg;
+  // Per-configuration scalar preconditioned residuals corresponding to the
+  // single-configuration fsqr1, fsqz1, fsql1 values above.
+  std::vector<double> fsqr1_per_cfg, fsqz1_per_cfg, fsql1_per_cfg;
+  // Per-configuration component-wise residual vectors. Eigen::Vector3d is
+  // a fixed-size POD-like type; std::vector contiguity is preserved.
+  std::vector<Eigen::Vector3d> fResInvar_per_cfg;
+  std::vector<Eigen::Vector3d> fResPrecd_per_cfg;
+  // Bad-Jacobian restarts of each configuration in the current multigrid stage.
+  std::vector<int> ijacob_per_cfg;
+
+  // Each configuration's iteration count in the stage under per_cfg_control,
+  // advanced when it does not restart, as a single run's iter2.
+  std::vector<int> iter2_per_cfg;
+
+  // 1 once the configuration met ftolv in the current stage; 0 while it
+  // iterates or when the stage ran out of iterations.
+  std::vector<std::uint8_t> converged_per_cfg;
+
+  // Per-configuration time traces of a batch, logged where the traces above are
+  // while the configuration is active.
+  std::vector<std::vector<double>> force_residual_r_per_cfg;
+  std::vector<std::vector<double>> force_residual_z_per_cfg;
+  std::vector<std::vector<double>> force_residual_lambda_per_cfg;
+  std::vector<std::vector<double>> mhd_energy_per_cfg;
+  std::vector<std::vector<double>> delbsq_per_cfg;
+  std::vector<std::vector<RestartReason>> restart_reasons_per_cfg;
+
+  // Restart control of each configuration of a distinct batch: time step,
+  // iter1, residual minima res0 and res1, and the reported iteration count.
+  bool per_cfg_control = false;
+  std::vector<double> delt0r_per_cfg;
+  std::vector<int> iter1_per_cfg;
+  std::vector<double> res0_per_cfg;
+  std::vector<double> res1_per_cfg;
+  std::vector<int> niter_per_cfg;
+
+  // 1 for a configuration that failed as its single run would: a bad Jacobian
+  // in a stage's first iteration, non-finite residuals or 75 bad Jacobians.
+  std::vector<std::uint8_t> failed_per_cfg;
+
+  // Sizes the per-configuration vectors to n_cfg; a call with the current size
+  // has no effect.
+  void ResizeForBatch(int n_cfg);
+
+  // Restarts each configuration that has not failed for the next stage, with
+  // time step delt; a no-op when the per-configuration vectors are empty.
+  void ResetActivePerCfgForNextStage(double delt);
+
  private:
   const int max_threads_;
 };

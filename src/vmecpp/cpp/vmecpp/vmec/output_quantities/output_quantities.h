@@ -1450,6 +1450,17 @@ OutputQuantities ComputeOutputQuantities(
     const VmecCheckpoint& checkpoint, VacuumPressureState vacuum_pressure_state,
     VmecStatus vmec_status, int iter2);
 
+// Derives every output from an OutputQuantities whose vmec_internal_results is
+// populated; ComputeOutputQuantities is GatherDataFromThreads then this.
+OutputQuantities DeriveOutputQuantities(
+    OutputQuantities&& output_quantities_in, const VmecINDATA& indata,
+    const Sizes& s, const FlowControl& fc, const VmecConstants& constants,
+    const FourierBasisFastPoloidal& t, const HandoverStorage& h,
+    const std::string& mgrid_mode,
+    const std::vector<std::string>& coil_group_names,
+    const VmecCheckpoint& checkpoint, VacuumPressureState vacuum_pressure_state,
+    VmecStatus vmec_status, int iter2);
+
 // gather data from all threads into the main thread
 VmecInternalResults GatherDataFromThreads(
     int sign_of_jacobian, const Sizes& s, const FlowControl& fc,

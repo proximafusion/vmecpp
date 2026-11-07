@@ -1330,3 +1330,72 @@ TEST(TestVmec, CurrentDensityEndsAtTheSmallestRadialResolution) {
     EXPECT_EQ(wout.currvmnc(mn, 2), interior_v) << "mn = " << mn;
   }
 }  // CurrentDensityEndsAtTheSmallestRadialResolution
+
+// nThetaReduced = 44 > 32 exercises the multi-warp poloidal scatter of the CUDA
+// build; a stale point past index 31 diverges the first iterations.
+TEST(TestVmec, PoloidalResolutionAbove32) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ntheta = 86;  // nThetaReduced = 44 > 32
+
+  // A stale poloidal point diverges the run within twenty iterations;
+  // converging here would cost the tsan suite four times the default case.
+  indata->niter_array[0] = 20;
+  indata->return_outputs_even_if_not_converged = true;
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+}  // PoloidalResolutionAbove32
+
+#ifdef VMECPP_USE_CUDA
+// ns = 1100 > 1024 takes the block-Thomas radial solver, which holds its
+// elimination ratios in dynamic shared memory; CUDA only.
+TEST(TestVmec, CudaRadialResolutionAbove1024) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array.resize(3);
+  indata->ns_array << 25, 99, 1100;
+  indata->ftol_array.resize(3);
+  indata->ftol_array << 1.0e-6, 1.0e-6, 1.0e-6;
+  indata->niter_array.resize(3);
+  indata->niter_array << 2000, 2000, 3000;
+
+  const auto output = vmecpp::run(*indata);
+  ASSERT_TRUE(output.ok());
+}  // CudaRadialResolutionAbove1024
+
+// A radial resolution beyond the device's shared-memory capacity is rejected
+// up front with a clear error rather than producing truncated results.
+TEST(TestVmec, CudaRadialResolutionRejectedBeyondDeviceLimit) {
+  const std::string filename = "vmecpp/test_data/cth_like_fixed_bdy.json";
+  const absl::StatusOr<std::string> indata_json = ReadFile(filename);
+  ASSERT_TRUE(indata_json.ok());
+
+  absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  indata->ns_array.resize(2);
+  indata->ns_array << 25, 50000;  // beyond any current device's capacity
+  indata->ftol_array.resize(2);
+  indata->ftol_array << 1.0e-6, 1.0e-6;
+  indata->niter_array.resize(2);
+  indata->niter_array << 100, 100;
+
+  const auto output = vmecpp::run(*indata);
+  EXPECT_FALSE(output.ok());
+  if (!output.ok()) {
+    EXPECT_THAT(std::string(output.status().message()),
+                ::testing::HasSubstr("radial resolutions up to"));
+  }
+}  // CudaRadialResolutionRejectedBeyondDeviceLimit
+#endif  // VMECPP_USE_CUDA
