@@ -316,6 +316,28 @@ class VmecINDATA {
   // non-stellarator-symmetric
   std::optional<RowMatrixXd> zbc;
 
+  // ---------------------------------
+  // toroidal elements in place of the toroidal Fourier basis
+
+  // degree of the toroidal elements; 0 (default) selects the Fourier basis
+  int toroidal_element_degree;
+
+  // Gauss-Lobatto points per element; 0 (default) selects degree + 2
+  int toroidal_element_quadrature;
+
+  // element boundaries in v from 0 to \pi, mirrored onto [\pi, 2 \pi]
+  Eigen::VectorXd toroidal_element_breaks;
+
+  // [mpol, 2 * ntor] cos(m u) and sin(m u) coefficients of R, Z at the nodes
+  RowMatrixXd rbc_nodes;
+  RowMatrixXd rbs_nodes;
+  RowMatrixXd zbc_nodes;
+  RowMatrixXd zbs_nodes;
+
+  // [2 * ntor] R and Z of the initial magnetic axis at the element nodes
+  Eigen::VectorXd raxis_nodes;
+  Eigen::VectorXd zaxis_nodes;
+
   // Construct a VmecINDATA instance with default values, except for profile
   // coefficients or knot locations/values. Axis geometry coefficients and
   // boundary geometry coefficients are zero-initialized.

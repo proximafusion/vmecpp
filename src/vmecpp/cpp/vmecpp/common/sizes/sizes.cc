@@ -5,10 +5,12 @@
 #include "vmecpp/common/sizes/sizes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <string>  // std::to_string
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 
 namespace vmecpp {
@@ -37,7 +39,20 @@ int NzetaForVacuum(const VmecINDATA& id) {
 
 Sizes::Sizes(const VmecINDATA& id)
     : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, NthetaForVacuum(id),
-            NzetaForVacuum(id), id.mpol_geometry, id.ntor_geometry) {}
+            NzetaForVacuum(id), id.mpol_geometry, id.ntor_geometry) {
+  if (id.toroidal_element_degree > 0) {
+    absl::StatusOr<ToroidalElements> elements = MakeToroidalElements(
+        id.toroidal_element_breaks, id.toroidal_element_degree, id.nfp,
+        id.toroidal_element_quadrature);
+    CHECK_OK(elements.status());
+    CHECK_EQ(elements->ntor, ntor)
+        << "ntor has to be the number of toroidal element slots minus one";
+    nZeta = elements->num_points;
+    toroidal_elements =
+        std::make_shared<const ToroidalElements>(*std::move(elements));
+    computeDerivedSizes();
+  }
+}
 
 Sizes::Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
              int mpol_geometry, int ntor_geometry)
@@ -91,7 +106,7 @@ void Sizes::computeDerivedSizes() {
     nZeta = 1;
   }
 
-  if (ntor > 0) {
+  if (ntor > 0 && toroidal_elements == nullptr) {
     // 3D/Stellarator case needs Nyquist criterion fulfilled for nzeta wrt. ntor
     if (nZeta < 2 * ntor + 4) {
       nZeta = 2 * ntor + 4;
@@ -155,6 +170,25 @@ void Sizes::computeDerivedSizes() {
     if (!lasym && (l == 0 || l == nThetaReduced - 1)) {
       // weight back to 1 at the endpoints
       wInt[l] /= 2.0;
+    }
+  }
+
+  wZeta = Eigen::VectorXd::Ones(nZeta);
+  if (toroidal_elements != nullptr) {
+    for (int k = 0; k < nZeta; ++k) {
+      wZeta[k] = toroidal_elements->weight[k] * nZeta / (2.0 * M_PI);
+    }
+  }
+  zetaMirror.resize(nZeta);
+  for (int k = 0; k < nZeta; ++k) {
+    zetaMirror[k] = toroidal_elements != nullptr ? toroidal_elements->mirror[k]
+                                                 : (nZeta - k) % nZeta;
+  }
+
+  wIntKL.resize(nZeta * nThetaEff);
+  for (int k = 0; k < nZeta; ++k) {
+    for (int l = 0; l < nThetaEff; ++l) {
+      wIntKL[k * nThetaEff + l] = wInt[l] * wZeta[k];
     }
   }
 

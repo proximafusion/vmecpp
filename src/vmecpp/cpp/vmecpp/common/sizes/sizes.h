@@ -6,7 +6,9 @@
 #define VMECPP_COMMON_SIZES_SIZES_H_
 
 #include <Eigen/Dense>
+#include <memory>
 
+#include "vmecpp/common/toroidal_elements/toroidal_elements.h"
 #include "vmecpp/common/util/util.h"
 #include "vmecpp/common/vmec_indata/vmec_indata.h"
 
@@ -66,6 +68,18 @@ class Sizes {
 
   // [nThetaEff] poloidal integration weights
   Eigen::VectorXd wInt;
+
+  // toroidal elements replacing the Fourier basis, or null
+  std::shared_ptr<const ToroidalElements> toroidal_elements;
+
+  // [nZeta] toroidal quadrature weights relative to the uniform grid
+  Eigen::VectorXd wZeta;
+
+  // [nZnT] wInt[l] * wZeta[k] at the point k * nThetaEff + l of a surface
+  Eigen::VectorXd wIntKL;
+
+  // [nZeta] index of the toroidal point at -zeta
+  std::vector<int> zetaMirror;
 
   // number of Fourier coefficients in one of the 2D arrays (cc, ss, ...)
   int mnsize;

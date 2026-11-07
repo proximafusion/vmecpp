@@ -353,6 +353,10 @@ class IdealMhdModel {
   // Applies the radial preconditioner for lambda.
   void applyLambdaPreconditioner(FourierForces& m_decomposed_f);
 
+  // maps forces between element slots and toroidal stiffness eigenvectors
+  void transformToroidalForces(FourierForces& m_decomposed_f,
+                               bool into_eigenvectors) const;
+
   // Computes the mismatch in |B|^2 at the LCFS.
   double get_delbsq() const;
 
@@ -525,11 +529,19 @@ class IdealMhdModel {
 
   /**********************************************/
 
+  // [ntor + 1] toroidal stiffness of slot n: (n nfp)^2 or even eigenvalues
+  Eigen::VectorXd toroidal_stiffness_;
+
+  // the same for the odd functions
+  Eigen::VectorXd toroidal_stiffness_odd_;
+
   // lambda preconditioner
   Eigen::VectorXd bLambda;
   Eigen::VectorXd dLambda;
   Eigen::VectorXd cLambda;
   Eigen::VectorXd lambdaPreconditioner;
+  // with toroidal elements, that of the odd toroidal functions
+  Eigen::VectorXd lambdaPreconditionerOdd;
   double lambda_preconditioner_scale_ = 0.5;
   double lambda_precondition_checkerboard_terms_ = 1e-3;
 
@@ -566,6 +578,9 @@ class IdealMhdModel {
   Eigen::VectorXd br;
   Eigen::VectorXd az;
   Eigen::VectorXd dz;
+  // with toroidal elements, the diagonals of the odd toroidal functions
+  Eigen::VectorXd dr_odd;
+  Eigen::VectorXd dz_odd;
   Eigen::VectorXd bz;
 
   /**********************************************/

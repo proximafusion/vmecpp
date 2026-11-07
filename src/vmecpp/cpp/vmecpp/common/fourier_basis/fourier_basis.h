@@ -175,6 +175,32 @@ class FourierBasis {
   // derivatives
   Eigen::VectorXd sinnvn;
 
+  // the four tables above times wZeta[k], for transforms into the basis
+  Eigen::VectorXd cosnvi;
+  Eigen::VectorXd sinnvi;
+  Eigen::VectorXd cosnvni;
+  Eigen::VectorXd sinnvni;
+
+  // with toroidal elements, the tables hold the scaled slot functions
+
+  // [ntor + 1] coefficients of the constant function in the even basis
+  Eigen::VectorXd constant_mode;
+
+  // [nnyq2 + 1] scales of the toroidal Fourier modes
+  Eigen::VectorXd nscale_fourier;
+
+  // [(nnyq2+1) * nZeta] element point values to Fourier modes
+  Eigen::VectorXd fourier_cosnvi;
+  Eigen::VectorXd fourier_sinnvi;
+
+  // [(ntor + 1), (ntor + 1)] Fourier coefficients of the element functions
+  Eigen::MatrixXd element_to_fourier_even;
+  Eigen::MatrixXd element_to_fourier_odd;
+
+  // [(ntor + 1), (ntor + 1)] inverse mass matrices; empty at the nodes
+  Eigen::MatrixXd mass_inverse_even;
+  Eigen::MatrixXd mass_inverse_odd;
+
   // ============================================================================
   // FOURIER BASIS CONVERSION FUNCTIONS
   // ============================================================================
@@ -354,6 +380,7 @@ class FourierBasis {
   const Sizes& s_;
 
   void computeFourierBasis(int nfp);
+  void computeToroidalElementBasis(const ToroidalElements& elements);
 };
 
 using FourierBasisFastPoloidal = FourierBasis<FourierBasisFastPoloidalLayout>;

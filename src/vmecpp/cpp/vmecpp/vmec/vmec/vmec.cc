@@ -76,6 +76,12 @@ absl::Status CheckInitialState(const vmecpp::HotRestartState& initial_state,
       "' between hot restart initial state and indata. This is not supported "
       "yet.";
 
+  // the state is read from the toroidal Fourier modes of the wout
+  if (indata.toroidal_element_degree > 0) {
+    return absl::InvalidArgumentError(
+        "hot restart is not available with toroidal elements");
+  }
+
   // check for match in `lasym`, since that determines whether
   // non-stellarator-symmetric terms are expected or not
   if (initial_state.indata.lasym != indata.lasym) {
@@ -280,8 +286,10 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     : indata_(indata),
       s_(indata_),
       vacuum_s_(indata_.lasym, indata_.nfp, VacuumMpol(indata_),
-                VacuumNtor(indata_), s_.ntheta, s_.nZeta, VacuumMpol(indata_),
-                VacuumNtor(indata_)),
+                VacuumNtor(indata_), s_.ntheta,
+                // with toroidal elements, a uniform grid of the input nzeta
+                s_.toroidal_elements != nullptr ? indata_.nzeta : s_.nZeta,
+                VacuumMpol(indata_), VacuumNtor(indata_)),
       t_(&s_),
       b_(&s_, &t_, indata_.signgs),
       h_(&s_),
@@ -325,6 +333,31 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
     h_.vacuum_b_r.setZero(s_.nZnT);
     h_.vacuum_b_phi.setZero(s_.nZnT);
     h_.vacuum_b_z.setZero(s_.nZnT);
+    if (s_.toroidal_elements != nullptr) {
+      const int nzeta = vacuum_s_.nZeta;
+      h_.vacuum_grid_r_axis.setZero(nzeta);
+      h_.vacuum_grid_z_axis.setZero(nzeta);
+      h_.vacuum_grid_magnetic_pressure.setZero(vacuum_s_.nZnT);
+      h_.vacuum_grid_b_r.setZero(vacuum_s_.nZnT);
+      h_.vacuum_grid_b_phi.setZero(vacuum_s_.nZnT);
+      h_.vacuum_grid_b_z.setZero(vacuum_s_.nZnT);
+      // trigonometric interpolation from the uniform grid to the element points
+      h_.vacuum_interpolation.resize(s_.nZeta, nzeta);
+      for (int k = 0; k < s_.nZeta; ++k) {
+        for (int kv = 0; kv < nzeta; ++kv) {
+          const double dv =
+              s_.toroidal_elements->zeta[k] - 2.0 * M_PI * kv / nzeta;
+          double kernel = 1.0;
+          for (int n = 1; 2 * n < nzeta; ++n) {
+            kernel += 2.0 * std::cos(n * dv);
+          }
+          if (nzeta % 2 == 0) {
+            kernel += std::cos(0.5 * nzeta * dv);
+          }
+          h_.vacuum_interpolation(k, kv) = kernel / nzeta;
+        }
+      }
+    }
   }
 }
 
@@ -353,11 +386,10 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
     magnetic_field_ = std::bind_front(&MGridProvider::interpolate, &mgrid_);
   }
   if (indata_.lfreeb && mgrid_.IsLoaded()) {
-    // Sizes raises nzeta to the minimum ntor allows, so s_.nZeta is the
-    // toroidal resolution of the run.
-    if (mgrid_.numPhi != s_.nZeta) {
+    // toroidal resolution of the vacuum solve, raised to the ntor minimum
+    if (mgrid_.numPhi != vacuum_s_.nZeta) {
       const std::string raised_from =
-          s_.nZeta == indata_.nzeta
+          vacuum_s_.nZeta == indata_.nzeta
               ? ""
               : absl::StrFormat(
                     " (nzeta = %d in VmecINDATA, raised to the "
@@ -366,7 +398,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       return absl::InvalidArgumentError(absl::StrFormat(
           "MGridProvider has %d phi grid points, but the run has %d toroidal "
           "grid points%s. Please ensure that the two are consistent.",
-          mgrid_.numPhi, s_.nZeta, raised_from));
+          mgrid_.numPhi, vacuum_s_.nZeta, raised_from));
     }
     if (mgrid_.nfp != indata_.nfp) {
       return absl::InvalidArgumentError(absl::StrFormat(
@@ -663,32 +695,39 @@ void Vmec::SetupVacuumSolvers() {
   fb_vac_.resize(vac_num_threads_);
   tp_vac_.resize(vac_num_threads_);
 
+  // the outputs of the vacuum solvers, on their own grid for toroidal elements
+  const bool elements = s_.toroidal_elements != nullptr;
+  auto share = [](Eigen::VectorXd& values) {
+    return std::span<double>(values.data(), values.size());
+  };
+  const std::span<double> vacuum_pressure =
+      share(elements ? h_.vacuum_grid_magnetic_pressure
+                     : h_.vacuum_magnetic_pressure);
+  const std::span<double> vacuum_b_r =
+      share(elements ? h_.vacuum_grid_b_r : h_.vacuum_b_r);
+  const std::span<double> vacuum_b_phi =
+      share(elements ? h_.vacuum_grid_b_phi : h_.vacuum_b_phi);
+  const std::span<double> vacuum_b_z =
+      share(elements ? h_.vacuum_grid_b_z : h_.vacuum_b_z);
+
   for (int vac_thread_id = 0; vac_thread_id < vac_num_threads_;
        ++vac_thread_id) {
     tp_vac_[vac_thread_id] = std::make_unique<TangentialPartitioning>(
-        s_.nZnT, vac_num_threads_, vac_thread_id);
+        vacuum_s_.nZnT, vac_num_threads_, vac_thread_id);
 
     if (indata_.free_boundary_method == FreeBoundaryMethod::NESTOR) {
       fb_vac_[vac_thread_id] = std::make_unique<Nestor>(
           &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
           std::span<double>(matrixShare.data(), matrixShare.size()),
           std::span<double>(bvecShare.data(), bvecShare.size()),
-          std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                            h_.vacuum_magnetic_pressure.size()),
-          &lu_decomposition,
-          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()),
+          vacuum_pressure, &lu_decomposition, vacuum_b_r, vacuum_b_phi,
+          vacuum_b_z,
           std::span<double>(vacuum_reduce_slots_.data(),
                             vacuum_reduce_slots_.size()));
     } else if (indata_.free_boundary_method == FreeBoundaryMethod::ONLY_COILS) {
       fb_vac_[vac_thread_id] = std::make_unique<OnlyCoils>(
           &vacuum_s_, tp_vac_[vac_thread_id].get(), &magnetic_field_,
-          std::span<double>(h_.vacuum_magnetic_pressure.data(),
-                            h_.vacuum_magnetic_pressure.size()),
-          std::span<double>(h_.vacuum_b_r.data(), h_.vacuum_b_r.size()),
-          std::span<double>(h_.vacuum_b_phi.data(), h_.vacuum_b_phi.size()),
-          std::span<double>(h_.vacuum_b_z.data(), h_.vacuum_b_z.size()),
+          vacuum_pressure, vacuum_b_r, vacuum_b_phi, vacuum_b_z,
           std::span<double>(vacuum_reduce_slots_.data(),
                             vacuum_reduce_slots_.size()));
     } else {
@@ -1204,7 +1243,10 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
           std::cout << " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS\n";
         }
 
-        b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, indata_.signgs);
+        // the axis guess needs the uniform grid; elements keep the input axis
+        if (s_.toroidal_elements == nullptr) {
+          b_.RecomputeMagneticAxisToFixJacobianSign(fc_.nsval, indata_.signgs);
+        }
         fc_.ijacob = 1;
 
         // prepare parameters to functions that get called due to

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+cc_library(
+    name = "toroidal_elements",
+    srcs = ["toroidal_elements.cc"],
+    hdrs = ["toroidal_elements.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings:str_format",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "toroidal_elements_test",
+    srcs = ["toroidal_elements_test.cc"],
+    deps = [
+        ":toroidal_elements",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)

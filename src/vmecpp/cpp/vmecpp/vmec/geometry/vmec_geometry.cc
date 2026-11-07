@@ -8,18 +8,36 @@
 #include <numbers>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "vmecpp/common/toroidal_elements/toroidal_elements.h"
+
 namespace vmecpp {
 namespace {
 
-std::vector<double> Scale(const RowMatrixXd& source, int mpol, int ntor) {
+// toroidal basis scales; with elements they give nodal values
+std::vector<double> ToroidalScales(const VmecINDATA& indata) {
+  std::vector<double> nscale(indata.ntor + 1, std::numbers::sqrt2);
+  nscale[0] = 1.0;
+  if (indata.toroidal_element_degree > 0) {
+    const absl::StatusOr<ToroidalElements> elements = MakeToroidalElements(
+        indata.toroidal_element_breaks, indata.toroidal_element_degree,
+        indata.nfp, indata.toroidal_element_quadrature);
+    CHECK_OK(elements.status());
+    nscale = elements->scale;
+  }
+  return nscale;
+}
+
+std::vector<double> Scale(const RowMatrixXd& source, int mpol, int ntor,
+                          const std::vector<double>& nscale) {
   std::vector<double> result(source.size());
   for (int j = 0; j < source.rows(); ++j) {
     for (int m = 0; m < mpol; ++m) {
       for (int n = 0; n <= ntor; ++n) {
         const int index = (j * mpol + m) * (ntor + 1) + n;
         const double mscale = m == 0 ? 1.0 : std::numbers::sqrt2;
-        const double nscale = n == 0 ? 1.0 : std::numbers::sqrt2;
-        result[index] = source(j, n * mpol + m) * mscale * nscale;
+        result[index] = source(j, n * mpol + m) * mscale * nscale[n];
       }
     }
   }
@@ -105,22 +123,29 @@ Geometry MakeGeometry(const VmecINDATA& indata,
   }
 
   GeometryCoefficients& coefficients = result.coefficients;
-  coefficients.r_cc = Scale(internal.rmncc, indata.mpol, indata.ntor);
-  coefficients.z_sc = Scale(internal.zmnsc, indata.mpol, indata.ntor);
-  coefficients.lambda_sc = Scale(internal.lmnsc, indata.mpol, indata.ntor);
+  const std::vector<double> nscale = ToroidalScales(indata);
+  coefficients.r_cc = Scale(internal.rmncc, indata.mpol, indata.ntor, nscale);
+  coefficients.z_sc = Scale(internal.zmnsc, indata.mpol, indata.ntor, nscale);
+  coefficients.lambda_sc =
+      Scale(internal.lmnsc, indata.mpol, indata.ntor, nscale);
   if (indata.ntor > 0) {
-    coefficients.r_ss = Scale(internal.rmnss, indata.mpol, indata.ntor);
-    coefficients.z_cs = Scale(internal.zmncs, indata.mpol, indata.ntor);
-    coefficients.lambda_cs = Scale(internal.lmncs, indata.mpol, indata.ntor);
+    coefficients.r_ss = Scale(internal.rmnss, indata.mpol, indata.ntor, nscale);
+    coefficients.z_cs = Scale(internal.zmncs, indata.mpol, indata.ntor, nscale);
+    coefficients.lambda_cs =
+        Scale(internal.lmncs, indata.mpol, indata.ntor, nscale);
   }
   if (indata.lasym) {
-    coefficients.r_sc = Scale(internal.rmnsc, indata.mpol, indata.ntor);
-    coefficients.z_cc = Scale(internal.zmncc, indata.mpol, indata.ntor);
-    coefficients.lambda_cc = Scale(internal.lmncc, indata.mpol, indata.ntor);
+    coefficients.r_sc = Scale(internal.rmnsc, indata.mpol, indata.ntor, nscale);
+    coefficients.z_cc = Scale(internal.zmncc, indata.mpol, indata.ntor, nscale);
+    coefficients.lambda_cc =
+        Scale(internal.lmncc, indata.mpol, indata.ntor, nscale);
     if (indata.ntor > 0) {
-      coefficients.r_cs = Scale(internal.rmncs, indata.mpol, indata.ntor);
-      coefficients.z_ss = Scale(internal.zmnss, indata.mpol, indata.ntor);
-      coefficients.lambda_ss = Scale(internal.lmnss, indata.mpol, indata.ntor);
+      coefficients.r_cs =
+          Scale(internal.rmncs, indata.mpol, indata.ntor, nscale);
+      coefficients.z_ss =
+          Scale(internal.zmnss, indata.mpol, indata.ntor, nscale);
+      coefficients.lambda_ss =
+          Scale(internal.lmnss, indata.mpol, indata.ntor, nscale);
     }
   }
 

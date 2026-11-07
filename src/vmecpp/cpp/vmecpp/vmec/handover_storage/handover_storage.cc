@@ -151,6 +151,10 @@ void HandoverStorage::allocate(const RadialPartitioning& r, int ns) {
     all_dr.setZero();
     all_dz.resize(mnsize, ns);
     all_dz.setZero();
+    all_dr_odd.resize(mnsize, ns);
+    all_dr_odd.setZero();
+    all_dz_odd.resize(mnsize, ns);
+    all_dz_odd.setZero();
     all_br.resize(mnsize, ns);
     all_br.setZero();
     all_bz.resize(mnsize, ns);

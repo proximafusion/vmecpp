@@ -103,10 +103,10 @@ void ForcesToFourier3DSymmFastPoloidal(
           const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
           const int idx_kn = k * (s.nnyq2 + 1) + n;
 
-          const double cosnv = fb.cosnv[idx_kn];
-          const double sinnv = fb.sinnv[idx_kn];
-          const double cosnvn = fb.cosnvn[idx_kn];
-          const double sinnvn = fb.sinnvn[idx_kn];
+          const double cosnv = fb.cosnvi[idx_kn];
+          const double sinnv = fb.sinnvi[idx_kn];
+          const double cosnvn = fb.cosnvni[idx_kn];
+          const double sinnvn = fb.sinnvni[idx_kn];
 
           m_physical_forces.frcc[idx_mn] += rmkcc * cosnv + rmkcc_n * sinnvn;
           m_physical_forces.frss[idx_mn] += rmkss * sinnv + rmkss_n * cosnvn;
@@ -159,10 +159,10 @@ void ForcesToFourier3DSymmFastPoloidal(
           const int idx_mn = ((jF - rp.nsMinF) * s.mpol + m) * (s.ntor + 1) + n;
           const int idx_kn = k * (s.nnyq2 + 1) + n;
 
-          const double cosnv = fb.cosnv[idx_kn];
-          const double sinnv = fb.sinnv[idx_kn];
-          const double cosnvn = fb.cosnvn[idx_kn];
-          const double sinnvn = fb.sinnvn[idx_kn];
+          const double cosnv = fb.cosnvi[idx_kn];
+          const double sinnv = fb.sinnvi[idx_kn];
+          const double cosnvn = fb.cosnvni[idx_kn];
+          const double sinnvn = fb.sinnvni[idx_kn];
 
           m_physical_forces.flsc[idx_mn] += lmksc * cosnv + lmksc_n * sinnvn;
           m_physical_forces.flcs[idx_mn] += lmkcs * sinnv + lmkcs_n * cosnvn;
@@ -582,10 +582,10 @@ void ForcesToFourier3DAsymFastPoloidal(
         const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
         const int idx_kn_base = k * (s.nnyq2 + 1);
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnvi.segment(idx_kn_base, ntorp1);
+        auto sinnv_seg = fb.sinnvi.segment(idx_kn_base, ntorp1);
+        auto cosnvn_seg = fb.cosnvni.segment(idx_kn_base, ntorp1);
+        auto sinnvn_seg = fb.sinnvni.segment(idx_kn_base, ntorp1);
 
         Eigen::Map<Eigen::VectorXd> frsc_seg(
             m_physical_forces.frsc.data() + idx_mn_base, ntorp1);
@@ -644,10 +644,10 @@ void ForcesToFourier3DAsymFastPoloidal(
         const int idx_mn_base = ((jF - rp.nsMinF) * s.mpol + m) * ntorp1;
         const int idx_kn_base = k * (s.nnyq2 + 1);
 
-        auto cosnv_seg = fb.cosnv.segment(idx_kn_base, ntorp1);
-        auto sinnv_seg = fb.sinnv.segment(idx_kn_base, ntorp1);
-        auto cosnvn_seg = fb.cosnvn.segment(idx_kn_base, ntorp1);
-        auto sinnvn_seg = fb.sinnvn.segment(idx_kn_base, ntorp1);
+        auto cosnv_seg = fb.cosnvi.segment(idx_kn_base, ntorp1);
+        auto sinnv_seg = fb.sinnvi.segment(idx_kn_base, ntorp1);
+        auto cosnvn_seg = fb.cosnvni.segment(idx_kn_base, ntorp1);
+        auto sinnvn_seg = fb.sinnvni.segment(idx_kn_base, ntorp1);
 
         Eigen::Map<Eigen::VectorXd> flcc_seg(
             m_physical_forces.flcc.data() + idx_mn_base, ntorp1);
