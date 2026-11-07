@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -271,6 +272,24 @@ int VacuumMpol(const vmecpp::VmecINDATA& indata) {
 }
 int VacuumNtor(const vmecpp::VmecINDATA& indata) {
   return std::max(indata.vacuum_ntor, indata.ntor);
+}
+
+// The VMEC 8.52 control reverts without limit to a stored state.
+// That state can be worse than the one just reached.
+void CountRevert(vmecpp::FlowControl& m_fc, bool verbose) {
+  m_fc.reverts_without_progress++;
+  if (m_fc.reverts_without_progress >=
+      vmecpp::FlowControl::kMaxRevertsWithoutProgress) {
+    m_fc.parvmec_control = true;
+    m_fc.res0 = -1;
+    m_fc.res1 = -1;
+    if (verbose) {
+      std::cout << absl::StrFormat(
+          "NO PROGRESS IN %d RESTARTS: CONTINUING WITH THE PARVMEC TIME-STEP "
+          "CONTROL\n",
+          m_fc.reverts_without_progress);
+    }
+  }
 }
 }  // namespace
 
@@ -718,6 +737,9 @@ absl::StatusOr<bool> Vmec::InitializeRadial(
   fc_.restart_reason = RestartReason::NO_RESTART;
   fc_.res0 = -1;
   fc_.res1 = -1;
+  fc_.res_best = std::numeric_limits<double>::infinity();
+  fc_.reverts_without_progress = 0;
+  fc_.parvmec_control = indata_.iteration_style == IterationStyle::PARVMEC;
   m_delt0 = indata_.delt;
 
   // INITIALIZE MESH-DEPENDENT SCALARS
@@ -1338,10 +1360,16 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // res0 is the best force residual we got so far
       fc_.res0 = std::min(fc_.res0, fc_.fsq);
 
+      // Reverts reset res0 and leave res_best.
+      if (fc_.fsq < 0.5 * fc_.res_best) {
+        fc_.res_best = fc_.fsq;
+        fc_.reverts_without_progress = 0;
+      }
+
       // PARVMEC additionally tracks the invariant residual minimum res1. Keep
       // it (and its inputs) off the vmec_8_52 path so the default control stays
       // byte-for-byte unchanged.
-      if (indata_.iteration_style == IterationStyle::PARVMEC) {
+      if (fc_.parvmec_control) {
         const double fsq_invariant = fc_.fsqr + fc_.fsqz + fc_.fsql;
         if (iter2 == iter1_ || fc_.res1 == -1) {
           fc_.res1 = fsq_invariant;
@@ -1350,7 +1378,8 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       }
     }
 
-    if (indata_.iteration_style == IterationStyle::PARVMEC) {
+    bool control_reverts = false;
+    if (fc_.parvmec_control) {
       // PARVMEC control: store when both residual minima improve; revert via
       // BAD_PROGRESS (delt0r /= 1.03, no ijacob) when either exceeds 1e4 * its
       // minimum after 10 steps.
@@ -1370,6 +1399,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       RestartIteration(fc_.delt0r, thread_id, indata_.backup_evaluated_state);
     } else if (fc_.fsq > 100.0 * fc_.res0 && iter2 > iter1_) {
       // Residuals are growing in time, reduce time step
+      control_reverts = true;
 
 #ifdef _OPENMP
 #pragma omp single
@@ -1387,6 +1417,7 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // the 45 test targets outside tolerance and 1e-4 moves 10. It may still
       // be the right thing for cases that stall at ~2e-3, but it needs the
       // reference outputs regenerated with it.
+      control_reverts = true;
 
 #ifdef _OPENMP
 #pragma omp single
@@ -1407,9 +1438,14 @@ absl::StatusOr<Vmec::SolveEqLoopStatus> Vmec::SolveEquilibriumLoop(
       // have to keep track
       bad_resets++;
 #ifdef _OPENMP
-#pragma omp single nowait
+#pragma omp single
 #endif  // _OPENMP
-      iter1_ = iter2;
+      {
+        iter1_ = iter2;
+        if (control_reverts) {
+          CountRevert(fc_, verbose_);
+        }
+      }
     } else {
       // Increment time step and printout every nstep iterations
       // status report due or

@@ -403,6 +403,67 @@ def test_iteration_styles_diverge_on_stiff_case():
     assert not np.allclose(r852[:n], rpar[:n], rtol=1.0e-6, atol=1.0e-12)
 
 
+@pytest.fixture(params=[(3.8e4, 0.00917), (1.2e5, 0.001)], ids=["backup", "saddle"])
+def stalling_input(request):
+    """A spherical tokamak on which VMEC 8.52 reverts until niter, to a stored state
+    worse than the one it reaches or near the saddle."""
+    pres_scale, eps = request.param
+    rbc, zbs = np.zeros((6, 3)), np.zeros((6, 3))
+    rbc[0, 1], rbc[1, 1], zbs[1, 1] = 1.5, 1.0, 1.6
+    rbc[0, 2], zbs[0, 2] = eps, -eps
+    return vmecpp.VmecInput(
+        nfp=1,
+        mpol=6,
+        ntor=1,
+        ns_array=np.array([25]),
+        ftol_array=np.array([1.0e-12]),
+        niter_array=np.array([6000]),
+        phiedge=5.0,
+        ncurr=0,
+        ai=np.array([1.0, 0.0, 0.0, 0.0, -2.0 / 3.0]),
+        pmass_type="power_series",
+        am=np.array([1.0, -4.0, 6.0, -4.0, 1.0]),
+        pres_scale=pres_scale,
+        gamma=0.0,
+        always_fix_m1_gauge=True,
+        raxis_c=np.array([1.5, 0.0]),
+        zaxis_s=np.array([0.0, 0.0]),
+        rbc=rbc,
+        zbs=zbs,
+    )
+
+
+@pytest.mark.parametrize("max_threads", [1, 4])
+def test_time_step_control_gives_up_on_reverts_without_progress(
+    stalling_input, max_threads
+):
+    """The run goes over to the PARVMEC control and converges."""
+    states = []
+    wout = vmecpp.run(
+        stalling_input,
+        max_threads=max_threads,
+        verbose=False,
+        iteration_callback=states.append,
+    ).wout
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= wout.ftolv
+    assert states[-1].delt > 0.1 * stalling_input.delt
+
+
+def test_python_iteration_follows_the_cpp_solve_to_the_parvmec_control(stalling_input):
+    """The Python loop takes the steps of the C++ solve across the change of control."""
+    indata = stalling_input._to_cpp_vmecindata()
+    reference = _vmecpp.VmecModel.create(indata, 25)
+    reference.solve()
+    model = _vmecpp.VmecModel.create(indata, 25)
+    result = vmecpp.solve_equilibrium(model)
+
+    assert result.converged
+    np.testing.assert_array_equal(result.restart_reasons, reference.restart_reasons)
+    np.testing.assert_allclose(
+        result.force_residual_r, reference.force_residual_r, rtol=1.0e-6, atol=1.0e-13
+    )
+
+
 def test_callback_records_iteration_state():
     """The per-iteration callback fires once per recorded iteration with a consistent
     IterationState snapshot of the convergence / flow-control state.
