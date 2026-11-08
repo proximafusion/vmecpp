@@ -138,6 +138,12 @@ class Vmec(Optimizable):
                 )
                 self.indata = vmecpp.VmecInput.from_file(vmecpp_filename)
             assert self.indata is not None  # for pyright
+            if self.indata.toroidal_transits != 1:
+                msg = (
+                    "simsopt_compat.Vmec requires toroidal_transits = 1: a SIMSOPT "
+                    "surface closes after one toroidal transit"
+                )
+                raise ValueError(msg)
 
             self.runnable = True
             self.need_to_run_code = True
@@ -288,6 +294,12 @@ class Vmec(Optimizable):
         logger.debug(f"Attempting to read file {self.output_file}")
         assert self.output_file is not None
         self.wout = vmecpp.VmecWOut.from_wout_file(self.output_file)
+        if self.wout.toroidal_transits != 1:
+            msg = (
+                "simsopt_compat.Vmec requires toroidal_transits = 1: a SIMSOPT "
+                "surface closes after one toroidal transit"
+            )
+            raise ValueError(msg)
 
         self._set_grid()
 
