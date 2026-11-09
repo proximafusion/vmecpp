@@ -14,8 +14,10 @@ import pytest
 from simsopt import mhd as simsopt_mhd
 from simsopt._core.optimizable import Optimizable
 from simsopt.geo import SurfaceRZFourier
+from simsopt.mhd.profiles import ProfilePolynomial
 
 from vmecpp import _util, ensure_vmec2000_input, simsopt_compat
+from vmecpp._free_boundary import MakegridParameters, write_mgrid_file
 
 # We don't want to install tests and test data as part of the package,
 # but scikit-build-core + hatchling does not support editable installs,
@@ -286,6 +288,134 @@ def test_changing_mpol_ntor(vmec):
     assert vmec.indata.ntor == new_ntor
     assert vmec.wout.rmnc.shape == expected_shape(new_mpol, new_ntor)
     assert vmec.wout.zmns.shape == expected_shape(new_mpol, new_ntor)
+
+
+@pytest.mark.parametrize(
+    "input_file", ["cth_like_fixed_bdy_iota.json", "cth_like_fixed_bdy_asym_iota.json"]
+)
+def test_pressure_and_iota_profiles_on_stellarators(input_file):
+    """A stellarator takes its pressure and iota from SIMSOPT profiles."""
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / input_file, verbose=False)
+    assert vmec.indata is not None
+    vmec.indata.pmass_type = "power_series"
+    pressure = ProfilePolynomial([1.0e3, -1.0e3])
+    iota = ProfilePolynomial([1.2, 0.1, -0.4])
+    vmec.pressure_profile = pressure
+    vmec.iota_profile = iota
+    vmec.run()
+    assert vmec.wout is not None
+    assert vmec.s_half_grid is not None
+    np.testing.assert_allclose(vmec.wout.pres[1:], pressure(vmec.s_half_grid))
+    np.testing.assert_allclose(vmec.wout.iotas[1:], iota(vmec.s_half_grid))
+
+
+def test_pressure_and_current_profiles_on_a_free_boundary(tmp_path):
+    """A free-boundary run takes its pressure and current from SIMSOPT profiles."""
+    makegrid_parameters = MakegridParameters.from_file(
+        TEST_DATA_DIR / "makegrid_parameters_cth_like.json"
+    )
+    makegrid_parameters.number_of_r_grid_points = 31
+    makegrid_parameters.number_of_z_grid_points = 20
+    mgrid_file = tmp_path / "mgrid_cth_like.nc"
+    write_mgrid_file(TEST_DATA_DIR / "coils.cth_like", makegrid_parameters, mgrid_file)
+
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "cth_like_free_bdy.json", verbose=False)
+    assert vmec.indata is not None
+    vmec.indata.mgrid_file = str(mgrid_file)
+    vmec.indata.pmass_type = "power_series"
+    vmec.indata.pcurr_type = "power_series"
+    total = 4.0e4
+    pressure = ProfilePolynomial([1.0e3, -1.0e3])
+    current = ProfilePolynomial(total * np.array([2.0, -2.0]))
+    vmec.pressure_profile = pressure
+    vmec.current_profile = current
+    vmec.run()
+    assert vmec.wout is not None
+    assert vmec.s_half_grid is not None
+    assert vmec.s_full_grid is not None
+    np.testing.assert_allclose(vmec.wout.pres[1:], pressure(vmec.s_half_grid))
+    np.testing.assert_allclose(vmec.wout.ctor, total, rtol=1e-2)
+    np.testing.assert_allclose(
+        vmec.wout.jcurv[1:-1] * 2 * np.pi, current(vmec.s_full_grid[1:-1]), rtol=1e-3
+    )
+
+
+def test_written_input_holds_the_profile(tmp_path):
+    """A written input holds the pressure of a SIMSOPT profile."""
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
+    pressure = ProfilePolynomial(1.0e4 * np.array([1, 1, -2.0]))
+    vmec.pressure_profile = pressure
+    written = tmp_path / "input.test"
+    vmec.write_input(written)
+
+    rerun = simsopt_compat.Vmec(written, verbose=False)
+    rerun.run()
+    assert rerun.s_half_grid is not None
+    assert rerun.wout is not None
+    np.testing.assert_allclose(rerun.wout.pres[1:], pressure(rerun.s_half_grid))
+
+
+def test_replaced_profile_leaves_the_dependency_graph():
+    """A profile that was replaced no longer triggers a run."""
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
+    old = ProfilePolynomial([1.0e4, -1.0e4])
+    new = ProfilePolynomial([2.0e4, -2.0e4])
+    vmec.pressure_profile = old
+    assert old in vmec.parents
+    vmec.pressure_profile = new
+    assert old not in vmec.parents
+    assert new in vmec.parents
+    vmec.run()
+    assert not vmec.need_to_run_code
+
+    old.local_unfix_all()
+    old.x = [3.0e4, -3.0e4]
+    assert not vmec.need_to_run_code
+
+    new.local_unfix_all()
+    new.x = [3.0e4, -3.0e4]
+    assert vmec.need_to_run_code
+
+
+@pytest.mark.parametrize(
+    ("pcurr_type", "coefficients", "total"),
+    [
+        ("power_series", [1.0, 1.0, -1.5], 1.0),
+        ("cubic_spline_ip", [1.0, 1.0, -1.5], 1.0),
+        ("akima_spline_ip", [1.0, 1.0, -1.5], 1.0),
+        ("line_segment_ip", [1.0, 1.0, -1.5], 1.0),
+        ("power_series_i", [0.0, 1.0, -0.4], 0.6),
+        ("cubic_spline_i", [0.0, 1.0, -0.4], 0.6),
+        ("akima_spline_i", [0.0, 1.0, -0.4], 0.6),
+        ("line_segment_i", [0.0, 1.0, -0.4], 0.6),
+    ],
+)
+def test_current_profile_sets_the_total_current(pcurr_type, coefficients, total):
+    """The run's current is the integral of a profile of I'(s) and the edge value of one
+    of I(s)."""
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
+    assert vmec.indata is not None
+    vmec.indata.ncurr = 1
+    vmec.indata.pcurr_type = pcurr_type
+    factor = 5.0e6
+    vmec.current_profile = ProfilePolynomial(factor * np.array(coefficients))
+    vmec.run()
+    assert vmec.wout is not None
+    np.testing.assert_allclose(vmec.indata.curtor, factor * total)
+    np.testing.assert_allclose(vmec.wout.ctor, factor * total, rtol=1e-2)
+
+
+@pytest.mark.parametrize(
+    ("ncurr", "profile"), [(0, "current_profile"), (1, "iota_profile")]
+)
+def test_profile_ncurr_does_not_select_warns(ncurr, profile, caplog):
+    """A profile that the input's ncurr does not select logs a warning."""
+    vmec = simsopt_compat.Vmec(TEST_DATA_DIR / "circular_tokamak.json", verbose=False)
+    assert vmec.indata is not None
+    vmec.indata.ncurr = ncurr
+    setattr(vmec, profile, ProfilePolynomial([1.0, -0.5]))
+    vmec.set_indata()
+    assert profile in caplog.text
 
 
 def test_ensure_vmec2000_input_from_vmecpp_input():
