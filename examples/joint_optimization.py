@@ -89,6 +89,12 @@ def main() -> None:
     parser.add_argument("--aspect", type=float, default=6.0)
     parser.add_argument("--iota", type=float, default=0.42)
     parser.add_argument("--pressure", type=float, default=0.0, help="on axis")
+    parser.add_argument(
+        "--margin",
+        type=int,
+        default=None,
+        help="mpol and ntor of every stage but the last above its boundary modes",
+    )
     args = parser.parse_args()
     for name, nested in (("nested", True), ("joint", False)):
         vmec_input = rotating_ellipse(args.mpol, args.mpol, args.ns, args.nfp)
@@ -101,7 +107,9 @@ def main() -> None:
             mean_iota=args.iota,
             max_mode=max(args.stages),
         )
-        result = optimize(problem, tuple(args.stages), nested=nested, log=print)
+        result = optimize(
+            problem, tuple(args.stages), nested=nested, margin=args.margin, log=print
+        )
         costs = problem.costs
         print(
             f"{name}: {len(result.steps)} steps, {costs.force_evaluations} force"

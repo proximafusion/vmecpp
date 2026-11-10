@@ -31,7 +31,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from vmecpp import _qs, autodiff, geometry
+from vmecpp import _continuation, _qs, autodiff, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 NESTED_TOLERANCE = 1.0e-12
@@ -90,6 +90,34 @@ def boundary_modes(max_mode: int, ntor: int) -> list[tuple[int, int, int]]:
         for n in range(-max_mode, max_mode + 1)
         if m > 0 or n > 0
     ]
+
+
+def _resized(
+    values: np.ndarray, ns: int, old: tuple[int, int], new: tuple[int, int]
+) -> np.ndarray:
+    """Blocks of (ns, mpol, ntor + 1) coefficients along the last axis on other modes.
+
+    The modes that ``new`` adds to ``old`` are zero.
+    """
+    lead = values.shape[:-1]
+    blocks = values.reshape(*lead, -1, ns, old[0], old[1] + 1)
+    resized = np.zeros((*blocks.shape[:-2], new[0], new[1] + 1))
+    mpol, columns = min(old[0], new[0]), min(old[1], new[1]) + 1
+    resized[..., :mpol, :columns] = blocks[..., :mpol, :columns]
+    return resized.reshape(*lead, -1)
+
+
+def _resized_boundary(boundary: np.ndarray, mpol: int, ntor: int) -> np.ndarray:
+    """Boundary coefficients of shape (..., mpol, 2 ntor + 1) on other modes."""
+    boundary = np.asarray(boundary)
+    resized = np.zeros((*boundary.shape[:-2], mpol, 2 * ntor + 1))
+    rows = min(mpol, boundary.shape[-2])
+    old_ntor = (boundary.shape[-1] - 1) // 2
+    span = min(ntor, old_ntor)
+    resized[..., :rows, ntor - span : ntor + span + 1] = boundary[
+        ..., :rows, old_ntor - span : old_ntor + span + 1
+    ]
+    return resized
 
 
 def _gmres(apply, precondition, rhs: np.ndarray) -> np.ndarray:
@@ -164,7 +192,8 @@ class JointProblem:
     default is one per processor. ``exact_products`` takes the Hessian products of the
     force Jacobian from Enzyme in a build that has it. Otherwise they are central
     differences of the force. Both cost about the same. A multigrid input runs on its
-    last resolution.
+    last resolution. ``parent`` is the problem whose compiled residuals a problem on
+    fewer modes shares.
     """
 
     vmec_input: Any
@@ -172,6 +201,7 @@ class JointProblem:
     workers: int = field(default_factory=lambda: os.cpu_count() or 1)
     exact_products: bool = bool(_vmecpp.VMECPP_ENABLE_ENZYME)
     costs: Costs = field(default_factory=Costs)
+    parent: Any = None
 
     def __post_init__(self) -> None:
         if not jax.config.read("jax_enable_x64"):
@@ -223,9 +253,73 @@ class JointProblem:
                 for block in range(12)
             ]
         )
-        self._residuals = jax.jit(self._flat_residuals)
-        self._linearized = jax.jit(self._linearized_residuals)
-        self._along = jax.jit(self._residuals_along)
+        if self.parent is None:
+            self._residuals = jax.jit(self._flat_residuals)
+            self._linearized = jax.jit(self._linearized_residuals)
+            self._along = jax.jit(self._residuals_along)
+        else:
+            # the residuals compile once, for the modes of the parent
+            self._residuals = self.parent._residuals
+            self._linearized = self.parent._linearized
+            self._along = self.parent._along
+
+    def _at_resolution(self, mpol: int, ntor: int) -> JointProblem:
+        """This problem on a state of ``mpol`` and ``ntor`` below its own.
+
+        They hold every nonzero mode of the boundary. The angular grid is VMEC's default
+        for them. The residuals are those of this problem, with zeros in the modes its
+        state adds.
+        """
+        boundary = _resized_boundary(self.boundary0, mpol, ntor)
+        reduced = _continuation._step_input(
+            self.vmec_input.model_copy(update={"rbc": boundary[0], "zbs": boundary[1]}),
+            self.ns,
+            mpol,
+            ntor,
+            float(np.asarray(self.vmec_input.ftol_array)[-1]),
+            int(np.asarray(self.vmec_input.niter_array)[-1]),
+        )
+        reduced.ntheta, reduced.nzeta = 0, 0
+        return replace(
+            self,
+            vmec_input=reduced,
+            max_mode=min(self.max_mode, mpol - 1, ntor),
+            parent=self if self.parent is None else self.parent,
+        )
+
+    def _held_modes(self) -> tuple[int, int]:
+        """The highest m and abs(n) that are nonzero in the input's boundary."""
+        used = np.any(self.boundary0 != 0.0, axis=0)
+        rows = np.flatnonzero(np.any(used, axis=1))
+        columns = np.flatnonzero(np.any(used, axis=0))
+        return (
+            int(rows.max()) if rows.size else 0,
+            int(np.abs(columns - self.ntor).max()) if columns.size else 0,
+        )
+
+    def _full_flat(self, flat: np.ndarray) -> np.ndarray:
+        """Flat geometries along the last axis on the modes the residuals compile on."""
+        if self.parent is None:
+            return flat
+        head = 2 * self.ns
+        return np.concatenate(
+            [
+                flat[..., :head],
+                _resized(
+                    flat[..., head:],
+                    self.ns,
+                    (self.mpol, self.ntor),
+                    (self.parent.mpol, self.parent.ntor),
+                ),
+            ],
+            axis=-1,
+        )
+
+    def _full_boundary(self, boundary) -> np.ndarray:
+        """Boundary coefficients on the modes of the compiled residuals."""
+        if self.parent is None:
+            return np.asarray(boundary)
+        return _resized_boundary(boundary, self.parent.mpol, self.parent.ntor)
 
     def residuals(self, solved: geometry.Geometry, boundary: jax.Array) -> jax.Array:
         """The residual vector of a state.
@@ -301,8 +395,10 @@ class JointProblem:
         )[1]
 
     def _flat_geometry(self, model) -> np.ndarray:
-        return autodiff._cpp_geometry_flat(
-            model.get_geometry(), self.ns, self.mpol, self.ntor
+        return self._full_flat(
+            autodiff._cpp_geometry_flat(
+                model.get_geometry(), self.ns, self.mpol, self.ntor
+            )
         )
 
     def _poloidal_flux_along(self, model, state, direction) -> np.ndarray:
@@ -338,7 +434,7 @@ class JointProblem:
                 models,
                 range(count),
             )
-        return result
+        return self._full_flat(result)
 
     def _evaluation(self, residuals: np.ndarray) -> Evaluation:
         return Evaluation(residuals, self.parts(residuals))
@@ -351,7 +447,10 @@ class JointProblem:
         model.evaluate(2, 2, False)
         return self._evaluation(
             np.asarray(
-                self._residuals(self._flat_geometry(model), jnp.asarray(boundary))
+                self._residuals(
+                    self._flat_geometry(model),
+                    jnp.asarray(self._full_boundary(boundary)),
+                )
             )
         )
 
@@ -398,9 +497,11 @@ class JointProblem:
         model.set_state(state)
         model.evaluate(2, 2, False)
         flat = self._flat_geometry(model)
-        boundary_directions = np.zeros((len(keys), *np.shape(boundary)))
-        for i, key in enumerate(keys):
-            boundary_directions[(i, *key)] = 1.0
+        boundary = self._full_boundary(boundary)
+        shift = (boundary.shape[-1] - 1) // 2 - self.ntor
+        boundary_directions = np.zeros((len(keys), *boundary.shape))
+        for i, (row, m, column) in enumerate(keys):
+            boundary_directions[i, row, m, column + shift] = 1.0
         values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
 
         def linearized(first: int) -> np.ndarray:
@@ -448,7 +549,8 @@ class JointProblem:
         model.evaluate(2, 2, False)
         flat = self._flat_geometry(model)
         force = np.array(model.get_forces())[self.interior]
-        values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
+        wide = jnp.asarray(self._full_boundary(boundary))
+        values = np.asarray(self._residuals(flat, wide))
         normal = np.zeros(state.size)
         try:
             normal[self.interior] = self._normal_step(model, state, force, matrix)
@@ -457,9 +559,7 @@ class JointProblem:
         change = np.full_like(values, np.nan)
         if np.all(np.isfinite(normal)):
             direction = self._geometry_directions([model], state, normal[:, None])[0]
-            change = np.asarray(
-                self._along(flat, jnp.asarray(boundary), jnp.asarray(direction))
-            )
+            change = np.asarray(self._along(flat, wide, jnp.asarray(direction)))
         self.costs.objective_seconds += time.perf_counter() - start
         return values, values + _normal_fraction(boundary, normal) * change, normal
 
@@ -555,7 +655,8 @@ class Stage:
     even from the state in force balance. It is "max_steps" at the step limit.
     ``rejected_steps`` counts the trial steps refused for their merit or force residual.
     ``failed_solves`` counts those on which VMEC raised. ``tightened`` counts the
-    relaxations further for the accuracy of a merit.
+    relaxations further for the accuracy of a merit. ``mpol`` and ``ntor`` are those of
+    the state the stage ran on.
     """
 
     max_mode: int
@@ -563,6 +664,8 @@ class Stage:
     rejected_steps: int = 0
     failed_solves: int = 0
     tightened: int = 0
+    mpol: int = 0
+    ntor: int = 0
 
 
 @dataclass
@@ -733,6 +836,34 @@ def _restored(problem: JointProblem, point: _Point, end: Stage) -> _Point:
     return restored if np.isfinite(restored.merit) else point
 
 
+def _carried(
+    old: JointProblem,
+    new: JointProblem,
+    point: _Point,
+    tolerance: float,
+    *,
+    nested: bool,
+) -> _Point:
+    """The point on the modes of another problem, relaxed there to the tolerance."""
+    boundary = _resized_boundary(point.boundary, new.mpol, new.ntor)
+    sizes = (old.mpol, old.ntor), (new.mpol, new.ntor)
+    niter = None if nested or tolerance <= NESTED_TOLERANCE else RELAXATION_ITERATIONS
+    model = None
+    for state in (point.state + point.normal_step(), point.state):
+        try:
+            model = new.relax(
+                boundary, _resized(state, new.ns, *sizes), tolerance, niter
+            )
+            break
+        except RuntimeError:  # the state crosses flux surfaces on the new modes
+            continue
+    if model is None:
+        model = new.relax(boundary, ftol=tolerance, niter=niter)
+    if nested:
+        return _nested_point(new, boundary, model)
+    return _joint_point(new, boundary, model.get_state())
+
+
 def _first_accepted_step(
     problem: JointProblem,
     iterate: _Iterate,
@@ -842,6 +973,7 @@ def optimize(
     nested: bool = False,
     error_fraction: float = 0.01,
     max_steps: int = 120,
+    margin: int | None = None,
     log=None,
 ) -> Result:
     """Levenberg-Marquardt on the boundary and the state with boundary modes added stage
@@ -852,23 +984,44 @@ def optimize(
     the merit. The force tolerance stays between NESTED_TOLERANCE and LOOSEST_TOLERANCE.
     The last stage starts in force balance and relaxes every step to NESTED_TOLERANCE.
     The final state is relaxed to NESTED_TOLERANCE. ``nested`` instead converges every
-    step to NESTED_TOLERANCE and takes the residuals as they are. BLAS runs on one
-    thread during the run. Residuals that are not finite at the first state raise a
-    ValueError.
+    step to NESTED_TOLERANCE and takes the residuals as they are. With ``margin``, every
+    stage but the last runs on a state whose ``mpol`` and ``ntor`` are that many above
+    the highest mode of its boundary, up to the input's, and the last on the input's.
+    BLAS runs on one thread during the run. Residuals that are not finite at the first
+    state raise a ValueError.
     """
     if max(stages) > problem.max_mode:
         message = f"stage {max(stages)} is above max_mode {problem.max_mode}"
         raise ValueError(message)
+    if margin is not None and margin < 1:
+        message = f"margin needs to be at least 1, but is {margin}"
+        raise ValueError(message)
     start = time.perf_counter()
-    boundary = problem.boundary0.copy()
-    model = problem.relax(boundary, ftol=_FIRST_TOLERANCE)
+    reduced: dict[tuple[int, int], JointProblem] = {}
+
+    def staged(index: int) -> JointProblem:
+        """The problem on the modes of a stage."""
+        if margin is None or index == len(stages) - 1:
+            return problem
+        held_m, held_n = problem._held_modes()
+        mpol = min(problem.mpol, max(stages[index], held_m) + margin)
+        ntor = min(problem.ntor, max(stages[index], held_n) + margin)
+        if (mpol, ntor) == (problem.mpol, problem.ntor):
+            return problem
+        if (mpol, ntor) not in reduced:
+            reduced[mpol, ntor] = problem._at_resolution(mpol, ntor)
+        return reduced[mpol, ntor]
+
+    active = staged(0)
+    boundary = active.boundary0.copy()
+    model = active.relax(boundary, ftol=_FIRST_TOLERANCE)
     if nested:
-        first = _nested_point(problem, boundary, model)
+        first = _nested_point(active, boundary, model)
         if np.isfinite(first.merit):
-            first = _relaxed_further(problem, first, NESTED_TOLERANCE) or first
+            first = _relaxed_further(active, first, NESTED_TOLERANCE) or first
         iterate = _Iterate(first, NESTED_TOLERANCE)
     else:
-        first = _joint_point(problem, boundary, model.get_state())
+        first = _joint_point(active, boundary, model.get_state())
         iterate = _Iterate(first, _FIRST_TOLERANCE)
     if not np.isfinite(iterate.point.merit):
         message = "the residuals are not finite at the first state"
@@ -876,27 +1029,39 @@ def optimize(
     steps: list[Step] = []
     ends: list[Stage] = []
     for index, max_mode in enumerate(stages):
-        keys = boundary_modes(max_mode, problem.ntor)
-        end = Stage(max_mode)
+        last = index == len(stages) - 1
+        following = staged(index)
+        end = Stage(max_mode, mpol=following.mpol, ntor=following.ntor)
         ends.append(end)
         iterate.damping = _FIRST_DAMPING
         iterate.ceiling = LOOSEST_TOLERANCE
-        if not nested and index == len(stages) - 1:
+        if following is not active:
+            iterate.point = _carried(
+                active,
+                following,
+                iterate.point,
+                NESTED_TOLERANCE if nested or last else iterate.tolerance,
+                nested=nested,
+            )
+            active = following
+        elif not nested and last:
             # the last stage takes its derivatives in force balance
-            iterate.point = _restored(problem, iterate.point, end)
+            iterate.point = _restored(active, iterate.point, end)
+        if not nested and last:
             iterate.tolerance = iterate.ceiling = NESTED_TOLERANCE
+        keys = boundary_modes(max_mode, active.ntor)
         slow = 0
         restored = False
         for _ in range(max_steps):
             point = iterate.point
-            model = problem.create_model(point.boundary)
-            tangents = problem.state_tangents(model, point.state, keys, point.matrix)
-            _, jacobian = problem.residual_jacobian(
+            model = active.create_model(point.boundary)
+            tangents = active.state_tangents(model, point.state, keys, point.matrix)
+            _, jacobian = active.residual_jacobian(
                 model, point.state, point.boundary, keys, tangents
             )
             refused = end.rejected_steps + end.failed_solves
             trial = _first_accepted_step(
-                problem,
+                active,
                 iterate,
                 keys,
                 tangents,
@@ -914,7 +1079,7 @@ def optimize(
                     end.stopped = "no_step"
                     break
                 # the merit of a loose state can hide a drop smaller than its error
-                iterate.point = _restored(problem, iterate.point, end)
+                iterate.point = _restored(active, iterate.point, end)
                 iterate.tolerance = NESTED_TOLERANCE
                 iterate.damping = _FIRST_DAMPING
                 restored = True
@@ -940,7 +1105,7 @@ def optimize(
                         min(10.0 * iterate.tolerance, iterate.ceiling),
                     )
                 )
-            evaluation = problem._evaluation(trial.point.balanced)
+            evaluation = active._evaluation(trial.point.balanced)
             steps.append(
                 Step(
                     max_mode,
@@ -977,16 +1142,16 @@ def optimize(
             )
     point = iterate.point
     try:
-        model = problem.relax(
+        model = active.relax(
             point.boundary, point.state + point.normal_step(), NESTED_TOLERANCE
         )
     except RuntimeError:  # the normal step crossed flux surfaces
-        model = problem.relax(point.boundary, point.state, NESTED_TOLERANCE)
+        model = active.relax(point.boundary, point.state, NESTED_TOLERANCE)
     force_residual = model.fsqr + model.fsqz + model.fsql
     return Result(
         point.boundary,
         np.array(model.get_state()),
-        problem.evaluate(model, point.boundary),
+        active.evaluate(model, point.boundary),
         force_residual,
         steps,
         ends,

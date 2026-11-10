@@ -5,6 +5,7 @@
 equilibria and SIMSOPT."""
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import jax
@@ -27,6 +28,8 @@ from vmecpp.joint import (
     _gmres,
     _joint_point,
     _relaxed_further,
+    _resized,
+    _resized_boundary,
     _tightened,
     boundary_modes,
     converged_input,
@@ -621,6 +624,11 @@ def test_a_stage_above_max_mode_is_refused() -> None:
         optimize(Constant(rotating_ellipse(4, 4, 17), max_mode=1), (1, 2))
 
 
+def test_a_margin_below_one_is_refused() -> None:
+    with pytest.raises(ValueError, match="margin"):
+        optimize(Constant(rotating_ellipse(4, 4, 17), max_mode=1), (1,), margin=0)
+
+
 def test_a_solve_that_raises_counts_its_force_evaluations(monkeypatch) -> None:
     class Raises:
         force_eval_count = 7
@@ -871,3 +879,85 @@ def test_joint_uses_fewer_force_evaluations_for_the_same_error(
         joint.steps[-1].evaluation.parts["quasisymmetry"]
         < 2.0 * nested.steps[-1].evaluation.parts["quasisymmetry"]
     )
+
+
+@pytest.fixture(scope="module")
+def reduced():
+    """A problem, the same on fewer modes sharing and compiling its residuals, and a
+    boundary with its state on the fewer modes."""
+    full = QuasisymmetryProblem(
+        rotating_ellipse(5, 5, 17), ntheta=24, nphi=24, max_mode=3
+    )
+    low = full._at_resolution(3, 3)
+    keys = boundary_modes(1, low.ntor)
+    boundary = low.boundary0.copy()
+    boundary[keys[2]] += 1.0e-2
+    state = np.array(low.relax(boundary, ftol=1.0e-10).get_state())
+    return full, low, replace(low, parent=None), keys, boundary, state
+
+
+def test_a_problem_on_fewer_modes_matches_one_compiled_on_them(reduced) -> None:
+    _, low, own, keys, boundary, state = reduced
+    results = []
+    for problem in (low, own):
+        model = problem.create_model(boundary)
+        tangents = problem.state_tangents(model, state, keys)
+        evaluation, jacobian = problem.residual_jacobian(
+            model, state, boundary, keys, tangents
+        )
+        matrix = problem.force_jacobian(problem.create_model(boundary), state)
+        balanced = problem.balanced_residuals(boundary, state, matrix)[1]
+        results.append((evaluation.residuals, jacobian, balanced))
+    for shared, compiled in zip(*results, strict=True):
+        np.testing.assert_allclose(shared, compiled, rtol=1.0e-12, atol=1.0e-14)
+
+
+def test_a_state_on_more_modes_keeps_its_geometry(reduced) -> None:
+    full, low, _, _, boundary, state = reduced
+    sizes = (low.mpol, low.ntor), (full.mpol, full.ntor)
+    wide = _resized(state, full.ns, *sizes)
+    np.testing.assert_array_equal(_resized(wide, full.ns, *reversed(sizes)), state)
+    geometries = []
+    for problem, at_boundary, at_state in (
+        (low, boundary, state),
+        (full, _resized_boundary(boundary, full.mpol, full.ntor), wide),
+    ):
+        model = problem.create_model(at_boundary)
+        model.set_state(np.ascontiguousarray(at_state))
+        model.evaluate(2, 2, False)
+        geometries.append(problem._flat_geometry(model))
+    np.testing.assert_allclose(geometries[0], geometries[1], rtol=1.0e-10)
+
+
+@pytest.fixture(scope="module")
+def with_margin():
+    results = {}
+    for name in ("nested", "joint"):
+        problem = QuasisymmetryProblem(
+            rotating_ellipse(5, 5, 17), ntheta=24, nphi=24, max_mode=2
+        )
+        results[name] = (
+            problem,
+            optimize(problem, (1, 2), nested=name == "nested", margin=2),
+        )
+    return results
+
+
+@pytest.mark.parametrize("name", ["nested", "joint"])
+def test_a_run_with_a_margin_reaches_the_targets_on_the_modes_of_the_input(
+    with_margin, name, tmp_path
+) -> None:
+    problem, result = with_margin[name]
+    assert [(stage.mpol, stage.ntor) for stage in result.stages] == [(3, 3), (5, 5)]
+    assert result.force_residual <= 3.0 * NESTED_TOLERANCE
+    wout = vmecpp.run(
+        converged_input(problem, result.boundary, pin_gauge=True),
+        verbose=False,
+        max_threads=1,
+    ).wout
+    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= wout.ftolv
+    np.testing.assert_allclose(wout.aspect, problem.aspect, atol=5.0e-3)
+    np.testing.assert_allclose(
+        np.mean(np.asarray(wout.iotas)[1:]), problem.mean_iota, atol=5.0e-3
+    )
+    assert _simsopt_quasisymmetry(problem, wout, tmp_path) < 5.0e-3

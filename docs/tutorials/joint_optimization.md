@@ -21,6 +21,7 @@ result = optimize(problem, stages=(1, 2, 3))
 | Quasi-axisymmetry, `ns` 51 | `--ns 51 --mpol 7 --stages 1 2 3 4 5` |
 | Quasi-helical symmetry | add `--nfp 4 --helicity-n 1 --aspect 8 --iota 1.2` |
 | Finite pressure | add `--pressure 10000` |
+| Stages on fewer modes | add `--margin 2` |
 
 ## Method
 
@@ -43,6 +44,8 @@ The boundary moves by `db` and the state by `dx`. `dn` is limited to 5% of the m
 The merit is `|r_b|^2`. Within the limit its error is of second order in the distance from force balance. The error is estimated as `2 |r_b| |J_x dn| |dn| / R` for the whole of `dn`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop, and has `H` assembled at its state at once if `|r|^2` lies below the merit by more than half the predicted drop. Otherwise its merit takes `dn` from GMRES on Hessian products at the trial state, preconditioned by the factors of the last point, until the preconditioned residual is 1% of `dn` or for at most 64 iterations, and `H` is assembled only if this merit falls. The merit on the trial state's own factors decides the step. A trial step refused on its merit tightens the force tolerance by a decade for the rest of the stage. The last stage starts from a state restored to force balance and relaxes every step to `NESTED_TOLERANCE`.
 
 `nested=True` converges each step to `NESTED_TOLERANCE` with the merit `|r|^2`. A stage ends after three steps in a row with a drop below 1%. A step whose gain exceeds 0.5 at a damping above its value at the start of the stage does not count, and the damping then falls ten times faster.
+
+`margin` runs every stage but the last on a state whose `mpol` and `ntor` are that many above the highest mode of its boundary, and the last stage on the input's. Between stages the state takes zeros in the modes it gains and is relaxed on them. The residuals are those of the input's modes, with zeros in the modes a state lacks.
 
 ## Test problem
 
@@ -88,6 +91,7 @@ class MeanIota(JointProblem):
 | `rejected_steps` | Trial steps refused for their merit or force residual |
 | `failed_solves` | Trial steps on which VMEC raised |
 | `tightened` | Further relaxations for the accuracy of a merit |
+| `mpol`, `ntor` | Modes of the state the stage ran on |
 
 Residuals that are not finite at the first state raise a `ValueError`.
 
