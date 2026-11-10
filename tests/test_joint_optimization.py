@@ -538,6 +538,15 @@ def test_inputs_outside_the_method_are_refused(update, max_mode: int) -> None:
         JointProblem(vmec_input, max_mode=max_mode)
 
 
+def test_an_axis_guess_outside_the_boundary_finds_the_same_interior() -> None:
+    """The surfaces of the model's first state then cross, and it has no force."""
+    inside = JointProblem(rotating_ellipse(4, 4, 17), max_mode=1)
+    vmec_input = rotating_ellipse(4, 4, 17)
+    vmec_input.raxis_c = 1.3 * np.eye(1, 5)[0]
+    outside = JointProblem(vmec_input, max_mode=1)
+    np.testing.assert_array_equal(outside.interior, inside.interior)
+
+
 def test_a_multigrid_input_runs_on_its_last_resolution() -> None:
     single = rotating_ellipse(4, 4, 17)
     multigrid = single.model_copy(

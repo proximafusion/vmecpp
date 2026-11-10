@@ -31,7 +31,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from vmecpp import _continuation, _qs, autodiff, geometry
+from vmecpp import _continuation, _iteration, _qs, autodiff, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
 
 NESTED_TOLERANCE = 1.0e-12
@@ -225,6 +225,10 @@ class JointProblem:
         )
         model = self.create_model(self.boundary0)
         model.evaluate(2, 2, True)
+        if model.restart_reason == _iteration.RestartReason.BAD_JACOBIAN:
+            # a first state whose surfaces cross has no force to probe
+            model.reinitialize()
+            model.evaluate(2, 2, True)
         interior, edge = autodiff._interior_and_boundary(model)
         gauge = autodiff._gauge_entries(model)
         self.prescribed = np.concatenate([edge, gauge])
