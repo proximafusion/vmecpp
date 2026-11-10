@@ -35,9 +35,19 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy.linalg
+from threadpoolctl import ThreadpoolController
 
 from vmecpp import autodiff_wout, geometry
 from vmecpp.cpp import _vmecpp  # type: ignore
+
+_BLAS = ThreadpoolController()
+"""The BLAS libraries of NumPy and SciPy."""
+
+_BLAS_THREADS = 1
+"""BLAS threads of the block factorization, the block solve and a joint optimization.
+
+Their matrices are small, and a pool of many threads slows each call on them down.
+"""
 
 _GEOMETRY_COEFFICIENTS = (
     "r_cc",
@@ -427,6 +437,7 @@ class _BlockTridiagonal:
                 )
         return result
 
+    @_BLAS.wrap(limits=_BLAS_THREADS, user_api="blas")
     def factorize(self) -> None:
         """Block Thomas elimination: LU-factor each Schur complement in place."""
         self.pivots = []
@@ -447,6 +458,7 @@ class _BlockTridiagonal:
             self.factors.append(factor)
             self.pivots.append(pivots)
 
+    @_BLAS.wrap(limits=_BLAS_THREADS, user_api="blas")
     def solve(self, rhs: np.ndarray) -> np.ndarray:
         # D'[j]^{-1} f[j] from the forward sweep starts the backward sweep
         solved = []

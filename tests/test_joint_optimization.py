@@ -15,6 +15,7 @@ from simsopt.mhd import Vmec
 from simsopt.mhd.vmec_diagnostics import QuasisymmetryRatioResidual
 
 import vmecpp
+from vmecpp import autodiff
 from vmecpp.cpp import _vmecpp  # type: ignore
 from vmecpp.joint import (
     _NORMAL_ERROR,
@@ -593,6 +594,26 @@ def test_a_stage_reports_how_it_ended() -> None:
     stuck = optimize(Constant(rotating_ellipse(4, 4, 17), max_mode=1), (1,))
     assert [stage.stopped for stage in stuck.stages] == ["no_step"]
     assert stuck.steps == []
+
+
+def test_a_run_holds_blas_on_its_threads_and_restores_the_pool() -> None:
+    def threads() -> list[int]:
+        return [
+            library["num_threads"]
+            for library in autodiff._BLAS.info()
+            if library["user_api"] == "blas"
+        ]
+
+    before = threads()
+    during = []
+    optimize(
+        Constant(rotating_ellipse(4, 4, 17), max_mode=1),
+        (1,),
+        log=lambda line: during.append(threads()),  # noqa: ARG005
+    )
+    assert during
+    assert all(counts == [autodiff._BLAS_THREADS] * len(before) for counts in during)
+    assert threads() == before
 
 
 def test_a_stage_above_max_mode_is_refused() -> None:

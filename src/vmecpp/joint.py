@@ -834,6 +834,7 @@ def _first_accepted_step(
     return None
 
 
+@autodiff._BLAS.wrap(limits=autodiff._BLAS_THREADS, user_api="blas")
 def optimize(
     problem: JointProblem,
     stages=(1, 2, 3),
@@ -851,8 +852,9 @@ def optimize(
     the merit. The force tolerance stays between NESTED_TOLERANCE and LOOSEST_TOLERANCE.
     The last stage starts in force balance and relaxes every step to NESTED_TOLERANCE.
     The final state is relaxed to NESTED_TOLERANCE. ``nested`` instead converges every
-    step to NESTED_TOLERANCE and takes the residuals as they are. Residuals that are not
-    finite at the first state raise a ValueError.
+    step to NESTED_TOLERANCE and takes the residuals as they are. BLAS runs on one
+    thread during the run. Residuals that are not finite at the first state raise a
+    ValueError.
     """
     if max(stages) > problem.max_mode:
         message = f"stage {max(stages)} is above max_mode {problem.max_mode}"
