@@ -549,20 +549,6 @@ class JointProblem:
         self.costs.objective_seconds += time.perf_counter() - start
         return values, np.vstack(rows).T
 
-    def residuals_along(self, model, state, boundary, direction) -> np.ndarray:
-        """The derivative of the residuals along a state direction at a fixed
-        boundary."""
-        state = np.ascontiguousarray(state)
-        model.set_state(state)
-        model.evaluate(2, 2, False)
-        flat = self._flat_geometry(model)
-        wide = jnp.asarray(self._full_boundary(boundary))
-        return self._along_state(model, state, flat, wide, direction)
-
-    def _along_state(self, model, state, flat, wide, direction) -> np.ndarray:
-        along = self._geometry_directions([model], state, direction[:, None])[0]
-        return np.asarray(self._along(flat, wide, jnp.asarray(along)))
-
     def _normal_step(self, model, state, force, matrix) -> np.ndarray:
         """``-H^-1 F`` on the interior by GMRES on products at the state."""
         model.evaluate(2, 2, True)
@@ -599,7 +585,8 @@ class JointProblem:
             normal[:] = np.nan
         change = np.full_like(values, np.nan)
         if np.all(np.isfinite(normal)):
-            change = self._along_state(model, state, flat, wide, normal)
+            direction = self._geometry_directions([model], state, normal[:, None])[0]
+            change = np.asarray(self._along(flat, wide, jnp.asarray(direction)))
         self.costs.objective_seconds += time.perf_counter() - start
         return values, values + _normal_fraction(boundary, normal) * change, normal
 

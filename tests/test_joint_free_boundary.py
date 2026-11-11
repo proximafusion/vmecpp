@@ -189,26 +189,20 @@ def test_current_derivatives_match_converged_free_boundaries(
         )
 
 
-def test_a_state_off_force_balance_takes_the_normal_step(
+def test_a_loosely_relaxed_state_is_taken_to_the_root_of_the_force(
     problem, free_boundary
 ) -> None:
-    """The objective residuals and the jump of a loosely relaxed state against those of
-    the converged one.
-
-    The normal step removes the force residual to first order.
-    """
+    """The linearization of a state that VMEC's descent left at a force tolerance of
+    1e-8 against that of the converged free boundary."""
     shape, currents = free_boundary["shape"], free_boundary["controls"]
-    boundary = problem.boundary_of(shape)
-    loose = np.array(problem.relax(boundary, None, 1.0e-8).get_state())
-    model = problem.create_model(boundary)
-    model.set_state(np.ascontiguousarray(loose))
-    residuals, plasma = problem.split(problem.evaluate(model, boundary).residuals)
-    jump = plasma - problem.vacuum_modes(loose, currents)
-    point = problem.linearize(shape, currents, loose, at_root=False)
-    for name, plain in (("residuals", residuals), ("jump", jump)):
-        assert np.linalg.norm(point[name] - free_boundary[name]) < 0.1 * (
-            np.linalg.norm(plain - free_boundary[name])
-        ), name
+    loose = np.array(
+        problem.relax(problem.boundary_of(shape), None, 1.0e-8).get_state()
+    )
+    point = problem.linearize(shape, currents, loose)
+    for name in ("residuals", "jump"):
+        np.testing.assert_allclose(
+            point[name], free_boundary[name], rtol=0.0, atol=1.0e-10, err_msg=name
+        )
 
 
 def test_a_tether_adds_the_distance_from_its_anchor_to_the_residuals(
@@ -217,9 +211,7 @@ def test_a_tether_adds_the_distance_from_its_anchor_to_the_residuals(
     controls = free_boundary["controls"]
     monkeypatch.setattr(problem, "tether", 1.0e-2)
     monkeypatch.setattr(problem, "anchor", controls - 2.0 * problem.scales)
-    point = problem.linearize(
-        free_boundary["shape"], controls, free_boundary["state"], at_root=True
-    )
+    point = problem.linearize(free_boundary["shape"], controls, free_boundary["state"])
     count = controls.size
     np.testing.assert_allclose(point["balanced"][-count:], 2.0e-2)
     np.testing.assert_allclose(point["reduced"][-count:], 1.0e-2 * np.eye(count))

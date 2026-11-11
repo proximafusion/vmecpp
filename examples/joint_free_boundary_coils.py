@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 """Coil shapes and currents of a quasi-axisymmetric stellarator for quasisymmetry on its
-free boundary: the coils, the boundary and the VMEC state move together under force
-balance and pressure balance.
+free boundary: the coils and the boundary move together under pressure balance, with
+the VMEC state in force balance inside every boundary.
 
 The coils are those of Giuliani et al. (J. Plasma Phys. 88, 2022) that ship with
 SIMSOPT. They are moved at random and optimized from there, and VMEC++'s own
@@ -286,9 +286,7 @@ def main() -> None:
     )
     check(problem, start)
     problem.anchor, problem.tether = moved, args.tether
-    start = problem.linearize(start["shape"], moved, start["state"], at_root=True)
-    # compile the derivative along a state before the timed runs
-    problem.linearize(start["shape"], moved, start["state"], at_root=False)
+    start = problem.linearize(start["shape"], moved, start["state"])
     for name, nested in (("nested", True), ("joint", False)):
         problem.linearizations = 0
         begin = time.perf_counter()

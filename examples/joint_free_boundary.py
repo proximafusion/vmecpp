@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 """Coil currents of a free-boundary equilibrium for a target aspect ratio and mean iota:
-the currents, the boundary and the VMEC state move together under force balance and
-pressure balance.
+the currents and the boundary move together under pressure balance, with the VMEC state
+in force balance inside every boundary.
 
 VMEC++'s own free-boundary run checks each result.
 """
@@ -264,13 +264,12 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
         along_controls = (rest[0::2] - rest[1::2]).T / (2.0 * relative)
         return values[0], along_tangents / (2.0 * step), along_controls
 
-    def linearize(self, shape, controls, state, *, at_root: bool) -> dict:
-        """The objective residuals and the jump at a shape, controls and state, to first
-        order in force balance, with their derivatives.
+    def linearize(self, shape, controls, state) -> dict:
+        """The objective residuals and the jump at a shape and controls, with the state
+        at the root of the force inside the boundary of the shape, and their
+        derivatives.
 
-        ``at_root`` first takes the state to the root of the force. Otherwise the
-        residuals and the jump take the normal step ``-H^-1 F`` to first order. The
-        restoring move is the Newton step of the shape on the jump, limited to
+        The restoring move is the Newton step of the shape on the jump, limited to
         MAX_MOVE, and ``restorable`` tells whether the limit left it whole. The
         sensitivity is the derivative of the shape with respect to each control, in
         units of its scale, at zero jump. The merit is the squared norm of the
@@ -279,16 +278,7 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
         self.linearizations += 1
         count = len(self.modes)
         boundary = self.boundary_of(shape)
-        if at_root:
-            state, matrix = self.root(boundary, state)
-            normal = np.zeros(state.size)
-        else:
-            state = np.ascontiguousarray(state)
-            force = self._force(boundary, state)
-            self.largest_force = float(np.abs(force).max())
-            matrix = self.force_jacobian(self.create_model(boundary), state)
-            normal = np.zeros(state.size)
-            normal[self.interior] = matrix.solve(-force)
+        state, matrix = self.root(boundary, state)
         tangents = self.tangents_along(
             self.create_model(boundary), state, self.shape_states, matrix
         )
@@ -299,13 +289,9 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
             self.shape_directions,
             tangents,
         )
-        if not at_root:
-            values = values + self.residuals_along(
-                self.create_model(boundary), state, boundary, normal
-            )
         residuals, plasma = self.split(values)
         vacuum, vacuum_along_shape, vacuum_along_controls = self.vacuum_side(
-            state + normal, controls, tangents
+            state, controls, tangents
         )
         jump = plasma - vacuum
         along_shape = jacobian[:-count]
@@ -324,7 +310,6 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
             "shape": np.array(shape, dtype=float),
             "controls": np.array(controls, dtype=float),
             "state": state,
-            "normal": normal,
             "tangents": tangents,
             "residuals": residuals,
             "jump": jump,
@@ -345,7 +330,7 @@ def converge(problem, shape, controls, state, tolerance=1.0e-9) -> dict:
     A step that does not lower the jump, or on which VMEC or the factorization fails, is
     halved. Thirty steps without convergence raise a RuntimeError.
     """
-    point = problem.linearize(shape, controls, state, at_root=True)
+    point = problem.linearize(shape, controls, state)
     steps = 0
     while np.abs(point["jump"]).max() >= tolerance:
         if steps == 30:
@@ -359,7 +344,6 @@ def converge(problem, shape, controls, state, tolerance=1.0e-9) -> dict:
                     point["shape"] + move,
                     controls,
                     problem.carried(point["state"], move, point["tangents"]),
-                    at_root=True,
                 )
                 if np.linalg.norm(trial["jump"]) < np.linalg.norm(point["jump"]):
                     break
@@ -375,18 +359,17 @@ def converge(problem, shape, controls, state, tolerance=1.0e-9) -> dict:
 
 def stepped(problem, point, move, *, nested: bool) -> dict:
     """The point after a step of the controls in units of their scales: the shape moves
-    along its sensitivity and its restoring move, and the state along its tangents and
-    its normal step.
+    along its sensitivity and its restoring move, and the state along its tangents.
 
-    ``nested`` then converges the free boundary. Otherwise the point is linearized as
-    it is.
+    ``nested`` then converges the free boundary. Otherwise the point is linearized at
+    the shape it has.
     """
     change = point["restore"] + point["sensitivity"] @ move
-    state = point["state"] + point["normal"] + point["tangents"] @ change
+    state = problem.carried(point["state"], change, point["tangents"])
     shape, controls = point["shape"] + change, point["controls"] + problem.scales * move
     if nested:
         return converge(problem, shape, controls, state)
-    return problem.linearize(shape, controls, state, at_root=False)
+    return problem.linearize(shape, controls, state)
 
 
 def optimize(
@@ -404,8 +387,8 @@ def optimize(
     A control moves by at most its scale in one step, and the move of a shape mode
     along the sensitivity stays within a radius of at most MAX_MOVE. Without
     ``nested``, a trial step whose restoring move exceeds MAX_MOVE is refused, and the
-    first refusal at a point takes the restoring move and the normal step alone. Any
-    other refusal halves the radius. A run ends at a merit below ``tolerance``, when no
+    first refusal at a point takes the restoring move alone. Any other refusal halves
+    the radius. A run ends at a merit below ``tolerance``, when no
     trial step predicts a drop, or after three steps in a row with a drop below 1%.
     """
     damping, radius = 1.0e-3, MAX_MOVE
@@ -522,8 +505,6 @@ def main() -> None:
     )
     start = converge(problem, np.zeros(len(problem.modes)), currents, None)
     print(f"start: {summary(problem, start)}")
-    # compile the derivative along a state before the timed runs
-    problem.linearize(start["shape"], currents, start["state"], at_root=False)
     for name, nested in (("nested", True), ("joint", False)):
         problem.linearizations = 0
         jacobians = problem.costs.assemblies

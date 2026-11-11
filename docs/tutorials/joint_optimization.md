@@ -103,14 +103,14 @@ Residuals that are not finite at the first state raise a `ValueError`.
 min |r + J_x dx + J_b db|^2   subject to   F + H dx + F_b db = 0,   g + g_x dx + g_b db + g_c dc = 0
 ```
 
-for the state `x`, the shape modes `b` and the controls `c` in units of their scales. The plasma side of `g` is the total pressure on the two outermost half-grid surfaces, extrapolated to the boundary as in `examples/free_boundary_root.py`, from `vmecpp.autodiff_wout`. The vacuum side is `bsqvaci` of one free-boundary iteration of VMEC++ restarted from the state, with `return_vacuum_field`. Eliminating `dx` as above and `db` through the jump:
+for the state `x`, the shape modes `b` and the controls `c` in units of their scales. The plasma side of `g` is the total pressure on the two outermost half-grid surfaces, extrapolated to the boundary as in `examples/free_boundary_root.py`, from `vmecpp.autodiff_wout`. The vacuum side is `bsqvaci` of one free-boundary iteration of VMEC++ restarted from the state, with `return_vacuum_field`. Every linearization has the state at the root of the force inside its boundary, by Newton steps from the state moved along its tangents, so `dn` is zero. Eliminating `dx` as above and `db` through the jump:
 
 ```
-G = g_x T + g_b,   db = dr + S dc,   dr = -G^-1 (g + g_x dn),   S = -G^-1 g_c
-r_b = r + J_x dn + J dr,   (J S)^T (J S) dc = -(J S)^T r_b
+G = g_x T + g_b,   db = dr + S dc,   dr = -G^-1 g,   S = -G^-1 g_c
+r_b = r + J dr,   (J S)^T (J S) dc = -(J S)^T r_b
 ```
 
-`dr` restores pressure balance and `S` is the sensitivity of the shape to the controls. `G` takes its plasma side from JAX and its vacuum side from central differences along the state tangents, which carry the magnetic axis and with it the field of a net toroidal current. `dr` and the move along `S` are each limited to 5 mm per shape mode, and a control moves by at most its scale in one step. A trial step that leaves more than 5 mm to restore is refused, and the first refusal at a point takes `dr` and `dn` alone. With `nested=True`, Newton on `g` with the state at the root of the force converges the free boundary after every step. `field` maps the controls to what `vmecpp.run` takes as its magnetic field: `CoilCurrents` is a response table with its currents as the controls, and `CoilShapes` of `examples/joint_free_boundary_coils.py` is the Biot-Savart field of SIMSOPT coils with their currents and the Fourier coefficients of their curves up to an order as the controls. `tether` weights the distance of each control from `anchor`, in units of its scale, as further residuals.
+`dr` restores pressure balance and `S` is the sensitivity of the shape to the controls. `G` takes its plasma side from JAX and its vacuum side from central differences along the state tangents, which carry the magnetic axis and with it the field of a net toroidal current. `dr` and the move along `S` are each limited to 5 mm per shape mode, and a control moves by at most its scale in one step. A trial step that leaves more than 5 mm to restore is refused, and the first refusal at a point takes `dr` alone. With `nested=True`, Newton on `g` converges the free boundary after every step. `field` maps the controls to what `vmecpp.run` takes as its magnetic field: `CoilCurrents` is a response table with its currents as the controls, and `CoilShapes` of `examples/joint_free_boundary_coils.py` is the Biot-Savart field of SIMSOPT coils with their currents and the Fourier coefficients of their curves up to an order as the controls. `tether` weights the distance of each control from `anchor`, in units of its scale, as further residuals.
 
 ```python
 import numpy as np
@@ -148,7 +148,8 @@ The example runs the CTH-like case of the tests, with pressure and a net toroida
 - Quasisymmetry residuals are not finite on a surface where the Jacobian changes sign. The rotating ellipse reaches this on its boundary between beta 0.66% and 1.1%.
 - Differenced products use a relative step of 3e-9, where truncation and roundoff balance along the soft modes. Against exact products at `ns` 51, the state tangents agree to 4e-6 and the residual derivatives to 1.5e-4.
 - Stellarator symmetry only. `vmecpp.joint.optimize` takes a fixed boundary, and the free boundary is that of the examples. A multigrid input runs on the last entry of `ns_array`.
-- One linearization of the free boundary takes two free-boundary iterations per shape mode and per control for the vacuum side.
+- One linearization of the free boundary takes two to three force Jacobians for the root of the force from a state moved along its tangents, and two free-boundary iterations per shape mode and per control for the vacuum side.
+- The jump needs the state at the root of the force. On the CTH-like case a state that VMEC's descent leaves at a force tolerance of 1e-8 has a jump off by 1e-4.
 - The shape modes need `m` below `mpol` and `abs(n)` up to `ntor`. With all of them on the coils of Giuliani et al. at `mpol` and `ntor` 6, the smallest singular value of `G` is 1.3e-2 against 69, and Newton on the jump reaches boundaries 2 mm apart from two starting surfaces.
 - The root of the jump and the boundary of VMEC++'s free-boundary iteration differ by the radial discretization. On the CTH-like case at `ns` 15 the aspect ratios differ by 1e-4 and the mean iota by 4e-4.
 - Newton on the jump is slow where `G` is nearly singular. On QUASR 19609 of the test data, with mean iota -0.098, the singular values of `G` span 53 to 3.3e-3, against 183 to 0.17 on the CTH-like case, the softest directions are axisymmetric shape modes, and Newton takes 82 linearizations from the QUASR boundary at `ns` 25.
