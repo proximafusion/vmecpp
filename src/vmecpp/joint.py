@@ -366,6 +366,7 @@ class JointProblem:
             self._residuals = self.parent._residuals
             self._linearized = self.parent._linearized
             self._along = self.parent._along
+        self._last: tuple[tuple[bytes, bytes], np.ndarray] | None = None
 
     def _at_resolution(self, mpol: int, ntor: int) -> JointProblem:
         """This problem on a state of ``mpol`` and ``ntor`` below its own.
@@ -644,16 +645,26 @@ class JointProblem:
             parts["violation"] = float(self.violations(raw[first:]).max())
         return Evaluation(self._penalized(raw), parts, np.array(raw[first:]))
 
+    def _values(self, flat: np.ndarray, boundary: np.ndarray) -> np.ndarray:
+        """The residuals followed by the values of the constraints of a flat geometry.
+
+        The last result is kept: the merits of a trial state and the derivatives at an
+        accepted one take the residuals of the same state.
+        """
+        key = (flat.tobytes(), boundary.tobytes())
+        if self._last is None or self._last[0] != key:
+            values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
+            self._last = (key, values)
+        return self._last[1].copy()
+
     def evaluate(self, model, boundary) -> Evaluation:
         """The residuals of the state the model holds.
 
         The state need not be in force balance.
         """
         model.evaluate(2, 2, False)
-        raw = self._residuals(
-            self._flat_geometry(model), jnp.asarray(self._full_boundary(boundary))
-        )
-        return self._evaluation(np.asarray(raw))
+        raw = self._values(self._flat_geometry(model), self._full_boundary(boundary))
+        return self._evaluation(raw)
 
     def force_jacobian(self, model, state):
         """The factored H at the state from Hessian products on one model per worker."""
@@ -704,7 +715,7 @@ class JointProblem:
         boundary_directions = np.zeros((len(keys), *boundary.shape))
         for i, (row, m, column) in enumerate(keys):
             boundary_directions[i, row, m, column + shift] = 1.0
-        values = np.asarray(self._residuals(flat, jnp.asarray(boundary)))
+        values = self._values(flat, boundary)
 
         def linearized(first: int) -> np.ndarray:
             chunk = range(first, min(first + _TANGENT_CHUNK, len(keys)))
@@ -752,8 +763,9 @@ class JointProblem:
         model.evaluate(2, 2, False)
         flat = self._flat_geometry(model)
         force = np.array(model.get_forces())[self.interior]
-        wide = jnp.asarray(self._full_boundary(boundary))
-        values = np.asarray(self._residuals(flat, wide))
+        full = self._full_boundary(boundary)
+        wide = jnp.asarray(full)
+        values = self._values(flat, full)
         normal = np.zeros(state.size)
         try:
             normal[self.interior] = self._normal_step(model, state, force, matrix)

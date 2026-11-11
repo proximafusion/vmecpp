@@ -247,6 +247,35 @@ def test_balanced_residuals_match_the_converged_state(problem, solved) -> None:
     )
 
 
+def test_the_residuals_of_a_state_are_evaluated_once(
+    problem, solved, linearization, monkeypatch
+) -> None:
+    """The residuals of a model, the merit of its state and the residuals of the model
+    again take one evaluation, and another state takes its own."""
+    state = linearization[0]
+    boundary = problem.boundary0
+    matrix = problem.force_jacobian(problem.create_model(boundary), state)
+    calls = []
+    compiled = problem._residuals
+
+    def counted(flat, wide):
+        calls.append(1)
+        return compiled(flat, wide)
+
+    monkeypatch.setattr(problem, "_residuals", counted)
+    monkeypatch.setattr(problem, "_last", None)
+    first = problem.evaluate(solved, boundary)
+    values, _, _ = problem.balanced_residuals(boundary, state, matrix)
+    again = problem.evaluate(solved, boundary)
+    assert len(calls) == 1
+    np.testing.assert_array_equal(values, first.residuals)
+    np.testing.assert_array_equal(again.residuals, first.residuals)
+    moved = state.copy()
+    moved[problem.interior[0]] += 1.0e-6
+    problem.balanced_residuals(boundary, moved, matrix)
+    assert len(calls) == 2
+
+
 def test_a_step_satisfies_the_linearized_force_balance(problem, keys, loose) -> None:
     """A difference of the force shows F + H dx vanishing on the interior for dx = -H^-1
     F + T db away from force balance."""
