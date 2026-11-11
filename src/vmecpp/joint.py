@@ -1185,8 +1185,10 @@ def _bounded_step(
     first = jacobian.shape[0] - count
     weights = problem.shifts.weights
     # the residuals and their derivatives as a triangle of the same sum of squares
-    triangle = np.linalg.qr(
-        np.column_stack([jacobian[:first], point.balanced[:first]]), mode="r"
+    triangle = np.asarray(
+        np.linalg.qr(
+            np.column_stack([jacobian[:first], point.balanced[:first]]), mode="r"
+        )
     )
     rows = triangle.shape[0]
     between = problem.lower < problem.upper
