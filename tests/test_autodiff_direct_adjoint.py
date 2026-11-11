@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import scipy.linalg
 
 import vmecpp
 from vmecpp import autodiff
@@ -108,6 +109,34 @@ def test_block_lu_solves_the_assembled_system() -> None:
     matrix.factorize()
     solution = matrix.solve(rhs)
     np.testing.assert_allclose(unfactorized.matvec(solution), rhs, atol=1.0e-9)
+
+
+def _blas_threads() -> list[int]:
+    return [
+        library["num_threads"]
+        for library in autodiff._BLAS.info()
+        if library["user_api"] == "blas"
+    ]
+
+
+def test_block_lu_runs_on_its_blas_threads_and_restores_the_pool(monkeypatch) -> None:
+    model, solved = _linearized_model()
+    matrix = autodiff._assemble_block_tridiagonal(model, solved)
+    before = _blas_threads()
+    during = []
+    lu_solve = scipy.linalg.lu_solve
+
+    def observed(*arguments, **options):
+        during.append(_blas_threads())
+        return lu_solve(*arguments, **options)
+
+    monkeypatch.setattr(scipy.linalg, "lu_solve", observed)
+    matrix.factorize()
+    factorizing = len(during)
+    matrix.solve(np.ones(solved.size))
+    assert 0 < factorizing < len(during)
+    assert all(threads == [autodiff._BLAS_THREADS] * len(before) for threads in during)
+    assert _blas_threads() == before
 
 
 def test_gradient_matches_finite_differences_of_resolved_equilibria() -> None:

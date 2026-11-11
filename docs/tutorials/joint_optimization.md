@@ -1,0 +1,146 @@
+# Boundary optimization under force balance
+
+`vmecpp.joint` optimizes a fixed boundary and its VMEC state without converging VMEC between steps. Hessian products of the force Jacobian are exact in an Enzyme build (`vmecpp.has_exact_force_jacobian()`) and central differences of the force otherwise.
+
+```python
+import jax
+
+from vmecpp.joint import QuasisymmetryProblem, optimize
+
+jax.config.update("jax_enable_x64", True)
+
+problem = QuasisymmetryProblem(vmec_input, aspect=6.0, mean_iota=0.42, max_mode=3)
+result = optimize(problem, stages=(1, 2, 3))
+```
+
+`examples/joint_optimization.py` runs a problem by both methods and checks each final boundary with a cold run read by SIMSOPT.
+
+| Problem | Options |
+|---|---|
+| Quasi-axisymmetry, `ns` 25 | none |
+| Quasi-axisymmetry, `ns` 51 | `--ns 51 --mpol 7 --stages 1 2 3 4 5` |
+| Quasi-helical symmetry | add `--nfp 4 --helicity-n 1 --aspect 8 --iota 1.2` |
+| Finite pressure | add `--pressure 10000` |
+| Stages on fewer modes | add `--margin 2` |
+
+## Method
+
+Each Levenberg-Marquardt step solves
+
+```
+min |r + J_x dx + J_b db|^2 + damping |db|^2   subject to   F + H dx + F_b db = 0
+```
+
+for the state `x` and the boundary coefficients `b`, where `r` are the residuals, `F` is the force on the interior of the state and `H` is its Jacobian. Eliminating `dx`:
+
+```
+dx = dn + T db,   dn = -H^-1 F,   T = -H^-1 F_b
+r_b = r + J_x dn,   J = J_x T + J_b
+(J^T J + damping D) db = -J^T r_b
+```
+
+The boundary moves by `db` and the state by `dx`. `dn` is limited to 5% of the major radius `R`, in the step and in `r_b`. VMEC's descent then relaxes the state to the force tolerance, which takes no iterations when the step already meets it. A trial step on which VMEC raises is repeated without `dn`.
+
+The merit is `|r_b|^2`. Within the limit its error is of second order in the distance from force balance. The error is estimated as `2 |r_b| |J_x dn| |dn| / R` for the whole of `dn`. A state is relaxed until this is below `error_fraction` times the larger of the predicted drop and 1% of the merit, between `NESTED_TOLERANCE` and `LOOSEST_TOLERANCE`. A trial step is refused if `|r|^2` rises by more than `abs(|r|^2 - |r_b|^2)` plus a quarter of the predicted drop, and has `H` assembled at its state at once if `|r|^2` lies below the merit by more than half the predicted drop. Otherwise its merit takes `dn` from GMRES on Hessian products at the trial state, preconditioned by the factors of the last point, until the preconditioned residual is 1% of `dn` or for at most 64 iterations, and `H` is assembled only if this merit falls. The merit on the trial state's own factors decides the step. A trial step refused on its merit tightens the force tolerance by a decade for the rest of the stage. The last stage starts from a state restored to force balance and relaxes every step to `NESTED_TOLERANCE`.
+
+`nested=True` converges each step to `NESTED_TOLERANCE` with the merit `|r|^2`. A stage ends after three steps in a row with a drop below 1%. A step whose gain exceeds 0.5 at a damping above its value at the start of the stage does not count, and the damping then falls ten times faster.
+
+`margin` runs every stage but the last on a state whose `mpol` and `ntor` are that many above the highest mode of its boundary, and the last stage on the input's. Between stages the state takes zeros in the modes it gains and is relaxed on them. The residuals are those of the input's modes, with zeros in the modes a state lacks.
+
+## Test problem
+
+Quasi-axisymmetry after Landreman and Paul (PRL 2022).
+
+| Choice | Value |
+|---|---|
+| Field periods | 2 |
+| Helicity | (1, 0) |
+| Objective | SIMSOPT's `QuasisymmetryRatioResidual` on s = 0.1, 0.2, ..., 1.0 |
+| Targets | aspect ratio 6, mean iota 0.42, as residuals of unit weight |
+| Profiles | no pressure, no net current (`ncurr` 1, `curtor` 0) |
+| Flux | `phiedge` 0.08 |
+| Start | `rbc(0,0)` 1, `rbc(1,0)` = `zbs(1,0)` = 0.16, `rbc(1,1)` = -`zbs(1,1)` = 0.05 |
+| Free modes | `rbc`, `zbs` with `m` from 0 to `max_mode` and `abs(n)` up to `max_mode`, except `m` = 0 with `n` <= 0 |
+| Bounds | none |
+
+## Other objectives
+
+A subclass of `JointProblem` defines `residuals`, differentiable by JAX:
+
+```python
+import jax.numpy as jnp
+
+from vmecpp.joint import JointProblem
+
+
+class MeanIota(JointProblem):
+    def residuals(self, solved, boundary):
+        mean_iota = (solved.poloidal_flux[-1] - solved.poloidal_flux[0]) / (
+            solved.toroidal_flux[-1] - solved.toroidal_flux[0]
+        )
+        return jnp.atleast_1d(mean_iota - 0.3)
+```
+
+## Result
+
+`Result` holds the final boundary, its state at `NESTED_TOLERANCE` with the residuals and force residual there, the accepted steps and one `Stage` per stage.
+
+| `Stage` field | Meaning |
+|---|---|
+| `stopped` | `"stalled"`: three steps below a drop of 1% that the damping did not limit. `"no_step"`: no trial step predicted a drop, or none held, also from the state relaxed to `NESTED_TOLERANCE`. `"max_steps"`: step limit. |
+| `rejected_steps` | Trial steps refused for their merit or force residual |
+| `failed_solves` | Trial steps on which VMEC raised |
+| `tightened` | Further relaxations for the accuracy of a merit |
+| `mpol`, `ntor` | Modes of the state the stage ran on |
+
+Residuals that are not finite at the first state raise a `ValueError`.
+
+## Free boundary
+
+`examples/joint_free_boundary.py` takes the coil currents as the unknowns and pressure balance as a second constraint. The boundary moves along its normal in shape modes, and the jump `g` in total pressure across it vanishes in each mode:
+
+```
+min |r + J_x dx + J_b db|^2   subject to   F + H dx + F_b db = 0,   g + g_x dx + g_b db + g_c dc = 0
+```
+
+for the state `x`, the shape modes `b` and the logarithms `c` of the currents. The plasma side of `g` is the total pressure on the two outermost half-grid surfaces, extrapolated to the boundary as in `examples/free_boundary_root.py`, from `vmecpp.autodiff_wout`. The vacuum side is `bsqvaci` of one free-boundary iteration of VMEC++ restarted from the state, with `return_vacuum_field`. Eliminating `dx` as above and `db` through the jump:
+
+```
+G = g_x T + g_b,   db = dr + S dc,   dr = -G^-1 (g + g_x dn),   S = -G^-1 g_c
+r_b = r + J_x dn + J dr,   (J S)^T (J S) dc = -(J S)^T r_b
+```
+
+`dr` restores pressure balance and `S` is the sensitivity of the shape to the currents. `G` takes its plasma side from JAX and its vacuum side from central differences along the state tangents, which carry the magnetic axis and with it the field of a net toroidal current. `dr` and the move along `S` are each limited to 5 mm per shape mode. A trial step that leaves more than that to restore is refused, and the first refusal at a point takes `dr` and `dn` alone. With `nested=True`, Newton on `g` with the state at the root of the force converges the free boundary after every step.
+
+```python
+import numpy as np
+
+from joint_free_boundary import FreeBoundaryProblem, converge, optimize, shape_modes
+
+problem = FreeBoundaryProblem(
+    fixed_boundary_input,
+    aspect=5.5,
+    mean_iota=1.15,
+    response=response,
+    modes=shape_modes(4, 4),
+)
+start = converge(problem, np.zeros(len(problem.modes)), currents, None)
+result = optimize(problem, start, nested=False)
+```
+
+The example runs the CTH-like case of the tests, with pressure and a net toroidal current, from the currents of its input to those of a target aspect ratio and mean iota by both methods, and prints the aspect ratio and mean iota of VMEC++'s own free-boundary run at the currents found. `surfaces` adds the quasisymmetry residuals of `QuasisymmetryProblem`.
+
+## Limitations
+
+- One `H` takes `3 * 6 * mpol * (ntor + 1)` Hessian products, about 1000 force evaluations at `ns` 51, `mpol` 7, or 2000 with differenced products. `workers` runs them on one model per thread.
+- Slow modes next to the axis persist in VMEC's descent after the force tolerance is met. At `NESTED_TOLERANCE`, `|r|^2` of the nested baseline can differ from a cold run by 10%.
+- `dn` converges from states along a run. Far from force balance, such as the rotating ellipse with pressure, it does not, and VMEC's descent starts the run.
+- Where `H` is nearly singular, as at a start beyond an equilibrium limit, `dn` lies far outside its limit and the merit stays close to `|r|^2` until a step moves the boundary away.
+- The final merit depends on the path. Quasi-axisymmetry at `ns` 25 ends near 6.4e-6 or 8.4e-6 by either method.
+- `always_fix_m1_gauge` is on. Quasisymmetry from a free-gauge run depends on where the iteration froze the gauge, and differs by more than a factor of ten at low error.
+- Quasisymmetry residuals are not finite on a surface where the Jacobian changes sign. The rotating ellipse reaches this on its boundary between beta 0.66% and 1.1%.
+- Differenced products use a relative step of 3e-9, where truncation and roundoff balance along the soft modes. Against exact products at `ns` 51, the state tangents agree to 4e-6 and the residual derivatives to 1.5e-4.
+- Stellarator symmetry only. `vmecpp.joint.optimize` takes a fixed boundary, and the free boundary of the example takes its field from the currents of a `MagneticFieldResponseTable`. A multigrid input runs on the last entry of `ns_array`.
+- One linearization of the free boundary takes two free-boundary iterations per shape mode and per current for the vacuum side.
+- The root of the jump and the boundary of VMEC++'s free-boundary iteration differ by the radial discretization. On the CTH-like case at `ns` 15 the aspect ratios differ by 1e-4 and the mean iota by 4e-4.
+- Newton on the jump is slow where `G` is nearly singular. On QUASR 19609 of the test data, with mean iota -0.098, the singular values of `G` span 53 to 3.3e-3, against 183 to 0.17 on the CTH-like case, the softest directions are axisymmetric shape modes, and Newton takes 82 linearizations from the QUASR boundary at `ns` 25.
