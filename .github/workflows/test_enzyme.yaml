@@ -101,7 +101,8 @@ jobs:
             tests/test_hessian.py \
             tests/test_external_optimizers.py \
             tests/test_joint_optimization.py \
-            tests/test_joint_free_boundary.py
+            tests/test_joint_free_boundary.py \
+            tests/test_joint_free_boundary_coils.py
 
       - name: Run exact-HVP benchmark
         run: |

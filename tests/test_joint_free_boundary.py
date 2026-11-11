@@ -27,12 +27,13 @@ def case():
 
 @pytest.fixture(scope="module")
 def problem(case):
-    vmec_input, response, _ = case
+    vmec_input, response, currents = case
     return joint_free_boundary.FreeBoundaryProblem(
         vmec_input.model_copy(update={"lfreeb": False}),
         aspect=5.5,
         mean_iota=1.15,
-        response=response,
+        field=joint_free_boundary.CoilCurrents(response),
+        scales=np.abs(currents),
         modes=joint_free_boundary.shape_modes(vmec_input.mpol - 1, vmec_input.ntor),
     )
 
@@ -57,7 +58,7 @@ def nested_and_joint(problem, free_boundary):
         results[name] = (
             problem.linearizations,
             joint_free_boundary.converge(
-                problem, result["shape"], result["currents"], result["state"]
+                problem, result["shape"], result["controls"], result["state"]
             ),
         )
     return results
@@ -158,14 +159,14 @@ def test_every_shape_mode_of_the_free_boundary_is_stable(free_boundary) -> None:
 def test_current_derivatives_match_converged_free_boundaries(
     problem, free_boundary, index
 ) -> None:
-    """The derivatives of the objective residuals and of the shape with respect to the
-    logarithm of a current against central differences of free boundaries converged at
-    changed currents."""
+    """The derivatives of the objective residuals and of the shape with respect to a
+    current, in units of its scale, against central differences of free boundaries
+    converged at changed currents."""
     relative = 2.0e-3
     sides = []
     for sign in (1.0, -1.0):
-        currents = free_boundary["currents"].copy()
-        currents[index] *= np.exp(sign * relative)
+        currents = free_boundary["controls"].copy()
+        currents[index] += sign * relative * problem.scales[index]
         change = sign * relative * free_boundary["sensitivity"][:, index]
         sides.append(
             joint_free_boundary.converge(
@@ -196,7 +197,7 @@ def test_a_state_off_force_balance_takes_the_normal_step(
 
     The normal step removes the force residual to first order.
     """
-    shape, currents = free_boundary["shape"], free_boundary["currents"]
+    shape, currents = free_boundary["shape"], free_boundary["controls"]
     boundary = problem.boundary_of(shape)
     loose = np.array(problem.relax(boundary, None, 1.0e-8).get_state())
     model = problem.create_model(boundary)
@@ -210,10 +211,41 @@ def test_a_state_off_force_balance_takes_the_normal_step(
         ), name
 
 
+def test_a_tether_adds_the_distance_from_its_anchor_to_the_residuals(
+    problem, free_boundary, monkeypatch
+) -> None:
+    controls = free_boundary["controls"]
+    monkeypatch.setattr(problem, "tether", 1.0e-2)
+    monkeypatch.setattr(problem, "anchor", controls - 2.0 * problem.scales)
+    point = problem.linearize(
+        free_boundary["shape"], controls, free_boundary["state"], at_root=True
+    )
+    count = controls.size
+    np.testing.assert_allclose(point["balanced"][-count:], 2.0e-2)
+    np.testing.assert_allclose(point["reduced"][-count:], 1.0e-2 * np.eye(count))
+    np.testing.assert_allclose(
+        point["balanced"][:-count], free_boundary["balanced"], atol=1.0e-9
+    )
+    np.testing.assert_allclose(
+        point["merit"], free_boundary["merit"] + count * 4.0e-4, rtol=1.0e-9
+    )
+
+
+def test_shape_modes_outside_those_of_the_boundary_are_refused(case) -> None:
+    vmec_input, response, currents = case
+    with pytest.raises(ValueError, match="shape modes"):
+        joint_free_boundary.FreeBoundaryProblem(
+            vmec_input.model_copy(update={"lfreeb": False}),
+            field=joint_free_boundary.CoilCurrents(response),
+            scales=np.abs(currents),
+            modes=joint_free_boundary.shape_modes(vmec_input.mpol, vmec_input.ntor),
+        )
+
+
 def test_both_methods_reach_the_same_currents(nested_and_joint) -> None:
     np.testing.assert_allclose(
-        nested_and_joint["joint"][1]["currents"],
-        nested_and_joint["nested"][1]["currents"],
+        nested_and_joint["joint"][1]["controls"],
+        nested_and_joint["nested"][1]["controls"],
         rtol=1.0e-5,
     )
 
@@ -226,7 +258,7 @@ def test_joint_takes_fewer_linearizations(nested_and_joint) -> None:
 def test_vmecpps_own_run_at_the_currents_found_meets_the_targets(
     problem, case, nested_and_joint, name
 ) -> None:
-    wout = _vmecpp_own(case, nested_and_joint[name][1]["currents"])
+    wout = _vmecpp_own(case, nested_and_joint[name][1]["controls"])
     assert max(wout.fsqr, wout.fsqz, wout.fsql) <= wout.ftolv
     np.testing.assert_allclose(wout.aspect, problem.aspect, rtol=5.0e-4)
     np.testing.assert_allclose(

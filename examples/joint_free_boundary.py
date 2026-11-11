@@ -67,25 +67,46 @@ def shape_modes(m_max: int, n_max: int) -> tuple:
     )
 
 
+@dataclass(frozen=True)
+class CoilCurrents:
+    """The external field of a response table, with the currents of its coil groups as
+    the controls."""
+
+    response: Any
+
+    def __call__(self, controls):
+        """The magnetic field and the coil currents that vmecpp.run takes."""
+        return self.response, np.asarray(controls, dtype=float)
+
+
 @dataclass(kw_only=True)
 class FreeBoundaryProblem(QuasisymmetryProblem):
     """The targets of the base class, and its quasisymmetry on the surfaces given, on a
-    boundary that moves along its normal in shape modes, in the field of coils.
+    boundary that moves along its normal in shape modes, in an external field.
 
+    ``field`` maps the controls of the external field to the magnetic field and the coil
+    currents that ``vmecpp.run`` takes, and the controls move in units of ``scales``.
     The residuals of the base class are followed by the total pressure of the plasma on
     the boundary in the shape modes, in units of ``scale``: ``B^2 / 2`` at the
     volume-averaged field inside the input's boundary. The vacuum side of the jump
     comes from one free-boundary iteration of VMEC++ on the state. It depends on the
-    boundary, on the coil currents and, through the field of a net toroidal current, on
-    the magnetic axis.
+    boundary, on the controls and, through the field of a net toroidal current, on the
+    magnetic axis. With ``tether``, the distance of each control from ``anchor`` in
+    units of its scale, times ``tether``, joins the objective residuals.
     """
 
-    response: Any
+    field: Any
+    scales: Any
     modes: tuple
     surfaces: tuple[float, ...] = ()
+    anchor: Any = None
+    tether: float = 0.0
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if any(m >= self.mpol or abs(n) > self.ntor for m, n, _ in self.modes):
+            message = "the shape modes need m below mpol and abs(n) up to ntor"
+            raise ValueError(message)
         self.matching = Matching(self.vmec_input, self.modes)
         # the wout that the states of the vacuum side fill
         self._wout = vmecpp.run(
@@ -187,18 +208,19 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
         wout = autodiff_wout.wout_quantities(solved, self.vmec_input)
         return {name: wout[name] for name in ("rmnc", "zmns", "lmns_full")}
 
-    def vacuum_modes(self, state, currents) -> np.ndarray:
+    def vacuum_modes(self, state, controls) -> np.ndarray:
         """The magnetic pressure of the vacuum on the boundary of a state in the shape
         modes, from one free-boundary iteration restarted from the state."""
         model = self.create_model(self.reference)
         model.set_state(np.ascontiguousarray(state))
         surfaces = self._surfaces(self.solved(model))
+        magnetic_field, currents = self.field(controls)
         free = vmecpp.run(
             self.vmec_input.model_copy(
                 update={
                     "lfreeb": True,
                     "mgrid_file": "NONE",
-                    "extcur": np.asarray(currents, dtype=float),
+                    "extcur": currents,
                     "nvacskip": 1,
                     "niter_array": np.array([1]),
                     # a pinned gauge would be reset to that of the input's boundary
@@ -207,7 +229,7 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
                     "return_outputs_even_if_not_converged": True,
                 }
             ),
-            self.response,
+            magnetic_field,
             max_threads=1,
             verbose=False,
             restart_from=self._wout.model_copy(
@@ -217,19 +239,20 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
         vacuum = np.asarray(free.threed1_free_boundary.bsqvaci)
         return self.matching.projection @ (vacuum.ravel() / self.scale)
 
-    def vacuum_side(self, state, currents, tangents, step=1.0e-5, relative=1.0e-4):
+    def vacuum_side(self, state, controls, tangents, step=1.0e-5, relative=1.0e-4):
         """The vacuum modes of a state, their derivatives along the columns of the state
-        tangents and with respect to each current, by central differences."""
-        currents = np.asarray(currents, dtype=float)
-        points = [(state, currents)]
+        tangents and with respect to each control in units of its scale, by central
+        differences."""
+        controls = np.asarray(controls, dtype=float)
+        points = [(state, controls)]
         for k in range(tangents.shape[1]):
             points += [
-                (state + sign * step * tangents[:, k], currents) for sign in (1.0, -1.0)
+                (state + sign * step * tangents[:, k], controls) for sign in (1.0, -1.0)
             ]
-        for i in range(currents.size):
+        for i in range(controls.size):
             for sign in (1.0, -1.0):
-                moved = currents.copy()
-                moved[i] *= 1.0 + sign * relative
+                moved = controls.copy()
+                moved[i] += sign * relative * self.scales[i]
                 points.append((state, moved))
         with ThreadPoolExecutor(self.workers) as pool:
             values = np.asarray(
@@ -238,20 +261,20 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
         count = 2 * tangents.shape[1]
         along_tangents = (values[1 : count + 1 : 2] - values[2 : count + 1 : 2]).T
         rest = values[count + 1 :]
-        along_currents = (rest[0::2] - rest[1::2]).T / (2.0 * relative * currents)
-        return values[0], along_tangents / (2.0 * step), along_currents
+        along_controls = (rest[0::2] - rest[1::2]).T / (2.0 * relative)
+        return values[0], along_tangents / (2.0 * step), along_controls
 
-    def linearize(self, shape, currents, state, *, at_root: bool) -> dict:
-        """The objective residuals and the jump at a shape, currents and state, to first
+    def linearize(self, shape, controls, state, *, at_root: bool) -> dict:
+        """The objective residuals and the jump at a shape, controls and state, to first
         order in force balance, with their derivatives.
 
         ``at_root`` first takes the state to the root of the force. Otherwise the
         residuals and the jump take the normal step ``-H^-1 F`` to first order. The
         restoring move is the Newton step of the shape on the jump, limited to
         MAX_MOVE, and ``restorable`` tells whether the limit left it whole. The
-        sensitivity is the derivative of the shape with respect to the logarithm of
-        each current at zero jump. The merit is the squared norm of the objective
-        residuals after the restoring move, to first order.
+        sensitivity is the derivative of the shape with respect to each control, in
+        units of its scale, at zero jump. The merit is the squared norm of the
+        objective residuals after the restoring move, to first order.
         """
         self.linearizations += 1
         count = len(self.modes)
@@ -281,21 +304,25 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
                 self.create_model(boundary), state, boundary, normal
             )
         residuals, plasma = self.split(values)
-        vacuum, vacuum_along_shape, vacuum_along_currents = self.vacuum_side(
-            state + normal, currents, tangents
+        vacuum, vacuum_along_shape, vacuum_along_controls = self.vacuum_side(
+            state + normal, controls, tangents
         )
         jump = plasma - vacuum
         along_shape = jacobian[:-count]
         jump_along_shape = jacobian[-count:] - vacuum_along_shape
-        jump_along_currents = -vacuum_along_currents * np.asarray(currents)
         restore = -np.linalg.solve(jump_along_shape, jump)
         largest = max(float(np.abs(restore).max()), 1.0e-300)
         restore *= min(1.0, MAX_MOVE / largest)
-        sensitivity = -np.linalg.solve(jump_along_shape, jump_along_currents)
+        sensitivity = np.linalg.solve(jump_along_shape, vacuum_along_controls)
         balanced = residuals + along_shape @ restore
+        reduced = along_shape @ sensitivity
+        if self.tether:
+            held = self.tether * (np.asarray(controls) - self.anchor) / self.scales
+            balanced = np.concatenate([balanced, held])
+            reduced = np.vstack([reduced, self.tether * np.eye(held.size)])
         return {
             "shape": np.array(shape, dtype=float),
-            "currents": np.array(currents, dtype=float),
+            "controls": np.array(controls, dtype=float),
             "state": state,
             "normal": normal,
             "tangents": tangents,
@@ -306,19 +333,19 @@ class FreeBoundaryProblem(QuasisymmetryProblem):
             "restorable": largest <= MAX_MOVE,
             "sensitivity": sensitivity,
             "balanced": balanced,
-            "reduced": along_shape @ sensitivity,
+            "reduced": reduced,
             "merit": float(balanced @ balanced),
         }
 
 
-def converge(problem, shape, currents, state, tolerance=1.0e-9) -> dict:
+def converge(problem, shape, controls, state, tolerance=1.0e-9) -> dict:
     """Newton on the shape with the interior at the root of the force, until every jump
     mode is below the tolerance.
 
     A step that does not lower the jump, or on which VMEC or the factorization fails, is
     halved. Thirty steps without convergence raise a RuntimeError.
     """
-    point = problem.linearize(shape, currents, state, at_root=True)
+    point = problem.linearize(shape, controls, state, at_root=True)
     steps = 0
     while np.abs(point["jump"]).max() >= tolerance:
         if steps == 30:
@@ -330,7 +357,7 @@ def converge(problem, shape, currents, state, tolerance=1.0e-9) -> dict:
             try:
                 trial = problem.linearize(
                     point["shape"] + move,
-                    currents,
+                    controls,
                     problem.carried(point["state"], move, point["tangents"]),
                     at_root=True,
                 )
@@ -347,19 +374,19 @@ def converge(problem, shape, currents, state, tolerance=1.0e-9) -> dict:
 
 
 def stepped(problem, point, move, *, nested: bool) -> dict:
-    """The point after a step of the logarithms of the currents: the shape moves along
-    its sensitivity and its restoring move, and the state along its tangents and its
-    normal step.
+    """The point after a step of the controls in units of their scales: the shape moves
+    along its sensitivity and its restoring move, and the state along its tangents and
+    its normal step.
 
     ``nested`` then converges the free boundary. Otherwise the point is linearized as
     it is.
     """
     change = point["restore"] + point["sensitivity"] @ move
     state = point["state"] + point["normal"] + point["tangents"] @ change
-    shape, currents = point["shape"] + change, point["currents"] * np.exp(move)
+    shape, controls = point["shape"] + change, point["controls"] + problem.scales * move
     if nested:
-        return converge(problem, shape, currents, state)
-    return problem.linearize(shape, currents, state, at_root=False)
+        return converge(problem, shape, controls, state)
+    return problem.linearize(shape, controls, state, at_root=False)
 
 
 def optimize(
@@ -371,29 +398,34 @@ def optimize(
     tolerance: float = 1.0e-12,
     log=None,
 ) -> dict:
-    """Levenberg-Marquardt on the logarithms of the coil currents from a converged free
-    boundary.
+    """Levenberg-Marquardt on the controls of the external field, in units of their
+    scales, from a converged free boundary.
 
-    The move of a shape mode along the sensitivity stays within a radius of at most
-    MAX_MOVE. Without ``nested``, a trial step whose restoring move exceeds MAX_MOVE is
-    refused, and the first refusal at a point takes the restoring move and the normal
-    step alone. Any other refusal halves the radius. A run ends at a merit below
-    ``tolerance``, when no trial step predicts a drop, or after a drop below 1e-4.
+    A control moves by at most its scale in one step, and the move of a shape mode
+    along the sensitivity stays within a radius of at most MAX_MOVE. Without
+    ``nested``, a trial step whose restoring move exceeds MAX_MOVE is refused, and the
+    first refusal at a point takes the restoring move and the normal step alone. Any
+    other refusal halves the radius. A run ends at a merit below ``tolerance``, when no
+    trial step predicts a drop, or after three steps in a row with a drop below 1%.
     """
     damping, radius = 1.0e-3, MAX_MOVE
     restored = True
+    slow = 0
     for step in range(1, max_steps + 1):
         if point["merit"] < tolerance:
             break
         accepted = None
         for _ in range(8):
             normal = point["reduced"].T @ point["reduced"]
+            # the floor bounds the step along weakly coupled controls
+            weight = np.maximum(np.diag(normal), 1.0e-4 * np.diag(normal).max())
             move = -np.linalg.solve(
-                normal + damping * np.diag(np.diag(normal)),
+                normal + damping * np.diag(weight),
                 point["reduced"].T @ point["balanced"],
             )
             along = np.abs(point["sensitivity"] @ move).max()
-            move = move * min(1.0, radius / max(along, 1.0e-300))
+            largest = max(np.abs(move).max(), 1.0e-300)
+            move = move * min(1.0, radius / max(along, 1.0e-300), 1.0 / largest)
             after = point["balanced"] + point["reduced"] @ move
             predicted = point["merit"] - float(after @ after)
             if predicted < 1.0e-6 * point["merit"]:
@@ -440,7 +472,8 @@ def optimize(
                 f" {np.abs(point['jump']).max():.1e} force {problem.largest_force:.1e}"
                 f" linearizations {problem.linearizations}"
             )
-        if drop < 1.0e-4:
+        slow = slow + 1 if drop < 1.0e-2 else 0
+        if slow == 3:
             break
     return point
 
@@ -449,17 +482,18 @@ def summary(problem, point) -> str:
     """The currents, the aspect ratio and the mean iota of a point."""
     parts = problem.parts(np.concatenate([point["residuals"], point["jump"]]))
     return (
-        f"currents {np.round(point['currents'], 2).tolist()}, aspect"
+        f"currents {np.round(point['controls'], 2).tolist()}, aspect"
         f" {parts['aspect']:.5f}, mean iota {parts['mean_iota']:.5f}"
     )
 
 
-def check(problem, vmec_input, currents) -> None:
+def check(problem, vmec_input, controls) -> None:
     """Print the aspect ratio and the mean iota of VMEC++'s own free-boundary run at the
-    currents."""
+    controls."""
+    magnetic_field, currents = problem.field(controls)
     wout = vmecpp.run(
-        vmec_input.model_copy(update={"extcur": np.asarray(currents)}),
-        problem.response,
+        vmec_input.model_copy(update={"extcur": currents}),
+        magnetic_field,
         verbose=False,
         max_threads=1,
     ).wout
@@ -482,7 +516,8 @@ def main() -> None:
         vmec_input.model_copy(update={"lfreeb": False}),
         aspect=args.aspect,
         mean_iota=args.iota,
-        response=response,
+        field=CoilCurrents(response),
+        scales=np.abs(currents),
         modes=shape_modes(vmec_input.mpol - 1, vmec_input.ntor),
     )
     start = converge(problem, np.zeros(len(problem.modes)), currents, None)
@@ -497,13 +532,13 @@ def main() -> None:
         seconds = time.perf_counter() - begin
         used = problem.linearizations
         jacobians = problem.costs.assemblies - jacobians
-        final = converge(problem, result["shape"], result["currents"], result["state"])
+        final = converge(problem, result["shape"], result["controls"], result["state"])
         print(
             f"{name}: {used} linearizations, {jacobians} force Jacobians,"
             f" {seconds:.1f} s, on its converged free boundary"
             f" {summary(problem, final)}"
         )
-        check(problem, vmec_input, final["currents"])
+        check(problem, vmec_input, final["controls"])
 
 
 if __name__ == "__main__":
