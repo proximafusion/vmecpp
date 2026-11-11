@@ -218,6 +218,12 @@ class IdealMhdModel {
                     FourierGeometry& m_physical_scratch, double* out, int gS,
                     bool primal);
 
+  // packGeometry(primal=false) summed over the nonzero coefficients of a sparse
+  // tangent. m_surfaces holds the surfaces the last call wrote.
+  void packGeometryTangent(FourierGeometry& m_decomposed,
+                           FourierGeometry& m_physical_scratch, double* m_out,
+                           int gS, std::vector<int>& m_surfaces);
+
   // Diagnostic: max |composed force density - production force density| at the
   // current state, to isolate composition bugs from the transform/tangent path.
   double composedForceResidual(const double* geomP, int geom_stride);

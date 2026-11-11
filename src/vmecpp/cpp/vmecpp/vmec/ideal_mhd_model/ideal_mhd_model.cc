@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <iostream>
 #include <numbers>
+#include <numeric>
 #include <span>
 #include <vector>
 
@@ -2592,6 +2593,135 @@ void IdealMhdModel::packGeometry(FourierGeometry& m_decomposed,
   blk(17, zCon);
   blk(18, ruFull);
   blk(19, zuFull);
+}
+
+void IdealMhdModel::packGeometryTangent(FourierGeometry& m_decomposed,
+                                        FourierGeometry& m_physical_scratch,
+                                        double* m_out, int gS,
+                                        std::vector<int>& m_surfaces) {
+  const int num_surfaces = r_.nsMaxF1 - r_.nsMinF1;
+  const int num_coefficients = num_surfaces * s_.mpol * (s_.ntor + 1);
+  int num_nonzero = 0;
+  if (s_.lthreed && !s_.lasym) {
+    for (int i = 0; i < num_coefficients; ++i) {
+      if (m_decomposed.rmncc[i] != 0.0 || m_decomposed.rmnss[i] != 0.0 ||
+          m_decomposed.zmnsc[i] != 0.0 || m_decomposed.zmncs[i] != 0.0 ||
+          m_decomposed.lmnsc[i] != 0.0 || m_decomposed.lmncs[i] != 0.0) {
+        ++num_nonzero;
+      }
+    }
+  }
+  // the sum is cheaper than the transform up to about two modes per surface
+  if (!s_.lthreed || s_.lasym || num_nonzero > 2 * num_surfaces) {
+    packGeometry(m_decomposed, m_physical_scratch, m_out, gS,
+                 /*primal=*/false);
+    m_surfaces.resize(num_surfaces);
+    std::iota(m_surfaces.begin(), m_surfaces.end(), r_.nsMinF1);
+    return;
+  }
+  for (const int jF : m_surfaces) {
+    for (int block = 0; block < 16; ++block) {
+      std::fill_n(m_out + block * gS + (jF - r_.nsMinF1) * s_.nZnT, s_.nZnT,
+                  0.0);
+    }
+    if (r_.nsMinF <= jF && jF < r_.nsMaxFIncludingLcfs) {
+      for (int block = 16; block < 20; ++block) {
+        std::fill_n(m_out + block * gS + (jF - r_.nsMinF) * s_.nZnT, s_.nZnT,
+                    0.0);
+      }
+    }
+  }
+  m_surfaces.clear();
+
+  m_decomposed.decomposeInto(m_physical_scratch, m_p_.scalxc);
+  m_physical_scratch.m1Constraint(1.0, signOfJacobian);
+  m_physical_scratch.extrapolateTowardsAxis();
+  const FourierGeometry& x = m_physical_scratch;
+  const double lamscale = constants_.lamscale;
+  for (int jF = r_.nsMinF1; jF < r_.nsMaxF1; ++jF) {
+    bool written = false;
+    const bool constrained = r_.nsMinF <= jF && jF < r_.nsMaxFIncludingLcfs;
+    const double sqrt_s = m_p_.sqrtSF[jF - r_.nsMinF1];
+    // the axis takes only m = 0 and m = 1, as in the full transform
+    const int num_m = jF == 0 ? std::min(2, s_.mpol) : s_.mpol;
+    for (int m = 0; m < num_m; ++m) {
+      const int parity = m % 2;
+      const double con_factor = parity == 0 ? xmpq[m] : xmpq[m] * sqrt_s;
+      const double full_factor = parity == 0 ? 1.0 : sqrt_s;
+      for (int n = 0; n <= s_.ntor; ++n) {
+        const int idx_mn =
+            ((jF - r_.nsMinF1) * s_.mpol + m) * (s_.ntor + 1) + n;
+        const double rcc = x.rmncc[idx_mn];
+        const double rss = x.rmnss[idx_mn];
+        const double zsc = x.zmnsc[idx_mn];
+        const double zcs = x.zmncs[idx_mn];
+        const double lsc = x.lmnsc[idx_mn];
+        const double lcs = x.lmncs[idx_mn];
+        if (rcc == 0.0 && rss == 0.0 && zsc == 0.0 && zcs == 0.0 &&
+            lsc == 0.0 && lcs == 0.0) {
+          continue;
+        }
+        written = true;
+        for (int k = 0; k < s_.nZeta; ++k) {
+          const int idx_kn = k * (s_.nnyq2 + 1) + n;
+          const double cosnv = t_.cosnv[idx_kn];
+          const double sinnv = t_.sinnv[idx_kn];
+          const double sinnvn = t_.sinnvn[idx_kn];
+          const double cosnvn = t_.cosnvn[idx_kn];
+          const double rmkcc = rcc * cosnv;
+          const double rmkcc_n = rcc * sinnvn;
+          const double rmkss = rss * sinnv;
+          const double rmkss_n = rss * cosnvn;
+          const double zmksc = zsc * cosnv;
+          const double zmksc_n = zsc * sinnvn;
+          const double zmkcs = zcs * sinnv;
+          const double zmkcs_n = zcs * cosnvn;
+          const double lmksc = lsc * cosnv;
+          const double lmksc_n = lsc * sinnvn;
+          const double lmkcs = lcs * sinnv;
+          const double lmkcs_n = lcs * cosnvn;
+          const int idx_kl_base =
+              ((jF - r_.nsMinF1) * s_.nZeta + k) * s_.nThetaEff;
+          const int idx_con_base =
+              ((jF - r_.nsMinF) * s_.nZeta + k) * s_.nThetaEff;
+          for (int l = 0; l < s_.nThetaReduced; ++l) {
+            const int idx_ml = m * s_.nThetaReduced + l;
+            const double cosmu = t_.cosmu[idx_ml];
+            const double sinmu = t_.sinmu[idx_ml];
+            const double cosmum = t_.cosmum[idx_ml];
+            const double sinmum = t_.sinmum[idx_ml];
+            const double r1 = rmkcc * cosmu + rmkss * sinmu;
+            const double z1 = zmksc * sinmu + zmkcs * cosmu;
+            const double ru = rmkcc * sinmum + rmkss * cosmum;
+            const double zu = zmksc * cosmum + zmkcs * sinmum;
+            const int idx_kl = idx_kl_base + l;
+            m_out[(0 + parity) * gS + idx_kl] += r1;
+            m_out[(2 + parity) * gS + idx_kl] += z1;
+            m_out[(4 + parity) * gS + idx_kl] += ru;
+            m_out[(6 + parity) * gS + idx_kl] += zu;
+            m_out[(8 + parity) * gS + idx_kl] +=
+                rmkcc_n * cosmu + rmkss_n * sinmu;
+            m_out[(10 + parity) * gS + idx_kl] +=
+                zmksc_n * sinmu + zmkcs_n * cosmu;
+            m_out[(12 + parity) * gS + idx_kl] +=
+                lamscale * (lmksc * cosmum + lmkcs * sinmum);
+            m_out[(14 + parity) * gS + idx_kl] -=
+                lamscale * (lmksc_n * sinmu + lmkcs_n * cosmu);
+            if (constrained) {
+              const int idx_con = idx_con_base + l;
+              m_out[16 * gS + idx_con] += r1 * con_factor;
+              m_out[17 * gS + idx_con] += z1 * con_factor;
+              m_out[18 * gS + idx_con] += ru * full_factor;
+              m_out[19 * gS + idx_con] += zu * full_factor;
+            }
+          }  // l
+        }  // k
+      }  // n
+    }  // m
+    if (written) {
+      m_surfaces.push_back(jF);
+    }
+  }  // jF
 }
 
 LocalForceComposition IdealMhdModel::makeLocalForceComposition(
