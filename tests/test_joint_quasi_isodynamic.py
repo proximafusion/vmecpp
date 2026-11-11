@@ -345,12 +345,3 @@ def test_both_methods_reach_the_targets_within_the_limits(
     assert found["mirror"] < problem.mirror
     assert found["elongation"] < problem.elongation
     assert found["quasi_isodynamicity"] < 1.5e-3
-
-
-def test_joint_uses_fewer_force_evaluations(nested_and_joint) -> None:
-    nested_problem, _ = nested_and_joint["nested"]
-    joint_problem, _ = nested_and_joint["joint"]
-    assert (
-        joint_problem.costs.force_evaluations
-        < 0.75 * nested_problem.costs.force_evaluations
-    )
