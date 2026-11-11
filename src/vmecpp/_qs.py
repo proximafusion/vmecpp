@@ -31,7 +31,7 @@ from collections.abc import Sequence
 import jax
 import jax.numpy as jnp
 
-from vmecpp.geometry import Geometry, evaluate
+from vmecpp.geometry import Geometry, _radial_jet, evaluate
 
 # VMEC++ fixes the sign of the Jacobian to -1, and stores the field components
 # with the opposite sign to the one the raw flux derivatives give here. The
@@ -80,20 +80,81 @@ def magnetic_field_strength(geometry: Geometry, coordinates: jax.Array) -> jax.A
 
 
 def _surface_fields(geometry: Geometry, s, theta, zeta):
-    """Evaluate the point quantities plus the |B| angular derivatives."""
+    """The frame quantities and the angular derivatives of |B| on a product grid."""
+    m = jnp.arange(geometry.r_cc.shape[1], dtype=jnp.float64)
+    n = jnp.arange(geometry.r_cc.shape[2], dtype=jnp.float64) * geometry.nfp
 
-    def mod_b(angles):
-        return magnetic_field_strength(geometry, jnp.asarray([s, angles[0], angles[1]]))
+    def radial(name):
+        return _radial_jet(getattr(geometry, name), s)
 
-    flat_theta = theta.ravel()
-    flat_zeta = zeta.ravel()
-    coordinates = jnp.stack(
-        (jnp.full(flat_theta.shape, s), flat_theta, flat_zeta), axis=1
+    def series(names):
+        return tuple(zip(*(radial(name)[:2] for name in names), strict=True))
+
+    r_series = series(("r_cc", "r_ss", "r_sc", "r_cs"))
+    z_series = series(("z_cc", "z_ss", "z_sc", "z_cs"))
+    lambda_value = tuple(
+        radial(name)[0] for name in ("lambda_cc", "lambda_ss", "lambda_sc", "lambda_cs")
     )
-    fields = jax.vmap(_frame, in_axes=(None, 0))(geometry, coordinates)
-    gradients = jax.vmap(jax.grad(mod_b))(jnp.stack((flat_theta, flat_zeta), axis=1))
-    fields["d_mod_b_d_theta"] = gradients[:, 0]
-    fields["d_mod_b_d_zeta"] = gradients[:, 1]
+    toroidal = _radial_jet(geometry.toroidal_flux, s)[1]
+    poloidal = _radial_jet(geometry.poloidal_flux, s)[1]
+
+    def frame(shift_theta, shift_zeta):
+        m_theta = jnp.outer(theta + shift_theta, m)
+        n_zeta = jnp.outer(zeta + shift_zeta, n)
+        cos_m, sin_m = jnp.cos(m_theta), jnp.sin(m_theta)
+        cos_n, sin_n = jnp.cos(n_zeta), jnp.sin(n_zeta)
+        d_cos_m, d_sin_m = -m * sin_m, m * cos_m
+        d_cos_n, d_sin_n = -n * sin_n, n * cos_n
+
+        def grid(values, pol_c, pol_s, tor_c, tor_s):
+            cc, ss, sc, cs = values
+            return (
+                pol_c @ cc @ tor_c.T
+                + pol_s @ ss @ tor_s.T
+                + pol_s @ sc @ tor_c.T
+                + pol_c @ cs @ tor_s.T
+            )
+
+        plain = (cos_m, sin_m, cos_n, sin_n)
+        along_theta = (d_cos_m, d_sin_m, cos_n, sin_n)
+        along_zeta = (cos_m, sin_m, d_cos_n, d_sin_n)
+        r = grid(r_series[0], *plain)
+        r_s = grid(r_series[1], *plain)
+        r_theta = grid(r_series[0], *along_theta)
+        r_zeta = grid(r_series[0], *along_zeta)
+        z_s = grid(z_series[1], *plain)
+        z_theta = grid(z_series[0], *along_theta)
+        z_zeta = grid(z_series[0], *along_zeta)
+        lambda_theta = grid(lambda_value, *along_theta)
+        lambda_zeta = grid(lambda_value, *along_zeta)
+
+        sqrt_g = r * (r_theta * z_s - r_s * z_theta)
+        scale = 2.0 * jnp.pi * _JACOBIAN_MAGNITUDE(sqrt_g)
+        b_sup_theta = (poloidal - toroidal * lambda_zeta) / scale
+        b_sup_zeta = toroidal * (1.0 + lambda_theta) / scale
+        g_theta_theta = r_theta**2 + z_theta**2
+        g_theta_zeta = r_theta * r_zeta + z_theta * z_zeta
+        g_zeta_zeta = r_zeta**2 + r**2 + z_zeta**2
+        b_sub_theta = b_sup_theta * g_theta_theta + b_sup_zeta * g_theta_zeta
+        b_sub_zeta = b_sup_theta * g_theta_zeta + b_sup_zeta * g_zeta_zeta
+        mod_b = jnp.sqrt(b_sup_theta * b_sub_theta + b_sup_zeta * b_sub_zeta)
+        return mod_b, {
+            "sqrt_g": sqrt_g,
+            "b_sup_theta": b_sup_theta,
+            "b_sup_zeta": b_sup_zeta,
+            "b_sub_theta": b_sub_theta,
+            "b_sub_zeta": b_sub_zeta,
+            "mod_b": mod_b,
+            "iota": poloidal / toroidal,
+        }
+
+    fields = frame(0.0, 0.0)[1]
+    fields["d_mod_b_d_theta"] = jax.jvp(
+        lambda shift: frame(shift, 0.0)[0], (0.0,), (1.0,)
+    )[1]
+    fields["d_mod_b_d_zeta"] = jax.jvp(
+        lambda shift: frame(0.0, shift)[0], (0.0,), (1.0,)
+    )[1]
     return fields
 
 
@@ -125,7 +186,6 @@ def quasisymmetry_residuals(
     phi_1d = 2.0 * jnp.pi * jnp.arange(nphi) / (nfp * nphi)
     d_theta = theta_1d[1] - theta_1d[0]
     d_phi = phi_1d[1] - phi_1d[0]
-    theta_grid, phi_grid = jnp.meshgrid(theta_1d, phi_1d, indexing="ij")
 
     # 2 pi psi is the toroidal flux, and VMEC++'s negative Jacobian carries the
     # sign SIMSOPT writes explicitly as -phi_edge / (2 pi).
@@ -135,7 +195,7 @@ def quasisymmetry_residuals(
     toroidal_mode = helicity_n * nfp
 
     def one_surface(s, weight):
-        fields = _surface_fields(geometry, s, theta_grid, phi_grid)
+        fields = _surface_fields(geometry, s, theta_1d, phi_1d)
         sqrt_g = fields["sqrt_g"]
         mod_b = fields["mod_b"]
         d_theta_b = fields["d_mod_b_d_theta"]
@@ -164,14 +224,9 @@ def quasisymmetry_residuals(
                 - b_dot_grad_b * (helicity_m * current_g + toroidal_mode * current_i)
             )
             / mod_b**3
-        )
+        ).ravel()
 
-    return jnp.concatenate(
-        [
-            one_surface(s, w)
-            for s, w in zip(surface_values, surface_weights, strict=True)
-        ]
-    )
+    return jax.vmap(one_surface)(surface_values, surface_weights).ravel()
 
 
 def quasisymmetry_total(geometry: Geometry, *args, **kwargs) -> jax.Array:

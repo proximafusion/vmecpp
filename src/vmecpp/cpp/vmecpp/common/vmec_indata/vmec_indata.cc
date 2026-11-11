@@ -192,6 +192,18 @@ absl::Status CheckRationalProfile(const std::string& type_key,
       type_key, coefficient_key, kRationalDenominatorStart, coefficient_key,
       coefficients.size(), kRationalDenominatorStart - 1));
 }
+// INDATA files pad spline knots with zeros, and VMEC ends the knot list there.
+void TrimSplineKnotPadding(Eigen::VectorXd& aux_s, Eigen::VectorXd& aux_f) {
+  Eigen::Index count = aux_s.size();
+  while (count > 1 && aux_s[count - 1] == 0.0) {
+    --count;
+  }
+  aux_s.conservativeResize(count);
+  if (aux_f.size() > count) {
+    aux_f.conservativeResize(count);
+  }
+}
+
 }  // namespace
 
 namespace vmecpp {
@@ -917,6 +929,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.am_aux_f = maybe_am_aux_f->value();
   }
 
+  TrimSplineKnotPadding(vmec_indata.am_aux_s, vmec_indata.am_aux_f);
   if (vmec_indata.am_aux_f.size() != vmec_indata.am_aux_s.size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "length of am_aux_f (%ld) does not match length of am_aux_s (%ld)\n",
@@ -981,6 +994,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.ai_aux_f = maybe_ai_aux_f->value();
   }
 
+  TrimSplineKnotPadding(vmec_indata.ai_aux_s, vmec_indata.ai_aux_f);
   if (vmec_indata.ai_aux_f.size() != vmec_indata.ai_aux_s.size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "length of ai_aux_f (%ld) does not match length of ai_aux_s (%ld)\n",
@@ -1021,6 +1035,7 @@ absl::StatusOr<VmecINDATA> VmecINDATA::FromJson(
     vmec_indata.ac_aux_f = maybe_ac_aux_f->value();
   }
 
+  TrimSplineKnotPadding(vmec_indata.ac_aux_s, vmec_indata.ac_aux_f);
   if (vmec_indata.ac_aux_f.size() != vmec_indata.ac_aux_s.size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "length of ac_aux_f (%ld) does not match length of ac_aux_s (%ld)\n",

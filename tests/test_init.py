@@ -93,7 +93,10 @@ def test_bad_initial_jacobian_is_retried_from_three_surfaces():
     )
     wout = vmecpp.run(vmec_input, verbose=False).wout
     assert wout.ier_flag == 0
-    assert max(wout.fsqr, wout.fsqz, wout.fsql) <= vmec_input.ftol_array[-1]
+    assert (
+        max(float(wout.fsqr), float(wout.fsqz), float(wout.fsql))
+        <= vmec_input.ftol_array[-1]
+    )
 
     # the non-stellarator-symmetric path retries the same way and reproduces the
     # symmetric result
@@ -146,6 +149,24 @@ def test_run_with_hot_restart():
     )
 
     assert vmec_output_hot_restarted.wout.niter == 2
+
+
+def test_run_with_hot_restart_from_wout(tmp_path):
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cma.json")
+    vmec_output = vmecpp.run(vmec_input, verbose=False)
+    wout_path = tmp_path / "wout_cma.nc"
+    vmec_output.wout.save(wout_path)
+    wout = vmecpp.VmecWOut.from_wout_file(wout_path)
+
+    vmec_input.ns_array = vmec_input.ns_array[-1:]
+    vmec_input.ftol_array = vmec_input.ftol_array[-1:]
+    vmec_input.niter_array = vmec_input.niter_array[-1:]
+    restarted = vmecpp.run(vmec_input, verbose=False, restart_from=wout)
+    assert restarted.wout.niter == 2
+
+    mismatched = vmec_input.model_copy(update={"ntor": vmec_input.ntor + 1})
+    with pytest.raises(vmecpp.HotRestartMismatchError, match="ntor"):
+        vmecpp.run(mismatched, verbose=False, restart_from=wout)
 
 
 def test_hot_restart_matches_ns_against_the_wout_of_the_state():
@@ -815,6 +836,13 @@ def test_is_vmec2000_input():
 # Regression test #232
 def test_is_vmec2000_input_with_comment():
     vmec2000_input_file = TEST_DATA_DIR / "input.solovev_analytical"
+    assert vmecpp.is_vmec2000_input(vmec2000_input_file)
+
+
+def test_is_vmec2000_input_lowercase_group(tmp_path):
+    vmec2000_input_file = tmp_path / "input.cma"
+    text = (TEST_DATA_DIR / "input.cma").read_text()
+    vmec2000_input_file.write_text(text.replace("&INDATA", "&indata"))
     assert vmecpp.is_vmec2000_input(vmec2000_input_file)
 
 

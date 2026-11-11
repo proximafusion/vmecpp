@@ -2947,7 +2947,7 @@ def _run_traced(
     *,
     max_threads: int | None,
     verbose: bool | int | OutputMode,
-    restart_from: VmecOutput | None,
+    restart_from: VmecOutput | VmecWOut | None,
 ) -> VmecOutput:
     """Run() for a boundary ``rbc, zbs`` that JAX differentiates or traces.
 
@@ -3227,7 +3227,7 @@ def run(
     *,
     max_threads: int | None = None,
     verbose: bool | int | OutputMode = OutputMode.PROGRESS,
-    restart_from: VmecOutput | None = None,
+    restart_from: VmecOutput | VmecWOut | None = None,
     iteration_callback: typing.Callable[[SolverState], bool | None] | None = None,
 ) -> VmecOutput:
     """Run VMEC++ using the provided input. This is the main entrypoint for both fixed-
@@ -3248,7 +3248,7 @@ def run(
             2. animated progress bar for TTY enabled terminals
             3. animated progress bar for non-TTY outputs (e.g. Jupyter)
         restart_from: if present, VMEC++ is initialized using the converged equilibrium from the
-            provided VmecOutput. This can dramatically decrease the number of iterations to
+            provided VmecOutput or VmecWOut (e.g. loaded with `VmecWOut.from_wout_file`). This can dramatically decrease the number of iterations to
             convergence when running VMEC++ on a configuration that is very similar to the `restart_from` equilibrium.
             If `input.mpol`/`input.ntor` is a sequence (see below), this is used to hot-restart
             only the first continuation step; later steps always hot-restart from the previous one.
@@ -3288,6 +3288,9 @@ def run(
         )
 
     if not isinstance(input.mpol, int) or not isinstance(input.ntor, int):
+        if isinstance(restart_from, VmecWOut):
+            msg = "Fourier continuation requires restart_from to be a VmecOutput"
+            raise TypeError(msg)
         return _run_fourier_continuation(
             input,
             magnetic_field,
@@ -3301,6 +3304,17 @@ def run(
 
     if restart_from is None:
         initial_state = None
+    elif isinstance(restart_from, VmecWOut):
+        for name in ("lasym", "mpol", "ntor"):
+            if getattr(restart_from, name) != getattr(input, name):
+                msg = (
+                    f"Mismatch in variable '{name}' between hot restart wout "
+                    f"({getattr(restart_from, name)}) and input ({getattr(input, name)})."
+                )
+                raise HotRestartMismatchError(msg)
+        initial_state = _vmecpp.HotRestartState(
+            wout=restart_from._to_cpp_wout(), indata=cpp_indata
+        )
     else:
         initial_state = _vmecpp.HotRestartState(
             wout=restart_from.wout._to_cpp_wout(),
@@ -3398,7 +3412,8 @@ def is_vmec2000_input(input_file: Path) -> bool:
             stripped_line = line.strip()
             if not stripped_line or stripped_line.startswith("!"):
                 continue
-            return stripped_line == "&INDATA"
+            # Fortran namelist group names are case-insensitive
+            return stripped_line.split()[0].upper() == "&INDATA"
     return False
 
 
