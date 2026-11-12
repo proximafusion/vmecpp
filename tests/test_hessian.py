@@ -8,7 +8,8 @@ The Hessian-vector product is a central directional derivative of the analytic
 force (the gradient of VMEC's augmented functional), computed inside VMEC++:
 H v = (F(x + eps v) - F(x - eps v)) / (2 eps). It must be linear in v and agree
 with an independent finite difference of the force, and it restores the state.
-The exact product of an Enzyme build repeats to the last bit.
+The exact product of an Enzyme build repeats to the last bit, and its product of
+a sparse direction matches the full transform.
 """
 
 from pathlib import Path
@@ -90,3 +91,34 @@ def test_a_repeated_exact_hvp_is_bitwise_equal():
     before = product(x, first)
     product(x * (1.0 + 1.0e-6 * rng.standard_normal(x.size)), second)
     np.testing.assert_allclose(product(x, first), before, rtol=0.0, atol=0.0)
+
+
+@pytest.mark.skipif(
+    not _vmecpp.VMECPP_ENABLE_ENZYME,
+    reason="the exact product needs an Enzyme-enabled build",
+)
+def test_an_exact_hvp_of_a_sparse_direction_matches_the_full_transform():
+    """The product of two modes on every third surface, which sums the geometry over its
+    coefficients, against a difference of products of dense directions, which transform
+    it whole."""
+    m = _vmecpp.VmecModel.create(_vmecpp.VmecINDATA.from_file(str(CTH_LIKE)), 11)
+    m.evaluate(2, 2, True)
+    size = np.asarray(m.get_state()).size
+    sparse = np.zeros(size).reshape(-1, m.ns, m.mpol, m.ntor + 1)
+    sparse[0, 1::3, 1, 1] = 1.0
+    sparse[4, 2::3, 2, 0] = 0.5
+    sparse = sparse.ravel()
+    dense = np.random.default_rng(4).standard_normal(size)
+
+    def product(direction):
+        return np.asarray(
+            m.exact_hessian_vector_product(np.ascontiguousarray(direction)), float
+        ).copy()
+
+    combined = product(sparse + dense)
+    np.testing.assert_allclose(
+        product(sparse),
+        combined - product(dense),
+        rtol=0.0,
+        atol=1.0e-12 * np.abs(combined).max(),
+    )
