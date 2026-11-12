@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 import vmecpp
-from vmecpp.joint import CONSTRAINT_TOLERANCE, boundary_modes, optimize
+from vmecpp.joint import boundary_modes, optimize
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from joint_quasi_isodynamic import (  # type: ignore
@@ -329,7 +329,7 @@ def test_both_methods_reach_the_targets_within_the_limits(
     nested_and_joint, name
 ) -> None:
     """The start has a mirror ratio of 0.50 and residuals of quasi-isodynamicity of
-    1.8e-2. The two stages end within the limits, with the mirror ratio or an
+    1.8e-2. The two stages end within 1% of the limits, with the mirror ratio or an
     elongation within 1% of its bound, and a cold converged run of the final boundary
     on more modes stays within 1% of the targets and of the limits, with residuals of
     quasi-isodynamicity below 5e-3.
@@ -338,7 +338,7 @@ def test_both_methods_reach_the_targets_within_the_limits(
     """
     problem, result = nested_and_joint[name]
     values = result.evaluation.constraints
-    assert result.evaluation.parts["violation"] <= CONSTRAINT_TOLERANCE
+    assert result.evaluation.parts["violation"] <= 1.0e-2
     assert (values / problem.upper).max() > 0.99
     found = measures(problem, converged_wout(problem, result.boundary, 6))
     np.testing.assert_allclose(found["aspect"], problem.aspect, rtol=1.0e-2)
