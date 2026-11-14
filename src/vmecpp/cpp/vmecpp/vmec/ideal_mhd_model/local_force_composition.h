@@ -77,6 +77,7 @@ struct LocalForceComposition {
   int nZeta = 0, nThetaEven = 0, nThetaReduced = 0, mpol = 0, ntor = 0,
       nnyq2 = 0;
   double tcon_multiplier = 0.0;
+  double tcon_axis_factor = 1.0;
   const double* rCon0 = nullptr;
   const double* zCon0 = nullptr;
   const double* faccon = nullptr;
@@ -387,7 +388,8 @@ inline void ComputeLocalForceDensityWithProfiles(const double* geom,
                          (jF < c->ns - 1 ? azd_h[jF - c->nsMinH] : 0.0);
       tcon[jF - c->nsMinF] =
           std::min(std::fabs(ard / arNorm), std::fabs(azd / azNorm)) *
-          tcon_scale;
+          tcon_scale *
+          ConstraintAxisFactor(c->tcon_axis_factor, jF * c->deltaS);
     }
     if (c->nsMaxFIncludingLcfs == c->ns) {
       // The boundary surface carries half the weight of an interior one.
