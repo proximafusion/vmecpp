@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794008466406,
+  "lastUpdate": 1794660535992,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -27239,6 +27239,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.17242923800006338,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "eefc8c2133a09580ca4abed6615623e76b0d88ca",
+          "message": "Correct the trapezoidal sum of RegularizedIntegrals at the kinks of the analytic approximation (#1070)",
+          "timestamp": "2026-11-14T13:42:44+01:00",
+          "tree_id": "f2bf852db8619f92ea6a97730e708a8d06e273e3",
+          "url": "https://github.com/proximafusion/vmecpp/commit/eefc8c2133a09580ca4abed6615623e76b0d88ca"
+        },
+        "date": 1794660531364,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.5259827825999992,
+            "range": "stddev: 0.015333179504854978",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.1622647209999855,
+            "range": "stddev: 0.012858575048581004",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8935520780000085,
+            "range": "stddev: 0.01130800546364116",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.3469252963333247,
+            "range": "stddev: 0.016473128721102404",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.5457419076666573,
+            "range": "stddev: 0.00239127691803312",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.714473145666659,
+            "range": "stddev: 0.046471086265284504",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 3.7048177870000245,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.3087070180000069,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
