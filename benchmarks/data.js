@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794660852294,
+  "lastUpdate": 1794661708849,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -27319,6 +27319,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.3087070180000069,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "82b7ed39a71c71ae3a923cd7de1e8db92d71890f",
+          "message": "Give the vacuum problem one field period on the axisymmetric grid (#1072)\n\n* Give the vacuum problem one field period on the axisymmetric grid\n\n* Compute the field of the nfp test from the Solov'ev coils",
+          "timestamp": "2026-11-14T13:43:40+01:00",
+          "tree_id": "efd5f5f657991e585f9e1a1769a53fbde7f5ac8f",
+          "url": "https://github.com/proximafusion/vmecpp/commit/82b7ed39a71c71ae3a923cd7de1e8db92d71890f"
+        },
+        "date": 1794661704033,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.7095097059999944,
+            "range": "stddev: 0.07478601216677351",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.649069386999978,
+            "range": "stddev: 0.02742816631136895",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 1.0906749996666651,
+            "range": "stddev: 0.005967038458801608",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.6598119336666741,
+            "range": "stddev: 0.023562128128484894",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.6570930446666807,
+            "range": "stddev: 0.028601391493906916",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 6.81487991100001,
+            "range": "stddev: 0.04806956960836392",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 2.214157099999966,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.47599598900001183,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
