@@ -86,6 +86,9 @@ void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
   // thread-local tangential grid point range
   const int theta_by_nzeta = s_.nThetaEven * s_.nZeta;
   const double twopidivnfp = 2.0 * M_PI / s_.nfp;
+  // grid steps in u and in the toroidal angle v of one field period
+  const double poloidal_step = 2.0 * M_PI / s_.nThetaEven;
+  const double toroidal_step = 2.0 * M_PI / s_.nZeta;
 
   greenp.setZero();
   gstore.setZero();
@@ -196,6 +199,54 @@ void RegularizedIntegrals::update(const Eigen::VectorXd& bDotN) {
     // klp < kl < theta_by_nzeta
     do_loop(/*kl_start*/ klp + 1, /*kl_end*/ theta_by_nzeta);
 
+    // The analytic approximation vanishes with a kink on the lines
+    // u - u' = \pi and v - v' = \pi, where the Green's function is smooth: 2
+    // tan(\Delta u/2) grows as 4/|\Delta u - \pi|, so 1/\sqrt{ga1} has the
+    // slope 1/(4 \sqrt{guu}) on either side of the u line, ga2/\sqrt{ga1} has
+    // auu/(4 guu^{3/2}), and the v line has the same with gvv and avv. The
+    // trapezoidal sum misses h^2 s/6 at a kink of slope s on a node and
+    // counts h^2 s/12 too much at a kink midway between two nodes, so the
+    // approximation takes h s/6 on the kink nodes, the v value where the two
+    // lines cross, and h s/24 less on the two nodes next to a midway v kink.
+    {
+      const int klpRel = klp - tp_.ztMin;
+      const double kink_u =
+          twopidivnfp * poloidal_step / (24.0 * std::sqrt(sg_.guu[klpRel]));
+      const double kink_du = kink_u * sg_.auu[klpRel] / sg_.guu[klpRel];
+      const double kink_v =
+          twopidivnfp * toroidal_step / (24.0 * std::sqrt(sg_.gvv[klpRel]));
+      const double kink_dv = kink_v * sg_.avv[klpRel] / sg_.gvv[klpRel];
+      const int l_kink = (lp + s_.nThetaEven / 2) % s_.nThetaEven;
+      for (int k = 0; k < s_.nZeta; ++k) {
+        const int kl = l_kink * s_.nZeta + k;
+        greenp[ip_idx_base + kl] -= kink_du;
+        gstore[kl] -= bexni * kink_u;
+      }
+      if (s_.nZeta % 2 == 0) {
+        const int k_kink = (kp + s_.nZeta / 2) % s_.nZeta;
+        const int kl_cross = l_kink * s_.nZeta + k_kink;
+        greenp[ip_idx_base + kl_cross] += kink_du;
+        gstore[kl_cross] += bexni * kink_u;
+        for (int l = 0; l < s_.nThetaEven; ++l) {
+          const int kl = l * s_.nZeta + k_kink;
+          greenp[ip_idx_base + kl] -= kink_dv;
+          gstore[kl] -= bexni * kink_v;
+        }
+      } else {
+        for (const int dk : {(s_.nZeta - 1) / 2, (s_.nZeta + 1) / 2}) {
+          const int k_mid = (kp + dk) % s_.nZeta;
+          for (int l = 0; l < s_.nThetaEven; ++l) {
+            if (l == l_kink) {
+              continue;
+            }
+            const int kl = l * s_.nZeta + k_mid;
+            greenp[ip_idx_base + kl] += 0.25 * kink_dv;
+            gstore[kl] += bexni * 0.25 * kink_v;
+          }
+        }
+      }
+    }
+
     // all following field periods
     for (int p = 1; p < s_.nfp; ++p) {
       double xper = xp * sg_.cos_per[p] - yp * sg_.sin_per[p];
@@ -243,6 +294,7 @@ void RegularizedIntegrals::updateAxisymmetric(const Eigen::VectorXd& bDotN) {
   // 2 pi / nvper_ is the toroidal step of the sum over the nvper_ images,
   // which turns that sum into the toroidal integral over the whole machine.
   const double toroidal_measure = 2.0 * M_PI / nvper_;
+  const double poloidal_step = 2.0 * M_PI / nThetaEven;
 
   for (int klp = tp_.ztMin; klp < tp_.ztMax; ++klp) {
     const int ip_idx_base = (klp - tp_.ztMin) * nThetaEven;
@@ -307,6 +359,23 @@ void RegularizedIntegrals::updateAxisymmetric(const Eigen::VectorXd& bDotN) {
         gstore[kl] += bexni * toroidal_measure * (htemp - ga1);
       }  // kl
     }  // p
+
+    // The kinks of the analytic approximation as in update(), with the image
+    // spacing as the toroidal step: the u line crosses every image but the
+    // one at v - v' = \pi, which carries the v line.
+    const double kink_u =
+        toroidal_measure * poloidal_step / (24.0 * std::sqrt(sg_.guu[klpRel]));
+    const double kink_du = kink_u * sg_.auu[klpRel] / sg_.guu[klpRel];
+    const double kink_v = toroidal_measure * toroidal_measure /
+                          (24.0 * std::sqrt(sg_.gvv[klpRel]));
+    const double kink_dv = kink_v * sg_.avv[klpRel] / sg_.gvv[klpRel];
+    const int l_kink = (lp + nThetaEven / 2) % nThetaEven;
+    greenp[ip_idx_base + l_kink] -= (nvper_ - 1) * kink_du;
+    gstore[l_kink] -= bexni * (nvper_ - 1) * kink_u;
+    for (int kl = 0; kl < nThetaEven; ++kl) {
+      greenp[ip_idx_base + kl] -= kink_dv;
+      gstore[kl] -= bexni * kink_v;
+    }
   }  // klp
 }
 
