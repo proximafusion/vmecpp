@@ -37,6 +37,7 @@ dependencies = [
   "jax!=0.5.2", # To prevent a circular import bug in jax on arch Linux
   "jax!=0.5.1", # To prevent a circular import bug in jax on arch Linux
   "simsopt>=1.8.1",
+  "threadpoolctl",
 ]
 
 [project.scripts]
