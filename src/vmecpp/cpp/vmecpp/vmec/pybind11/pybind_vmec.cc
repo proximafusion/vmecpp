@@ -508,6 +508,22 @@ class VmecModel {
     last_full_update_nestor_ = 0;
   }
 
+  // Restart on a three-surface mesh from the boundary and the axis as they
+  // stand. This is the recovery pass Vmec::run makes when the Jacobian of a
+  // multi-grid step stays bad after the axis reguess: the step on three
+  // surfaces has the force tolerance 1e-4 and the iteration budget of the
+  // step that failed, and refine_to walks the resolutions of ns_array again
+  // from it.
+  void RestartFromThreeSurfaces() {
+    vmecpp::Vmec &v = *vmec_;
+    v.SelectThreeSurfaceMesh();
+    v.constants_.reset();
+    v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, v.fc_.nsval,
+                       v.fc_.ns_old, v.fc_.delt0r, std::nullopt);
+    last_preconditioner_update_ = 0;
+    last_full_update_nestor_ = 0;
+  }
+
   bool always_fix_m1_gauge() const { return vmec_->always_fix_m1_gauge_; }
 
   // Reference C++ inner iteration (the loop being ported), for verification.
@@ -1943,6 +1959,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reinitialize", &VmecModel::Reinitialize)
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
+      .def("restart_from_three_surfaces", &VmecModel::RestartFromThreeSurfaces)
       .def("solve", &VmecModel::Solve)
       .def_property_readonly(
           "always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,

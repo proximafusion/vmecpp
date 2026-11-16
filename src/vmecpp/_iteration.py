@@ -166,6 +166,9 @@ class IterationResult:
     force_residual_z: list[float] = field(default_factory=list)
     force_residual_lambda: list[float] = field(default_factory=list)
     restart_reasons: list[int] = field(default_factory=list)
+    bad_jacobian: bool = False
+    """True if the solve failed on a Jacobian that stayed bad after the axis reguess
+    (the C++ ``VmecStatus::BAD_JACOBIAN``)."""
 
 
 def solve_equilibrium(
@@ -217,6 +220,7 @@ def solve_equilibrium(
     fsqr = fsqz = fsql = float("nan")
     converged = False
     failed = False
+    bad_jacobian = False
     n_restarts = 0
     n_reguesses = 0
 
@@ -339,7 +343,9 @@ def solve_equilibrium(
                 must_retry = True
                 break
             if status_bad_jacobian:
-                failed = True  # ijacob already used: cannot recover
+                # ijacob already used: only a restart from three surfaces recovers
+                failed = True
+                bad_jacobian = True
                 break
 
             # repeated bad Jacobian: reset the time step (ijacob 25/50 escalation,
@@ -520,6 +526,7 @@ def solve_equilibrium(
         force_residual_z=trace_z,
         force_residual_lambda=trace_l,
         restart_reasons=trace_rr,
+        bad_jacobian=bad_jacobian,
     )
 
 
@@ -546,8 +553,11 @@ def solve_multigrid(
     interpolation-added error of the stage seed down to the coarse grid's own
     discretization error. ``None`` (default) keeps the linear scheme. A stage
     that exhausts its iteration budget without converging proceeds to the next
-    stage, exactly as the C++ run does; a stage that hard-fails (unrecoverable
-    bad Jacobian, the ijacob >= 75 give-up) stops the ramp.
+    stage, exactly as the C++ run does. A stage whose Jacobian stays bad after
+    the axis reguess restarts the ramp once from a stage on three surfaces
+    (``VmecModel.restart_from_three_surfaces``, the C++ ``jacob_off`` pass).
+    Any other hard failure (the ijacob >= 75 give-up, a bad Jacobian in that
+    second pass) stops the ramp.
 
     ``ftol_array`` / ``niter_array`` entries are matched to ``ns_array``
     entries by ns value (``VmecModel.create`` / ``refine_to`` semantics);
@@ -555,7 +565,8 @@ def solve_multigrid(
     only refines to strictly finer grids.
 
     Returns ``(model, results)``: the model holds the final stage's geometry
-    and ``results`` is the per-stage list of :class:`IterationResult`.
+    and ``results`` is the per-stage list of :class:`IterationResult`, with the
+    stages of both passes after a restart from three surfaces.
     """
     cpp_indata = vmec_input._to_cpp_vmecindata()
     if iteration_style in (_VMEC_8_52, _PARVMEC):
@@ -586,21 +597,37 @@ def solve_multigrid(
 
     model = None
     results: list[IterationResult] = []
-    ns_min = 3  # FlowControl::ns_min -- no refinement downward
-    for ns in ns_array:
-        if ns < ns_min:
-            # mirror the C++ run: skip entries coarser than already solved
-            continue
-        ns_min = ns
-        if model is None:
-            model = _vmecpp.VmecModel.create(cpp_indata, ns)
-        else:
-            model.refine_to(ns, interpolation=interpolation_scheme)
+
+    def solve_stage(model) -> IterationResult:
         result = solve_equilibrium(
             model, style=iteration_style, verbose=verbose, callback=callback
         )
         results.append(result)
-        if result.failed:
+        return result
+
+    # The two passes of Vmec::run's jacob_off loop: the second starts with a stage on
+    # three surfaces.
+    for _ in range(2):
+        if model is not None:
+            model.restart_from_three_surfaces()
+            if solve_stage(model).failed:
+                break
+        ns_min = 3  # FlowControl::ns_min -- no refinement downward
+        for ns in ns_array:
+            if ns < ns_min:
+                # mirror the C++ run: skip entries coarser than already solved
+                continue
+            ns_min = ns
+            if model is None:
+                model = _vmecpp.VmecModel.create(cpp_indata, ns)
+            elif ns > model.ns:
+                model.refine_to(ns, interpolation=interpolation_scheme)
+            else:
+                # the stage on three surfaces stands in for an entry of 3
+                continue
+            if solve_stage(model).failed:
+                break
+        if model is None or not results[-1].bad_jacobian:
             break
     if model is None:
         msg = f"solve_multigrid: no usable ns_array entries (got {ns_array})"

@@ -494,6 +494,39 @@ def test_python_multigrid_matches_cpp_run():
     np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
 
 
+def test_python_multigrid_restarts_from_three_surfaces():
+    """solve_multigrid makes the jacob_off pass of the C++ Vmec::run.
+
+    The Jacobian of ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ stays bad at
+    ns = 25 after the axis reguess (see test_init.py). Both drivers then solve on
+    three surfaces and refine to ns = 25, and their traces must match step for
+    step, as in test_python_multigrid_matches_cpp_run.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA / "constellaration_bad_initial_jacobian.json"
+    )
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_r = np.asarray(reference.wout.force_residual_r)
+    cpp_rr = np.asarray(reference.wout.restart_reason_timetrace)
+
+    model, results = vmecpp.solve_multigrid(vmec_input)
+    assert [r.bad_jacobian for r in results] == [True, False, False]
+    assert [r.converged for r in results] == [False, True, True]
+    assert [r.axis_reguesses for r in results] == [1, 0, 0]
+    assert model.ns == vmec_input.ns_array[-1]
+
+    py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
+
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+
+
 def test_refine_to_multigrid_ramp_converges():
     """Driving the multi-grid ramp from Python (refine_to interpolates the converged
     coarse geometry onto the finer grid) converges, and seeding the finer grid from a

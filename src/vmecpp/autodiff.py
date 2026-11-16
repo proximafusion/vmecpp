@@ -91,6 +91,10 @@ def _key(solver_id: int, boundary: np.ndarray, profiles: dict) -> tuple[int, byt
 # did not converge.
 _VMEC_STATUS_SUCCESSFUL_TERMINATION = 11
 
+# VmecModel.status's integer value for vmecpp::VmecStatus::BAD_JACOBIAN: the Jacobian
+# of the step stayed bad after the axis reguess.
+_VMEC_STATUS_BAD_JACOBIAN = 1
+
 # Recent forward solves, keyed by solver and parameters: the solved state, the
 # forward output and, from the latest VJP until a solve or VJP at other
 # parameters, the LU factors of the transposed interior system. NumPy data only,
@@ -114,20 +118,38 @@ def _solve_model(template, boundary: np.ndarray, profiles=None):
     to the next, finer step, exactly as ``vmecpp.run`` treats them. The final
     step is the one that must actually converge; a schedule truncated to its
     first steps for a cheap solve is only valid if its new last step is
-    standalone-convergent.
+    standalone-convergent. A step whose Jacobian stays bad after the axis
+    reguess restarts the sequence once from a step on three surfaces, as
+    ``vmecpp.run`` does.
     """
     indata = _make_indata(template, boundary, profiles)
     indata.always_fix_m1_gauge = True
     resolutions = [int(value) for value in np.asarray(indata.ns_array)]
     model = None
-    for ns in resolutions:
-        if ns < 3:
-            continue
-        if model is None:
-            model = _vmecpp.VmecModel.create(indata, ns)
-        else:
-            model.refine_to(ns)
-        model.solve()
+    # The two passes of Vmec::run's jacob_off loop: the second starts with a step on
+    # three surfaces.
+    for _ in range(2):
+        restarted = model is not None
+        if model is not None:
+            model.restart_from_three_surfaces()
+            model.solve()
+            if model.status == _VMEC_STATUS_BAD_JACOBIAN:
+                break
+        for ns in resolutions:
+            if ns < 3:
+                continue
+            if model is None:
+                model = _vmecpp.VmecModel.create(indata, ns)
+            elif restarted and ns <= model.ns:
+                # the step on three surfaces stands in for an entry of 3
+                continue
+            else:
+                model.refine_to(ns)
+            model.solve()
+            if model.status == _VMEC_STATUS_BAD_JACOBIAN:
+                break
+        if model is None or model.status != _VMEC_STATUS_BAD_JACOBIAN:
+            break
     if model is None:
         error_message = "VMEC input has no resolution with ns >= 3"
         raise ValueError(error_message)
