@@ -155,3 +155,13 @@ cc_binary(
         "@google_benchmark//:benchmark_main",
     ],
 )
+
+cc_test(
+    name = "step_limit_kernel_test",
+    srcs = ["step_limit_kernel_test.cc"],
+    deps = [
+        ":ideal_mhd_model",
+        "@googletest//:gtest_main",
+    ],
+    size = "small",
+)
