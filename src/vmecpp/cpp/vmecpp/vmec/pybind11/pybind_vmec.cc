@@ -445,9 +445,13 @@ class VmecModel {
     // InitializeRadial doubles rmsPhiP and rescales the entire lambda
     // sector by sqrt(2).
     vmec_->constants_.reset();
+    // The reguess after huge initial forces follows a time step, whose
+    // velocity Vmec::SolveEquilibriumLoop keeps.
+    const vmecpp::FourierVelocity velocity = *vmec_->decomposed_v_[0];
     vmec_->InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX,
                             vmec_->fc_.nsval, /*ns_old=*/0, delt0,
                             std::nullopt);
+    *vmec_->decomposed_v_[0] = velocity;
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }

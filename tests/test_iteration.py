@@ -527,6 +527,40 @@ def test_python_multigrid_restarts_from_three_surfaces():
     np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
 
 
+def test_python_iteration_keeps_the_velocity_through_the_axis_reguess():
+    """The axis reguess after huge initial forces keeps the velocity.
+
+    A time step precedes that reguess, and the C++ loop resets the geometry alone.
+    cth_like_fixed_bdy with rbc(3, 0) and zbs(3, 0) raised by a fifth of rbc(1, 0)
+    starts on huge initial forces. With the velocity of that step, the step after the
+    reguess makes the Jacobian change sign, and both drivers go on from three surfaces.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cth_like_fixed_bdy.json")
+    ntor = vmec_input.ntor
+    raised = 0.2 * vmec_input.rbc[1, ntor]
+    vmec_input.rbc[3, ntor] += raised
+    vmec_input.zbs[3, ntor] += raised
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_r = np.asarray(reference.wout.force_residual_r)
+    cpp_rr = np.asarray(reference.wout.restart_reason_timetrace)
+    assert cpp_rr[0] == RestartReason.HUGE_INITIAL_FORCES
+
+    _, results = vmecpp.solve_multigrid(vmec_input)
+    assert [r.bad_jacobian for r in results] == [True, False, False]
+    assert [r.converged for r in results] == [False, True, True]
+
+    py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
+
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
+    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+
+
 def test_refine_to_multigrid_ramp_converges():
     """Driving the multi-grid ramp from Python (refine_to interpolates the converged
     coarse geometry onto the finer grid) converges, and seeding the finer grid from a
