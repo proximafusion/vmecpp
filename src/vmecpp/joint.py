@@ -1247,6 +1247,7 @@ def _triangle(problem: JointProblem, point: _Point, jacobian) -> np.ndarray:
             )
         )
     size = jacobian.shape[1] + 1
+    (geqrf,) = scipy.linalg.get_lapack_funcs(("geqrf",), dtype=np.float64)
 
     def block(start: int) -> np.ndarray:
         stop = min(start + _TRIANGLE_ROWS, first)
@@ -1254,7 +1255,7 @@ def _triangle(problem: JointProblem, point: _Point, jacobian) -> np.ndarray:
         stacked[:, :-1] = jacobian[start:stop]
         stacked[:, -1] = point.balanced[start:stop]
         # LAPACK runs without the interpreter lock, which numpy's QR holds
-        factored = scipy.linalg.lapack.dgeqrf(stacked, overwrite_a=True)[0]
+        factored = geqrf(stacked, overwrite_a=True)[0]
         return np.triu(factored[:size])
 
     with ThreadPoolExecutor(min(problem.workers, len(starts))) as pool:
