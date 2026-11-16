@@ -498,12 +498,13 @@ class VmecModel {
     }
     v.fc_.nsval = new_ns;
 
-    double delt0 = v.indata_.delt;
     // Same per-multi-grid-step constants reset Vmec::run performs before
     // InitializeRadial (rmsPhiP accumulates in evalRadialProfiles).
     v.constants_.reset();
+    // InitializeRadial resets fc_.delt0r, the time step of Solve(), to
+    // indata.delt, as in run().
     v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
-                       delt0, std::nullopt, interpolation);
+                       v.fc_.delt0r, std::nullopt, interpolation);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }

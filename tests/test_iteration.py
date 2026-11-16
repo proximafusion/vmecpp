@@ -530,6 +530,30 @@ def test_refine_to_multigrid_ramp_converges():
         model.refine_to(15)
 
 
+def test_cpp_solve_of_a_refined_model_matches_cpp_run():
+    """refine_to starts the next stage from the input's time step, as Vmec::run does.
+
+    cma's coarse stage (ns = 25) ends on a time step that a restart has cut. The C++
+    inner solve of both stages of its ramp on one model must reproduce the force-
+    residual and restart-reason traces of the full vmecpp.run step for step.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cma.json")
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+
+    model = _vmecpp.VmecModel.create(vmec_input._to_cpp_vmecindata(), 25)
+    model.solve()
+    model.refine_to(51)
+    model.solve()
+
+    np.testing.assert_array_equal(
+        model.restart_reasons, reference.wout.restart_reason_timetrace
+    )
+    np.testing.assert_array_equal(
+        model.force_residual_r, reference.wout.force_residual_r
+    )
+
+
 # Reference iota profile computed at mpol=ntor=12, ns=100 and checked against DESC
 _NEAR_AXIS_IOTA_REF = np.array(
     [
