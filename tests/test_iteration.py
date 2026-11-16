@@ -549,11 +549,8 @@ def test_cpp_solve_of_a_refined_model_matches_cpp_run():
     np.testing.assert_array_equal(
         model.restart_reasons, reference.wout.restart_reason_timetrace
     )
-    np.testing.assert_allclose(
-        model.force_residual_r,
-        reference.wout.force_residual_r,
-        rtol=1.0e-10,
-        atol=1e-15,
+    np.testing.assert_array_equal(
+        model.force_residual_r, reference.wout.force_residual_r
     )
 
 
