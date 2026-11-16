@@ -28,6 +28,7 @@ from vmecpp.joint import (
     _Point,
     _ridge,
     _step_scale,
+    _triangle,
     boundary_modes,
     converged_input,
     optimize,
@@ -175,6 +176,25 @@ def test_a_step_without_active_constraints_is_the_damped_normal_step() -> None:
         -np.linalg.solve(rows.T @ rows + np.diag(ridge), rows.T @ point.balanced[:12]),
         rtol=1.0e-9,
     )
+
+
+def test_residuals_factored_in_blocks_give_the_step_of_one_factorization(
+    monkeypatch,
+) -> None:
+    """The triangle of twelve residuals in blocks of five has their normal matrix."""
+    problem = _three(**WIDE)
+    keys, jacobian, point = _step_problem(problem, np.asarray([0.3, -0.2, 0.1]))
+    delta, predicted = _bounded_step(problem, point, keys, jacobian, 1.0e-2)
+    monkeypatch.setattr("vmecpp.joint._TRIANGLE_ROWS", 5)
+    triangle = _triangle(problem, point, jacobian)
+    stacked = np.column_stack([jacobian[:12], point.balanced[:12]])
+    normal = stacked.T @ stacked
+    np.testing.assert_allclose(
+        triangle.T @ triangle, normal, rtol=0.0, atol=1.0e-13 * np.abs(normal).max()
+    )
+    in_blocks = _bounded_step(problem, point, keys, jacobian, 1.0e-2)
+    np.testing.assert_allclose(in_blocks[0], delta, rtol=1.0e-10)
+    np.testing.assert_allclose(in_blocks[1], predicted, rtol=1.0e-10)
 
 
 def test_a_step_stays_within_the_bounds_of_the_coefficients() -> None:
