@@ -727,16 +727,6 @@ class VmecModel {
     return (fp - fm) / (2.0 * eps);
   }
 
-  // HessianVectorProduct of every column of vectors, in one call from Python.
-  Eigen::MatrixXd HessianVectorProducts(const Eigen::MatrixXd &vectors,
-                                        double eps_rel = 1e-7) {
-    Eigen::MatrixXd products(vectors.rows(), vectors.cols());
-    for (Eigen::Index column = 0; column < vectors.cols(); ++column) {
-      products.col(column) = HessianVectorProduct(vectors.col(column), eps_rel);
-    }
-    return products;
-  }
-
 #ifdef VMECPP_ENABLE_ENZYME
   void RequireLforbalDisabledForExactDerivatives() const {
     if (vmec_->m_[0]->lforbal) {
@@ -789,18 +779,6 @@ class VmecModel {
         exact_primal_.data(), exact_dgeom_.data(), gS, *vmec_->physical_f_[0],
         *vmec_->decomposed_f_[0], always_fix_m1_gauge);
     return FlattenActive(*vmec_->decomposed_f_[0], vmec_->s_);
-  }
-
-  // ExactHessianVectorProduct of every column of vectors, in one call from
-  // Python.
-  Eigen::MatrixXd ExactHessianVectorProducts(const Eigen::MatrixXd &vectors,
-                                             bool always_fix_m1_gauge = true) {
-    Eigen::MatrixXd products(vectors.rows(), vectors.cols());
-    for (Eigen::Index column = 0; column < vectors.cols(); ++column) {
-      products.col(column) =
-          ExactHessianVectorProduct(vectors.col(column), always_fix_m1_gauge);
-    }
-    return products;
   }
 
   // Transpose of the exact Hessian-vector product: H^T w, in the decomposed
@@ -1995,19 +1973,12 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("hessian_vector_product", &VmecModel::HessianVectorProduct,
            py::arg("v"), py::arg("eps_rel") = 1e-7,
            py::call_guard<py::gil_scoped_release>())
-      .def("hessian_vector_products", &VmecModel::HessianVectorProducts,
-           py::arg("vectors"), py::arg("eps_rel") = 1e-7,
-           py::call_guard<py::gil_scoped_release>())
 #ifdef VMECPP_ENABLE_ENZYME
       // Both directions are required: the reverse adjoint needs H^T, and
       // deflating the augmented Hessian's structural null space needs both a
       // row and a column probe.
       .def("exact_hessian_vector_product",
            &VmecModel::ExactHessianVectorProduct, py::arg("v"),
-           py::arg("always_fix_m1_gauge") = true,
-           py::call_guard<py::gil_scoped_release>())
-      .def("exact_hessian_vector_products",
-           &VmecModel::ExactHessianVectorProducts, py::arg("vectors"),
            py::arg("always_fix_m1_gauge") = true,
            py::call_guard<py::gil_scoped_release>())
       .def("exact_hessian_vector_product_transpose",

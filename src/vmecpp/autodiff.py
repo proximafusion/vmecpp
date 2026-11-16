@@ -341,24 +341,6 @@ def _force_product(model, vector: np.ndarray, *, exact: bool = True) -> np.ndarr
     return np.asarray(product, dtype=np.float64)
 
 
-_PRODUCT_BATCH = 16
-"""Hessian products per call of a model.
-
-The threads of several models take the interpreter lock once per call.
-"""
-
-
-def _force_products(model, vectors: np.ndarray, *, exact: bool = True) -> np.ndarray:
-    """``H v`` of :func:`_force_product` for every column of ``vectors`` in one call."""
-    vectors = np.asfortranarray(vectors)
-    products = (
-        model.exact_hessian_vector_products(vectors)
-        if exact
-        else model.hessian_vector_products(vectors, _DIFFERENCE_STEP)
-    )
-    return np.asarray(products, dtype=np.float64)
-
-
 def _structural_nullfree_interior(
     model,
     interior: np.ndarray,
@@ -514,36 +496,6 @@ def _map_on_models(function, models, items) -> list:
     return results
 
 
-def _map_batches_on_models(function, models, items) -> None:
-    """``function(model, batch)`` for the items in batches of up to _PRODUCT_BATCH, on
-    one thread per model."""
-    items = list(items)
-
-    def run(position: int) -> None:
-        mine = items[position :: len(models)]
-        for first in range(0, len(mine), _PRODUCT_BATCH):
-            function(models[position], mine[first : first + _PRODUCT_BATCH])
-
-    if len(models) == 1:
-        run(0)
-        return
-    with ThreadPoolExecutor(len(models)) as pool:
-        list(pool.map(run, range(len(models))))
-
-
-def _products_on_models(
-    models, vectors: np.ndarray, *, exact: bool = True
-) -> np.ndarray:
-    """``H v`` for every column of ``vectors``, shared among the models."""
-    products = np.empty(vectors.shape)
-
-    def multiply(worker, columns: list[int]) -> None:
-        products[:, columns] = _force_products(worker, vectors[:, columns], exact=exact)
-
-    _map_batches_on_models(multiply, models, range(vectors.shape[1]))
-    return products
-
-
 def _assemble_block_tridiagonal(
     model,
     solved: np.ndarray,
@@ -605,21 +557,16 @@ def _assemble_block_tridiagonal(
     stride = width if transposed else 1
     flat = matrix.blocks.reshape(-1)
 
-    def probe_groups(worker, groups: list[np.ndarray]) -> None:
-        probes = np.zeros((state_size, len(groups)), order="F")
-        for position, group in enumerate(groups):
-            probes[solved[group], position] = 1.0
-        products = _force_products(worker, probes, exact=exact)
-        for position, group in enumerate(groups):
-            color, probed_mode = divmod(int(group_key[group[0]]), n_modes)
-            product = products[solved, position]
-            column = entry[probed[color], probed_mode]
-            hit = (product != 0.0) & (column >= 0)
-            flat[start[color][hit] + stride * matrix.local[column[hit]]] = product[hit]
+    def probe_group(worker, group: np.ndarray) -> None:
+        color, probed_mode = divmod(int(group_key[group[0]]), n_modes)
+        probe = np.zeros(state_size)
+        probe[solved[group]] = 1.0
+        product = _force_product(worker, probe, exact=exact)[solved]
+        column = entry[probed[color], probed_mode]
+        hit = (product != 0.0) & (column >= 0)
+        flat[start[color][hit] + stride * matrix.local[column[hit]]] = product[hit]
 
-    _map_batches_on_models(
-        probe_groups, [model, *extra_models], np.split(order, boundaries)
-    )
+    _map_on_models(probe_group, [model, *extra_models], np.split(order, boundaries))
     return matrix
 
 

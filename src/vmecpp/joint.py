@@ -738,10 +738,14 @@ class JointProblem:
         start = time.perf_counter()
         models = self._models_at(model, state, precondition=True)
         tangents = np.stack([self.boundary_map[key] for key in keys], axis=1)
-        forcing = autodiff._products_on_models(
-            models, tangents, exact=self.exact_products
+        forcing = autodiff._map_on_models(
+            lambda worker, i: autodiff._force_product(
+                worker, tangents[:, i], exact=self.exact_products
+            )[self.interior],
+            models,
+            range(len(keys)),
         )
-        tangents[self.interior, :] = matrix.solve(-forcing[self.interior])
+        tangents[self.interior, :] = matrix.solve(-np.stack(forcing, axis=1))
         self.costs.tangent_seconds += time.perf_counter() - start
         return tangents
 
