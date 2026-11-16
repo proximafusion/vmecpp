@@ -1258,7 +1258,7 @@ def _triangle(problem: JointProblem, point: _Point, jacobian) -> np.ndarray:
         stacked = np.empty((stop - start, size), order="F")
         stacked[:, :-1] = jacobian[start:stop]
         stacked[:, -1] = point.balanced[start:stop]
-        # LAPACK runs without the interpreter lock, which numpy's QR holds
+        # LAPACK runs without the interpreter lock
         factored = geqrf(stacked, overwrite_a=True)[0]
         return np.triu(factored[:size])
 
