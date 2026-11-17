@@ -67,7 +67,8 @@ class IdealMhdModel {
 
   void setFromINDATA(int ncurr, double adiabaticIndex, double tCon0,
                      bool lforbal, double lambda_preconditioner_scale,
-                     double lambda_precondition_checkerboard_terms);
+                     double lambda_precondition_checkerboard_terms,
+                     double tcon_axis_factor);
 
   // Compute the invariant (i.e., not preconditioned yet) force residuals.
   // Will put them into the provided array as { fsqr, fsqz, fsql }.
@@ -532,6 +533,7 @@ class IdealMhdModel {
   Eigen::VectorXd lambdaPreconditioner;
   double lambda_preconditioner_scale_ = 0.5;
   double lambda_precondition_checkerboard_terms_ = 1e-3;
+  double tcon_axis_factor_ = 1.0;
 
   // R,Z preconditioner
   Eigen::VectorXd ax;
