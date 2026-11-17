@@ -19,14 +19,7 @@ import threading
 
 import numpy as np
 from island_interior import axis_curve
-from knotted_stellarator import (
-    FieldLines,
-    Knot,
-    flux_surface,
-    interior_input,
-    magnetic_axis,
-    toroidal_flux,
-)
+from knotted_stellarator import Knot, interior
 from simsopt.field import BiotSavart, Coil, Current, coils_via_symmetries
 from simsopt.geo import CurveXYZFourier
 
@@ -35,7 +28,7 @@ import vmecpp
 NFP = 3
 RADIUS = 1.2  # coil radius in m
 CURRENT = 1.0e6  # coil current in A
-# Centres in m of the coils from phi = 0 to the middle of a field period. The first and
+# Centres in m of the coils from \phi = 0 to the middle of a field period. The first and
 # the last coil are their own images under stellarator symmetry.
 CENTRES = np.array(
     [
@@ -64,7 +57,7 @@ NORMALS = np.array(
     ]
 )
 # The interior of the design. The coil centres lie near R = r_0 + r_{knot} \cos(3 z).
-# The magnetic axis crosses phi = 0, Z = 0 within the bracket axis. The boundary is
+# The magnetic axis crosses \phi = 0, Z = 0 within the bracket axis. The boundary is
 # traced from offset outboard of the axis.
 KNOT = Knot(
     p=1,
@@ -79,7 +72,8 @@ KNOT = Knot(
     mpol=12,
     ntor=24,
 )
-# The interior of W7-X in the standard configuration, inside its 5/5 islands.
+# The interior of W7-X in the standard configuration. Its boundary lies inside the 5/5
+# islands.
 W7X = dataclasses.replace(
     KNOT, q=5, coils=50, axis=(5.90, 6.00), planes=48, offset=0.22, ntor=12
 )
@@ -131,31 +125,12 @@ def w7x_coils():
     return coils_via_symmetries(curves, currents, 5, True)
 
 
-def interior(field, knot):
-    """The traced magnetic axis and boundary, their rotational transform and the input
-    of VMEC++ for the interior of the boundary."""
-    lines = FieldLines(field, knot.period)
-    r_axis, axis, iota_axis = magnetic_axis(knot, lines)
-    planes = np.arange(knot.planes) * knot.period / knot.planes
-    rb, zb, iota_surface, misfit = flux_surface(knot, lines, r_axis)
-    flux = toroidal_flux(lines, rb, zb, axis, planes)
-    return {
-        "r_axis": r_axis,
-        "axis": axis,
-        "iota_axis": iota_axis,
-        "planes": planes,
-        "iota_surface": iota_surface,
-        "misfit": misfit,
-        "input": interior_input(knot, rb, zb, axis, flux, planes),
-    }
-
-
 def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
     """The effective ripple of a field line.
 
     The inputs are B, |\\nabla \\psi|, the radial drift v_d and the ds / B of a step at
-    the samples of the line. B_0 is the mean of B along the line. b = B / B_0 is linear
-    between the samples. A well j of the line at the level b' has
+    the samples of the line. B_0 is the mean of B along the line weighted by ds / B. b =
+    B / B_0 is linear between the samples. A well j of the line at the level b' has
 
         H_j = \\int ds / B \\sqrt{b' - b} (4 / b - 1 / b') v_d,
         I_j = \\int ds / B \\sqrt{1 - b / b'}.
@@ -210,8 +185,8 @@ def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
 def wout_ripple(wout, js, periods=120, steps=96):
     """The effective ripple of the half-grid surface js of a wout.
 
-    The field line starts at theta = 0, phi = 0 and runs over periods field periods. The
-    major radius is the length of the magnetic axis over 2 pi.
+    The field line starts at \\theta = 0, \\phi = 0 and runs over periods field periods.
+    The major radius is the length of the magnetic axis over 2 \\pi.
     """
     transits = int(wout.toroidal_transits)
     period = 2.0 * np.pi * transits / int(wout.nfp)
@@ -273,8 +248,8 @@ def wout_ripple(wout, js, periods=120, steps=96):
 def closure(strength):
     """The share of the range of B on a surface whose contours close poloidally.
 
-    strength is B on a grid [theta, phi] over a field period. The contours close
-    poloidally between the largest minimum of B along the lines of constant theta and
+    strength is B on a grid [\\theta, \\phi] over a field period. The contours close
+    poloidally between the largest minimum of B along the lines of constant \\theta and
     the smallest maximum. The share is 1 for a quasi-isodynamic field.
     """
     lowest_ridge = strength.max(axis=1).min()
@@ -299,22 +274,26 @@ def wout_closure(wout, js, angles=128):
 
 
 def measures(wout):
-    """The effective ripple and :func:`closure` at s = 1/4, at s = 1/2 and on the
-    boundary of a wout."""
+    """The values of s, the effective ripple and :func:`closure` on the half-grid
+    surfaces ns // 4, ns // 2 and ns - 1 of a wout."""
     ns = int(wout.ns)
     surfaces = (ns // 4, ns // 2, ns - 1)
-    ripple = [wout_ripple(wout, js) for js in surfaces]
-    return ripple, [wout_closure(wout, js) for js in surfaces]
+    return (
+        [(js - 0.5) / (ns - 1) for js in surfaces],
+        [wout_ripple(wout, js) for js in surfaces],
+        [wout_closure(wout, js) for js in surfaces],
+    )
 
 
-def describe(ripple, closed):
+def describe(s, ripple, closed):
     """:func:`measures` as text."""
     return (
         "effective ripple "
         + ", ".join(f"{100 * value:.2f}%" for value in ripple)
         + ", contours of B closing poloidally over "
         + ", ".join(f"{value:.2f}" for value in closed)
-        + " of its range, at s = 1/4, s = 1/2 and on the boundary"
+        + " of its range, at s = "
+        + ", ".join(f"{value:.2f}" for value in s)
     )
 
 

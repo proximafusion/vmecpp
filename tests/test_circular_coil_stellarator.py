@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Tests of the circular-coil stellarator: the symmetry of the field of its coils, the
 effective ripple against quadrature, the poloidal closure of an analytic field, and its
-VMEC++ interior against the tracing."""
+VMEC++ interior against the tracing and beside W7-X."""
 
 import sys
 from pathlib import Path
@@ -19,17 +19,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
 import circular_coil_stellarator as ck
 from island_interior import axis_curve
+from knotted_stellarator import interior
 
 
 @pytest.fixture(scope="module")
 def solved():
-    k = ck.interior(BiotSavart(ck.coils()), ck.KNOT)
+    k = interior(BiotSavart(ck.coils()), ck.KNOT)
     k["wout"] = vmecpp.run(k["input"], max_threads=1, verbose=False).wout
     return k
 
 
 def test_field_of_the_coils_is_stellarator_symmetric():
-    # B_R is odd and B_phi and B_Z are even under (phi, Z) -> (-phi, -Z).
+    # B_R is odd and B_\phi and B_Z are even under (\phi, Z) \to (-\phi, -Z).
     # The field repeats after a field period. The points lie near the coil centres.
     field = BiotSavart(ck.coils())
     rng = np.random.default_rng(1)
@@ -118,17 +119,17 @@ def test_interior_against_tracing(solved):
 
 
 def test_effective_ripple_and_closure_of_the_interior(solved):
-    ripple, closed = ck.measures(solved["wout"])
+    _, ripple, closed = ck.measures(solved["wout"])
     assert max(ripple) < 0.01
     assert min(closed) > 0.5
 
 
 @pytest.mark.slow
 def test_effective_ripple_and_closure_against_w7x(solved):
-    w7x = ck.interior(BiotSavart(ck.w7x_coils()), ck.W7X)
-    ripple, closed = ck.measures(
+    w7x = interior(BiotSavart(ck.w7x_coils()), ck.W7X)
+    _, ripple, closed = ck.measures(
         vmecpp.run(w7x["input"], max_threads=1, verbose=False).wout
     )
-    _, design_closed = ck.measures(solved["wout"])
+    *_, design_closed = ck.measures(solved["wout"])
     assert all(0.003 < value < 0.03 for value in ripple)
     assert all(a > b for a, b in zip(design_closed, closed, strict=True))
