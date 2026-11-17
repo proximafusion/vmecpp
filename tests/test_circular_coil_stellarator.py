@@ -120,7 +120,7 @@ def test_interior_against_tracing(solved):
 def test_effective_ripple_and_closure_of_the_interior(solved):
     ripple, closed = ck.measures(solved["wout"])
     assert max(ripple) < 0.01
-    assert min(closed) > 0.4
+    assert min(closed) > 0.5
 
 
 @pytest.mark.slow
