@@ -1,6 +1,7 @@
 # Examples
 
 The `examples/` directory contains short scripts demonstrating typical tasks:
+- [`alfven_localization.py`](../examples/alfven_localization.py): compute the shear-Alfven states along a field line and which of them localize.
 - [`python_api.py`](../examples/python_api.py): run VMEC++ from Python using a provided input file.
 - [`python_api_input.py`](../examples/python_api_input.py): build a `VmecInput` object directly in Python.
 - [`normal_run_and_hot_restart.py`](../examples/normal_run_and_hot_restart.py): perform a standard run and then hot restart.
