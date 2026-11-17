@@ -57,8 +57,7 @@ def test_python_iteration_reproduces_cpp_inner_solve(
 
     From the same initialized state, running the Python iteration and the C++
     inner solve gives the same converged decision vector and the same invariant
-    force-residual trace (to a floating-point floor; the only non-bit-exact
-    operation is the damping-average sum, numpy vs Eigen).
+    force-residual trace, bit for bit.
     """
     cpp_indata = _single_resolution_indata(name, ns, ftol, niter)
 
@@ -74,19 +73,12 @@ def test_python_iteration_reproduces_cpp_inner_solve(
 
     cpp_state = np.asarray(reference.get_state())
     py_state = np.asarray(model.get_state())
-    np.testing.assert_allclose(py_state, cpp_state, rtol=0, atol=1.0e-9)
+    np.testing.assert_array_equal(py_state, cpp_state)
 
-    np.testing.assert_allclose(
-        reference.force_residual_r, result.force_residual_r, rtol=1.0e-10, atol=1e-15
-    )
-    np.testing.assert_allclose(
-        reference.force_residual_z, result.force_residual_z, rtol=1.0e-10, atol=1e-15
-    )
-    np.testing.assert_allclose(
-        reference.force_residual_lambda,
-        result.force_residual_lambda,
-        rtol=1.0e-10,
-        atol=1e-15,
+    np.testing.assert_array_equal(reference.force_residual_r, result.force_residual_r)
+    np.testing.assert_array_equal(reference.force_residual_z, result.force_residual_z)
+    np.testing.assert_array_equal(
+        reference.force_residual_lambda, result.force_residual_lambda
     )
 
 
@@ -150,9 +142,8 @@ def test_python_iteration_matches_cpp_restart_path(
     same (artificially truncated) run, so it does not need to reach convergence; the
     truncation just keeps it fast. The control flow is checked on the *restart-reason*
     trace (NO_RESTART / BAD_JACOBIAN / BAD_PROGRESS / HUGE_INITIAL_FORCES per recorded
-    iteration, exposed in the wout) -- it must match the C++ reference exactly -- and
-    the residual trace must agree until the numpy-vs-Eigen floating-point floor of the
-    damping average accumulates through the chaotic early transient.
+    iteration, exposed in the wout) and on the residual trace, which must both match
+    the C++ reference exactly.
     """
     cpp_indata = _single_resolution_indata(name, ns, ftol=1.0e-16, niter=niter)
 
@@ -174,15 +165,7 @@ def test_python_iteration_matches_cpp_restart_path(
     # restart reason or a dropped reguess would change which reasons appear).
     assert reasons.issubset(set(py_rr.tolist()))
 
-    # The residual traces track tightly; the only non-bit-exact operation left
-    # is the order of additions in the damping average, whose last-bit noise
-    # can grow through long chaotic transients.
-    cpp_r = np.asarray(reference.force_residual_r)
-    py_r = np.asarray(result.force_residual_r)
-    # Eigen and NumPy use different reduction trees; the first 50 steps stay within
-    # two parts per billion while retaining a strict cross-implementation oracle.
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=2.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_array_equal(result.force_residual_r, reference.force_residual_r)
 
 
 def test_alternative_styles_converge_cma():
@@ -258,14 +241,7 @@ def test_native_parvmec_matches_python_parvmec():
     np.testing.assert_array_equal(
         np.asarray(result.restart_reasons), np.asarray(reference.restart_reasons)
     )
-    cpp_r = np.asarray(reference.force_residual_r)
-    py_r = np.asarray(result.force_residual_r)
-    # The two loops make identical control decisions (restart_reasons match
-    # exactly above), so the force-residual traces agree up to floating-point
-    # accumulation of the control arithmetic: ~1e-9 relative early, growing to
-    # only a few 1e-9 by the deep-convergence tail (max abs ~6e-13).
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-8, atol=1e-12)
+    np.testing.assert_array_equal(result.force_residual_r, reference.force_residual_r)
 
 
 def test_run_honors_iteration_style_flag():
@@ -490,8 +466,72 @@ def test_python_multigrid_matches_cpp_run():
 
     assert len(py_rr) == len(cpp_rr)
     np.testing.assert_array_equal(py_rr, cpp_rr)
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_array_equal(py_r, cpp_r)
+
+
+def test_python_multigrid_restarts_from_three_surfaces():
+    """solve_multigrid makes the jacob_off pass of the C++ Vmec::run.
+
+    The Jacobian of ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ stays bad at
+    ns = 25 after the axis reguess (see test_init.py). Both drivers then solve on
+    three surfaces and refine to ns = 25, and their traces must match step for
+    step, as in test_python_multigrid_matches_cpp_run.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(
+        TEST_DATA / "constellaration_bad_initial_jacobian.json"
+    )
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_r = np.asarray(reference.wout.force_residual_r)
+    cpp_rr = np.asarray(reference.wout.restart_reason_timetrace)
+
+    model, results = vmecpp.solve_multigrid(vmec_input)
+    assert [r.bad_jacobian for r in results] == [True, False, False]
+    assert [r.converged for r in results] == [False, True, True]
+    assert [r.axis_reguesses for r in results] == [1, 0, 0]
+    assert model.ns == vmec_input.ns_array[-1]
+
+    py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
+
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    np.testing.assert_array_equal(py_r, cpp_r)
+
+
+def test_python_iteration_keeps_the_velocity_through_the_axis_reguess():
+    """The axis reguess after huge initial forces keeps the velocity.
+
+    A time step precedes that reguess, and the C++ loop resets the geometry alone.
+    cth_like_fixed_bdy with rbc(3, 0) and zbs(3, 0) raised by a fifth of rbc(1, 0)
+    starts on huge initial forces. With the velocity of that step, the step after the
+    reguess makes the Jacobian change sign, and both drivers go on from three surfaces.
+    """
+    vmec_input = vmecpp.VmecInput.from_file(TEST_DATA / "cth_like_fixed_bdy.json")
+    ntor = vmec_input.ntor
+    raised = 0.2 * vmec_input.rbc[1, ntor]
+    vmec_input.rbc[3, ntor] += raised
+    vmec_input.zbs[3, ntor] += raised
+
+    reference = vmecpp.run(vmec_input, max_threads=1, verbose=False)
+    cpp_r = np.asarray(reference.wout.force_residual_r)
+    cpp_rr = np.asarray(reference.wout.restart_reason_timetrace)
+    assert cpp_rr[0] == RestartReason.HUGE_INITIAL_FORCES
+
+    _, results = vmecpp.solve_multigrid(vmec_input)
+    assert [r.bad_jacobian for r in results] == [True, False, False]
+    assert [r.converged for r in results] == [False, True, True]
+
+    py_r = np.concatenate([np.asarray(r.force_residual_r) for r in results])
+    py_rr = np.concatenate([np.asarray(r.restart_reasons) for r in results]).astype(
+        np.int64
+    )
+
+    assert len(py_rr) == len(cpp_rr)
+    np.testing.assert_array_equal(py_rr, cpp_rr)
+    np.testing.assert_array_equal(py_r, cpp_r)
 
 
 def test_refine_to_multigrid_ramp_converges():

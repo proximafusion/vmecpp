@@ -402,6 +402,10 @@ class VmecModel {
     vmec_->PerformTimeStep(velocity_scale, conjugation_parameter, time_step,
                            /*thread_id=*/0);
   }
+  // The mean of a history of 1/tau, in the summation order of Vmec::Evolve.
+  double MeanInverseTau(const Eigen::VectorXd &inv_tau) const {
+    return vmecpp::Vmec::MeanInverseTau(inv_tau);
+  }
 
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
@@ -445,9 +449,13 @@ class VmecModel {
     // InitializeRadial doubles rmsPhiP and rescales the entire lambda
     // sector by sqrt(2).
     vmec_->constants_.reset();
+    // The reguess after huge initial forces follows a time step, whose
+    // velocity Vmec::SolveEquilibriumLoop keeps.
+    const vmecpp::FourierVelocity velocity = *vmec_->decomposed_v_[0];
     vmec_->InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX,
                             vmec_->fc_.nsval, /*ns_old=*/0, delt0,
                             std::nullopt);
+    *vmec_->decomposed_v_[0] = velocity;
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }
@@ -504,6 +512,22 @@ class VmecModel {
     v.constants_.reset();
     v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, new_ns, ns_old,
                        delt0, std::nullopt, interpolation);
+    last_preconditioner_update_ = 0;
+    last_full_update_nestor_ = 0;
+  }
+
+  // Restart on a three-surface mesh from the boundary and the axis as they
+  // stand. This is the recovery pass Vmec::run makes when the Jacobian of a
+  // multi-grid step stays bad after the axis reguess: the step on three
+  // surfaces has the force tolerance 1e-4 and the iteration budget of the
+  // step that failed, and refine_to walks the resolutions of ns_array again
+  // from it.
+  void RestartFromThreeSurfaces() {
+    vmecpp::Vmec &v = *vmec_;
+    v.SelectThreeSurfaceMesh();
+    v.constants_.reset();
+    v.InitializeRadial(vmecpp::VmecCheckpoint::NONE, INT_MAX, v.fc_.nsval,
+                       v.fc_.ns_old, v.fc_.delt0r, std::nullopt);
     last_preconditioner_update_ = 0;
     last_full_update_nestor_ = 0;
   }
@@ -1934,6 +1958,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
            py::arg("time_step"))
+      .def("mean_inverse_tau", &VmecModel::MeanInverseTau, py::arg("inv_tau"))
       .def("save_backup", &VmecModel::SaveBackup)
       .def("save_evaluated_backup", &VmecModel::SaveEvaluatedBackup)
       .def("restore_backup", &VmecModel::RestoreBackup)
@@ -1943,6 +1968,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("reinitialize", &VmecModel::Reinitialize)
       .def("refine_to", &VmecModel::RefineTo, py::arg("new_ns"),
            py::arg("interpolation") = py::none())
+      .def("restart_from_three_surfaces", &VmecModel::RestartFromThreeSurfaces)
       .def("solve", &VmecModel::Solve)
       .def_property_readonly(
           "always_fix_m1_gauge", &VmecModel::always_fix_m1_gauge,

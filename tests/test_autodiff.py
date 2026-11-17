@@ -196,6 +196,30 @@ def test_solve_model_accepts_a_non_final_step_that_does_not_converge() -> None:
     assert model.fsqr < model.ftolv
 
 
+def test_solve_model_restarts_from_three_surfaces_on_a_bad_jacobian() -> None:
+    """The forward solve makes the jacob_off pass of ``vmecpp.run``.
+
+    The Jacobian of ConStellaration boundary DCWhGgAc7UMiZ8VC3Lx34BQ stays bad on 25
+    surfaces after the axis reguess (see test_init.py). The solve restarts from three
+    surfaces and ends in the geometry of the C++ run.
+    """
+    indata = vmecpp.VmecInput.from_file(
+        "src/vmecpp/cpp/vmecpp/test_data/constellaration_bad_initial_jacobian.json"
+    )
+    cpp_indata = indata._to_cpp_vmecindata()
+    model = autodiff._solve_model(cpp_indata, _boundary(indata))
+    assert model.ns == 25
+
+    cpp_indata.always_fix_m1_gauge = True
+    native = _vmecpp.run(cpp_indata, max_threads=1, verbose=_vmecpp.OutputMode.SILENT)
+    np.testing.assert_allclose(
+        _coefficients(model.get_geometry()),
+        _coefficients(_vmecpp.make_geometry(native)),
+        rtol=1.0e-12,
+        atol=1.0e-13,
+    )
+
+
 @pytest.mark.parametrize("signgs", [-1, 1])
 def test_geometry_state_vjp_is_the_transpose_in_three_dimensions(signgs: int) -> None:
     """The 2D case leaves the ``lthreed`` branch of the map untested."""
