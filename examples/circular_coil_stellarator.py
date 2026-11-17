@@ -15,13 +15,14 @@ Plasmas 6, 4622 (1999), without an equilibrium. ``search`` moves a design by
 Gauss-Newton steps on those integrals, taken along the tree in which the wells of a
 field line merge, and on its Pfirsch-Schlueter currents, within limits on the distances
 of the coils, the mirror ratio, the rotational transform and the angle at which the
-curve crosses the planes of constant toroidal angle. The interior of a traced flux surface is solved as in
-``knotted_stellarator.py``, with the pressure raised by hot restarts, and its wout gives
-the effective ripple again.
+curve crosses the planes of constant toroidal angle. The interior of a traced flux
+surface is solved as in ``knotted_stellarator.py``, with the pressure raised by hot
+restarts, and its wout gives the effective ripple again.
 """
 
 import argparse
 import dataclasses
+import functools
 import types
 from itertools import pairwise
 from multiprocessing import Pool
@@ -46,6 +47,7 @@ MU0 = 4.0e-7 * np.pi
 # distances between two coils and from a coil to a surface, in metres
 OFFSETS = (0.1, 0.2, 0.3)
 CLEARANCE, ROOM = 0.15, 0.15
+STAGES = (0.1, CLEARANCE)  # least distance between two coils in each stage of a search
 MIRROR = 0.45  # largest mirror ratio on the magnetic axis
 CROSSING = 0.4  # least sine of the angle of the curve to a plane phi = const
 TRANSFORM = (0.808, 0.826)  # window of the rotational transform, within 4/5 to 5/6
@@ -693,13 +695,13 @@ def poloidal_closure(strength, steps, turns, angles=64):
 
 def measures_of(design, offsets, periods=120):
     """For each of offsets, the axis of a design and the field line from that far
-    outboard of it over periods field periods: R of the axis, its length, the mirror ratio on it and on the line,
-    the rotational transform per toroidal turn, the smallest distances between coils
-    and from the line to a coil, :meth:`Design.gaps`, the effective ripple with the
-    length of the axis over 2 pi as major radius, the share of
-    :func:`poloidal_closure`, the sum of the mean squares of :func:`well_residuals`,
-    :func:`current_ratio` and :func:`parallel_current`, :func:`magnetic_well`, and
-    the data of the line."""
+    outboard of it over periods field periods: R of the axis, its length, the mirror
+    ratio on it and on the line, the rotational transform per toroidal turn, the
+    smallest distances between coils and from the line to a coil, :meth:`Design.gaps`,
+    the effective ripple with the length of the axis over 2 pi as major radius, the
+    share of :func:`poloidal_closure`, the sum of the mean squares of
+    :func:`well_residuals`, :func:`current_ratio` and :func:`parallel_current`,
+    :func:`magnetic_well`, and the data of the line."""
     field = design.loops()
     steps = SAMPLES * design.per_period
     r_axis, axis, axis_strength = design.axis(field)
@@ -760,14 +762,14 @@ def measures(design, offset, periods=120):
     return measures_of(design, [offset], periods)[0]
 
 
-def search_parts(design):
+def search_parts(design, clearance=CLEARANCE):
     """What a step of :func:`search` takes of a design, or None where it has no
     magnetic axis or a field line of it meets a coil: the wells of the lines of its
     surfaces and their residuals as :func:`ripple_residuals` gives them, the squares
     summing to the mean over the surfaces of the effective ripple to the power 3/2;
     the Pfirsch-Schlueter currents of the lines, the squares summing to CURRENTS times
     the mean of :func:`current_ratio`; and what the design exceeds its limits by,
-    relative to each limit."""
+    relative to each limit, with clearance the least distance between two coils."""
     keys, values, currents, found = [], [], [], []
     try:
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -784,7 +786,7 @@ def search_parts(design):
     except (ValueError, IndexError):
         return None
     limits = [
-        *((CLEARANCE - found[0]["gaps"]) / CLEARANCE),
+        *((clearance - found[0]["gaps"]) / clearance),
         (ROOM - min(k["room"] for k in found)) / ROOM,
         (found[0]["mirror_axis"] - MIRROR) / MIRROR,
         (CROSSING - design.crossing) / CROSSING,
@@ -810,8 +812,9 @@ def _aligned(keys, values, base):
     return out, matched
 
 
-def search(start, workers=4, steps=300, report=None):
-    """The design that Gauss-Newton steps on :func:`search_parts` reach from start.
+def search(start, workers=4, steps=300, report=None, clearance=CLEARANCE):
+    """The design that Gauss-Newton steps on :func:`search_parts` reach from start, with
+    the coils held clearance apart.
 
     The parameters are the harmonics of the series of start and its coil radius, each
     within REACH of its start. A limit g <= 0 enters a step linearized, as weight (g +
@@ -857,8 +860,9 @@ def search(start, workers=4, steps=300, report=None):
     x = np.array([v for name in FIELDS for v in getattr(start, name)] + [start.radius])
     low, high = x - reach, x + reach
     count = x.size
+    parts_of = functools.partial(search_parts, clearance=clearance)
     with Pool(workers) as pool:
-        here = search_parts(start)
+        here = parts_of(start)
         cost, damping, misses = merit(here), 0.03, 0
         rounds, before = 4, cost
         for step in range(steps):
@@ -872,7 +876,7 @@ def search(start, workers=4, steps=300, report=None):
             slacks = limits.size
             moves = move * scale * np.where(x + move * scale > high, -1.0, 1.0)
             columns = pool.map(
-                search_parts,
+                parts_of,
                 [moved(x + moves[i] * np.eye(count)[i]) for i in range(count)],
             )
             j_parts, j_limits = np.zeros((parts.size, count)), np.zeros((slacks, count))
@@ -909,7 +913,7 @@ def search(start, workers=4, steps=300, report=None):
                     matrix, right, bounds=(lower, upper), method="bvls"
                 )
                 trials.append(np.clip(x + scale * solution.x[:count], low, high))
-            found = pool.map(search_parts, [moved(trial) for trial in trials])
+            found = pool.map(parts_of, [moved(trial) for trial in trials])
             merits = [merit(parts) for parts in found]
             best = int(np.argmin(merits))
             if merits[best] < cost:
@@ -1102,7 +1106,9 @@ def main():
             )
     design = FOUND
     if args.search:
-        design = search(START, args.workers, report=print)
+        design = START
+        for clearance in STAGES:
+            design = search(design, args.workers, report=print, clearance=clearance)
         print(design)
     reach, mpol, ntor, planes, periods = SURFACE
     shares = (1 / 3, 2 / 3, 1.0)
