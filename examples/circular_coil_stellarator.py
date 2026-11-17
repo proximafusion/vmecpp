@@ -5,12 +5,12 @@
 circular coils with one current, solved with VMEC++.
 
 The coils of half a field period are given. Stellarator symmetry and the field periods
-give the others, and SIMSOPT gives their field. VMEC++ solves the interior of the flux
-surface traced 30 cm outboard of the magnetic axis, as in ``knotted_stellarator.py``.
-Hot restarts raise the pressure. The effective ripple of Nemov et al., Phys. Plasmas 6,
-4622 (1999), and the poloidal closure of the contours of B come from the wout. W7-X,
-traced and solved the same way, is the reference. ``--free-boundary`` also solves the
-plasma in the field of the coils.
+give the others, and SIMSOPT gives their field. Field lines traced in the toroidal angle
+give the magnetic axis and the flux surface 30 cm outboard of it, and VMEC++ solves the
+interior of that surface. Hot restarts raise the pressure. The effective ripple of
+Nemov et al., Phys. Plasmas 6, 4622 (1999), and the poloidal closure of the contours of
+B come from the wout. W7-X, traced and solved the same way, is the reference.
+``--free-boundary`` also solves the plasma in the field of the coils.
 """
 
 import argparse
@@ -18,8 +18,7 @@ import dataclasses
 import threading
 
 import numpy as np
-from island_interior import axis_curve
-from knotted_stellarator import Knot, interior
+from scipy.optimize import brentq, minimize_scalar
 from simsopt.field import BiotSavart, Coil, Current, coils_via_symmetries
 from simsopt.geo import CurveXYZFourier
 
@@ -56,28 +55,35 @@ NORMALS = np.array(
         [-0.818862332208, 0.472770387930, -0.325503673080],
     ]
 )
-# The interior of the design. The coil centres lie near R = r_0 + r_{knot} \cos(3 z).
-# The magnetic axis crosses \phi = 0, Z = 0 within the bracket axis. The boundary is
-# traced from offset outboard of the axis.
-KNOT = Knot(
-    p=1,
-    q=NFP,
-    r0=4.9,
-    r_knot=1.56,
-    coils=42,
-    radius=RADIUS,
-    axis=(6.51, 6.63),
-    planes=96,
-    offset=0.3,
-    mpol=12,
-    ntor=24,
-)
-# The interior of W7-X in the standard configuration. Its boundary lies inside the 5/5
-# islands.
-W7X = dataclasses.replace(
-    KNOT, q=5, coils=50, axis=(5.90, 6.00), planes=48, offset=0.22, ntor=12
-)
 PRESSURES = (8000.0, 16000.0, 24000.0)  # p_0 in Pa of the profile p_0 (1 - s)
+
+
+@dataclasses.dataclass(frozen=True)
+class Interior:
+    """The tracing of a flux surface and the resolution of the VMEC++ run of its
+    interior."""
+
+    nfp: int
+    axis: tuple[float, float]  # bracket of R of the magnetic axis at \phi = 0, Z = 0
+    steps: int  # multiplies the RK4 steps of every trace
+    planes: int  # planes per field period at which the surface is traced
+    offset: float  # start of the traced surface outboard of the axis, in m
+    mpol: int
+    ntor: int
+
+    @property
+    def period(self):
+        """Toroidal angle of a field period."""
+        return 2.0 * np.pi / self.nfp
+
+
+DESIGN = Interior(
+    nfp=NFP, axis=(6.51, 6.63), steps=2, planes=96, offset=0.3, mpol=12, ntor=24
+)
+# W7-X in the standard configuration. Its boundary lies inside the 5/5 islands.
+W7X = Interior(
+    nfp=5, axis=(5.90, 6.00), steps=1, planes=48, offset=0.22, mpol=12, ntor=12
+)
 
 
 def circle(centre, normal):
@@ -123,6 +129,209 @@ def w7x_coils():
 
         curves, currents, _ = get_w7x_data()
     return coils_via_symmetries(curves, currents, 5, True)
+
+
+class FieldLines:
+    """Field lines of a field, by RK4 in the toroidal angle."""
+
+    def __init__(self, field, period):
+        self.field, self.period = field, period
+
+    def b(self, r, phi, z):
+        """Cylindrical components of B at the points (r, phi, z)."""
+        cos, sin = np.cos(phi), np.sin(phi)
+        self.field.set_points(np.ascontiguousarray(np.stack([r * cos, r * sin, z], -1)))
+        b = np.asarray(self.field.B())
+        return b[:, 0] * cos + b[:, 1] * sin, -b[:, 0] * sin + b[:, 1] * cos, b[:, 2]
+
+    def trace(self, r0, z0, planes, periods, steps):
+        """R and Z of the line through (r0, 0, z0) at \\phi = k period / planes, k = 0,
+        ..., periods planes, by steps RK4 steps between two planes."""
+        r, z, phi = np.atleast_1d(float(r0)), np.atleast_1d(float(z0)), 0.0
+        out = [(r[0], z[0])]
+        h = self.period / planes / steps
+
+        def slope(r, phi, z):
+            b_r, b_phi, b_z = self.b(r, np.full_like(r, phi), z)
+            return r * b_r / b_phi, r * b_z / b_phi
+
+        for _ in range(periods * planes):
+            for _ in range(steps):
+                k1 = slope(r, phi, z)
+                k2 = slope(r + 0.5 * h * k1[0], phi + 0.5 * h, z + 0.5 * h * k1[1])
+                k3 = slope(r + 0.5 * h * k2[0], phi + 0.5 * h, z + 0.5 * h * k2[1])
+                k4 = slope(r + h * k3[0], phi + h, z + h * k3[1])
+                r = r + h / 6.0 * (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0])
+                z = z + h / 6.0 * (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1])
+                phi += h
+            out.append((r[0], z[0]))
+        out = np.asarray(out)
+        return out[:, 0], out[:, 1]
+
+
+def magnetic_axis(interior, lines):
+    """R of the magnetic axis at \\phi = 0, Z = 0, its crossings of the planes of a
+    period, and the rotational transform next to it."""
+    steps = interior.steps
+    # Stellarator symmetry puts the axis at Z = 0 in the middle of the period.
+    r_axis = brentq(
+        lambda r: lines.trace(r, 0.0, 2, 1, 80 * steps)[1][1],
+        *interior.axis,
+        xtol=1e-12,
+    )
+    r, z = lines.trace(r_axis, 0.0, interior.planes, 1, 8 * steps)
+    axis = np.stack([r[: interior.planes], z[: interior.planes]], -1)
+    periods = 150
+    r, z = lines.trace(r_axis + 1e-3, 0.0, 1, periods, 240 * steps)
+    angle = np.unwrap(np.arctan2(z, r - r_axis))
+    return r_axis, axis, (angle[-1] - angle[0]) / (periods * interior.period)
+
+
+def flux_surface(interior, lines, r_axis, periods=120, harmonics=10):
+    """R and Z of the surface traced from offset outboard of the axis on a uniform grid
+    of its straight-field-line angle, its rotational transform and its misfit."""
+    planes = interior.planes
+    r, z = lines.trace(
+        r_axis + interior.offset, 0.0, planes, periods, 4 * interior.steps
+    )
+    plane = np.arange(len(r)) % planes
+    phi = np.arange(len(r)) * interior.period / planes
+
+    def fit(iota, harmonics):
+        theta = iota * phi
+        coef = np.empty((2, planes, 2 * harmonics - 1))
+        worst = 0.0
+        for k in range(planes):
+            sel = plane == k
+            basis = np.column_stack(
+                [np.ones(sel.sum())]
+                + [
+                    f(m * theta[sel])
+                    for m in range(1, harmonics)
+                    for f in (np.cos, np.sin)
+                ]
+            )
+            for i, target in enumerate((r[sel], z[sel])):
+                coef[i, k], *_ = np.linalg.lstsq(basis, target, rcond=None)
+                worst = max(worst, np.abs(basis @ coef[i, k] - target).max())
+        return coef, worst
+
+    # A first estimate from the angle about the axis in the planes a period apart, the
+    # best of a scan around it, refined.
+    first = plane == 0
+    angle = np.unwrap(np.arctan2(z[first], r[first] - r_axis))
+    iota0 = (angle[-1] - angle[0]) / phi[first][-1]
+    scan = iota0 + np.linspace(-0.02, 0.02, 41)
+    best = int(np.argmin([fit(x, 4)[1] for x in scan]))
+    step = scan[1] - scan[0]
+    iota = minimize_scalar(
+        lambda x: fit(x, 4)[1],
+        bounds=(scan[best] - step, scan[best] + step),
+        method="bounded",
+        options={"xatol": 1e-10},
+    ).x
+    coef, worst = fit(iota, harmonics)
+    theta = 2.0 * np.pi * np.arange(96) / 96
+    basis = np.column_stack(
+        [np.ones_like(theta)]
+        + [f(m * theta) for m in range(1, harmonics) for f in (np.cos, np.sin)]
+    )
+    return coef[0] @ basis.T, coef[1] @ basis.T, iota, worst
+
+
+def toroidal_flux(lines, rb, zb, axis, planes):
+    """The toroidal flux through the cross-section of the surface in each plane, from
+    B_\\phi on a fan of triangles from the axis."""
+    flux = np.empty(len(planes))
+    for k, phi in enumerate(planes):
+        p1 = np.stack([rb[k], zb[k]], -1)
+        p2 = np.roll(p1, -1, axis=0)
+        d1, d2 = p1 - axis[k], p2 - axis[k]
+        area = 0.5 * (d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0])
+        area *= np.sign(area.sum())
+        mid = np.concatenate([axis[k] + 0.5 * d1, axis[k] + 0.5 * d2, 0.5 * (p1 + p2)])
+        b_phi = lines.b(mid[:, 0], np.full(len(mid), phi), mid[:, 1])[1]
+        flux[k] = np.sum(area * b_phi.reshape(3, -1).mean(axis=0))
+    return flux
+
+
+def fourier(values, zeta, theta, mpol, ntor, parity):
+    """Coefficients of values[plane, theta] in \\cos (parity 0) or \\sin (parity 1) of
+    m \\theta - n \\zeta, [m, ntor + n]."""
+    out = np.zeros((mpol, 2 * ntor + 1))
+    basis = np.cos if parity == 0 else np.sin
+    for m in range(mpol):
+        for n in range(-ntor, ntor + 1):
+            if m == 0 and n <= 0 and not (n == 0 and parity == 0):
+                continue
+            weight = (1.0 if (m == 0 and n == 0) else 2.0) / values.size
+            out[m, ntor + n] = weight * np.sum(
+                values * basis(m * theta[None, :] - n * zeta[:, None])
+            )
+    return out
+
+
+def vmec_input(interior, rb, zb, axis, flux, planes):
+    """The fixed-boundary input of the interior of the traced surface, without pressure
+    or toroidal current."""
+    mpol, ntor = interior.mpol, interior.ntor
+    zeta = planes * interior.nfp
+    theta = 2.0 * np.pi * np.arange(rb.shape[1]) / rb.shape[1]
+    return vmecpp.VmecInput(
+        nfp=interior.nfp,
+        lasym=False,
+        mpol=mpol,
+        ntor=ntor,
+        nzeta=2 * ntor + 8,
+        ns_array=np.array([13, 25]),
+        ftol_array=np.array([1e-10, 1e-12]),
+        niter_array=np.array([30000, 60000]),
+        phiedge=float(abs(flux.mean())),
+        ncurr=1,
+        pcurr_type="power_series",
+        ac=np.array([0.0]),
+        curtor=0.0,
+        pmass_type="power_series",
+        am=np.array([1.0, -1.0]),
+        pres_scale=0.0,
+        gamma=0.0,
+        rbc=fourier(rb, zeta, theta, mpol, ntor, 0),
+        zbs=fourier(zb, zeta, theta, mpol, ntor, 1),
+        # The axis is R = \sum raxis_c \cos(n \zeta), Z = -\sum zaxis_s \sin(n \zeta).
+        raxis_c=fourier(axis[:, :1], zeta, np.zeros(1), 1, ntor, 0)[0, ntor:],
+        zaxis_s=fourier(axis[:, 1:], zeta, np.zeros(1), 1, ntor, 1)[0, ntor:],
+    )
+
+
+def interior(field, settings):
+    """The traced magnetic axis and boundary, their rotational transform and the input
+    of VMEC++ for the interior of the boundary."""
+    lines = FieldLines(field, settings.period)
+    r_axis, axis, iota_axis = magnetic_axis(settings, lines)
+    planes = np.arange(settings.planes) * settings.period / settings.planes
+    rb, zb, iota_surface, misfit = flux_surface(settings, lines, r_axis)
+    flux = toroidal_flux(lines, rb, zb, axis, planes)
+    return {
+        "r_axis": r_axis,
+        "axis": axis,
+        "iota_axis": iota_axis,
+        "planes": planes,
+        "iota_surface": iota_surface,
+        "misfit": misfit,
+        "input": vmec_input(settings, rb, zb, axis, flux, planes),
+    }
+
+
+def axis_curve(wout, phi):
+    """R and Z of the magnetic axis of a wout at the toroidal angles phi, [phi, 2]."""
+    angle = -np.asarray(wout.xn, dtype=float)[:, None] * np.asarray(phi)[None, :]
+    return np.stack(
+        [
+            np.asarray(wout.rmnc)[:, 0] @ np.cos(angle),
+            np.asarray(wout.zmns)[:, 0] @ np.sin(angle),
+        ],
+        -1,
+    )
 
 
 def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
@@ -188,10 +397,9 @@ def wout_ripple(wout, js, periods=120, steps=96):
     The field line starts at \\theta = 0, \\phi = 0 and runs over periods field periods.
     The major radius is the length of the magnetic axis over 2 \\pi.
     """
-    transits = int(wout.toroidal_transits)
-    period = 2.0 * np.pi * transits / int(wout.nfp)
+    period = 2.0 * np.pi / int(wout.nfp)
     m = np.asarray(wout.xm_nyq, dtype=float)
-    n = np.asarray(wout.xn_nyq, dtype=float) / transits
+    n = np.asarray(wout.xn_nyq, dtype=float)
     b_theta_up = np.asarray(wout.bsupumnc)[:, js]
     b_phi_up = np.asarray(wout.bsupvmnc)[:, js]
 
@@ -223,7 +431,7 @@ def wout_ripple(wout, js, periods=120, steps=96):
     ) / (jacobian * strength**2)
     # |\nabla s| from R and Z on the full-grid surfaces around js
     m = np.asarray(wout.xm, dtype=float)
-    n = np.asarray(wout.xn, dtype=float) / transits
+    n = np.asarray(wout.xn, dtype=float)
     angle = m[:, None] * theta[None] - n[:, None] * phi[None]
     cos_full, sin_full = np.cos(angle), np.sin(angle)
     rmnc = np.asarray(wout.rmnc)[:, js - 1 : js + 1].mean(axis=1)
@@ -236,7 +444,7 @@ def wout_ripple(wout, js, periods=120, steps=96):
         - (r_theta * r_phi + z_theta * z_phi) ** 2
     ) / np.abs(jacobian)
     weight = h / np.abs(b_phi_up @ cos)
-    turn = 2.0 * np.pi * transits * np.arange(4097) / 4096
+    turn = 2.0 * np.pi * np.arange(4097) / 4096
     axis = axis_curve(wout, turn)
     axis = np.stack(
         [axis[:, 0] * np.cos(turn), axis[:, 0] * np.sin(turn), axis[:, 1]], -1
@@ -259,11 +467,10 @@ def closure(strength):
 
 def wout_closure(wout, js, angles=128):
     """:func:`closure` of the half-grid surface js of a wout."""
-    transits = int(wout.toroidal_transits)
     theta = 2.0 * np.pi * np.arange(angles) / angles
-    phi = 2.0 * np.pi * transits / int(wout.nfp) * np.arange(angles) / angles
+    phi = 2.0 * np.pi / int(wout.nfp) * np.arange(angles) / angles
     m = np.asarray(wout.xm_nyq, dtype=float)
-    n = np.asarray(wout.xn_nyq, dtype=float) / transits
+    n = np.asarray(wout.xn_nyq, dtype=float)
     bmnc = np.asarray(wout.bmnc)[:, js]
     # \cos(m \theta - n \phi) = \cos m\theta \cos n\phi + \sin m\theta \sin n\phi
     poloidal, toroidal = m[None, :] * theta[:, None], n[None, :] * phi[:, None]
@@ -306,7 +513,7 @@ def main():
     )
     args = parser.parse_args()
     field = BiotSavart(coils())
-    k = interior(field, KNOT)
+    k = interior(field, DESIGN)
     print(
         f"42 coils of radius {RADIUS:.3f} m: magnetic axis through R = "
         f"{k['r_axis']:.5f} m on the midplane of phi = 0 with iota "
@@ -355,7 +562,9 @@ def main():
             b_r = b[..., 0] * cos + b[..., 1] * sin
             return b_r, b[..., 1] * cos - b[..., 0] * sin, b[..., 2]
 
-        fine = interior(field, dataclasses.replace(KNOT, planes=128, mpol=14, ntor=32))
+        fine = interior(
+            field, dataclasses.replace(DESIGN, planes=128, mpol=14, ntor=32)
+        )
         last = vmecpp.run(fine["input"], max_threads=4, verbose=False)
         single = {
             "ns_array": fine["input"].ns_array[-1:],

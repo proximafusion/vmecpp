@@ -37,14 +37,12 @@ int NzetaForVacuum(const VmecINDATA& id) {
 
 Sizes::Sizes(const VmecINDATA& id)
     : Sizes(id.lasym, id.nfp, id.mpol, id.ntor, NthetaForVacuum(id),
-            NzetaForVacuum(id), id.mpol_geometry, id.ntor_geometry,
-            id.toroidal_transits) {}
+            NzetaForVacuum(id), id.mpol_geometry, id.ntor_geometry) {}
 
 Sizes::Sizes(bool lasym, int nfp, int mpol, int ntor, int ntheta, int nzeta,
-             int mpol_geometry, int ntor_geometry, int toroidal_transits)
+             int mpol_geometry, int ntor_geometry)
     : lasym(lasym),
       nfp(nfp),
-      toroidal_transits(toroidal_transits),
       mpol(mpol),
       ntor(ntor),
       mpolGeometry((mpol_geometry < 1 || mpol_geometry > mpol) ? mpol
@@ -65,11 +63,6 @@ void Sizes::computeDerivedSizes() {
   // debug checks: VmecINDATA should already have reported this
   // nfp
   CHECK_GE(nfp, 1) << "input variable 'nfp' needs to be >= 1, but is " << nfp;
-
-  // toroidal_transits
-  CHECK_GE(toroidal_transits, 1)
-      << "input variable 'toroidal_transits' needs to be >= 1, but is "
-      << toroidal_transits;
 
   // mpol
   CHECK_GE(mpol, 1) << "input variable 'mpol' needs to be >= 1, but is "
@@ -113,8 +106,6 @@ void Sizes::computeDerivedSizes() {
   }
 
   // derived
-
-  nfp_per_transit = static_cast<double>(nfp) / toroidal_transits;
 
   // flag to indicate a three-dimensional case (== has toroidal variation)
   lthreed = (ntor > 0);

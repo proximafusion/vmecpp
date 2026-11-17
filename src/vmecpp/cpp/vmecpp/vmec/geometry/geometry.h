@@ -15,9 +15,6 @@ struct GeometryDimensions {
   int mpol;
   int ntor;
   int nfp;
-  // Toroidal transits after which the domain closes on itself; the harmonic n
-  // has the toroidal mode number n * nfp / toroidal_transits in zeta.
-  int toroidal_transits = 1;
 };
 
 struct GeometryCoefficients {

@@ -18,13 +18,11 @@ import vmecpp
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
 import circular_coil_stellarator as ck
-from island_interior import axis_curve
-from knotted_stellarator import interior
 
 
 @pytest.fixture(scope="module")
 def solved():
-    k = interior(BiotSavart(ck.coils()), ck.KNOT)
+    k = ck.interior(BiotSavart(ck.coils()), ck.DESIGN)
     k["wout"] = vmecpp.run(k["input"], max_threads=1, verbose=False).wout
     return k
 
@@ -112,7 +110,7 @@ def test_closure_of_an_analytic_field():
 def test_interior_against_tracing(solved):
     wout = solved["wout"]
     iota = np.asarray(wout.iotaf)
-    distance = np.hypot(*(axis_curve(wout, solved["planes"]) - solved["axis"]).T)
+    distance = np.hypot(*(ck.axis_curve(wout, solved["planes"]) - solved["axis"]).T)
     assert distance.max() < 3e-3
     assert abs(abs(iota[0]) - abs(solved["iota_axis"])) < 2e-3
     assert abs(abs(iota[-1]) - abs(solved["iota_surface"])) < 2e-4
@@ -126,7 +124,7 @@ def test_effective_ripple_and_closure_of_the_interior(solved):
 
 @pytest.mark.slow
 def test_effective_ripple_and_closure_against_w7x(solved):
-    w7x = interior(BiotSavart(ck.w7x_coils()), ck.W7X)
+    w7x = ck.interior(BiotSavart(ck.w7x_coils()), ck.W7X)
     _, ripple, closed = ck.measures(
         vmecpp.run(w7x["input"], max_threads=1, verbose=False).wout
     )
