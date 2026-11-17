@@ -14,8 +14,8 @@ coordinates and the bounce integrals of the effective ripple of Nemov et al., Ph
 Plasmas 6, 4622 (1999), without an equilibrium. ``search`` moves a design by
 Gauss-Newton steps on those integrals, taken along the tree in which the wells of a
 field line merge, and on its Pfirsch-Schlueter currents, within limits on the distances
-of the coils, the mirror ratio and the angle at which the curve crosses the planes of
-constant toroidal angle. The interior of a traced flux surface is solved as in
+of the coils, the mirror ratio, the rotational transform and the angle at which the
+curve crosses the planes of constant toroidal angle. The interior of a traced flux surface is solved as in
 ``knotted_stellarator.py``, with the pressure raised by hot restarts, and its wout gives
 the effective ripple again.
 """
@@ -48,6 +48,7 @@ OFFSETS = (0.1, 0.2, 0.3)
 CLEARANCE, ROOM = 0.1, 0.15
 MIRROR = 0.45  # largest mirror ratio on the magnetic axis
 CROSSING = 0.4  # least sine of the angle of the curve to a plane phi = const
+TRANSFORM = (0.808, 0.826)  # window of the rotational transform, within 4/5 to 5/6
 CURRENTS = 1.0e-3  # weight of <j_par^2> / <j_perp^2> in the merit of the search
 PERIODS = 60  # field periods of the lines of the search
 SAMPLES = 16  # samples of a field line to a coil
@@ -312,54 +313,54 @@ FOUND = Design(
     p=1,
     q=3,
     per_period=14,
-    radius=0.8961791396321848,
+    radius=0.9050894473330581,
     r0=4.707288105806693,
     r=(
-        1.51299587866381,
-        -0.028843133009602707,
-        0.07954207348979131,
-        -0.009166330688923382,
-        -0.028648534284649328,
-        0.008470252010931226,
+        1.5323190496119048,
+        -0.022390967351230997,
+        0.08246138367878764,
+        -0.005416772725879753,
+        -0.02739644200777635,
+        0.00601738664050476,
     ),
     zs=(
-        0.9583136718142299,
-        0.10285611982796501,
-        0.013374315313565095,
-        -0.0019071887500424105,
-        0.008043158140922322,
-        -0.011479722387717153,
+        0.9377477371684005,
+        0.11743951527898722,
+        0.013582433804995341,
+        -0.0029169402679679554,
+        0.008538172421259616,
+        -0.011644423345209947,
     ),
     phis=(
-        -0.3086709374731051,
-        0.059228439677019254,
-        0.0011904788846173328,
-        -0.0045095571818694665,
-        0.0016551389446283224,
-        -0.0020058790469528027,
+        -0.3066386842617297,
+        0.058964224323790046,
+        0.000865930174982378,
+        -0.005244196690062911,
+        0.0020951405887634457,
+        -0.0022466712862611858,
     ),
     places=(
-        -0.061461097029989,
-        0.01646450035394358,
-        0.00806324793571728,
-        -0.0017321470144230956,
-        0.003843082456145609,
-        -0.000921764002778558,
+        -0.06593404982761622,
+        0.01670638257520222,
+        0.007702256244835227,
+        -0.001881104252693904,
+        0.00393989646570914,
+        -0.0006828850947140823,
     ),
     outward=(
-        -0.03233207347180231,
-        0.06909455170071285,
-        0.02018171283784992,
-        4.012832739950156e-05,
-        -0.0021592403471481494,
+        -0.04041140408497798,
+        0.04562280803342292,
+        -0.0072834131936026225,
+        -0.005224337996109935,
+        0.006951225157614378,
     ),
     sideways=(
-        -0.01639769924652687,
-        0.05509209505546585,
-        0.05235853935442765,
-        -0.01283555989157563,
-        -0.08656094367541861,
-        0.01102187006639832,
+        -0.017446902899689823,
+        0.06854985773835935,
+        0.07756039643520769,
+        -0.013482010601876995,
+        -0.1024662085246131,
+        0.006725931659078227,
     ),
 )
 # the start of the outermost surface of FOUND outboard of its magnetic axis, in metres,
@@ -763,6 +764,8 @@ def search_parts(design):
         (ROOM - min(k["room"] for k in found)) / ROOM,
         (found[0]["mirror_axis"] - MIRROR) / MIRROR,
         (CROSSING - design.crossing) / CROSSING,
+        (TRANSFORM[0] - min(abs(k["iota"]) for k in found)) / TRANSFORM[0],
+        (max(abs(k["iota"]) for k in found) - TRANSFORM[1]) / TRANSFORM[1],
     ]
     return keys, values, np.concatenate(currents), np.array(limits)
 
@@ -1054,6 +1057,12 @@ def main():
         help="p0 in Pa of the interiors with pressure p0 (1 - s), in rising order",
     )
     parser.add_argument(
+        "--tolerance",
+        type=float,
+        default=1.0e-10,
+        help="force tolerance of the interiors with pressure",
+    )
+    parser.add_argument(
         "--w7x",
         action="store_true",
         help="print the measures of W7-X by the same routines",
@@ -1100,7 +1109,7 @@ def main():
             step = step.model_copy(
                 update={
                     "ns_array": step.ns_array[-1:],
-                    "ftol_array": np.array([1.0e-10]),
+                    "ftol_array": np.array([args.tolerance]),
                     "niter_array": step.niter_array[-1:],
                 }
             )

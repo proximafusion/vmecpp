@@ -271,6 +271,8 @@ def test_design_found_against_its_start(found):
     assert traced["room"] > ck.ROOM
     assert traced["mirror_axis"] < 1.01 * ck.MIRROR
     assert ck.FOUND.crossing > 0.99 * ck.CROSSING
+    low, high = ck.TRANSFORM
+    assert low - 1e-3 < abs(traced["iota"]) < high + 1e-3
 
 
 @pytest.mark.slow
