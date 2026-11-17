@@ -278,6 +278,8 @@ class Vmec {
   // without advancing the state.
   absl::Status EvaluateFinalState();
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
+  // The mean of the history of 1/tau, as Evolve sums it.
+  static double MeanInverseTau(const Eigen::VectorXd& inv_tau);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
       const std::vector<std::unique_ptr<RadialProfiles>>& p,

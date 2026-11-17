@@ -309,16 +309,10 @@ def solve_equilibrium(
                 trace_l.append(fsql)
                 trace_rr.append(int(rr))
 
-                # Sequential left-to-right sum, matching Eigen's scalar
-                # VectorXd::sum() bit for bit. numpy's pairwise summation
-                # associates differently; the last-bit difference in the
-                # damping average amplifies through the early force
-                # transient on cold-start cases and shifts the convergence
-                # iteration against the C++ loop.
-                otav = 0.0
-                for _v in inv_tau:
-                    otav += float(_v)
-                otav /= _NDAMP
+                # The C++ sums the history in the order of its build. A last-bit
+                # difference in the damping average amplifies through the early
+                # force transient and shifts the convergence iteration.
+                otav = model.mean_inverse_tau(inv_tau)
                 dtau = delt0r * otav / 2.0
                 model.perform_time_step(1.0 / (1.0 + dtau), 1.0 - dtau, delt0r)
 

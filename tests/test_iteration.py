@@ -57,8 +57,7 @@ def test_python_iteration_reproduces_cpp_inner_solve(
 
     From the same initialized state, running the Python iteration and the C++
     inner solve gives the same converged decision vector and the same invariant
-    force-residual trace (to a floating-point floor; the only non-bit-exact
-    operation is the damping-average sum, numpy vs Eigen).
+    force-residual trace, bit for bit.
     """
     cpp_indata = _single_resolution_indata(name, ns, ftol, niter)
 
@@ -74,19 +73,12 @@ def test_python_iteration_reproduces_cpp_inner_solve(
 
     cpp_state = np.asarray(reference.get_state())
     py_state = np.asarray(model.get_state())
-    np.testing.assert_allclose(py_state, cpp_state, rtol=0, atol=1.0e-9)
+    np.testing.assert_array_equal(py_state, cpp_state)
 
-    np.testing.assert_allclose(
-        reference.force_residual_r, result.force_residual_r, rtol=1.0e-10, atol=1e-15
-    )
-    np.testing.assert_allclose(
-        reference.force_residual_z, result.force_residual_z, rtol=1.0e-10, atol=1e-15
-    )
-    np.testing.assert_allclose(
-        reference.force_residual_lambda,
-        result.force_residual_lambda,
-        rtol=1.0e-10,
-        atol=1e-15,
+    np.testing.assert_array_equal(reference.force_residual_r, result.force_residual_r)
+    np.testing.assert_array_equal(reference.force_residual_z, result.force_residual_z)
+    np.testing.assert_array_equal(
+        reference.force_residual_lambda, result.force_residual_lambda
     )
 
 
@@ -150,9 +142,8 @@ def test_python_iteration_matches_cpp_restart_path(
     same (artificially truncated) run, so it does not need to reach convergence; the
     truncation just keeps it fast. The control flow is checked on the *restart-reason*
     trace (NO_RESTART / BAD_JACOBIAN / BAD_PROGRESS / HUGE_INITIAL_FORCES per recorded
-    iteration, exposed in the wout) -- it must match the C++ reference exactly -- and
-    the residual trace must agree until the numpy-vs-Eigen floating-point floor of the
-    damping average accumulates through the chaotic early transient.
+    iteration, exposed in the wout) and on the residual trace, which must both match
+    the C++ reference exactly.
     """
     cpp_indata = _single_resolution_indata(name, ns, ftol=1.0e-16, niter=niter)
 
@@ -174,15 +165,7 @@ def test_python_iteration_matches_cpp_restart_path(
     # restart reason or a dropped reguess would change which reasons appear).
     assert reasons.issubset(set(py_rr.tolist()))
 
-    # The residual traces track tightly; the only non-bit-exact operation left
-    # is the order of additions in the damping average, whose last-bit noise
-    # can grow through long chaotic transients.
-    cpp_r = np.asarray(reference.force_residual_r)
-    py_r = np.asarray(result.force_residual_r)
-    # Eigen and NumPy use different reduction trees; the first 50 steps stay within
-    # two parts per billion while retaining a strict cross-implementation oracle.
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=2.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_array_equal(result.force_residual_r, reference.force_residual_r)
 
 
 def test_alternative_styles_converge_cma():
@@ -258,14 +241,7 @@ def test_native_parvmec_matches_python_parvmec():
     np.testing.assert_array_equal(
         np.asarray(result.restart_reasons), np.asarray(reference.restart_reasons)
     )
-    cpp_r = np.asarray(reference.force_residual_r)
-    py_r = np.asarray(result.force_residual_r)
-    # The two loops make identical control decisions (restart_reasons match
-    # exactly above), so the force-residual traces agree up to floating-point
-    # accumulation of the control arithmetic: ~1e-9 relative early, growing to
-    # only a few 1e-9 by the deep-convergence tail (max abs ~6e-13).
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-8, atol=1e-12)
+    np.testing.assert_array_equal(result.force_residual_r, reference.force_residual_r)
 
 
 def test_run_honors_iteration_style_flag():
@@ -490,8 +466,7 @@ def test_python_multigrid_matches_cpp_run():
 
     assert len(py_rr) == len(cpp_rr)
     np.testing.assert_array_equal(py_rr, cpp_rr)
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_array_equal(py_r, cpp_r)
 
 
 def test_python_multigrid_restarts_from_three_surfaces():
@@ -523,8 +498,7 @@ def test_python_multigrid_restarts_from_three_surfaces():
 
     assert len(py_rr) == len(cpp_rr)
     np.testing.assert_array_equal(py_rr, cpp_rr)
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_array_equal(py_r, cpp_r)
 
 
 def test_python_iteration_keeps_the_velocity_through_the_axis_reguess():
@@ -557,8 +531,7 @@ def test_python_iteration_keeps_the_velocity_through_the_axis_reguess():
 
     assert len(py_rr) == len(cpp_rr)
     np.testing.assert_array_equal(py_rr, cpp_rr)
-    np.testing.assert_allclose(py_r[:50], cpp_r[:50], rtol=1.0e-9, atol=1e-15)
-    np.testing.assert_allclose(py_r, cpp_r, rtol=1.0e-3, atol=1e-15)
+    np.testing.assert_array_equal(py_r, cpp_r)
 
 
 def test_refine_to_multigrid_ramp_converges():

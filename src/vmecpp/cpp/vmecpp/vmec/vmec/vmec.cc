@@ -1702,7 +1702,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
-  const double otav = invTau_.sum() / kNDamp;
+  const double otav = MeanInverseTau(invTau_);
 
   const double dtau = time_step * otav / 2.0;
   const double b1 = 1.0 - dtau;
@@ -1714,6 +1714,10 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   PerformTimeStep(fac, b1, time_step, thread_id);
 
   return false;
+}
+
+double Vmec::MeanInverseTau(const Eigen::VectorXd& inv_tau) {
+  return inv_tau.sum() / kNDamp;
 }
 
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,

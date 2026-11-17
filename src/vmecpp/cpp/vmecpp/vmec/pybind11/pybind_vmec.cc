@@ -402,6 +402,10 @@ class VmecModel {
     vmec_->PerformTimeStep(velocity_scale, conjugation_parameter, time_step,
                            /*thread_id=*/0);
   }
+  // The mean of a history of 1/tau, in the summation order of Vmec::Evolve.
+  double MeanInverseTau(const Eigen::VectorXd &inv_tau) const {
+    return vmecpp::Vmec::MeanInverseTau(inv_tau);
+  }
 
   // Restart primitives (decomposed RestartIteration).
   void SaveBackup() const {
@@ -1954,6 +1958,7 @@ PYBIND11_MODULE(_vmecpp, m) {
       .def("perform_time_step", &VmecModel::PerformTimeStep,
            py::arg("velocity_scale"), py::arg("conjugation_parameter"),
            py::arg("time_step"))
+      .def("mean_inverse_tau", &VmecModel::MeanInverseTau, py::arg("inv_tau"))
       .def("save_backup", &VmecModel::SaveBackup)
       .def("save_evaluated_backup", &VmecModel::SaveEvaluatedBackup)
       .def("restore_backup", &VmecModel::RestoreBackup)
