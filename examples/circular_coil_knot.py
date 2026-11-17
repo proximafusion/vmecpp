@@ -1,27 +1,28 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Knotted stellarators wound from identical circular coils, searched for a quasi-
-isodynamic field and solved as VMEC++ domains over several transits.
+"""A knot wound from identical circular coils, searched for a quasi-isodynamic field and
+solved as a VMEC++ domain over two transits.
 
 Every coil is the same planar circle with the same current. A design is the curve the
 coils are centred on, their places along it and the law by which their axes tilt from
-its tangent. In the vacuum field of the coils the magnetic scalar potential is the
-Boozer toroidal angle, so a field line traced in steps of the potential gives the field
-strength in Boozer coordinates and the bounce integrals of the effective ripple of
-Nemov et al., Phys. Plasmas 6, 4622 (1999), without an equilibrium. ``search`` moves a
-design by least squares on those integrals and on residuals that vanish where every
-field line has one well between the highest and the lowest field strength of its
-surface. ``star`` winds a knot whose field periods are plane curves, on which the
-radial drift along a field line is odd about the middle of a period. The interior of a
-traced flux surface is solved as in ``knotted_stellarator.py``, and its wout gives the
+its tangent. ``star`` winds a (p, q) knot whose field periods are plane curves, on which
+the radial drift along a field line is odd about the middle of a period. In the vacuum
+field of the coils the magnetic scalar potential is the Boozer toroidal angle, so a
+field line traced in steps of the potential gives the field strength in Boozer
+coordinates and the bounce integrals of the effective ripple of Nemov et al., Phys.
+Plasmas 6, 4622 (1999), without an equilibrium. ``search`` moves a design by
+Gauss-Newton steps on those integrals, taken along the tree in which the wells of a
+field line merge, within limits on the distances of the coils, the mirror ratio and the
+angle at which the curve crosses the planes of constant toroidal angle. The interior of
+a traced flux surface is solved as in ``knotted_stellarator.py``, and its wout gives the
 effective ripple again.
 """
 
 import argparse
 import dataclasses
-import time
 import types
+from itertools import pairwise
 from multiprocessing import Pool
 
 import numpy as np
@@ -33,21 +34,31 @@ from knotted_stellarator import (
     interior_input,
     toroidal_flux,
 )
-from scipy.optimize import brentq, least_squares
+from scipy.optimize import brentq, lsq_linear
 from scipy.special import ellipe, ellipk
 from simsopt.field import BiotSavart, coils_via_symmetries
 
 import vmecpp
 
 MU0 = 4.0e-7 * np.pi
-# of the search, in units of the coil radius of its start: the start of the surface
-# outboard of the axis and the least distances between coils and from coil to surface
-OFFSET, CLEARANCE, ROOM = 0.225, 0.18, 0.45
-MIRROR = 0.2  # largest mirror ratio on the surface
-IOTA = 0.08  # smallest rotational transform per toroidal turn
-SHAPE = 0.1  # weight of the residuals of the wells against those of the drift
-PERIODS = 30  # field periods of the line of the search
-PENALTIES = 2.0  # largest sum of squares of the penalties of a start drawn at random
+# of the search: the starts of its surfaces outboard of the magnetic axis and the least
+# distances between two coils and from a coil to a surface, in metres
+OFFSETS = (0.02, 0.04, 0.06)
+CLEARANCE, ROOM = 0.07, 0.2
+MIRROR = 0.25  # largest mirror ratio on a surface
+CROSSING = 0.4  # least sine of the angle of the curve to a plane phi = const
+PERIODS = 45  # field periods of the lines of the search
+# the series of a design and the largest move of each of their harmonics in a search,
+# from the first harmonic (sideways from the constant)
+FIELDS = ("r", "zs", "phis", "places", "outward", "sideways")
+REACH = {
+    "r": (0.3, 0.15, 0.15, 0.08, 0.08, 0.05, 0.05, 0.05),
+    "zs": (0.4, 0.2, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05),
+    "phis": (0.2, 0.1, 0.06, 0.06, 0.04, 0.04, 0.04, 0.04),
+    "places": (0.04, 0.03, 0.02, 0.015, 0.01, 0.01, 0.01, 0.01),
+    "outward": (0.5,) * 8,
+    "sideways": (0.5,) * 8,
+}
 
 
 class Loops:
@@ -157,34 +168,25 @@ class Design:
         """The magnetic scalar potential that a field line gains in a field period."""
         return MU0 * self.per_period * self.current
 
-    @property
-    def vector(self):
-        """The parameters that :func:`search` moves."""
-        return np.array(
-            [
-                *self.r,
-                *self.zs,
-                *self.phis,
-                self.radius,
-                *self.places,
-                *self.outward,
-                *self.sideways,
-            ]
+    def padded(self, counts):
+        """The design with the series of FIELDS padded with zeros to counts
+        harmonics."""
+        return dataclasses.replace(
+            self,
+            **{
+                name: getattr(self, name) + (0.0,) * (count - len(getattr(self, name)))
+                for name, count in zip(FIELDS, counts, strict=True)
+            },
         )
 
-    def moved(self, x):
-        """The design with the parameters x."""
-        x = [float(v) for v in x]
-        out, at = {}, 0
-        for name in ("r", "zs", "phis", "radius", "places", "outward", "sideways"):
-            if name == "radius":
-                out[name] = x[at]
-                at += 1
-            else:
-                count = len(getattr(self, name))
-                out[name] = tuple(x[at : at + count])
-                at += count
-        return dataclasses.replace(self, **out)
+    @property
+    def crossing(self):
+        """The sine of the least angle between the curve and a plane phi = const."""
+        z = 2.0 * np.pi / self.q * np.arange(512) / 512
+        points = self.points(z)
+        speed = np.linalg.norm(np.gradient(points, z, axis=0), axis=1)
+        turn = np.gradient(np.unwrap(np.arctan2(points[:, 1], points[:, 0])), z)
+        return float((np.hypot(points[:, 0], points[:, 1]) * turn / speed).min())
 
     def _series(self, function, amplitudes, z, first=1):
         """The sum of amplitudes[m] function(m q z), m from first."""
@@ -280,47 +282,80 @@ def star(p, q, per_period, radius, inner, height, slow, mirror, order=6):
     return dataclasses.replace(curve, places=places)
 
 
-# the start of the search of the trefoil: the curve of the knotatron of Hudson et al.
-# with twice its coils, spread evenly along it
-STARTS = {
-    "trefoil": Design(
-        p=2,
-        q=3,
-        per_period=24,
-        radius=2.0 / 3.0,
-        r=(1.0, 0.0, 0.0),
-        zs=(1.0, 0.0, 0.0),
-        phis=(0.0, 0.0),
-        places=(-0.107, 0.0, 0.0),
-        outward=(0.0, 0.0),
-        sideways=(0.0, 0.0, 0.0),
+# the start of the search: plane periods on the seven-pointed star prism, with 16 coils
+# to a period
+START = star(2, 7, 16, 0.35, 1.87, 0.85, 0.15, 0.2).padded((8, 8, 8, 8, 7, 8))
+# what the search finds from it
+KNOT = Design(
+    p=2,
+    q=7,
+    per_period=16,
+    radius=0.5103305045591595,
+    r0=2.3194039415596643,
+    r=(
+        0.5746854038767639,
+        0.08943452158041972,
+        -0.009521727939233629,
+        0.0022507154166204303,
+        -0.006845914653047585,
+        0.006924636956566999,
+        -0.0006747235388431682,
+        -0.0009008969784760006,
     ),
-}
-DESIGNS = {
-    "knotatron": Design(p=2, q=3, per_period=24, radius=2.0 / 3.0),
-    "trefoil": Design(
-        p=2,
-        q=3,
-        per_period=24,
-        radius=0.7879006051522417,
-        r=(0.9837925252867619, 0.003902167267083462, 0.001892000789529573),
-        zs=(0.9842070992884725, -0.006681125120768963, -0.006300161313929336),
-        phis=(-0.043020905169186316, 0.019677780893734016),
-        places=(-0.12078657577535272, 0.008553768770652356, 0.002388106854324222),
-        outward=(0.03434891847148264, -0.19332167736230776),
-        sideways=(-0.02054551837863322, 0.05169127027447562, 0.10858923434013387),
+    zs=(
+        -0.8157591855169305,
+        0.000924617986865255,
+        0.004824596911586602,
+        -0.010451359393818279,
+        0.011870237253610859,
+        -0.007690498375994094,
+        0.00021499552312801898,
+        -0.0028373285680807644,
     ),
-    # plane periods on the seven-pointed star prism
-    "star": star(2, 7, 22, 0.35, 1.87, 0.85, 0.15, 0.2),
-}
-# the start of the outermost surface of each design outboard of its magnetic axis, in
+    phis=(
+        -0.1822389494380288,
+        0.029111293656538383,
+        0.001747926364117668,
+        0.002712020154072714,
+        -0.0006945595808703618,
+        -0.003379360777696876,
+        0.003449629045532871,
+        -0.0016617323409179171,
+    ),
+    places=(
+        -0.023186565225087694,
+        -0.0071682545279573165,
+        0.0014633705254923604,
+        0.001409899184915359,
+        0.0006573699749262745,
+        -0.0014792979967016096,
+        0.0009140052903770868,
+        -0.0006535407365076311,
+    ),
+    outward=(
+        -0.03265459129038055,
+        -0.38855940011183554,
+        0.18166527395711357,
+        -0.05317630033741539,
+        0.008196345081221742,
+        0.03591850885479429,
+        -0.014030061809845163,
+    ),
+    sideways=(
+        0.07884227271326105,
+        -0.025541696708615984,
+        0.15892817514212493,
+        0.02738110692186823,
+        0.00674640826129777,
+        -0.0355163730231677,
+        0.02086331864409137,
+        0.008239884507750607,
+    ),
+)
+# the start of the outermost surface of the knot outboard of its magnetic axis, in
 # metres, mpol, ntor and the planes per period of its interior, and the field periods
-# of the lines of its measures. The lines of the star close after 45 field periods.
-SURFACES = {
-    "knotatron": (0.15, 8, 24, 72, 40),
-    "trefoil": (0.15, 8, 24, 72, 40),
-    "star": (0.05, 10, 28, 96, 45),
-}
+# of the lines of its measures
+SURFACE = (0.06, 10, 28, 96, 90)
 
 
 def trace(field, start, potential, steps):
@@ -433,108 +468,124 @@ def rotational_transform(field, r_axis, at, period):
     return np.polyfit(np.arange(len(at)), angle, 1)[0] / period
 
 
-def bounce_integrals(strength, drift, weight, levels):
-    """The bounce integrals of the wells of a field line.
+def wells_of(eta):
+    """The wells of the piecewise linear eta along a field line, as (birth, death, left,
+    right): the levels between which each exists and the samples that bound it.
 
-    For each level b' of B / B0, B0 the mean strength, and each well j of that level
-    that the line holds whole,
+    A well forms at a minimum of eta or where two wells merge at a maximum between them,
+    and ends where it merges with a neighbour. A well that an end of the line cuts is
+    left out from the level at which it reaches that end.
+    """
+    slope = np.sign(np.diff(eta))
+    # a flat step takes the slope of the step before it
+    for i in np.flatnonzero(slope == 0.0):
+        slope[i] = slope[i - 1] if i > 0 else 1.0
+    inner = np.flatnonzero((slope[:-1] > 0.0) & (slope[1:] < 0.0)) + 1
+    ridges = np.concatenate([[0], inner, [len(eta) - 1]])
+    count = len(ridges) - 1
+    # the basins between consecutive ridges, merged from the lowest ridge upwards
+    birth = [eta[a : b + 1].min() for a, b in pairwise(ridges)]
+    whole, alive = [True] * count, [True] * count
+    left, right = list(range(-1, count - 1)), list(range(1, count + 1))
+    first, last = list(ridges[:-1]), list(ridges[1:])
+    out = []
+    # ridge k lies between basins k - 1 and k; ridges 0 and count are the ends
+    for k in np.argsort(eta[ridges], kind="stable"):
+        level = float(eta[ridges[k]])
+        if k in (0, count):
+            basin = 0 if k == 0 else count - 1
+            while not alive[basin]:
+                basin = left[basin]
+            if whole[basin] and level > birth[basin]:
+                out.append((birth[basin], level, first[basin], last[basin]))
+            whole[basin], birth[basin] = False, level
+            continue
+        a = k - 1
+        while not alive[a]:
+            a = left[a]
+        for basin in (a, k):
+            if whole[basin] and level > birth[basin]:
+                out.append((birth[basin], level, first[basin], last[basin]))
+        whole[a], birth[a], last[a] = whole[a] and whole[k], level, last[k]
+        alive[k], right[a] = False, right[k]
+        if right[k] < count:
+            left[right[k]] = a
+    return out
+
+
+def ripple_residuals(strength, size, drift, weight, major_radius, nodes=6):
+    """Residuals whose squares sum to the effective ripple to the power 3/2, from the
+    field strength, the size of the gradient of the flux surface label, the radial drift
+    and the ds / B of a step at the samples of a field line.
+
+    With B / B0 linear between the samples, B0 the mean strength, a well j of
+    :func:`wells_of` has at the level b'
 
         H[j] = integral ds / B sqrt(b' - B / B0) (4 B0 / B - 1 / b') drift
         I[j] = integral ds / B sqrt(1 - B / (B0 b'))
 
-    with weight the ds / B of a step at each sample. B / B0 is linear between the
-    samples and the other factors are their mean, so the integrals are continuously
-    differentiable in the samples. Returns the levels and, for each, the first and the
-    last step of its wells, H and I.
+    and the effective ripple of Nemov et al. (1999) is (pi R0^2 / (8 sqrt 2) integral
+    ds / B / (integral ds |grad psi| / B)^2 integral db' sum H[j]^2 / (b'^2 I[j]))^(2/3).
+    Each well is taken on Gauss nodes between the levels at which it forms and ends,
+    so the residuals are continuous in the samples. Returns the samples that bound the
+    wells, [well, 2], and the residuals, [well, node].
     """
     eta = strength * np.sum(weight) / np.sum(weight * strength)
-    grid = np.linspace(eta.min(), eta.max(), levels + 2)[1:-1]
-    step_weight = 0.5 * (weight[:-1] + weight[1:])
-    wells = []
-    for level in grid:
-        depth = level - eta
-        below = np.maximum(depth, 0.0)
-        change = np.diff(depth)
-        flat = np.abs(change) < 1.0e-14
-        # the mean of sqrt(max(b' - B / B0, 0)) over each step
-        root = np.where(
-            flat,
-            np.sqrt(below[:-1]),
-            2.0 / 3.0 * np.diff(below**1.5) / np.where(flat, 1.0, change),
-        )
-        wet = root > 0.0
-        starts = np.flatnonzero(wet[1:] & ~wet[:-1]) + 1
-        stops = np.flatnonzero(~wet[1:] & wet[:-1]) + 1
-        # the wells that the ends of the line cut are left out
-        if wet[0]:
-            root[: stops[0] if stops.size else None] = 0.0
-            stops = stops[1:]
-        if wet[-1] and starts.size:
-            root[starts[-1] :] = 0.0
-            starts = starts[:-1]
-        if starts.size == 0:
-            wells.append((starts, stops, np.zeros(0), np.zeros(0)))
-            continue
-        factor = weight * (4.0 / eta - 1.0 / level) * drift
-        h = np.add.reduceat(root * 0.5 * (factor[:-1] + factor[1:]), starts)
-        i = np.add.reduceat(root * step_weight, starts) / np.sqrt(level)
-        wells.append((starts, stops, h, i))
-    return grid, wells
-
-
-def _ripple_scale(size, weight, major_radius, grid):
     step_weight = 0.5 * (weight[:-1] + weight[1:])
     step_size = 0.5 * (weight[:-1] * size[:-1] + weight[1:] * size[1:])
-    return (
+    scale = (
         np.pi
         * major_radius**2
         / (8.0 * np.sqrt(2.0))
         * np.sum(step_weight)
         / np.sum(step_size) ** 2
-        * (grid[1] - grid[0])
     )
+    x, share = np.polynomial.legendre.leggauss(nodes)
+    x, share = 0.5 * (x + 1.0), 0.5 * share
+    wells = wells_of(eta)
+    values = np.zeros((len(wells), nodes))
+    for index, (birth, death, a, b) in enumerate(wells):
+        e, w, d = eta[a : b + 1], weight[a : b + 1], drift[a : b + 1]
+        level = (birth + x * (death - birth))[:, None]
+        below = np.maximum(level - e, 0.0)
+        change = -np.diff(e)
+        flat = np.abs(change) < 1.0e-14
+        # the mean of sqrt(max(b' - B / B0, 0)) over each step
+        root = np.where(
+            flat,
+            np.sqrt(below[:, :-1]),
+            2.0 / 3.0 * np.diff(below**1.5, axis=1) / np.where(flat, 1.0, change),
+        )
+        factor = w * (4.0 / e - 1.0 / level) * d
+        h = np.sum(root * 0.5 * (factor[:, :-1] + factor[:, 1:]), axis=1)
+        i = np.sum(root * 0.5 * (w[:-1] + w[1:]), axis=1) / np.sqrt(level[:, 0])
+        wet = i > 0.0
+        values[index, wet] = (
+            np.sqrt(scale * share[wet] * (death - birth))
+            * h[wet]
+            / (level[wet, 0] * np.sqrt(i[wet]))
+        )
+    return np.array([well[2:] for well in wells], dtype=int).reshape(-1, 2), values
 
 
-def effective_ripple(strength, size, drift, weight, major_radius, levels=120):
-    """The effective ripple from the samples of a field line.
+def effective_ripple(strength, size, drift, weight, major_radius, nodes=12):
+    """The effective ripple of a field line, from :func:`ripple_residuals`."""
+    values = ripple_residuals(strength, size, drift, weight, major_radius, nodes)[1]
+    return float(np.sum(values**2) ** (2.0 / 3.0))
 
-    It is (pi R0^2 / (8 sqrt 2) integral ds / B / (integral ds |grad psi| / B)^2
-    integral db' sum H[j]^2 / (b'^2 I[j]))^(2/3), with H and I of
-    :func:`bounce_integrals`, from the field strength, the size of the gradient of the
-    flux surface label, the radial drift and the ds / B of a step at the samples.
+
+def current_ratio(strength, size, drift, step):
+    """<j_par^2> / <j_perp^2> on the surface of a field line at low pressure, from its
+    samples in steps step of the potential.
+
+    The diamagnetic current is p' |grad psi| / B and the Pfirsch-Schlueter current p' h
+    B, with dh / dPhi = -2 drift / B^3 along the line and no net current. The ratio is 2
+    / iota^2 in a torus of large aspect ratio.
     """
-    grid, wells = bounce_integrals(strength, drift, weight, levels)
-    total = sum(
-        float(np.sum(h[i > 0.0] ** 2 / i[i > 0.0])) / level**2
-        for level, (_, _, h, i) in zip(grid, wells, strict=True)
-    )
-    return float((_ripple_scale(size, weight, major_radius, grid) * total) ** (2 / 3))
-
-
-def drift_residuals(strength, size, drift, weight, major_radius, steps, levels=40):
-    """Residuals whose squares sum to the effective ripple to the power 3/2, from the
-    data of :func:`effective_ripple` with steps steps to a field period.
-
-    The line is cut into field periods where the strength, averaged over the periods,
-    is highest. residual[k, i] is H[j] / (b' sqrt(I[j])) of :func:`bounce_integrals`
-    for the well j of level k in period i. Where a period holds several wells of a
-    level it is the root of the sum of their squares, with the sign of the largest.
-    """
-    periods = (len(strength) - 1) // steps
-    top = int(np.argmax(strength[: periods * steps].reshape(periods, steps).mean(0)))
-    count = periods - 1
-    grid, wells = bounce_integrals(strength, drift, weight, levels)
-    square = np.zeros((levels, count))
-    sign = np.ones((levels, count))
-    for k, (starts, stops, h, i) in enumerate(wells):
-        period = ((starts + stops) // 2 - top) // steps
-        good = (i > 0.0) & (period >= 0) & (period < count)
-        value = h[good] / (grid[k] * np.sqrt(i[good]))
-        np.add.at(square[k], period[good], value**2)
-        order = np.argsort(np.abs(value))
-        sign[k, period[good][order]] = np.sign(value[order])
-    scale = _ripple_scale(size, weight, major_radius, grid)
-    return np.sqrt(scale) * sign * np.sqrt(square)
+    rate = -2.0 * drift / strength**3
+    h = step * np.concatenate([[0.0], np.cumsum(0.5 * (rate[1:] + rate[:-1]))])
+    h -= h.mean()
+    return float(np.sum(h**2) / np.sum(size**2 / strength**4))
 
 
 def well_lines(strength, steps):
@@ -600,13 +651,14 @@ def poloidal_closure(strength, steps, turns, angles=64):
     return float((lowest_ridge - highest_valley) / (surface.max() - surface.min()))
 
 
-def measures(design, offset, periods=40, levels=120):
+def measures(design, offset, periods=90):
     """The axis of a design and the field line from offset outboard of it over periods
     field periods: R of the axis, its length, the mirror ratio on it and on the line,
     the rotational transform per toroidal turn, the smallest distances between coils
     and from the line to a coil, the effective ripple with the length of the axis over
     2 pi as major radius, the share of :func:`poloidal_closure`, the sum of the mean
-    squares of :func:`well_residuals`, and the data of the line."""
+    squares of :func:`well_residuals`, :func:`current_ratio`, and the data of the
+    line."""
     field = design.loops()
     steps = 4 * design.per_period
     r_axis, axis, axis_strength = design.axis(field)
@@ -619,7 +671,8 @@ def measures(design, offset, periods=40, levels=120):
     if not np.all(np.isfinite(strength)):
         message = "the field line meets a coil"
         raise ValueError(message)
-    weight = potential / (periods * steps) / strength**2
+    step = potential / (periods * steps)
+    weight = step / strength**2
     major = length / (2.0 * np.pi)
 
     def mirror(b):
@@ -634,197 +687,168 @@ def measures(design, offset, periods=40, levels=120):
         "iota": iota,
         "clearance": field.clearance(),
         "room": float(field.distance(points[::4]).min()),
-        "ripple": effective_ripple(strength, size, drift, weight, major, levels),
+        "ripple": effective_ripple(strength, size, drift, weight, major),
         "closure": poloidal_closure(
             strength, steps, iota * design.period / (2.0 * np.pi)
         ),
         "wells": float(
             sum(np.mean(v**2) for v in well_residuals(strength, steps).values())
         ),
+        "currents": current_ratio(strength, size, drift, step),
         "line": (strength, size, drift, weight, major, steps),
     }
 
 
-def search_residuals(item):
-    """The residuals of :func:`search` for a design: those of the drift on its surface,
-    those of its wells, each kind over the root of its number and all times the root of
-    SHAPE, and what it lacks of the least distances, exceeds of the mirror ratio and
-    lacks of the rotational transform, for a tuple of the design, the coil radius of the
-    start and the field periods of the line."""
-    design, scale, periods = item
+def search_parts(design):
+    """What a step of :func:`search` takes of a design, or None where it has no
+    magnetic axis or a field line of it meets a coil: the wells of the lines of its
+    surfaces and their residuals as :func:`ripple_residuals` gives them, the squares
+    summing to the mean over the surfaces of the effective ripple to the power 3/2,
+    and what the design exceeds its limits by, relative to each limit."""
+    keys, values, found = [], [], []
     try:
         with np.errstate(invalid="ignore", divide="ignore"):
-            found = measures(design, OFFSET * scale, periods)
-    except ValueError:
+            for offset in OFFSETS:
+                k = measures(design, offset, PERIODS)
+                wells, residuals = ripple_residuals(*k["line"][:5])
+                if not np.all(np.isfinite(residuals)):
+                    return None
+                keys.append(wells)
+                values.append(residuals / np.sqrt(len(OFFSETS)))
+                found.append(k)
+    except (ValueError, IndexError):
         return None
-    line = found.pop("line")
-    penalties = [
-        max(0.0, CLEARANCE - found["clearance"] / scale) / CLEARANCE,
-        max(0.0, ROOM - found["room"] / scale) / ROOM,
-        max(0.0, found["mirror"] - MIRROR) / MIRROR,
-        max(0.0, IOTA - abs(found["iota"])) / IOTA,
+    limits = [
+        (CLEARANCE - found[0]["clearance"]) / CLEARANCE,
+        (ROOM - min(k["room"] for k in found)) / ROOM,
+        (max(k["mirror"] for k in found) - MIRROR) / MIRROR,
+        (CROSSING - design.crossing) / CROSSING,
     ]
-    wells = well_residuals(line[0], line[-1])
-    return np.concatenate(
-        [
-            drift_residuals(*line).ravel(),
-            *(np.sqrt(SHAPE / v.size) * v.ravel() for v in wells.values()),
-            3.0 * np.array(penalties),
-        ]
-    )
+    return keys, values, np.array(limits)
 
 
-def search_tables(base):
-    """The scales and the lower and upper bounds of the parameters of a search about
-    base, in the order of Design.vector."""
-    radius, r1, turn = base.radius, base.r[0], base.p / base.q
-
-    def harmonics(values, name):
-        # the last value holds for the higher harmonics
-        count = len(getattr(base, name))
-        return np.array([values[min(m, len(values) - 1)] for m in range(count)])
-
-    scale = np.concatenate(
-        [
-            r1 * harmonics((1.0, 0.2, 0.1), "r"),
-            r1 * harmonics((1.0, 0.2, 0.1), "zs"),
-            turn * harmonics((0.3, 0.15), "phis"),
-            [0.4 * radius],
-            harmonics((0.15, 0.15, 0.1), "places") / base.q,
-            harmonics((0.2,), "outward"),
-            harmonics((0.2,), "sideways"),
-        ]
-    )
-    high = np.concatenate(
-        [
-            r1 * harmonics((2.0, 0.6, 0.25), "r"),
-            r1 * harmonics((2.0, 0.6, 0.25), "zs"),
-            turn * harmonics((0.7, 0.35), "phis"),
-            [1.5 * radius],
-            harmonics((0.42, 0.18, 0.12), "places") / base.q,
-            harmonics((0.5,), "outward"),
-            harmonics((0.5,), "sideways"),
-        ]
-    )
-    low = -high
-    first = [0, len(base.r), len(base.r) + len(base.zs) + len(base.phis)]
-    low[first] = 0.3 * r1, 0.3 * r1, 0.6 * radius
-    return scale, low, high
+def _aligned(keys, values, base):
+    """Values in the order of the wells base, a well matched where its bounds lie within
+    a sample of those of a base well, with the wells matched."""
+    table = {(int(a), int(b)): k for k, (a, b) in enumerate(keys)}
+    out = np.zeros((len(base), values.shape[1]))
+    matched = np.zeros(len(base), dtype=bool)
+    shifts = [(da, db) for da in (0, -1, 1) for db in (0, -1, 1)]
+    for k, (a, b) in enumerate(base):
+        for da, db in shifts:
+            match = table.get((int(a) + da, int(b) + db))
+            if match is not None:
+                out[k], matched[k] = values[match], True
+                break
+    return out, matched
 
 
-def search(start, base=None, evaluations=60, periods=PERIODS, pool=None):
-    """The design that least squares on :func:`search_residuals` reaches from start,
-    with a finite-difference Jacobian, or None where start has no magnetic axis.
+def search(start, workers=4, steps=300, report=None):
+    """The design that Gauss-Newton steps on :func:`search_parts` reach from start.
 
-    base, start by default, gives the scales and the bounds of the parameters and the
-    coil radius that the lengths of the search are in. The Jacobian is taken on the
-    processes of pool where one is given.
+    The parameters are the harmonics of the series of start and its coil radius, each
+    within REACH of its start. A limit g <= 0 enters a step linearized, as weight (g +
+    its change + z) with a slack z >= 0, and the move of the parameters is damped. Each
+    step solves that bounded linear least-squares problem at nine dampings, evaluates
+    the nine moves on the processes of the pool and keeps the best; its merit is the sum
+    of the squares of the residuals and of weight times what exceeds the limits. The
+    Jacobian is by differences, a well of the moved design matched to one of the design
+    by the samples that bound it. report is called with a line of text at each step.
     """
-    base = base or start
-    radius = base.radius
-    scale, low, high = search_tables(base)
-    x = np.clip(start.vector, low, high)
-    first = search_residuals((base.moved(x), radius, periods))
-    if first is None:
-        return None
-    # a design without a magnetic axis costs more than any with one
-    failed = np.full(first.size, 1.0e3 / np.sqrt(first.size))
-
-    def residuals(x):
-        value = search_residuals((base.moved(x), radius, periods))
-        return failed if value is None else value
-
-    def jacobian(x):
-        value = residuals(x)
-        steps = np.where(x + 2.0e-4 * scale > high, -2.0e-4, 2.0e-4) * scale
-        moved = [
-            (base.moved(x + steps[i] * np.eye(x.size)[i]), radius, periods)
-            for i in range(x.size)
+    dampings = np.array([1.0e-2, 3.0e-2, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0])
+    weight, move = 10.0, 5.0e-4
+    counts = [len(getattr(start, name)) for name in FIELDS]
+    reach = np.array(
+        [
+            REACH[name][m]
+            for name, count in zip(FIELDS, counts, strict=True)
+            for m in range(count)
         ]
-        columns = (pool.map if pool else map)(search_residuals, moved)
-        out = np.zeros((value.size, x.size))
-        for i, column in enumerate(columns):
-            if column is not None:
-                out[:, i] = (column - value) / steps[i]
-        return out
+        + [0.3 * start.radius]
+    )
+    scale = 0.5 * reach
 
-    cost = np.inf
-    for _ in range(4):
-        solution = least_squares(
-            residuals,
-            x,
-            jac=jacobian,
-            bounds=(low, high),
-            x_scale=scale,
-            max_nfev=evaluations,
-            xtol=1e-9,
-            ftol=1e-9,
-            gtol=1e-12,
+    def moved(x):
+        series, at = {}, 0
+        for name, count in zip(FIELDS, counts, strict=True):
+            series[name] = tuple(float(v) for v in x[at : at + count])
+            at += count
+        return dataclasses.replace(start, radius=float(x[at]), **series)
+
+    def merit(parts):
+        if parts is None:
+            return np.inf
+        _, values, limits = parts
+        return float(
+            sum(np.sum(v**2) for v in values)
+            + weight**2 * np.sum(np.maximum(limits, 0.0) ** 2)
         )
-        x = np.clip(solution.x, low, high)
-        if 2.0 * solution.cost > 0.98 * cost:
-            break
-        cost = 2.0 * solution.cost
-    return base.moved(x)
 
-
-def near_limits(item):
-    """Whether the penalties of a design, with the coil radius of its base, stay within
-    PENALTIES."""
-    design, radius = item
-    value = search_residuals((design, radius, PERIODS))
-    return value is not None and float(np.sum(value[-4:] ** 2)) <= PENALTIES
-
-
-def searched(item):
-    """The design :func:`search` reaches from a start about a base, and its effective
-    ripple on the surface of the search."""
-    start, base = item
-    found = search(start, base)
-    if found is None:
-        return None, np.inf
-    try:
-        return found, measures(found, OFFSET * base.radius)["ripple"]
-    except ValueError:
-        return None, np.inf
-
-
-def starts_about(base, count, seed, pool):
-    """base and count - 1 designs drawn about it within half the scales of its
-    parameters, each :func:`near_limits`."""
-    generator = np.random.default_rng(seed)
-    scale, low, high = search_tables(base)
-    starts = [base]
-    while len(starts) < count:
-        drawn = [
-            base.moved(
-                np.clip(
-                    base.vector
-                    + 0.5 * scale * generator.uniform(-1.0, 1.0, scale.size),
-                    low,
-                    high,
-                )
-            )
-            for _ in range(count)
-        ]
-        kept = pool.map(near_limits, [(design, base.radius) for design in drawn])
-        starts += [design for design, keep in zip(drawn, kept, strict=True) if keep]
-    return starts[:count]
-
-
-def best_of(base, count, seed, workers):
-    """:func:`search` from the designs of :func:`starts_about`, on workers processes:
-    the designs found with their effective ripples, the least first.
-
-    A single search takes its Jacobian on the processes.
-    """
+    x = np.array([v for name in FIELDS for v in getattr(start, name)] + [start.radius])
+    low, high = x - reach, x + reach
+    count = x.size
     with Pool(workers) as pool:
-        if count == 1:
-            found = search(base, pool=pool)
-            return [(found, measures(found, OFFSET * base.radius)["ripple"])]
-        starts = starts_about(base, count, seed, pool)
-        results = pool.map(searched, [(start, base) for start in starts], chunksize=1)
-    return sorted(results, key=lambda result: result[1])
+        here = search_parts(start)
+        cost, damping, misses = merit(here), 0.03, 0
+        for step in range(steps):
+            keys, values, limits = here
+            parts = np.concatenate([v.ravel() for v in values])
+            slacks = limits.size
+            moves = move * scale * np.where(x + move * scale > high, -1.0, 1.0)
+            columns = pool.map(
+                search_parts,
+                [moved(x + moves[i] * np.eye(count)[i]) for i in range(count)],
+            )
+            j_parts, j_limits = np.zeros((parts.size, count)), np.zeros((slacks, count))
+            for i, there in enumerate(columns):
+                if there is None:
+                    continue
+                changes = []
+                for wells, residuals, base, mine in zip(
+                    there[0], there[1], keys, values, strict=True
+                ):
+                    change, matched = _aligned(wells, residuals, base)
+                    changes.append(
+                        np.where(matched[:, None], change - mine, 0.0).ravel()
+                    )
+                j_parts[:, i] = np.concatenate(changes) / moves[i] * scale[i]
+                j_limits[:, i] = (there[2] - limits) / moves[i] * scale[i]
+            lower = np.concatenate([(low - x) / scale, np.zeros(slacks)])
+            upper = np.concatenate([(high - x) / scale, np.full(slacks, np.inf)])
+            right = -np.concatenate([parts, weight * limits, np.zeros(count)])
+            trials = []
+            for factor in dampings:
+                matrix = np.block(
+                    [
+                        [j_parts, np.zeros((parts.size, slacks))],
+                        [weight * j_limits, weight * np.eye(slacks)],
+                        [
+                            np.sqrt(damping * factor) * np.eye(count),
+                            np.zeros((count, slacks)),
+                        ],
+                    ]
+                )
+                solution = lsq_linear(
+                    matrix, right, bounds=(lower, upper), method="bvls"
+                )
+                trials.append(np.clip(x + scale * solution.x[:count], low, high))
+            found = pool.map(search_parts, [moved(trial) for trial in trials])
+            merits = [merit(parts) for parts in found]
+            best = int(np.argmin(merits))
+            if merits[best] < cost:
+                misses = (
+                    misses + 1 if cost - merits[best] < 1.0e-5 * merits[best] else 0
+                )
+                x, cost, here = trials[best], merits[best], found[best]
+                damping = float(np.clip(damping * dampings[best], 1.0e-8, 1.0e8))
+            else:
+                damping *= 300.0
+                misses += 1
+            if report:
+                report(f"step {step}: merit {cost:.6f}, damping {damping:.1e}")
+            if misses >= 4 or damping > 1.0e10:
+                break
+    return moved(x)
 
 
 def interior(design, offset, mpol=8, ntor=24, planes=72):
@@ -860,7 +884,7 @@ def interior(design, offset, mpol=8, ntor=24, planes=72):
     }
 
 
-def wout_ripple(wout, js, periods=40, steps=96, levels=120):
+def wout_ripple(wout, js, periods=90, steps=96):
     """The effective ripple of the half-grid surface js of a wout, from the field line
     through theta = 0 at phi = 0 over periods field periods, with the length of the
     magnetic axis over 2 pi as major radius."""
@@ -917,14 +941,15 @@ def wout_ripple(wout, js, periods=40, steps=96, levels=120):
         [axis[:, 0] * np.cos(turn), axis[:, 0] * np.sin(turn), axis[:, 1]], -1
     )
     major = np.linalg.norm(np.diff(axis, axis=0), axis=1).sum() / (2.0 * np.pi)
-    return effective_ripple(strength, size, drift, weight, major, levels)
+    return effective_ripple(strength, size, drift, weight, major)
 
 
 def w7x(offsets=(0.05, 0.1, 0.15), periods=40, steps=120):
-    """The effective ripple, the share of :func:`poloidal_closure` and the sum of the
-    mean squares of :func:`well_residuals` of the standard configuration of W7-X by the
-    routines of the knots, from the coils that SIMSOPT ships, on the surfaces from
-    offsets outboard of its axis in the bean plane, with 5.5 m as major radius."""
+    """The effective ripple, the share of :func:`poloidal_closure`, the sum of the mean
+    squares of :func:`well_residuals` and :func:`current_ratio` of the standard
+    configuration of W7-X by the routines of the knot, from the coils that SIMSOPT
+    ships, on the surfaces from offsets outboard of its axis in the bean plane, with
+    5.5 m as major radius."""
     try:  # SIMSOPT 1.11 and later
         from simsopt.configs import get_data  # noqa: PLC0415
 
@@ -961,6 +986,7 @@ def w7x(offsets=(0.05, 0.1, 0.15), periods=40, steps=120):
                 "wells": float(
                     sum(np.mean(v**2) for v in well_residuals(strength, steps).values())
                 ),
+                "currents": current_ratio(strength, size, drift, potential / steps),
             }
         )
     return out
@@ -968,21 +994,15 @@ def w7x(offsets=(0.05, 0.1, 0.15), periods=40, steps=120):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--design", choices=list(DESIGNS), default="trefoil")
     parser.add_argument(
-        "--search",
-        type=int,
-        default=0,
-        metavar="COUNT",
-        help="search again from the start of the design and COUNT - 1 drawn about it",
+        "--search", action="store_true", help="search again from the start"
     )
-    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument(
         "--pressure",
         type=float,
         nargs="*",
-        default=[2000.0, 8000.0],
+        default=[8000.0],
         help="p0 in Pa of the interiors with pressure p0 (1 - s)",
     )
     parser.add_argument(
@@ -997,35 +1017,30 @@ def main():
                 f"W7-X, surface from {offset} cm outboard of the magnetic axis: "
                 f"effective ripple {100 * k['ripple']:.2f}%, contours of B closing "
                 f"poloidally over {k['closure']:.2f} of its range, residuals of the "
-                f"wells {k['wells']:.3f}"
+                f"wells {k['wells']:.3f}, <j_par^2> / <j_perp^2> {k['currents']:.2f}"
             )
-    design = DESIGNS[args.design]
-    reach, mpol, ntor, planes, periods = SURFACES[args.design]
+    design = KNOT
     if args.search:
-        if args.design not in STARTS:
-            parser.error(f"no search starts from {args.design}")
-        begin = time.time()
-        results = best_of(STARTS[args.design], args.search, args.seed, args.workers)
-        for found, ripple in results:
-            print(f"effective ripple {100 * ripple:.2f}%: {found}")
-        design = results[0][0]
-        print(f"{args.search} starts in {time.time() - begin:.0f} s")
+        design = search(START, args.workers, report=print)
+        print(design)
+    reach, mpol, ntor, planes, periods = SURFACE
     shares = (1 / 3, 2 / 3, 1.0)
     surfaces = [measures(design, share * reach, periods) for share in shares]
     k = surfaces[0]
     print(
-        f"{args.design}: {design.coils} coils of radius {design.radius:.3f} m, at "
-        f"least {k['clearance']:.3f} m apart; magnetic axis {k['length']:.2f} m long "
-        f"through R = {k['r_axis']:.5f} m on the midplane of phi = 0, with mirror "
-        f"ratio {k['mirror_axis']:.3f}"
+        f"{design.coils} coils of radius {design.radius:.3f} m, at least "
+        f"{k['clearance']:.3f} m apart; magnetic axis {k['length']:.2f} m long through "
+        f"R = {k['r_axis']:.5f} m on the midplane of phi = 0, with mirror ratio "
+        f"{k['mirror_axis']:.3f}"
     )
     for share, k in zip(shares, surfaces, strict=True):
         print(
-            f"surface from {100 * share * reach:.1f} cm outboard of the axis: iota "
+            f"surface from {100 * share * reach:.0f} cm outboard of the axis: iota "
             f"{abs(k['iota']):.4f} per toroidal turn, mirror ratio {k['mirror']:.3f}, "
             f"{k['room']:.3f} m from the coils, effective ripple "
             f"{100 * k['ripple']:.2f}%, contours of B closing poloidally over "
-            f"{k['closure']:.2f} of its range, residuals of the wells {k['wells']:.3f}"
+            f"{k['closure']:.2f} of its range, residuals of the wells {k['wells']:.3f}, "
+            f"<j_par^2> / <j_perp^2> {k['currents']:.2f}"
         )
     k = interior(design, reach, mpol, ntor, planes)
     for p0 in (0.0, *args.pressure):
