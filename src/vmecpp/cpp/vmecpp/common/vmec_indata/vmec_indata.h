@@ -228,6 +228,12 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Return the boundary quantities of a free-boundary run (freeb_data in
+  // Fortran VMEC): the boundary geometry, the plasma-side and vacuum-side
+  // pressures, and the cylindrical field components NESTOR computes on the
+  // vacuum side, on the solver's (zeta, theta) grid.
+  bool return_vacuum_field;
+
   // Scale of the lambda preconditioner, which multiplies the inverse of the
   // diagonal lambda stiffness. 1.0 applies the undamped inverse, values below
   // 1.0 damp the lambda step and values above 1.0 accelerate it; the default
