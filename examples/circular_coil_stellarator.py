@@ -47,13 +47,15 @@ MU0 = 4.0e-7 * np.pi
 # distances between two coils and from a coil to a surface, in metres
 OFFSETS = (0.1, 0.2, 0.3)
 CLEARANCE, ROOM = 0.15, 0.15
-STAGES = (0.1, CLEARANCE)  # least distance between two coils in each stage of a search
 MIRROR = 0.45  # largest mirror ratio on the magnetic axis
 CROSSING = 0.4  # least sine of the angle of the curve to a plane phi = const
 TRANSFORM = (0.808, 0.826)  # window of the rotational transform, within 4/5 to 5/6
 CURRENTS = 1.0e-3  # weight of <j_par^2> / <j_perp^2> in the merit of the search
 PERIODS = 60  # field periods of the lines of the search
 SAMPLES = 16  # samples of a field line to a coil
+# the least distance between two coils and the samples of a field line to a coil in
+# each stage of a search
+STAGES = ((0.1, 4), (0.1, SAMPLES), (CLEARANCE, SAMPLES))
 # the series of a design and the largest move of each of their harmonics in a search,
 # from the first harmonic (sideways from the constant)
 FIELDS = ("r", "zs", "phis", "places", "outward", "sideways")
@@ -315,54 +317,54 @@ FOUND = Design(
     p=1,
     q=3,
     per_period=14,
-    radius=0.9023109969026917,
+    radius=0.9377896443164089,
     r0=4.707288105806693,
     r=(
-        1.533221059525928,
-        -0.027744715664901724,
-        0.052788218670783024,
-        0.0021517454822648345,
-        -0.0178935249013011,
-        0.007571645660099455,
+        1.5323960789393158,
+        -0.0406892926024674,
+        0.07455530347816021,
+        0.01858591157312309,
+        -0.02082776117901634,
+        0.005372074587674574,
     ),
     zs=(
-        0.9332012321919365,
-        0.12020902723008205,
-        0.013214035326416922,
-        -0.0039180843776583495,
-        0.006502350118864186,
-        -0.020041192976094538,
+        0.9069137111308695,
+        0.14700776242023994,
+        0.011148238859898272,
+        -0.003566859016636603,
+        0.013385513451377944,
+        -0.021345977128267076,
     ),
     phis=(
-        -0.305678239113466,
-        0.059316406768648536,
-        0.0010034567037416492,
-        -0.004754024453084746,
-        0.0008651354961785472,
-        -0.0032734280697554277,
+        -0.3094265863339328,
+        0.049135399844576814,
+        0.005415262497623504,
+        -0.004589776427631119,
+        0.0020574506322804356,
+        -0.0024619575906184897,
     ),
     places=(
-        -0.0633173552571247,
-        0.020299653272750406,
-        0.005893823758857362,
-        -0.004505574204350765,
-        0.005005720109848558,
-        -0.0006117343350119747,
+        -0.061959747444562674,
+        0.02043965829756206,
+        0.0025387429495865054,
+        -0.0019128595271867203,
+        0.0045751824525452275,
+        0.0003621294774789938,
     ),
     outward=(
-        -0.036645664426565944,
-        0.03770012696918287,
-        0.0017256502980390886,
-        -0.01583861184223862,
-        -0.01096800434154286,
+        -0.028210370875658183,
+        0.08989459839877834,
+        0.025915842804757894,
+        -0.0035349357557589167,
+        -0.02700097328854056,
     ),
     sideways=(
-        -0.016440543784286055,
-        0.07552956872972653,
-        0.10093952119142387,
-        -0.013829912124295088,
-        -0.12353829315068122,
-        0.014477216620424033,
+        -0.0030449574251085187,
+        0.04341610280992811,
+        0.025986184526430936,
+        -0.04001004788445313,
+        -0.08479184959988609,
+        0.05482898320556326,
     ),
 )
 # the start of the outermost surface of FOUND outboard of its magnetic axis, in metres,
@@ -693,17 +695,17 @@ def poloidal_closure(strength, steps, turns, angles=64):
     return float((lowest_ridge - highest_valley) / (surface.max() - surface.min()))
 
 
-def measures_of(design, offsets, periods=120):
+def measures_of(design, offsets, periods=120, samples=SAMPLES):
     """For each of offsets, the axis of a design and the field line from that far
-    outboard of it over periods field periods: R of the axis, its length, the mirror
-    ratio on it and on the line, the rotational transform per toroidal turn, the
-    smallest distances between coils and from the line to a coil, :meth:`Design.gaps`,
-    the effective ripple with the length of the axis over 2 pi as major radius, the
-    share of :func:`poloidal_closure`, the sum of the mean squares of
+    outboard of it over periods field periods, samples to a coil: R of the axis, its
+    length, the mirror ratio on it and on the line, the rotational transform per
+    toroidal turn, the smallest distances between coils and from the line to a coil,
+    :meth:`Design.gaps`, the effective ripple with the length of the axis over 2 pi as
+    major radius, the share of :func:`poloidal_closure`, the sum of the mean squares of
     :func:`well_residuals`, :func:`current_ratio` and :func:`parallel_current`,
     :func:`magnetic_well`, and the data of the line."""
     field = design.loops()
-    steps = SAMPLES * design.per_period
+    steps = samples * design.per_period
     r_axis, axis, axis_strength = design.axis(field)
     length = float(np.linalg.norm(np.diff(axis, axis=0), axis=1).sum() * design.q)
     potential = periods * design.period_potential
@@ -762,18 +764,19 @@ def measures(design, offset, periods=120):
     return measures_of(design, [offset], periods)[0]
 
 
-def search_parts(design, clearance=CLEARANCE):
+def search_parts(design, clearance=CLEARANCE, samples=SAMPLES):
     """What a step of :func:`search` takes of a design, or None where it has no
     magnetic axis or a field line of it meets a coil: the wells of the lines of its
     surfaces and their residuals as :func:`ripple_residuals` gives them, the squares
     summing to the mean over the surfaces of the effective ripple to the power 3/2;
     the Pfirsch-Schlueter currents of the lines, the squares summing to CURRENTS times
     the mean of :func:`current_ratio`; and what the design exceeds its limits by,
-    relative to each limit, with clearance the least distance between two coils."""
+    relative to each limit, with clearance the least distance between two coils and
+    samples those of a field line to a coil."""
     keys, values, currents, found = [], [], [], []
     try:
         with np.errstate(invalid="ignore", divide="ignore"):
-            for k in measures_of(design, OFFSETS, PERIODS):
+            for k in measures_of(design, OFFSETS, PERIODS, samples):
                 wells, residuals = ripple_residuals(*k["line"][:5])
                 if not np.all(np.isfinite(residuals)):
                     return None
@@ -812,9 +815,11 @@ def _aligned(keys, values, base):
     return out, matched
 
 
-def search(start, workers=4, steps=300, report=None, clearance=CLEARANCE):
+def search(
+    start, workers=4, steps=300, report=None, clearance=CLEARANCE, samples=SAMPLES
+):
     """The design that Gauss-Newton steps on :func:`search_parts` reach from start, with
-    the coils held clearance apart.
+    the coils held clearance apart and the field lines sampled samples times a coil.
 
     The parameters are the harmonics of the series of start and its coil radius, each
     within REACH of its start. A limit g <= 0 enters a step linearized, as weight (g +
@@ -860,7 +865,7 @@ def search(start, workers=4, steps=300, report=None, clearance=CLEARANCE):
     x = np.array([v for name in FIELDS for v in getattr(start, name)] + [start.radius])
     low, high = x - reach, x + reach
     count = x.size
-    parts_of = functools.partial(search_parts, clearance=clearance)
+    parts_of = functools.partial(search_parts, clearance=clearance, samples=samples)
     with Pool(workers) as pool:
         here = parts_of(start)
         cost, damping, misses = merit(here), 0.03, 0
@@ -1107,8 +1112,10 @@ def main():
     design = FOUND
     if args.search:
         design = START
-        for clearance in STAGES:
-            design = search(design, args.workers, report=print, clearance=clearance)
+        for clearance, samples in STAGES:
+            design = search(
+                design, args.workers, report=print, clearance=clearance, samples=samples
+            )
         print(design)
     reach, mpol, ntor, planes, periods = SURFACE
     shares = (1 / 3, 2 / 3, 1.0)
