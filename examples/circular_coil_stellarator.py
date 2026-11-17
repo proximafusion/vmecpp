@@ -1023,7 +1023,7 @@ def wout_ripple(wout, js, periods=120, steps=96):
     return effective_ripple(strength, size, drift, weight, major)
 
 
-def w7x(offsets=(0.05, 0.1, 0.15), periods=40, steps=120):
+def w7x(offsets=(0.07, 0.14, 0.21), periods=40, steps=120):
     """The effective ripple, the share of :func:`poloidal_closure`, the sum of the mean
     squares of :func:`well_residuals` and :func:`current_ratio` of the standard
     configuration of W7-X by the routines of the designs, from the coils that SIMSOPT
@@ -1097,7 +1097,7 @@ def main():
     )
     args = parser.parse_args()
     if args.w7x:
-        for offset, k in zip((5, 10, 15), w7x(), strict=True):
+        for offset, k in zip((7, 14, 21), w7x(), strict=True):
             print(
                 f"W7-X, surface from {offset} cm outboard of the magnetic axis: "
                 f"effective ripple {100 * k['ripple']:.2f}%, contours of B closing "

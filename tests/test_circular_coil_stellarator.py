@@ -293,7 +293,7 @@ def test_search_lowers_the_merit():
 def test_design_found_against_w7x():
     # the standard configuration, whose effective ripple is below 1% in the core and
     # whose Pfirsch-Schlueter currents are a fraction of those of a tokamak
-    yardstick = ck.w7x(ck.OFFSETS)
+    yardstick = ck.w7x()
     assert all(0.004 < k["ripple"] < 0.02 for k in yardstick)
     assert all(0.2 < k["currents"] < 0.5 for k in yardstick)
     periods = ck.SURFACE[4]
