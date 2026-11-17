@@ -954,6 +954,7 @@ absl::Status vmecpp::WOutFileContents::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(ai_aux_s);
   WRITEMEMBER(ai_aux_f);
   WRITEMEMBER(nfp);
+  WRITEMEMBER(toroidal_transits);
   WRITEMEMBER(mpol);
   WRITEMEMBER(ntor);
   WRITEMEMBER(lasym);
@@ -1088,6 +1089,7 @@ absl::Status vmecpp::WOutFileContents::LoadInto(WOutFileContents& m_obj,
   READMEMBER(ai_aux_s);
   READMEMBER(ai_aux_f);
   READMEMBER(nfp);
+  READMEMBER_OPTIONAL(toroidal_transits);
   READMEMBER(mpol);
   READMEMBER(ntor);
   READMEMBER(lasym);
@@ -1552,7 +1554,7 @@ vmecpp::Threed1FreeBoundary vmecpp::ComputeThreed1FreeBoundary(
   const int previous_half = fc.ns - 3;
 
   for (int k = 0; k < num_zeta; ++k) {
-    const double zeta = 2.0 * M_PI * k / (num_zeta * s.nfp);
+    const double zeta = 2.0 * M_PI * k / (num_zeta * s.nfp_per_transit);
     for (int l = 0; l < num_theta; ++l) {
       // fast-poloidal within-surface index, and the fast-toroidal one Nestor
       // hands its results back in
@@ -2936,7 +2938,7 @@ void vmecpp::RecomputeBSubSFromRadialForceBalance(
         value(kl, column) = poloidal * toroidal;
         dtheta(kl, column) = mode.m * (mode.sine_theta ? cm : -sm) * toroidal;
         dzeta(kl, column) =
-            mode.n * s.nfp * poloidal * (mode.sine_zeta ? cn : -sn);
+            mode.n * s.nfp_per_transit * poloidal * (mode.sine_zeta ? cn : -sn);
       }
     }
   }
@@ -4885,6 +4887,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   PadVector(wout.ai_aux_f, kNdfmax, 0.0);
 
   wout.nfp = indata.nfp;
+  wout.toroidal_transits = indata.toroidal_transits;
   wout.mpol = indata.mpol;
   wout.ntor = indata.ntor;
   wout.lasym = indata.lasym;
@@ -5679,7 +5682,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         }
         wout.bsubsmns(mn, jF) =
             poloidal_ghost ? projection / (norm * m * (n == 0 ? 1.0 : 2.0))
-                           : -projection / (norm * n * s.nfp);
+                           : -projection / (norm * n * s.nfp_per_transit);
       }
       wout.bsubsmns(mn, 0) =
           fc.ns < 4 ? wout.bsubsmns(mn, 1)
@@ -5866,7 +5869,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
 
       for (int mn = 0; mn < s.mnmax_nyq; ++mn) {
         const int m = wout.xm_nyq[mn];
-        const double n_nfp = static_cast<double>(wout.xn_nyq[mn]);
+        const double n_nfp =
+            static_cast<double>(wout.xn_nyq[mn]) / s.toroidal_transits;
 
         const double t1 = wout.bsubsmns(mn, j_f);
         double t2 = 0.0;

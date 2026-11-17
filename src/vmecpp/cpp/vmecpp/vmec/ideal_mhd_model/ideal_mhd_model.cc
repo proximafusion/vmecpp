@@ -159,7 +159,7 @@ IdealMhdModel::IdealMhdModel(
       m_fb_vac_(m_fb_vac),
       m_vacuum_pressure_state_(*m_vacuum_pressure_state),
 #ifdef VMECPP_USE_FFTX
-      fft_plans_(s->nZeta, s->nfp, s->mpol),
+      fft_plans_(s->nZeta, s->nfp_per_transit, s->mpol),
 #endif
       signOfJacobian(signOfJacobian),
       nvacskip(nvacskip),
@@ -2195,7 +2195,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
   // lambda forces in applyLambdaPreconditioner.
   for (int jF = std::max(jMin, r_.nsMinF); jF < r_.nsMaxFIncludingLcfs; ++jF) {
     for (int n = 0; n < s_.ntor + 1; ++n) {
-      double tnn = n * s_.nfp * n * s_.nfp;
+      double tnn = n * s_.nfp_per_transit * n * s_.nfp_per_transit;
 
       for (int m = 0; m < s_.mpol; ++m) {
         if (m == 0 && n == 0) {
@@ -2210,7 +2210,7 @@ void IdealMhdModel::updateLambdaPreconditioner() {
         double pwr = std::min(tmm / (kLambdaHighMDampingReferenceM *
                                      kLambdaHighMDampingReferenceM),
                               kLambdaHighMDampingMaxPower);
-        double tmn = 2.0 * m * n * s_.nfp;
+        double tmn = 2.0 * m * n * s_.nfp_per_transit;
 
         // diagonal of the second variation of the magnetic energy with
         // respect to lambda_mn, with flux-surface-averaged metric coefficients
@@ -3726,10 +3726,12 @@ void IdealMhdModel::assembleRZPreconditioner() {
           // diagonal: jF-th forces full-grid pos
           dr[idx_mn] = -(ard[(jF - r_.nsMinF) * 2 + m_parity] +
                          brd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
+                         cxd[jF - r_.nsMinF] * n * s_.nfp_per_transit * n *
+                             s_.nfp_per_transit);
           dz[idx_mn] = -(azd[(jF - r_.nsMinF) * 2 + m_parity] +
                          bzd[(jF - r_.nsMinF) * 2 + m_parity] * m * m +
-                         cxd[jF - r_.nsMinF] * n * s_.nfp * n * s_.nfp);
+                         cxd[jF - r_.nsMinF] * n * s_.nfp_per_transit * n *
+                             s_.nfp_per_transit);
 
           // sub-diagonal: half-grid pos inside jF-th forces full-grid point
           if (jF > 0) {
@@ -4060,7 +4062,7 @@ void IdealMhdModel::applyLambdaPreconditioner(FourierForces& m_decomposed_f) {
     const double step_scale = lambda_preconditioner_scale_ /
                               (constants_.lamscale * constants_.lamscale);
     for (int n = 1; n <= s_.ntor; ++n) {
-      const double tnn = n * s_.nfp * n * s_.nfp;
+      const double tnn = n * s_.nfp_per_transit * n * s_.nfp_per_transit;
       for (int jF = 1; jF < ns; ++jF) {
         const double a_in = tnn * m_h_.lambda_b_half[jF];
         const double a_out = tnn * m_h_.lambda_b_half[jF + 1];

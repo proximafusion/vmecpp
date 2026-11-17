@@ -603,6 +603,9 @@ class DifferentiableVmec:
                 "product-basis geometry API for asymmetric snapshots"
             )
             raise ValueError(error_message)
+        if self.vmec_input.toroidal_transits != 1:
+            error_message = "DifferentiableVmec currently requires toroidal_transits=1"
+            raise ValueError(error_message)
         if not isinstance(self.vmec_input.mpol, int) or not isinstance(
             self.vmec_input.ntor, int
         ):
