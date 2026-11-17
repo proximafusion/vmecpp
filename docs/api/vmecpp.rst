@@ -13,3 +13,4 @@ Submodules
    :maxdepth: 4
 
    vmecpp.simsopt_compat
+   vmecpp.joint
