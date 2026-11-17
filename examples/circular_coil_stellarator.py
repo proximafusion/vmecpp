@@ -423,37 +423,39 @@ def magnetic_axis(field, potential, steps, middle, width):
     return r_axis, points, strength
 
 
-def drift_line(field, start, normal, potential, steps, spacing=1.0e-5):
-    """The field line through start with the gradient of the flux surface label carried
-    along it from normal: its points at steps uniform steps of the potential, the
-    field strength, the size of that gradient and the radial drift (b x grad B) . grad
-    psi / B at them."""
+def drift_lines(field, starts, normals, potential, steps, spacing=1.0e-5):
+    """The field lines through starts, [line, 3], with the gradient of the flux surface
+    label carried along each from its row of normals: their points at steps uniform
+    steps of the potential, [line, steps + 1, 3], and the field strength, the size of
+    that gradient and the radial drift (b x grad B) . grad psi / B at them, [line,
+    steps + 1]."""
     h = potential / steps
-    x = np.asarray(start, dtype=float)
-    g = np.asarray(normal, dtype=float)
+    x = np.array(starts, dtype=float).reshape(-1, 3)
+    g = np.array(normals, dtype=float).reshape(-1, 3)
+    count = len(x)
     stencil = np.concatenate(
         [np.zeros((1, 3)), spacing * np.eye(3), -spacing * np.eye(3)]
     )
-    strength, size, drift = (np.empty(steps + 1) for _ in range(3))
-    points = np.empty((steps + 1, 3))
+    strength, size, drift = (np.empty((count, steps + 1)) for _ in range(3))
+    points = np.empty((count, steps + 1, 3))
 
     def slopes(x, g):
-        b = field.b(x[None] + stencil)
-        b2 = np.einsum("ij,ij->i", b, b)
-        v = b / b2[:, None]
+        b = field.b((x[:, None, :] + stencil[None]).reshape(-1, 3)).reshape(count, 7, 3)
+        b2 = np.einsum("lij,lij->li", b, b)
+        v = b / b2[..., None]
         # the label is constant along the line, so its gradient obeys g' = -(grad v)^T g
-        along = v @ g
-        dg = -(along[1:4] - along[4:7]) / (2.0 * spacing)
+        along = np.einsum("lij,lj->li", v, g)
+        dg = -(along[:, 1:4] - along[:, 4:7]) / (2.0 * spacing)
         size_b = np.sqrt(b2)
-        grad_b = (size_b[1:4] - size_b[4:7]) / (2.0 * spacing)
-        return v[0], dg, size_b[0], b[0], grad_b
+        grad_b = (size_b[:, 1:4] - size_b[:, 4:7]) / (2.0 * spacing)
+        return v[:, 0], dg, size_b[:, 0], b[:, 0], grad_b
 
     for i in range(steps + 1):
         v1, g1, size_b, b, grad_b = slopes(x, g)
-        g = g - (g @ b) / (b @ b) * b
-        strength[i], size[i] = size_b, np.linalg.norm(g)
-        drift[i] = np.cross(b, grad_b) @ g / size_b**2
-        points[i] = x
+        g = g - (np.sum(g * b, axis=1) / np.sum(b * b, axis=1))[:, None] * b
+        strength[:, i], size[:, i] = size_b, np.linalg.norm(g, axis=1)
+        drift[:, i] = np.sum(np.cross(b, grad_b) * g, axis=1) / size_b**2
+        points[:, i] = x
         if i == steps:
             break
         v2, g2, *_ = slopes(x + 0.5 * h * v1, g + 0.5 * h * g1)
@@ -462,6 +464,12 @@ def drift_line(field, start, normal, potential, steps, spacing=1.0e-5):
         x = x + h / 6.0 * (v1 + 2.0 * v2 + 2.0 * v3 + v4)
         g = g + h / 6.0 * (g1 + 2.0 * g2 + 2.0 * g3 + g4)
     return points, strength, size, drift
+
+
+def drift_line(field, start, normal, potential, steps, spacing=1.0e-5):
+    """One line of :func:`drift_lines`."""
+    lines = drift_lines(field, start, normal, potential, steps, spacing)
+    return tuple(values[0] for values in lines)
 
 
 def rotational_transform(field, r_axis, at, period):
@@ -683,9 +691,9 @@ def poloidal_closure(strength, steps, turns, angles=64):
     return float((lowest_ridge - highest_valley) / (surface.max() - surface.min()))
 
 
-def measures(design, offset, periods=120):
-    """The axis of a design and the field line from offset outboard of it over periods
-    field periods: R of the axis, its length, the mirror ratio on it and on the line,
+def measures_of(design, offsets, periods=120):
+    """For each of offsets, the axis of a design and the field line from that far
+    outboard of it over periods field periods: R of the axis, its length, the mirror ratio on it and on the line,
     the rotational transform per toroidal turn, the smallest distances between coils
     and from the line to a coil, :meth:`Design.gaps`, the effective ripple with the
     length of the axis over 2 pi as major radius, the share of
@@ -697,42 +705,59 @@ def measures(design, offset, periods=120):
     r_axis, axis, axis_strength = design.axis(field)
     length = float(np.linalg.norm(np.diff(axis, axis=0), axis=1).sum() * design.q)
     potential = periods * design.period_potential
-    # the surface is normal to e_R where it crosses the line phi = 0, Z = 0
-    points, strength, size, drift = drift_line(
-        field, [r_axis + offset, 0.0, 0.0], [1.0, 0.0, 0.0], potential, periods * steps
+    # the surfaces are normal to e_R where they cross the line phi = 0, Z = 0
+    lines = drift_lines(
+        field,
+        [[r_axis + offset, 0.0, 0.0] for offset in offsets],
+        [[1.0, 0.0, 0.0]] * len(offsets),
+        potential,
+        periods * steps,
     )
-    if not np.all(np.isfinite(strength)):
-        message = "the field line meets a coil"
-        raise ValueError(message)
     step = potential / (periods * steps)
-    weight = step / strength**2
     major = length / (2.0 * np.pi)
+    clearance, gaps = field.clearance(), design.gaps(field)
 
     def mirror(b):
         return float((b.max() - b.min()) / (b.max() + b.min()))
 
-    iota = float(rotational_transform(field, r_axis, points[::steps], design.period))
-    return {
-        "r_axis": r_axis,
-        "length": length,
-        "mirror_axis": mirror(axis_strength),
-        "mirror": mirror(strength),
-        "iota": iota,
-        "clearance": field.clearance(),
-        "gaps": design.gaps(field),
-        "room": float(field.distance(points[::4]).min()),
-        "ripple": effective_ripple(strength, size, drift, weight, major),
-        "closure": poloidal_closure(
-            strength, steps, iota * design.period / (2.0 * np.pi)
-        ),
-        "wells": float(
-            sum(np.mean(v**2) for v in well_residuals(strength, steps).values())
-        ),
-        "currents": current_ratio(strength, size, drift, step),
-        "current": parallel_current(strength, size, drift, step),
-        "well": magnetic_well(strength, axis_strength),
-        "line": (strength, size, drift, weight, major, steps),
-    }
+    found = []
+    for points, strength, size, drift in zip(*lines, strict=True):
+        if not np.all(np.isfinite(strength)):
+            message = "the field line meets a coil"
+            raise ValueError(message)
+        weight = step / strength**2
+        iota = float(
+            rotational_transform(field, r_axis, points[::steps], design.period)
+        )
+        found.append(
+            {
+                "r_axis": r_axis,
+                "length": length,
+                "mirror_axis": mirror(axis_strength),
+                "mirror": mirror(strength),
+                "iota": iota,
+                "clearance": clearance,
+                "gaps": gaps,
+                "room": float(field.distance(points[::4]).min()),
+                "ripple": effective_ripple(strength, size, drift, weight, major),
+                "closure": poloidal_closure(
+                    strength, steps, iota * design.period / (2.0 * np.pi)
+                ),
+                "wells": float(
+                    sum(np.mean(v**2) for v in well_residuals(strength, steps).values())
+                ),
+                "currents": current_ratio(strength, size, drift, step),
+                "current": parallel_current(strength, size, drift, step),
+                "well": magnetic_well(strength, axis_strength),
+                "line": (strength, size, drift, weight, major, steps),
+            }
+        )
+    return found
+
+
+def measures(design, offset, periods=120):
+    """:func:`measures_of` of one offset."""
+    return measures_of(design, [offset], periods)[0]
 
 
 def search_parts(design):
@@ -746,8 +771,7 @@ def search_parts(design):
     keys, values, currents, found = [], [], [], []
     try:
         with np.errstate(invalid="ignore", divide="ignore"):
-            for offset in OFFSETS:
-                k = measures(design, offset, PERIODS)
+            for k in measures_of(design, OFFSETS, PERIODS):
                 wells, residuals = ripple_residuals(*k["line"][:5])
                 if not np.all(np.isfinite(residuals)):
                     return None
