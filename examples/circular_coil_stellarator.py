@@ -596,7 +596,7 @@ def current_ratio(strength, size, drift, step):
 
 
 def parallel_current(strength, size, drift, step):
-    """h of :func:`current_ratio` at the samples of a field line, scaled so that its
+    """The h of :func:`current_ratio` at the samples of a field line, scaled so that its
     squares sum to the ratio."""
     rate = -2.0 * drift / strength**3
     h = step * np.concatenate([[0.0], np.cumsum(0.5 * (rate[1:] + rate[:-1]))])
