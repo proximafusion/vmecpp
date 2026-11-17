@@ -22,6 +22,7 @@ class FourierForces : public FourierCoeffs {
 
   void zeroZForceForM1();
   void residuals(Eigen::Vector3d& fRes, bool includeEdgeRZ) const;
+  double lcfsRZResidual() const;
 
   // appropriately-named variables for the data in FourierCoeffs
   std::span<double> frcc;

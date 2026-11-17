@@ -278,6 +278,12 @@ int VacuumMpol(const vmecpp::VmecINDATA& indata) {
 int VacuumNtor(const vmecpp::VmecINDATA& indata) {
   return std::max(indata.vacuum_ntor, indata.ntor);
 }
+// Field periods of the vacuum problem. On the axisymmetric grid the toroidal
+// integral is a sum over images around the whole torus, so the vacuum problem
+// has one field period.
+int VacuumNfp(const vmecpp::VmecINDATA& indata, const vmecpp::Sizes& s) {
+  return (s.nZeta == 1) ? 1 : indata.nfp;
+}
 }  // namespace
 
 Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
@@ -285,7 +291,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            IterationCallback iteration_callback)
     : indata_(indata),
       s_(indata_),
-      vacuum_s_(indata_.lasym, indata_.nfp, VacuumMpol(indata_),
+      vacuum_s_(indata_.lasym, VacuumNfp(indata_, s_), VacuumMpol(indata_),
                 VacuumNtor(indata_), s_.ntheta, s_.nZeta, VacuumMpol(indata_),
                 VacuumNtor(indata_)),
       t_(&s_),
@@ -482,6 +488,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
         fc_.force_residual_lambda.reserve(cap);
         fc_.mhd_energy.reserve(cap);
         fc_.delbsq.reserve(cap);
+        fc_.lcfs_force_timetrace.reserve(cap);
         fc_.restart_reasons.reserve(cap);
       }
 
@@ -1689,8 +1696,10 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
     if (fc_.lfreeb) {
       // delbsq is only available on the LCFS thread
       fc_.delbsq.push_back(m_[thread_id]->get_delbsq());
+      fc_.lcfs_force_timetrace.push_back(fc_.lcfs_force);
     } else {
       fc_.delbsq.push_back(0.0);
+      fc_.lcfs_force_timetrace.push_back(0.0);
     }
     fc_.restart_reasons.push_back(fc_.restart_reason);
     fc_.mhd_energy.push_back(h_.mhdEnergy);
