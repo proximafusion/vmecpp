@@ -335,24 +335,16 @@ def interior_input(knot, rb, zb, axis, flux, planes):
     )
 
 
-def knotatron(name="trefoil"):
-    """The smallest coil distance, the traced axis and its iota, the traced surface and
-    the fixed-boundary input of the interior of the knot name."""
-    knot = KNOTS[name]
-    turned, field = coil_field(knot)
-    points = [c.curve.gamma() for c in turned]
-    spacing = min(
-        np.linalg.norm(points[i][:, None] - points[j][None], axis=-1).min()
-        for i in range(knot.coils)
-        for j in range(i + 1, knot.coils)
-    )
+def interior(field, knot):
+    """The magnetic axis and the flux surface traced in field, their rotational
+    transform, the toroidal flux of the surface and the fixed-boundary input of its
+    interior."""
     lines = FieldLines(field, knot.period)
     r_axis, axis, iota_axis = magnetic_axis(knot, lines)
     planes = np.arange(knot.planes) * knot.period / knot.planes
     rb, zb, iota_surface, misfit = flux_surface(knot, lines, r_axis)
     flux = toroidal_flux(lines, rb, zb, axis, planes)
     return {
-        "spacing": spacing,
         "r_axis": r_axis,
         "axis": axis,
         "iota_axis": iota_axis,
@@ -362,6 +354,20 @@ def knotatron(name="trefoil"):
         "flux": flux,
         "input": interior_input(knot, rb, zb, axis, flux, planes),
     }
+
+
+def knotatron(name="trefoil"):
+    """The smallest coil distance and the :func:`interior` of the knot name in the field
+    of its coils."""
+    knot = KNOTS[name]
+    turned, field = coil_field(knot)
+    points = [c.curve.gamma() for c in turned]
+    spacing = min(
+        np.linalg.norm(points[i][:, None] - points[j][None], axis=-1).min()
+        for i in range(knot.coils)
+        for j in range(i + 1, knot.coils)
+    )
+    return {"spacing": spacing, **interior(field, knot)}
 
 
 def main():
