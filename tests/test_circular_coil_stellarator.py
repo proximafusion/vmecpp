@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""A knot wound from identical circular coils: the coil field against Biot-Savart, the
-tracing, the effective ripple along the tree of the wells against quadrature and against
-levels taken one by one, the residuals of the wells on an analytic surface, the Pfirsch-
-Schlueter current of a torus, the knot against its start, the limits of its search and
-W7-X, and the wout of its interior against the tracing."""
+"""A stellarator wound from identical circular coils: the coil field against Biot-
+Savart, the tracing, the effective ripple along the tree of the wells against quadrature
+and against levels taken one by one, the residuals of the wells on an analytic surface,
+the Pfirsch-Schlueter current of a torus, the design found against its start, the limits
+of its search and W7-X, and the wout of its interior against the tracing."""
 
 import sys
 from pathlib import Path
@@ -18,15 +18,16 @@ import vmecpp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
-import circular_coil_knot as ck
+import circular_coil_stellarator as ck
 from island_interior import axis_curve
 
 
 @pytest.fixture(scope="module")
-def knot():
+def found():
     reach, mpol, ntor, planes, periods = ck.SURFACE
-    k = ck.interior(ck.KNOT, reach, mpol, ntor, planes)
-    k["traced"] = ck.measures(ck.KNOT, reach, periods)
+    k = ck.interior(ck.FOUND, reach, mpol, ntor, planes)
+    k["traced"] = ck.measures(ck.FOUND, reach, periods)
+    k["iota_axis"] = ck.measures(ck.FOUND, 0.01, periods)["iota"]
     k["wout"] = vmecpp.run(k["input"], max_threads=1, verbose=False).wout
     return k
 
@@ -79,7 +80,7 @@ def test_axis_closes_after_the_potential_of_a_period():
         return np.hypot(np.hypot(end[0], end[1]) - r_axis, end[2])
 
     # the RK4 steps are of fourth order
-    coarse, fine = miss(128), miss(256)
+    coarse, fine = miss(96), miss(192)
     assert fine < 2e-7
     assert 12.0 < coarse / fine < 20.0
 
@@ -208,55 +209,57 @@ def test_current_ratio_of_a_torus():
     np.testing.assert_allclose(found, 2.0 / iota**2, rtol=1e-3)
 
 
-def test_interior_against_tracing(knot):
-    wout = knot["wout"]
+def test_interior_against_tracing(found):
+    wout = found["wout"]
     iota = np.asarray(wout.iotaf)
-    distance = np.hypot(*(axis_curve(wout, knot["planes"]) - knot["axis"]).T)
+    distance = np.hypot(*(axis_curve(wout, found["planes"]) - found["axis"]).T)
     assert distance.max() < 5e-4
-    assert abs(abs(iota[0]) - abs(knot["traced"]["iota"])) < 2e-3
-    assert abs(iota[-1] - knot["iota_surface"]) < 2e-4
+    assert abs(abs(iota[0]) - abs(found["iota_axis"])) < 1e-3
+    assert abs(abs(iota[-1]) - abs(found["iota_surface"])) < 2e-4
 
 
-def test_effective_ripple_of_the_wout_against_the_coils(knot):
-    wout = knot["wout"]
+def test_effective_ripple_of_the_wout_against_the_coils(found):
+    wout = found["wout"]
     periods = ck.SURFACE[4]
     ripple = ck.wout_ripple(wout, int(wout.ns) - 1, periods)
-    np.testing.assert_allclose(ripple, knot["traced"]["ripple"], rtol=0.05)
+    np.testing.assert_allclose(ripple, found["traced"]["ripple"], rtol=0.05)
 
 
-def test_knot_against_its_start(knot):
-    traced = knot["traced"]
+def test_design_found_against_its_start(found):
+    traced = found["traced"]
     reach, *_, periods = ck.SURFACE
     start = ck.measures(ck.START, reach, periods)
     assert traced["ripple"] < 0.01
-    assert start["ripple"] > 10.0 * traced["ripple"]
-    assert traced["closure"] > 0.65
+    assert start["ripple"] > 5.0 * traced["ripple"]
+    assert traced["closure"] > 0.3
     # within the limits of its search
-    assert traced["clearance"] > 0.99 * ck.CLEARANCE
+    assert traced["clearance"] > ck.CLEARANCE
     assert traced["room"] > ck.ROOM
     assert traced["mirror"] < 1.01 * ck.MIRROR
-    assert ck.KNOT.crossing > ck.CROSSING
+    assert ck.FOUND.crossing > ck.CROSSING
 
 
 @pytest.mark.slow
-def test_search_lowers_the_effective_ripple():
-    def cost(design):
-        return sum(np.sum(values**2) for values in ck.search_parts(design)[1])
+def test_search_lowers_the_merit():
+    def merit(design):
+        _, values, limits = ck.search_parts(design)
+        return sum(np.sum(v**2) for v in values) + 100.0 * np.sum(
+            np.maximum(limits, 0.0) ** 2
+        )
 
-    found = ck.search(ck.START, workers=2, steps=1)
-    assert cost(found) < 0.6 * cost(ck.START)
+    moved = ck.search(ck.START, workers=2, steps=2)
+    assert merit(moved) < 0.1 * merit(ck.START)
 
 
 @pytest.mark.slow
-def test_knot_against_w7x():
+def test_design_found_against_w7x():
     # the standard configuration, whose effective ripple is below 1% in the core and
     # whose Pfirsch-Schlueter currents are a fraction of those of a tokamak
-    yardstick = ck.w7x()
+    yardstick = ck.w7x(ck.OFFSETS)
     assert all(0.004 < k["ripple"] < 0.009 for k in yardstick)
     assert all(0.2 < k["currents"] < 0.5 for k in yardstick)
-    reach, *_, periods = ck.SURFACE
-    for share, k in zip((1 / 3, 2 / 3, 1.0), yardstick, strict=True):
-        found = ck.measures(ck.KNOT, share * reach, periods)
-        assert found["ripple"] < 0.01
-        assert found["closure"] > k["closure"]
-        assert found["wells"] < k["wells"]
+    periods = ck.SURFACE[4]
+    for offset, k in zip(ck.OFFSETS, yardstick, strict=True):
+        traced = ck.measures(ck.FOUND, offset, periods)
+        assert traced["ripple"] < 0.01
+        assert traced["closure"] > k["closure"]

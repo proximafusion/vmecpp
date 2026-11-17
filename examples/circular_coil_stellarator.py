@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""A knot wound from identical circular coils, searched for a quasi-isodynamic field and
-solved as a VMEC++ domain over two transits.
+"""A stellarator wound from identical circular coils, searched for a quasi-isodynamic
+field and solved with VMEC++.
 
 Every coil is the same planar circle with the same current. A design is the curve the
 coils are centred on, their places along it and the law by which their axes tilt from
-its tangent. ``star`` winds a (p, q) knot whose field periods are plane curves, on which
-the radial drift along a field line is odd about the middle of a period. In the vacuum
+its tangent. ``star`` winds a curve whose field periods are plane curves, on which the
+radial drift along a field line is odd about the middle of a period. In the vacuum
 field of the coils the magnetic scalar potential is the Boozer toroidal angle, so a
 field line traced in steps of the potential gives the field strength in Boozer
 coordinates and the bounce integrals of the effective ripple of Nemov et al., Phys.
@@ -43,21 +43,21 @@ import vmecpp
 MU0 = 4.0e-7 * np.pi
 # of the search: the starts of its surfaces outboard of the magnetic axis and the least
 # distances between two coils and from a coil to a surface, in metres
-OFFSETS = (0.02, 0.04, 0.06)
-CLEARANCE, ROOM = 0.07, 0.2
+OFFSETS = (0.05, 0.1, 0.15)
+CLEARANCE, ROOM = 0.07, 0.15
 MIRROR = 0.25  # largest mirror ratio on a surface
 CROSSING = 0.4  # least sine of the angle of the curve to a plane phi = const
-PERIODS = 45  # field periods of the lines of the search
+PERIODS = 60  # field periods of the lines of the search
 # the series of a design and the largest move of each of their harmonics in a search,
 # from the first harmonic (sideways from the constant)
 FIELDS = ("r", "zs", "phis", "places", "outward", "sideways")
 REACH = {
-    "r": (0.3, 0.15, 0.15, 0.08, 0.08, 0.05, 0.05, 0.05),
-    "zs": (0.4, 0.2, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05),
-    "phis": (0.2, 0.1, 0.06, 0.06, 0.04, 0.04, 0.04, 0.04),
-    "places": (0.04, 0.03, 0.02, 0.015, 0.01, 0.01, 0.01, 0.01),
-    "outward": (0.5,) * 8,
-    "sideways": (0.5,) * 8,
+    "r": (0.3, 0.15, 0.15, 0.08, 0.08, 0.05),
+    "zs": (0.4, 0.2, 0.1, 0.05, 0.05, 0.05),
+    "phis": (0.2, 0.1, 0.06, 0.06, 0.04, 0.04),
+    "places": (0.04, 0.03, 0.02, 0.015, 0.01, 0.01),
+    "outward": (0.5,) * 6,
+    "sideways": (0.5,) * 6,
 }
 
 
@@ -240,11 +240,13 @@ class Design:
 
 
 def star(p, q, per_period, radius, inner, height, slow, mirror, order=6):
-    """A (p, q) knot whose field periods are plane curves, wound with coils that are
-    densest where it passes from one plane to the next.
+    """A curve of q field periods that closes after p toroidal turns, each period a
+    plane curve, wound with coils that are densest where it passes from one plane to the
+    next.
 
-    The curve is a wave on the faces of the star prism {q / p} about the cylinder of
-    radius inner. With v from -pi at one edge of a face to pi at the next,
+    The curve is a wave on the faces of the prism {q / p} about the cylinder of radius
+    inner, a regular prism for p = 1 and a star prism, on which it is a knot, for p >
+    1. With v from -pi at one edge of a face to pi at the next,
 
         y = half (v + slow sin v) / pi,  Z = height sin v,
         R = hypot(inner, y),  phi = phi_c + atan(y / inner),
@@ -282,80 +284,70 @@ def star(p, q, per_period, radius, inner, height, slow, mirror, order=6):
     return dataclasses.replace(curve, places=places)
 
 
-# the start of the search: plane periods on the seven-pointed star prism, with 16 coils
-# to a period
-START = star(2, 7, 16, 0.35, 1.87, 0.85, 0.15, 0.2).padded((8, 8, 8, 8, 7, 8))
+# the start of the search: plane periods on the faces of a square prism 3 m from the
+# axis, each a wave that meets the edges at 30 degrees, with 12 coils to a period
+START = star(1, 4, 12, 0.5, 3.0, 3.0 * np.tan(np.pi / 6.0) / np.pi, 0.15, 0.2).padded(
+    (6, 6, 6, 6, 5, 6)
+)
 # what the search finds from it
-KNOT = Design(
-    p=2,
-    q=7,
-    per_period=16,
-    radius=0.5103305045591595,
-    r0=2.3194039415596643,
+FOUND = Design(
+    p=1,
+    q=4,
+    per_period=12,
+    radius=0.65,
+    r0=3.4836101298949993,
     r=(
-        0.5746854038767639,
-        0.08943452158041972,
-        -0.009521727939233629,
-        0.0022507154166204303,
-        -0.006845914653047585,
-        0.006924636956566999,
-        -0.0006747235388431682,
-        -0.0009008969784760006,
+        0.5431690400842657,
+        0.11407373134465718,
+        0.02386910125693441,
+        -0.010194442993854648,
+        0.0032129417210208615,
+        0.001482565293107844,
     ),
     zs=(
-        -0.8157591855169305,
-        0.000924617986865255,
-        0.004824596911586602,
-        -0.010451359393818279,
-        0.011870237253610859,
-        -0.007690498375994094,
-        0.00021499552312801898,
-        -0.0028373285680807644,
+        0.5087214666182466,
+        0.024081591992821814,
+        -0.0016769825393410792,
+        -0.009137259566010561,
+        -0.003228056148084596,
+        0.008622528286778373,
     ),
     phis=(
-        -0.1822389494380288,
-        0.029111293656538383,
-        0.001747926364117668,
-        0.002712020154072714,
-        -0.0006945595808703618,
-        -0.003379360777696876,
-        0.003449629045532871,
-        -0.0016617323409179171,
+        -0.10660949164687988,
+        0.012655706107805066,
+        0.00031853610776449293,
+        0.0017250379501069341,
+        0.008399604085020045,
+        -0.002576266827526162,
     ),
     places=(
-        -0.023186565225087694,
-        -0.0071682545279573165,
-        0.0014633705254923604,
-        0.001409899184915359,
-        0.0006573699749262745,
-        -0.0014792979967016096,
-        0.0009140052903770868,
-        -0.0006535407365076311,
+        0.0004293910552647639,
+        -0.003254454002712019,
+        0.003289812355135034,
+        -0.0001983459007245479,
+        0.0016909141121022899,
+        0.0014443221076198783,
     ),
     outward=(
-        -0.03265459129038055,
-        -0.38855940011183554,
-        0.18166527395711357,
-        -0.05317630033741539,
-        0.008196345081221742,
-        0.03591850885479429,
-        -0.014030061809845163,
+        -0.02030169125400309,
+        -0.06197542270031727,
+        0.0384043970080708,
+        0.07030430128373531,
+        0.12148963199458629,
     ),
     sideways=(
-        0.07884227271326105,
-        -0.025541696708615984,
-        0.15892817514212493,
-        0.02738110692186823,
-        0.00674640826129777,
-        -0.0355163730231677,
-        0.02086331864409137,
-        0.008239884507750607,
+        0.0233465433409931,
+        0.02937519154030511,
+        -0.09813123304294499,
+        -0.010450914782526183,
+        0.05201175990496965,
+        0.07023362508386471,
     ),
 )
-# the start of the outermost surface of the knot outboard of its magnetic axis, in
-# metres, mpol, ntor and the planes per period of its interior, and the field periods
-# of the lines of its measures
-SURFACE = (0.06, 10, 28, 96, 90)
+# the start of the outermost surface of FOUND outboard of its magnetic axis, in metres,
+# mpol, ntor and the planes per period of its interior, and the field periods of the
+# lines of its measures
+SURFACE = (0.15, 10, 16, 64, 120)
 
 
 def trace(field, start, potential, steps):
@@ -651,7 +643,7 @@ def poloidal_closure(strength, steps, turns, angles=64):
     return float((lowest_ridge - highest_valley) / (surface.max() - surface.min()))
 
 
-def measures(design, offset, periods=90):
+def measures(design, offset, periods=120):
     """The axis of a design and the field line from offset outboard of it over periods
     field periods: R of the axis, its length, the mirror ratio on it and on the line,
     the rotational transform per toroidal turn, the smallest distances between coils
@@ -884,7 +876,7 @@ def interior(design, offset, mpol=8, ntor=24, planes=72):
     }
 
 
-def wout_ripple(wout, js, periods=90, steps=96):
+def wout_ripple(wout, js, periods=120, steps=96):
     """The effective ripple of the half-grid surface js of a wout, from the field line
     through theta = 0 at phi = 0 over periods field periods, with the length of the
     magnetic axis over 2 pi as major radius."""
@@ -947,7 +939,7 @@ def wout_ripple(wout, js, periods=90, steps=96):
 def w7x(offsets=(0.05, 0.1, 0.15), periods=40, steps=120):
     """The effective ripple, the share of :func:`poloidal_closure`, the sum of the mean
     squares of :func:`well_residuals` and :func:`current_ratio` of the standard
-    configuration of W7-X by the routines of the knot, from the coils that SIMSOPT
+    configuration of W7-X by the routines of the designs, from the coils that SIMSOPT
     ships, on the surfaces from offsets outboard of its axis in the bean plane, with
     5.5 m as major radius."""
     try:  # SIMSOPT 1.11 and later
@@ -1019,7 +1011,7 @@ def main():
                 f"poloidally over {k['closure']:.2f} of its range, residuals of the "
                 f"wells {k['wells']:.3f}, <j_par^2> / <j_perp^2> {k['currents']:.2f}"
             )
-    design = KNOT
+    design = FOUND
     if args.search:
         design = search(START, args.workers, report=print)
         print(design)
