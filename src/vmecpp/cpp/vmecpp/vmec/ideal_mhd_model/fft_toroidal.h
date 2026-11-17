@@ -35,17 +35,17 @@ namespace vmecpp {
 // Sizing:
 //   n     = nZeta  (number of toroidal grid points, transform length)
 //   nhalf = n/2+1  (half-spectrum size used by c2r and r2c plans)
-//   nfp   = number of toroidal field periods (factor in derivative spectra)
+//   nfp_per_transit = field periods per toroidal transit
 class ToroidalFftPlans {
  public:
   // Create c2r (synthesis) and r2c (analysis) FFTX kernels for transforms of
   // length n.
   // n is the number of toroidal grid points (Sizes::nZeta).
-  // nfp is the number of field periods (Sizes::nfp).
+  // nfp_per_transit is Sizes::nfp_per_transit.
   // mpol is the number of poloidal modes; used to size the "full" batched
   // kernels that pack 12 transforms per m for all m in [0, mpol) into one
   // call.
-  ToroidalFftPlans(int n, int nfp, int mpol);
+  ToroidalFftPlans(int n, double nfp_per_transit, int mpol);
   ~ToroidalFftPlans();
 
   // Non-copyable, non-movable (kernel pointers hold FFTX resources).
@@ -60,8 +60,8 @@ class ToroidalFftPlans {
   // Half-spectrum size: n/2 + 1 (input size for c2r, output size for r2c).
   int nhalf;
 
-  // Number of field periods.
-  int nfp;
+  // Number of field periods per toroidal transit.
+  double nfp_per_transit;
 
   // Number of poloidal modes (set at construction).
   int mpol;

@@ -72,6 +72,10 @@ class VmecINDATA {
   // number of toroidal field periods (=1 for Tokamak)
   int nfp;
 
+  // Toroidal transits after which the domain closes; harmonic n has toroidal
+  // mode number n nfp / toroidal_transits in phi. Fixed boundary only.
+  int toroidal_transits;
+
   // number of poloidal Fourier harmonics; m = 0, 1, ..., (mpol-1)
   int mpol;
 
