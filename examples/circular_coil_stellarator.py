@@ -1153,16 +1153,21 @@ def main():
         iota = np.asarray(wout.iotaf)
         ns = int(wout.ns)
         ripple = [wout_ripple(wout, js, periods) for js in (ns // 4, ns // 2, ns - 1)]
-        mercier = np.asarray(wout.DMerc)[2:-2]
-        print(
+        text = (
             f"p0 = {p0:5.0f} Pa, beta {wout.betatotal:.1e}: {wout.itfsq} iterations, "
             f"magnetic axis {shift:.1e} m from the traced one, iota "
             f"{abs(iota[0]):.5f} on the axis and {abs(iota[-1]):.5f} on the boundary, "
             "effective ripple "
             + ", ".join(f"{100 * value:.2f}%" for value in ripple)
-            + " at a quarter and half of the flux and on the boundary, Mercier's "
-            f"criterion positive on {np.mean(mercier > 0.0):.2f} of the surfaces"
+            + " at a quarter and half of the flux and on the boundary"
         )
+        if p0 > 0.0:
+            mercier = np.asarray(wout.DMerc)[2:-2]
+            text += (
+                ", Mercier's criterion positive on "
+                f"{np.mean(mercier > 0.0):.2f} of the surfaces"
+            )
+        print(text)
 
 
 if __name__ == "__main__":
