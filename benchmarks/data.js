@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794848928499,
+  "lastUpdate": 1795009670610,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -27479,6 +27479,86 @@ window.BENCHMARK_DATA = {
           {
             "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
             "value": 0.30461400600000843,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "130992531+jons-pf@users.noreply.github.com",
+            "name": "Jonathan Schilling",
+            "username": "jons-pf"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "baf82d79caaf7e61b7431bb6eded18c5215327a2",
+          "message": "Update \"The Numerics of VMEC++\" (#1085)",
+          "timestamp": "2026-11-18T14:41:49+01:00",
+          "tree_id": "ef9bfbab965f11feb9072c8457f059f5d4f9ff43",
+          "url": "https://github.com/proximafusion/vmecpp/commit/baf82d79caaf7e61b7431bb6eded18c5215327a2"
+        },
+        "date": 1795009665832,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_cli_startup",
+            "value": 0.935993113599966,
+            "range": "stddev: 0.009671638204787029",
+            "unit": "seconds",
+            "extra": "rounds: 5"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_w7x",
+            "value": 2.1193987903333587,
+            "range": "stddev: 0.01590945470462535",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma",
+            "value": 0.8918217946666877,
+            "range": "stddev: 0.00263526855094379",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_fixed_boundary_cma_6x8",
+            "value": 1.359098528000042,
+            "range": "stddev: 0.030109817032750792",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_response_table_from_coils",
+            "value": 0.542190711333357,
+            "range": "stddev: 0.004227906318344709",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_free_boundary",
+            "value": 5.6262411510000065,
+            "range": "stddev: 0.006312992742863508",
+            "unit": "seconds",
+            "extra": "rounds: 3"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_adjoint_gradient",
+            "value": 1.875388527000041,
+            "range": "stddev: 0",
+            "unit": "seconds",
+            "extra": "rounds: 1"
+          },
+          {
+            "name": "benchmarks/test_benchmarks.py::test_bench_simsopt_finite_difference_gradient",
+            "value": 0.30481320399997003,
             "range": "stddev: 0",
             "unit": "seconds",
             "extra": "rounds: 1"
