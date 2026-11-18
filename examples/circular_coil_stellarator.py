@@ -1,24 +1,15 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""A quasi-isodynamic stellarator of three field periods wound from 42 identical
-circular coils with one current, solved with VMEC++.
-
-The coils of half a field period are given. Stellarator symmetry and the field periods
-give the others, and SIMSOPT gives their field. Field lines traced in the toroidal angle
-give the magnetic axis and the flux surface 30 cm outboard of it, and VMEC++ solves the
-interior of that surface. Hot restarts raise the pressure. The effective ripple of
-Nemov et al., Phys. Plasmas 6, 4622 (1999), and the poloidal closure of the contours of
-B come from the wout. W7-X, traced and solved the same way, is the reference.
-``--free-boundary`` also solves the plasma in the field of the coils.
-"""
+"""Solve a quasi-isodynamic stellarator of 42 identical circular coils with VMEC++ and
+compare it with W7-X."""
 
 import argparse
 import dataclasses
 import threading
 
 import numpy as np
-from scipy.optimize import brentq, minimize_scalar
+from scipy.optimize import fminbound, root_scalar
 from simsopt.field import BiotSavart, Coil, Current, coils_via_symmetries
 from simsopt.geo import CurveXYZFourier
 
@@ -87,10 +78,7 @@ W7X = Interior(
 
 
 def circle(centre, normal):
-    """A coil of radius RADIUS about centre.
-
-    A positive current turns about normal.
-    """
+    """A coil of radius RADIUS at centre whose positive current turns about normal."""
     first = np.cross(normal, [0.3, 0.5, 0.8])
     first /= np.linalg.norm(first)
     second = np.cross(normal, first)
@@ -132,7 +120,7 @@ def w7x_coils():
 
 
 class FieldLines:
-    """Field lines of a field, by RK4 in the toroidal angle."""
+    """Field lines of a field traced by RK4 in the toroidal angle."""
 
     def __init__(self, field, period):
         self.field, self.period = field, period
@@ -145,11 +133,11 @@ class FieldLines:
         return b[:, 0] * cos + b[:, 1] * sin, -b[:, 0] * sin + b[:, 1] * cos, b[:, 2]
 
     def trace(self, r0, z0, planes, periods, steps):
-        """R and Z of the line through (r0, 0, z0) at \\phi = k period / planes, k = 0,
-        ..., periods planes, by steps RK4 steps between two planes."""
+        """R and Z of the line through (r0, 0, z0) at planes planes a period for periods
+        periods."""
         r, z, phi = np.atleast_1d(float(r0)), np.atleast_1d(float(z0)), 0.0
         out = [(r[0], z[0])]
-        h = self.period / planes / steps
+        h = self.period / planes / steps  # steps RK4 steps between two planes
 
         def slope(r, phi, z):
             b_r, b_phi, b_z = self.b(r, np.full_like(r, phi), z)
@@ -174,11 +162,12 @@ def magnetic_axis(interior, lines):
     period, and the rotational transform next to it."""
     steps = interior.steps
     # Stellarator symmetry puts the axis at Z = 0 in the middle of the period.
-    r_axis = brentq(
+    r_axis = root_scalar(
         lambda r: lines.trace(r, 0.0, 2, 1, 80 * steps)[1][1],
-        *interior.axis,
+        bracket=interior.axis,
+        method="brentq",
         xtol=1e-12,
-    )
+    ).root
     r, z = lines.trace(r_axis, 0.0, interior.planes, 1, 8 * steps)
     axis = np.stack([r[: interior.planes], z[: interior.planes]], -1)
     periods = 150
@@ -216,20 +205,17 @@ def flux_surface(interior, lines, r_axis, periods=120, harmonics=10):
                 worst = max(worst, np.abs(basis @ coef[i, k] - target).max())
         return coef, worst
 
-    # A first estimate from the angle about the axis in the planes a period apart, the
-    # best of a scan around it, refined.
+    # The angle about the axis in the planes a period apart gives a first estimate. A
+    # scan around it and a bounded search refine it.
     first = plane == 0
     angle = np.unwrap(np.arctan2(z[first], r[first] - r_axis))
     iota0 = (angle[-1] - angle[0]) / phi[first][-1]
     scan = iota0 + np.linspace(-0.02, 0.02, 41)
     best = int(np.argmin([fit(x, 4)[1] for x in scan]))
     step = scan[1] - scan[0]
-    iota = minimize_scalar(
-        lambda x: fit(x, 4)[1],
-        bounds=(scan[best] - step, scan[best] + step),
-        method="bounded",
-        options={"xatol": 1e-10},
-    ).x
+    iota = fminbound(
+        lambda x: fit(x, 4)[1], scan[best] - step, scan[best] + step, xtol=1e-10, disp=0
+    )
     coef, worst = fit(iota, harmonics)
     theta = 2.0 * np.pi * np.arange(96) / 96
     basis = np.column_stack(
@@ -240,8 +226,7 @@ def flux_surface(interior, lines, r_axis, periods=120, harmonics=10):
 
 
 def toroidal_flux(lines, rb, zb, axis, planes):
-    """The toroidal flux through the cross-section of the surface in each plane, from
-    B_\\phi on a fan of triangles from the axis."""
+    """The toroidal flux through the cross-section of the surface in each plane."""
     flux = np.empty(len(planes))
     for k, phi in enumerate(planes):
         p1 = np.stack([rb[k], zb[k]], -1)
@@ -249,6 +234,7 @@ def toroidal_flux(lines, rb, zb, axis, planes):
         d1, d2 = p1 - axis[k], p2 - axis[k]
         area = 0.5 * (d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0])
         area *= np.sign(area.sum())
+        # B_\phi at the edge midpoints of each triangle of the fan from the axis
         mid = np.concatenate([axis[k] + 0.5 * d1, axis[k] + 0.5 * d2, 0.5 * (p1 + p2)])
         b_phi = lines.b(mid[:, 0], np.full(len(mid), phi), mid[:, 1])[1]
         flux[k] = np.sum(area * b_phi.reshape(3, -1).mean(axis=0))
@@ -256,8 +242,8 @@ def toroidal_flux(lines, rb, zb, axis, planes):
 
 
 def fourier(values, zeta, theta, mpol, ntor, parity):
-    """Coefficients of values[plane, theta] in \\cos (parity 0) or \\sin (parity 1) of
-    m \\theta - n \\zeta, [m, ntor + n]."""
+    """Coefficients [m, ntor + n] of values[plane, theta] in \\cos (parity 0) or
+    \\sin (parity 1) of m \\theta - n \\zeta."""
     out = np.zeros((mpol, 2 * ntor + 1))
     basis = np.cos if parity == 0 else np.sin
     for m in range(mpol):
@@ -272,8 +258,7 @@ def fourier(values, zeta, theta, mpol, ntor, parity):
 
 
 def vmec_input(interior, rb, zb, axis, flux, planes):
-    """The fixed-boundary input of the interior of the traced surface, without pressure
-    or toroidal current."""
+    """The fixed-boundary input of the interior of the traced surface."""
     mpol, ntor = interior.mpol, interior.ntor
     zeta = planes * interior.nfp
     theta = 2.0 * np.pi * np.arange(rb.shape[1]) / rb.shape[1]
@@ -323,7 +308,7 @@ def interior(field, settings):
 
 
 def axis_curve(wout, phi):
-    """R and Z of the magnetic axis of a wout at the toroidal angles phi, [phi, 2]."""
+    """R and Z [phi, 2] of the magnetic axis of a wout at the toroidal angles phi."""
     angle = -np.asarray(wout.xn, dtype=float)[:, None] * np.asarray(phi)[None, :]
     return np.stack(
         [
@@ -335,23 +320,10 @@ def axis_curve(wout, phi):
 
 
 def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
-    """The effective ripple of a field line.
-
-    The inputs are B, |\\nabla \\psi|, the radial drift v_d and the ds / B of a step at
-    the samples of the line. B_0 is the mean of B along the line weighted by ds / B. b =
-    B / B_0 is linear between the samples. A well j of the line at the level b' has
-
-        H_j = \\int ds / B \\sqrt{b' - b} (4 / b - 1 / b') v_d,
-        I_j = \\int ds / B \\sqrt{1 - b / b'}.
-
-    The effective ripple is
-
-        (\\pi R_0^2 / (8 \\sqrt{2}) \\int ds / B / (\\int ds |\\nabla \\psi| / B)^2
-        \\int db' \\sum_j H_j^2 / (b'^2 I_j))^{2/3}.
-
-    The integral over b' is a midpoint sum over levels intervals. A well cut by an end
-    of the line is left out.
-    """
+    """The effective ripple of a field line from B, |\\nabla \\psi|, the radial drift
+    and ds / B at its samples."""
+    # Nemov et al., Phys. Plasmas 6, 4622 (1999). B_0 in b = B / B_0 is the mean of B
+    # weighted by ds / B.
     eta = strength * np.sum(weight) / np.sum(weight * strength)
     step_weight = 0.5 * (weight[:-1] + weight[1:])
     step_size = 0.5 * (weight[:-1] * size[:-1] + weight[1:] * size[1:])
@@ -366,6 +338,7 @@ def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
     flat = np.abs(change) < 1.0e-14
     width = (eta.max() - eta.min()) / levels
     total = 0.0
+    # a midpoint sum over the levels b'
     for level in eta.min() + width * (np.arange(levels) + 0.5):
         below = np.maximum(level - eta, 0.0)
         # the mean of \sqrt{\max(b' - b, 0)} over each step
@@ -377,6 +350,7 @@ def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
         wet = root > 0.0
         starts = np.flatnonzero(wet[1:] & ~wet[:-1]) + 1
         stops = np.flatnonzero(~wet[1:] & wet[:-1]) + 1
+        # Wells cut by an end of the line are left out.
         if wet[0]:
             stops = stops[1:]
         count = min(len(starts), len(stops))
@@ -392,11 +366,8 @@ def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
 
 
 def wout_ripple(wout, js, periods=120, steps=96):
-    """The effective ripple of the half-grid surface js of a wout.
-
-    The field line starts at \\theta = 0, \\phi = 0 and runs over periods field periods.
-    The major radius is the length of the magnetic axis over 2 \\pi.
-    """
+    """The effective ripple of the half-grid surface js of a wout along the field line
+    from \\theta = 0, \\phi = 0."""
     period = 2.0 * np.pi / int(wout.nfp)
     m = np.asarray(wout.xm_nyq, dtype=float)
     n = np.asarray(wout.xn_nyq, dtype=float)
@@ -444,6 +415,7 @@ def wout_ripple(wout, js, periods=120, steps=96):
         - (r_theta * r_phi + z_theta * z_phi) ** 2
     ) / np.abs(jacobian)
     weight = h / np.abs(b_phi_up @ cos)
+    # R_0 is the length of the magnetic axis over 2 \pi.
     turn = 2.0 * np.pi * np.arange(4097) / 4096
     axis = axis_curve(wout, turn)
     axis = np.stack(
@@ -454,12 +426,15 @@ def wout_ripple(wout, js, periods=120, steps=96):
 
 
 def closure(strength):
-    """The share of the range of B on a surface whose contours close poloidally.
-
-    strength is B on a grid [\\theta, \\phi] over a field period. The contours close
-    poloidally between the largest minimum of B along the lines of constant \\theta and
-    the smallest maximum. The share is 1 for a quasi-isodynamic field.
-    """
+    """Share of the range of B[\\theta, \\phi] whose contours close poloidally."""
+    # Helical contours carry the minimum of B in \phi once through the period as \theta
+    # goes around. Otherwise the contours close poloidally from the largest minimum of B
+    # in \phi to the smallest maximum.
+    count = strength.shape[1]
+    lowest = strength.argmin(axis=1)
+    step = np.diff(np.append(lowest, lowest[0]))
+    if abs(np.sum((step + count // 2) % count - count // 2)) >= count // 2:
+        return 0.0
     lowest_ridge = strength.max(axis=1).min()
     highest_valley = strength.min(axis=1).max()
     return float((lowest_ridge - highest_valley) / (strength.max() - strength.min()))
@@ -505,7 +480,7 @@ def describe(s, ripple, closed):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--free-boundary",
         action="store_true",

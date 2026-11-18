@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Tests of the circular-coil stellarator: the symmetry of the field of its coils, the
-effective ripple against quadrature, the poloidal closure of an analytic field, and its
-VMEC++ interior against the tracing and beside W7-X."""
+"""Tests of the circular-coil stellarator example."""
 
 import sys
 from pathlib import Path
@@ -17,7 +15,7 @@ import vmecpp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
-import circular_coil_stellarator as ck
+import circular_coil_stellarator as ck  # type: ignore
 
 
 @pytest.fixture(scope="module")
@@ -105,15 +103,22 @@ def test_closure_of_an_analytic_field():
     np.testing.assert_allclose(ck.closure(strength), (1.07 - 0.93) / 0.26, rtol=1e-12)
     # B of \zeta alone is quasi-isodynamic.
     np.testing.assert_allclose(ck.closure(1.0 + 0.1 * np.cos(zeta)), 1.0, rtol=1e-12)
+    # The contours of the quasi-helical B = 1 + 0.1 \cos(\theta - \zeta) are helical.
+    np.testing.assert_allclose(ck.closure(1.0 + 0.1 * np.cos(theta - zeta)), 0.0)
 
 
 def test_interior_against_tracing(solved):
     wout = solved["wout"]
     iota = np.asarray(wout.iotaf)
-    distance = np.hypot(*(ck.axis_curve(wout, solved["planes"]) - solved["axis"]).T)
-    assert distance.max() < 3e-3
-    assert abs(abs(iota[0]) - abs(solved["iota_axis"])) < 2e-3
-    assert abs(abs(iota[-1]) - abs(solved["iota_surface"])) < 2e-4
+    np.testing.assert_allclose(
+        ck.axis_curve(wout, solved["planes"]), solved["axis"], rtol=0.0, atol=3e-3
+    )
+    np.testing.assert_allclose(
+        abs(iota[0]), abs(solved["iota_axis"]), rtol=0.0, atol=2e-3
+    )
+    np.testing.assert_allclose(
+        abs(iota[-1]), abs(solved["iota_surface"]), rtol=0.0, atol=2e-4
+    )
 
 
 def test_effective_ripple_and_closure_of_the_interior(solved):
