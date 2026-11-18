@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795010836702,
+  "lastUpdate": 1795011221935,
   "repoUrl": "https://github.com/proximafusion/vmecpp",
   "entries": {
     "Benchmark": [
@@ -86078,6 +86078,162 @@ window.BENCHMARK_DATA = {
             "value": 0.003838378047176085,
             "unit": "seconds",
             "extra": "iterations: 373\ncpu: 0.0038154718793565693 seconds\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "machineelv@gmail.com",
+            "name": "CharlesCNorton",
+            "username": "CharlesCNorton"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "95ec13537d7bd5ab1555c286d4e2f1048792a23a",
+          "message": "Record the LCFS force residual on several threads (#1046)",
+          "timestamp": "2026-11-18T14:48:45+01:00",
+          "tree_id": "b14f6713bfa358db1fcfcd2c34a6bf6edea64437",
+          "url": "https://github.com/proximafusion/vmecpp/commit/95ec13537d7bd5ab1555c286d4e2f1048792a23a"
+        },
+        "date": 1795011221333,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "DeAliasConstraintForce/4x4",
+            "value": 0.000024710336657623964,
+            "unit": "seconds",
+            "extra": "iterations: 56549\ncpu: 2.4704717360165525e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/7x1",
+            "value": 0.000032130060132245705,
+            "unit": "seconds",
+            "extra": "iterations: 43732\ncpu: 3.2127163724503795e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/12x12",
+            "value": 0.0005600926410629456,
+            "unit": "seconds",
+            "extra": "iterations: 2510\ncpu: 0.0005600318896414343 seconds\nthreads: 1"
+          },
+          {
+            "name": "DeAliasConstraintForce/16x18",
+            "value": 0.001485387570428745,
+            "unit": "seconds",
+            "extra": "iterations: 922\ncpu: 0.001485330387201735 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/4x4",
+            "value": 0.0001614341779636598,
+            "unit": "seconds",
+            "extra": "iterations: 8710\ncpu: 0.00016135731354764644 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/4x4",
+            "value": 0.00014035015824768608,
+            "unit": "seconds",
+            "extra": "iterations: 10007\ncpu: 0.00014034745957829524 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/6x8",
+            "value": 0.0003197725136206233,
+            "unit": "seconds",
+            "extra": "iterations: 4392\ncpu: 0.00031974919125683055 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/6x8",
+            "value": 0.0002870802896914547,
+            "unit": "seconds",
+            "extra": "iterations: 4882\ncpu: 0.0002870545725112659 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x12",
+            "value": 0.0005229519487931805,
+            "unit": "seconds",
+            "extra": "iterations: 2694\ncpu: 0.0005229107108389013 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x12",
+            "value": 0.00044275568034171073,
+            "unit": "seconds",
+            "extra": "iterations: 2889\ncpu: 0.0004427149338871578 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalFourierToReal/12x13",
+            "value": 0.0017623641437157654,
+            "unit": "seconds",
+            "extra": "iterations: 798\ncpu: 0.001762251269423559 seconds\nthreads: 1"
+          },
+          {
+            "name": "ToroidalForcesToFourier/12x13",
+            "value": 0.0019376374086849549,
+            "unit": "seconds",
+            "extra": "iterations: 719\ncpu: 0.0019375166703755214 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/5x4",
+            "value": 0.00003261422552667597,
+            "unit": "seconds",
+            "extra": "iterations: 42534\ncpu: 3.264804285983023e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/8x6",
+            "value": 0.00017429816191097834,
+            "unit": "seconds",
+            "extra": "iterations: 8003\ncpu: 0.00017437795976508718 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceSolve/12x8",
+            "value": 0.0008525597650591726,
+            "unit": "seconds",
+            "extra": "iterations: 1645\ncpu: 0.0008525049738601872 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/5x4",
+            "value": 0.000027246271935925902,
+            "unit": "seconds",
+            "extra": "iterations: 50948\ncpu: 2.7264379602730307e-05 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/8x6",
+            "value": 0.00015430688727104946,
+            "unit": "seconds",
+            "extra": "iterations: 9105\ncpu: 0.00015425741845139973 seconds\nthreads: 1"
+          },
+          {
+            "name": "LaplaceDecompose/12x8",
+            "value": 0.0007772336926376611,
+            "unit": "seconds",
+            "extra": "iterations: 1710\ncpu: 0.0007772071269006285 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/5x4",
+            "value": 0.00029985960972667256,
+            "unit": "seconds",
+            "extra": "iterations: 4660\ncpu: 0.00029985858519313295 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/8x6",
+            "value": 0.001194137723439836,
+            "unit": "seconds",
+            "extra": "iterations: 1181\ncpu: 0.0011941222303132938 seconds\nthreads: 1"
+          },
+          {
+            "name": "TransformGreensFunctionDerivative/12x8",
+            "value": 0.00539953188788622,
+            "unit": "seconds",
+            "extra": "iterations: 266\ncpu: 0.005399304774436102 seconds\nthreads: 1"
+          },
+          {
+            "name": "ComputeOutputQuantities/cma",
+            "value": 0.004675069673161676,
+            "unit": "seconds",
+            "extra": "iterations: 309\ncpu: 0.00465499728802589 seconds\nthreads: 1"
           }
         ]
       }
