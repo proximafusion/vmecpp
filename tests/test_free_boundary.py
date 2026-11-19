@@ -330,3 +330,43 @@ def test_magnetic_field_callable_errors():
 
     with pytest.raises(TypeError, match="magnetic_field must be"):
         vmecpp.run(vmec_input, 1.0, verbose=False)  # type: ignore[arg-type]
+
+
+def test_thin_ring_vertical_field_holds_large_aspect_ratio_ring():
+    """A ring of aspect ratio 40 settles at the thin ring's radius in its vertical
+    field."""
+    mu0 = 4.0e-7 * np.pi
+    r0, a, b0 = 20.0, 0.5, 1.0
+    # edge safety factor 2
+    current = np.pi * a**2 * b0 / (mu0 * r0)
+    vertical = -mu0 * current / (4.0 * np.pi * r0) * (np.log(8.0 * r0 / a) - 1.25)
+    rbc, zbs = np.zeros((6, 1)), np.zeros((6, 1))
+    rbc[0, 0], rbc[1, 0], zbs[1, 0] = r0, a, a
+    ring = vmecpp.VmecInput(
+        mpol=6,
+        ntor=0,
+        ntheta=24,
+        nzeta=1,
+        ns_array=np.array([25]),
+        ftol_array=np.array([1e-14]),
+        niter_array=np.array([20000]),
+        phiedge=np.pi * a**2 * b0,
+        ncurr=1,
+        pcurr_type="power_series",
+        ac=np.array([1.0]),
+        curtor=current,
+        am=np.array([0.0]),
+        pres_scale=0.0,
+        rbc=rbc,
+        zbs=zbs,
+        raxis_c=np.array([r0]),
+        zaxis_s=np.array([0.0]),
+        lfreeb=True,
+        mgrid_file="NONE",
+    )
+
+    def field(r, _phi, z):
+        return np.zeros_like(r), b0 * r0 / r, np.full_like(z, vertical)
+
+    wout = vmecpp.run(ring, field, verbose=False).wout
+    assert abs(wout.rmnc[0, -1] - r0) < 2.5e-4
