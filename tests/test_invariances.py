@@ -7,6 +7,7 @@ Each test solves one equilibrium along two paths that describe the same field an
 compares the Fourier coefficients of the two runs directly.
 """
 
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -176,6 +177,61 @@ def test_restart_with_the_gauge_mode_of_lambda_set():
     assert gauge.niter <= 5
     physical = restarted((1, 0), 0.05)
     assert physical.niter > 50
+
+
+def _numeric_outputs(model, prefix=""):
+    """Every numeric field of an output model, recursing into nested models."""
+    fields = {}
+    for name in type(model).model_fields:
+        value = getattr(model, name)
+        if hasattr(type(value), "model_fields"):
+            fields.update(_numeric_outputs(value, prefix + name + "."))
+        elif isinstance(value, (int, float, np.ndarray)) and not isinstance(
+            value, bool
+        ):
+            fields[prefix + name] = np.asarray(value)
+    return fields
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_a_domain_traversed_twice_reproduces_one_transit(lasym):
+    """A five-period stellarator written as a domain of ten periods that closes after
+    two toroidal transits, its coefficients kept since the harmonic n stands for the
+    toroidal mode number n nfp / toroidal_transits, solves to the same equilibrium with
+    lbsubs, which takes the B_s of the outputs through a toroidal derivative: every
+    output but nfp, toroidal_transits and the mode numbers xn = n nfp agrees to the last
+    bit, and the wout file of the second run keeps toroidal_transits."""
+    base = vmecpp.VmecInput.from_file(TEST_DATA_DIR / "cth_like_fixed_bdy.json")
+    base = base.model_copy(update={"lbsubs": True})
+    if lasym:
+        zeros = np.zeros_like(np.asarray(base.rbc))
+        axis = np.zeros(base.ntor + 1)
+        base = base.model_copy(
+            update={
+                "lasym": True,
+                "rbs": zeros,
+                "zbc": zeros,
+                "raxis_s": axis,
+                "zaxis_c": axis,
+            }
+        )
+    twice = base.model_copy(update={"nfp": 2 * base.nfp, "toroidal_transits": 2})
+    ref = _numeric_outputs(_run(base))
+    output = _run(twice)
+    test = _numeric_outputs(output)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "wout_twice.nc"
+        output.wout.save(path)
+        assert vmecpp.VmecWOut.from_wout_file(path).toroidal_transits == 2
+    assert test.keys() == ref.keys()
+    for name in ("wout.xn", "wout.xn_nyq"):
+        np.testing.assert_array_equal(test.pop(name), 2 * ref.pop(name))
+    assert test.pop("wout.toroidal_transits") == 2
+    assert ref.pop("wout.toroidal_transits") == 1
+    for name, value in ref.items():
+        if name == "wout.nfp" or name.startswith("input."):
+            continue
+        np.testing.assert_array_equal(test[name], value, err_msg=name)
 
 
 if __name__ == "__main__":
