@@ -26,6 +26,15 @@ class Boundaries {
              int sign_of_jacobian);
 
   bool setupFromIndata(const VmecINDATA& id, bool verbose = true);
+
+  // Set this object up as the inner boundary of a plasma without a magnetic
+  // axis, from id.rbc_inner, id.zbs_inner and, with lasym, id.rbs_inner and
+  // id.zbc_inner, with the poloidal angle shift that boundary.setupFromIndata
+  // gave the boundary and its orientation: have_to_flip_theta is the value
+  // that call returned. The axis coefficients are zero.
+  void setupInnerFromIndata(const VmecINDATA& id, const Boundaries& boundary,
+                            bool have_to_flip_theta);
+
   void ensureM1Constrained(double scaling_factor);
 
   // Spectral width <M> of the boundary, the same quantity VMEC++ reports for
@@ -67,6 +76,10 @@ class Boundaries {
 
   int sign_of_jacobian_;
 
+  // shift of the poloidal angle applied to the input boundary, which puts an
+  // asymmetric boundary into the m = 1 gauge; 0 without lasym
+  double theta_shift_ = 0.0;
+
   // Parse the input boundary Fourier coefficients into the VMEC-internal array
   // format:
   //
@@ -79,6 +92,15 @@ class Boundaries {
   //
   // id: contents of INDATA namelist (VMEC input)
   void parseToInternalArrays(const VmecINDATA& id, bool verbose = true);
+
+  // Sort the boundary coefficients rbc, zbs and, with lasym, rbs, zbc in the
+  // layout of the input, shifted in the poloidal angle by delta, into the
+  // internal arrays above.
+  void sortIntoInternalArrays(const RowMatrixXd& rbc_in,
+                              const RowMatrixXd& zbs_in,
+                              const std::optional<RowMatrixXd>& rbs_in,
+                              const std::optional<RowMatrixXd>& zbc_in,
+                              double delta);
 
   // Check if the sign of the Jacobian of the given input boundary coefficient
   // matches the expected internal sign of the Jacobian.

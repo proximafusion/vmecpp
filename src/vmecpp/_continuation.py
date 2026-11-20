@@ -106,7 +106,7 @@ def _radial_interpolate(values: np.ndarray, ns_new: int) -> np.ndarray:
 
 
 def _radial_interpolate_geometry(
-    values: np.ndarray, xm: np.ndarray, ns_new: int
+    values: np.ndarray, xm: np.ndarray, ns_new: int, s_inner: float = 0.0
 ) -> np.ndarray:
     """Radially interpolate the state geometry ``[n_modes, ns_old]`` to ``ns_new``.
 
@@ -115,27 +115,31 @@ def _radial_interpolate_geometry(
     ``sqrt(s)``, so the interpolation is done on the ``sqrt(s)`` grid. Odd-``m``
     modes vanish like ``sqrt(s)`` toward the magnetic axis; they are divided by
     ``sqrt(s)`` before interpolation, linearly extrapolated to the axis from the two
-    neighbouring surfaces, and reset to zero at the axis afterwards.
+    neighbouring surfaces, and reset to zero at the axis afterwards. With an inner
+    boundary at ``s_inner`` > 0 the surfaces span ``[s_inner, 1]`` and every surface
+    keeps its own ``sqrt(s)``.
 
     Args:
         values: geometry coefficients ``[n_modes, ns_old]`` in the target mode order.
         xm: poloidal mode number per row, ``[n_modes]`` (selects the odd-``m`` path).
         ns_new: number of full-grid flux surfaces in the target resolution.
+        s_inner: ``inner_boundary_s`` of the input, 0 for a magnetic axis.
     """
     values = np.asarray(values, dtype=float)
     ns_old = values.shape[-1]
     if ns_old == ns_new:
         return values.copy()
 
-    old_sqrt_s = np.sqrt(np.linspace(0.0, 1.0, ns_old))
-    new_sqrt_s = np.sqrt(np.linspace(0.0, 1.0, ns_new))
+    has_axis = s_inner == 0.0
+    old_sqrt_s = np.sqrt(s_inner + (1.0 - s_inner) * np.linspace(0.0, 1.0, ns_old))
+    new_sqrt_s = np.sqrt(s_inner + (1.0 - s_inner) * np.linspace(0.0, 1.0, ns_new))
     # 1 / sqrt(s), with the axis value copied from the first half-grid point.
     old_scale = np.empty(ns_old)
     old_scale[1:] = 1.0 / old_sqrt_s[1:]
-    old_scale[0] = old_scale[1]
+    old_scale[0] = old_scale[1] if has_axis else 1.0 / old_sqrt_s[0]
     new_scale = np.empty(ns_new)
     new_scale[1:] = 1.0 / new_sqrt_s[1:]
-    new_scale[0] = new_scale[1]
+    new_scale[0] = new_scale[1] if has_axis else 1.0 / new_sqrt_s[0]
 
     out = np.empty((values.shape[0], ns_new), dtype=float)
     for i in range(values.shape[0]):
@@ -143,12 +147,13 @@ def _radial_interpolate_geometry(
         odd_m = int(xm[i]) % 2 == 1
         if odd_m:
             radial = radial * old_scale
-            if ns_old >= 3:
+            if ns_old >= 3 and has_axis:
                 radial[0] = 2.0 * radial[1] - radial[2]
         interpolated = np.interp(new_sqrt_s, old_sqrt_s, radial)
         if odd_m:
             interpolated = interpolated / new_scale
-            interpolated[0] = 0.0
+            if has_axis:
+                interpolated[0] = 0.0
         out[i] = interpolated
     return out
 
@@ -194,7 +199,7 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
         source: a converged :class:`VmecOutput`.
         target_input: the input for the next continuation step. Its ``mpol``,
             ``ntor`` and (single-element) ``ns_array`` define the target resolution,
-            and its ``nfp`` must match the source.
+            and its ``nfp`` and ``inner_boundary_s`` must match the source.
 
     Returns:
         A :class:`VmecOutput` whose ``wout`` holds the source geometry interpolated
@@ -203,6 +208,13 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
     """
     import vmecpp  # noqa: PLC0415  (lazy import avoids a circular import)
     from vmecpp import autodiff_wout  # noqa: PLC0415
+
+    if source.input.inner_boundary_s != target_input.inner_boundary_s:
+        msg = (
+            f"The source has inner_boundary_s = {source.input.inner_boundary_s}, "
+            f"the target {target_input.inner_boundary_s}"
+        )
+        raise ValueError(msg)
 
     wout = source.wout
     nfp = int(wout.nfp)
@@ -222,14 +234,20 @@ def interpolate_solution(source: VmecOutput, target_input: VmecInput) -> VmecOut
         if val is None:
             continue
         remapped = _remap_modes(val, src_xm, src_xn, dst_xm, dst_xn)
-        setattr(new_wout, name, _radial_interpolate_geometry(remapped, dst_xm, ns_new))
+        setattr(
+            new_wout,
+            name,
+            _radial_interpolate_geometry(
+                remapped, dst_xm, ns_new, target_input.inner_boundary_s
+            ),
+        )
 
     for half, full in _HALF_GRID_LAMBDA_FIELDS.items():
         if getattr(wout, half) is None:
             continue
         with vmecpp.enable_x64(True):
             lambda_half = autodiff_wout._lambda_to_half_grid(
-                getattr(new_wout, full), dst_xm
+                getattr(new_wout, full), dst_xm, target_input.inner_boundary_s
             )
             setattr(new_wout, half, np.asarray(lambda_half))
 
@@ -291,7 +309,16 @@ def _step_input(
     step.ftol_array = np.asarray([ftol], dtype=float)
     step.niter_array = np.asarray([niter], dtype=np.int64)
     # Truncate or zero-pad the 2D boundary coefficients to the new (mpol, ntor).
-    for name in ("rbc", "zbs", "rbs", "zbc"):
+    for name in (
+        "rbc",
+        "zbs",
+        "rbs",
+        "zbc",
+        "rbc_inner",
+        "zbs_inner",
+        "rbs_inner",
+        "zbc_inner",
+    ):
         val = getattr(step, name)
         if val is not None:
             setattr(

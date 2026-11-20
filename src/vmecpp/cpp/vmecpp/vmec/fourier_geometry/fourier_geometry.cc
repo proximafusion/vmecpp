@@ -5,6 +5,8 @@
 #include "vmecpp/vmec/fourier_geometry/fourier_geometry.h"
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -207,6 +209,58 @@ void FourierGeometry::interpFromBoundaryAndAxis(
   }  // j
 }
 
+void FourierGeometry::interpFromBoundaries(const FourierBasisFastPoloidal& t,
+                                           const Boundaries& inner,
+                                           const Boundaries& b,
+                                           const RadialProfiles& p) {
+  for (int jF = nsMin_; jF < nsMax_; ++jF) {
+    for (int m = 0; m < s_.mpol; ++m) {
+      const double weight = InterpolationWeight(jF, m, p);
+      for (int n = 0; n < s_.ntor + 1; ++n) {
+        const int idx_bdy = m * (s_.ntor + 1) + n;
+        const int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+        const double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
+        const auto interpolate = [&](const Eigen::VectorXd& x_inner,
+                                     const Eigen::VectorXd& x_outer) {
+          return basis_norm * ((1.0 - weight) * x_inner[idx_bdy] +
+                               weight * x_outer[idx_bdy]);
+        };
+
+        rmncc[idx_fc] = interpolate(inner.rbcc, b.rbcc);
+        zmnsc[idx_fc] = interpolate(inner.zbsc, b.zbsc);
+        if (s_.lthreed) {
+          rmnss[idx_fc] = interpolate(inner.rbss, b.rbss);
+          zmncs[idx_fc] = interpolate(inner.zbcs, b.zbcs);
+        }
+        if (s_.lasym) {
+          rmnsc[idx_fc] = interpolate(inner.rbsc, b.rbsc);
+          zmncc[idx_fc] = interpolate(inner.zbcc, b.zbcc);
+          if (s_.lthreed) {
+            rmncs[idx_fc] = interpolate(inner.rbcs, b.rbcs);
+            zmnss[idx_fc] = interpolate(inner.zbss, b.zbss);
+          }
+        }
+      }  // n
+    }  // m
+  }  // j
+
+  setM1GaugeFromBoundaries(t, inner, b, p);
+}
+
+double FourierGeometry::InterpolationWeight(int jF, int m,
+                                            const RadialProfiles& p) const {
+  if (jF == 0) {
+    return 0.0;
+  }
+  if (jF == ns - 1) {
+    return 1.0;
+  }
+  const int power = (m == 0) ? 2 : m;
+  const double inner_value = std::pow(p.sqrtSInner, power);
+  return (std::pow(p.sqrtSF[jF - r_.nsMinF1], power) - inner_value) /
+         (1.0 - inner_value);
+}
+
 void FourierGeometry::setM1GaugeFromBoundary(const FourierBasisFastPoloidal& t,
                                              const Boundaries& b,
                                              const RadialProfiles& p) {
@@ -230,12 +284,39 @@ void FourierGeometry::setM1GaugeFromBoundary(const FourierBasisFastPoloidal& t,
   }
 }
 
+void FourierGeometry::setM1GaugeFromBoundaries(
+    const FourierBasisFastPoloidal& t, const Boundaries& inner,
+    const Boundaries& b, const RadialProfiles& p) {
+  const int m = 1;
+  if (s_.mpol <= m) {
+    return;
+  }
+  for (int jF = nsMin_; jF < nsMax_; ++jF) {
+    // linear in sqrt(s), from 0 on the inner boundary to 1 on the boundary
+    const double weight = InterpolationWeight(jF, m, p);
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_bdy = m * (s_.ntor + 1) + n;
+      const int idx_fc = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
+      const double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
+      if (s_.lthreed) {
+        zmncs[idx_fc] = basis_norm * ((1.0 - weight) * inner.zbcs[idx_bdy] +
+                                      weight * b.zbcs[idx_bdy]);
+      }
+      if (s_.lasym) {
+        zmncc[idx_fc] = basis_norm * ((1.0 - weight) * inner.zbcc[idx_bdy] +
+                                      weight * b.zbcc[idx_bdy]);
+      }
+    }
+  }
+}
+
 void FourierGeometry::InitFromState(
     const FourierBasisFastPoloidal& fb, const RowMatrixXd& rmnc,
     const RowMatrixXd& zmns, const RowMatrixXd& lmns_full,
     const RowMatrixXd& rmns, const RowMatrixXd& zmnc,
     const RowMatrixXd& lmnc_full, const RadialProfiles& p,
-    const VmecConstants& constants, int sign_of_jacobian, const Boundaries* b) {
+    const VmecConstants& constants, int sign_of_jacobian, const Boundaries* b,
+    const Boundaries* inner) {
   if (s_.lasym) {
     // The antisymmetric half must be present, or the restart would silently
     // begin from the stellarator-symmetric projection of the given state.
@@ -318,39 +399,61 @@ void FourierGeometry::InitFromState(
     // and the outermost surface of the state, weighted like the initial guess
     // of interpFromBoundaryAndAxis: s for m = 0 and s^{m/2} for m > 0. The
     // inner surfaces do not carry the m=1 constraint yet, so b enters with it
-    // undone.
+    // undone. With an inner boundary, the weights are those of
+    // interpFromBoundaries, and the shift by the difference between inner and
+    // surface 0 of the state is added.
     Boundaries boundary = *b;
     boundary.ensureM1Constrained(1.0);
     const ProductBasisSurface lcfs = state_surface(ns - 1);
+    std::optional<Boundaries> inner_boundary;
+    std::optional<ProductBasisSurface> first_surface;
+    if (inner != nullptr) {
+      inner_boundary.emplace(*inner);
+      inner_boundary->ensureM1Constrained(1.0);
+      first_surface.emplace(state_surface(0));
+    }
+    // add weight * (target - surface) to the coefficients (jF, m, n)
+    const auto add_shift = [&](int idx_jmn, int idx_mn, double basis_norm,
+                               double weight, const Boundaries& target,
+                               const ProductBasisSurface& surface) {
+      rmncc[idx_jmn] +=
+          weight * (basis_norm * target.rbcc[idx_mn] - surface.rcc[idx_mn]);
+      zmnsc[idx_jmn] +=
+          weight * (basis_norm * target.zbsc[idx_mn] - surface.zsc[idx_mn]);
+      if (s_.lthreed) {
+        rmnss[idx_jmn] +=
+            weight * (basis_norm * target.rbss[idx_mn] - surface.rss[idx_mn]);
+        zmncs[idx_jmn] +=
+            weight * (basis_norm * target.zbcs[idx_mn] - surface.zcs[idx_mn]);
+      }
+      if (s_.lasym) {
+        rmnsc[idx_jmn] +=
+            weight * (basis_norm * target.rbsc[idx_mn] - surface.rsc[idx_mn]);
+        zmncc[idx_jmn] +=
+            weight * (basis_norm * target.zbcc[idx_mn] - surface.zcc[idx_mn]);
+        if (s_.lthreed) {
+          rmncs[idx_jmn] +=
+              weight * (basis_norm * target.rbcs[idx_mn] - surface.rcs[idx_mn]);
+          zmnss[idx_jmn] +=
+              weight * (basis_norm * target.zbss[idx_mn] - surface.zss[idx_mn]);
+        }
+      }
+    };
     for (int jF = nsMin_; jF < max_ns_to_set_rz_on_from_state_locally; ++jF) {
       const double sqrt_s = p.sqrtSF[jF - r_.nsMinF1];
       for (int m = 0; m < s_.mpol; ++m) {
-        const double weight = (m == 0) ? sqrt_s * sqrt_s : pow(sqrt_s, m);
+        double weight = (m == 0) ? sqrt_s * sqrt_s : pow(sqrt_s, m);
+        if (inner != nullptr) {
+          weight = InterpolationWeight(jF, m, p);
+        }
         for (int n = 0; n < s_.ntor + 1; ++n) {
           const int idx_mn = m * (s_.ntor + 1) + n;
           const int idx_jmn = ((jF - nsMin_) * s_.mpol + m) * (s_.ntor + 1) + n;
           const double basis_norm = 1.0 / (fb.mscale[m] * fb.nscale[n]);
-          rmncc[idx_jmn] +=
-              weight * (basis_norm * boundary.rbcc[idx_mn] - lcfs.rcc[idx_mn]);
-          zmnsc[idx_jmn] +=
-              weight * (basis_norm * boundary.zbsc[idx_mn] - lcfs.zsc[idx_mn]);
-          if (s_.lthreed) {
-            rmnss[idx_jmn] += weight * (basis_norm * boundary.rbss[idx_mn] -
-                                        lcfs.rss[idx_mn]);
-            zmncs[idx_jmn] += weight * (basis_norm * boundary.zbcs[idx_mn] -
-                                        lcfs.zcs[idx_mn]);
-          }
-          if (s_.lasym) {
-            rmnsc[idx_jmn] += weight * (basis_norm * boundary.rbsc[idx_mn] -
-                                        lcfs.rsc[idx_mn]);
-            zmncc[idx_jmn] += weight * (basis_norm * boundary.zbcc[idx_mn] -
-                                        lcfs.zcc[idx_mn]);
-            if (s_.lthreed) {
-              rmncs[idx_jmn] += weight * (basis_norm * boundary.rbcs[idx_mn] -
-                                          lcfs.rcs[idx_mn]);
-              zmnss[idx_jmn] += weight * (basis_norm * boundary.zbss[idx_mn] -
-                                          lcfs.zss[idx_mn]);
-            }
+          add_shift(idx_jmn, idx_mn, basis_norm, weight, boundary, lcfs);
+          if (inner != nullptr) {
+            add_shift(idx_jmn, idx_mn, basis_norm, 1.0 - weight,
+                      *inner_boundary, *first_surface);
           }
         }
       }
@@ -478,7 +581,11 @@ void FourierGeometry::InitFromState(
   // and hence the m=1 constraint also needs to be activated on the boundary.
   this->m1Constraint(0.5, sign_of_jacobian, max_ns_to_set_rz_on_from_state);
 
-  if (nsMin_ == 0) {
+  if (inner != nullptr) {
+    SetInnerBoundary(fb, *inner);
+  }
+
+  if (nsMin_ == 0 && inner == nullptr) {
     // remove towards-axis-extrapolated m=0 coefficients of lambda (was done
     // when writing wout)
     const int jF = 0;
@@ -545,6 +652,62 @@ void FourierGeometry::extrapolateTowardsAxis() {
   }  // n
 }
 
+void FourierGeometry::SetInnerBoundary(const FourierBasisFastPoloidal& t,
+                                       const Boundaries& inner) {
+  if (nsMin_ > 0) {
+    // surface 0 is not in this thread
+    return;
+  }
+  for (int m = 0; m < s_.mpol; ++m) {
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_mn = m * (s_.ntor + 1) + n;
+      const int idx_fc = (0 * s_.mpol + m) * (s_.ntor + 1) + n;
+      const double basis_norm = 1.0 / (t.mscale[m] * t.nscale[n]);
+      rmncc[idx_fc] = basis_norm * inner.rbcc[idx_mn];
+      zmnsc[idx_fc] = basis_norm * inner.zbsc[idx_mn];
+      if (s_.lthreed) {
+        rmnss[idx_fc] = basis_norm * inner.rbss[idx_mn];
+        zmncs[idx_fc] = basis_norm * inner.zbcs[idx_mn];
+      }
+      if (s_.lasym) {
+        rmnsc[idx_fc] = basis_norm * inner.rbsc[idx_mn];
+        zmncc[idx_fc] = basis_norm * inner.zbcc[idx_mn];
+        if (s_.lthreed) {
+          rmncs[idx_fc] = basis_norm * inner.rbcs[idx_mn];
+          zmnss[idx_fc] = basis_norm * inner.zbss[idx_mn];
+        }
+      }
+    }  // n
+  }  // m
+}
+
+void FourierGeometry::ExtrapolateLambdaToInnerBoundary() {
+  if (nsMin_ > 0) {
+    // relevant data is not in this thread
+    return;
+  }
+
+  // Surfaces 1 and 2 lie in the thread that holds surface 0, which owns at
+  // least two of the force surfaces 0 ... ns - 2.
+  for (int m = 0; m < s_.mpol; ++m) {
+    for (int n = 0; n < s_.ntor + 1; ++n) {
+      const int idx_0 = (0 * s_.mpol + m) * (s_.ntor + 1) + n;
+      const int idx_1 = (1 * s_.mpol + m) * (s_.ntor + 1) + n;
+      const int idx_2 = (2 * s_.mpol + m) * (s_.ntor + 1) + n;
+      lmnsc[idx_0] = 2.0 * lmnsc[idx_1] - lmnsc[idx_2];
+      if (s_.lthreed) {
+        lmncs[idx_0] = 2.0 * lmncs[idx_1] - lmncs[idx_2];
+      }
+      if (s_.lasym) {
+        lmncc[idx_0] = 2.0 * lmncc[idx_1] - lmncc[idx_2];
+        if (s_.lthreed) {
+          lmnss[idx_0] = 2.0 * lmnss[idx_1] - lmnss[idx_2];
+        }
+      }
+    }  // n
+  }  // m
+}
+
 void FourierGeometry::extrapolateTowardsAxisTranspose() {
   if (nsMin_ > 0) {
     return;
@@ -590,7 +753,7 @@ void FourierGeometry::ComputeSpectralWidth(
     const FourierBasisFastPoloidal& fourier_basis,
     RadialProfiles& m_radial_profiles, const int p, const int q) const {
   int minimum_j = nsMin_;
-  if (nsMin_ == 0) {
+  if (nsMin_ == 0 && !r_.has_inner_boundary()) {
     minimum_j = 1;
 
     // Set axis spectral width to 1 to allow volume average to be computed.

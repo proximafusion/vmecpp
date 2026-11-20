@@ -237,7 +237,8 @@ void FourierToReal3DSymmFastPoloidalFft(
   for (int jF = nsMinF1; jF < r.nsMaxF1; ++jF) {
     // === Pack all 12*mpol half-spectra for this surface ===
     for (int m = 0; m < mpol; ++m) {
-      const int jMin = (m == 0 || m == 1) ? 0 : 1;
+      // the axis gets m <= 1 only, an inner boundary every m
+      const int jMin = (m == 0 || m == 1 || r.has_inner_boundary()) ? 0 : 1;
       if (jF < jMin) {
         // Zero out spectra so the batched FFT produces zeros for this m.
         for (int q = 0; q < kBatch; ++q) {
@@ -279,7 +280,7 @@ void FourierToReal3DSymmFastPoloidalFft(
 
     // === Poloidal accumulation per m ===
     for (int m = 0; m < mpol; ++m) {
-      const int jMin = (m == 0 || m == 1) ? 0 : 1;
+      const int jMin = (m == 0 || m == 1 || r.has_inner_boundary()) ? 0 : 1;
       if (jF < jMin) {
         continue;
       }

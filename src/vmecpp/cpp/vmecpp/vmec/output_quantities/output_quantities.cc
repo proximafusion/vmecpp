@@ -6,6 +6,7 @@
 
 #include <Eigen/Dense>  // VectorXd
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -87,16 +88,19 @@ void ExtrapolateFullGridEnds(int ns, int n_znt, vmecpp::RowMatrixXd& m_field) {
 
 // Fill the axis and the boundary column of a Fourier coefficient stored as one
 // row of ns full-grid columns per mode, reading interior columns only. The
-// axis column is written for m <= 1 and left at zero otherwise. At ns == 3 the
-// axis column is also the third-from-last column, and the single interior
-// column supplies both ends.
+// axis column is written for m <= 1 and left at zero otherwise; the column of
+// an inner boundary is written for every m. At ns == 3 the axis column is also
+// the third-from-last column, and the single interior column supplies both
+// ends.
 void ExtrapolateFullGridEnds(int ns, const Eigen::VectorXi& xm,
+                             bool has_inner_boundary,
                              vmecpp::RowMatrixXd& m_coefficients) {
   const int num_modes = static_cast<int>(m_coefficients.rows());
   for (int mn = 0; mn < num_modes; ++mn) {
+    const bool set_surface_0 = xm[mn] <= 1 || has_inner_boundary;
     if (ns < 4) {
       const double interior = m_coefficients(mn, 1);
-      if (xm[mn] <= 1) {
+      if (set_surface_0) {
         m_coefficients(mn, 0) = interior;
       }
       m_coefficients(mn, ns - 1) = interior;
@@ -106,12 +110,18 @@ void ExtrapolateFullGridEnds(int ns, const Eigen::VectorXi& xm,
     const double axis = 2.0 * m_coefficients(mn, 1) - m_coefficients(mn, 2);
     const double boundary =
         2.0 * m_coefficients(mn, ns - 2) - m_coefficients(mn, ns - 3);
-    if (xm[mn] <= 1) {
+    if (set_surface_0) {
       m_coefficients(mn, 0) = axis;
     }
     m_coefficients(mn, ns - 1) = boundary;
   }  // mn
 }  // ExtrapolateFullGridEnds
+
+// Whether surface 0 is the inner boundary of a plasma without a magnetic axis
+// rather than the magnetic axis.
+bool HasInnerBoundary(const vmecpp::VmecInternalResults& results) {
+  return results.s_inner > 0.0;
+}
 }  // namespace
 
 // Shorthands for the calls required to read/write data members from/to HDF5
@@ -154,6 +164,8 @@ absl::Status vmecpp::VmecInternalResults::WriteTo(H5::H5File& file) const {
   WRITEMEMBER(chipH);
   WRITEMEMBER(currH);
   WRITEMEMBER(phiF);
+  WRITEMEMBER(s_inner);
+  WRITEMEMBER(phip_integral_inner);
   WRITEMEMBER(iotaF);
   WRITEMEMBER(spectral_width);
   WRITEMEMBER(bvcoH);
@@ -242,6 +254,11 @@ absl::Status vmecpp::VmecInternalResults::LoadInto(
     m_obj.currH = Eigen::VectorXd::Zero(m_obj.phipH.size());
   }
   READMEMBER(phiF);
+  // files written before the inner boundary keep the magnetic axis defaults
+  if (from_file.nameExists(absl::StrFormat("%s/%s", H5key, "s_inner"))) {
+    READMEMBER(s_inner);
+    READMEMBER(phip_integral_inner);
+  }
   READMEMBER(iotaF);
   READMEMBER(spectral_width);
   READMEMBER(bvcoH);
@@ -1860,6 +1877,35 @@ void GatherStateVectorOfSurface(const vmecpp::Sizes& s,
   }  // n
 }
 
+// Set lambda on surface 0, the inner boundary of a plasma without a magnetic
+// axis, to the extrapolation of the iteration
+// (FourierGeometry::ExtrapolateLambdaToInnerBoundary), which is linear in the
+// coefficients divided by sqrt(s) for odd m; sqrt_s holds sqrt(s) of surfaces
+// 0, 1 and 2.
+void ExtrapolateLambdaToInnerBoundary(const vmecpp::Sizes& s,
+                                      const std::array<double, 3>& sqrt_s,
+                                      vmecpp::VmecInternalResults& m_results) {
+  for (int n = 0; n < s.ntor + 1; ++n) {
+    for (int m = 0; m < s.mpol; ++m) {
+      const bool m_odd = m % 2 == 1;
+      std::array<int, 3> index{};
+      std::array<double, 3> scale{};
+      for (int j = 0; j < 3; ++j) {
+        index[j] = (j * (s.ntor + 1) + n) * s.mpol + m;
+        scale[j] = m_odd ? sqrt_s[j] : 1.0;
+      }
+      for (vmecpp::RowMatrixXd* lambda : {&m_results.lmnsc, &m_results.lmncs,
+                                          &m_results.lmncc, &m_results.lmnss}) {
+        if (lambda->size() == 0) {
+          continue;
+        }
+        (*lambda)(index[0]) = scale[0] * (2.0 * (*lambda)(index[1]) / scale[1] -
+                                          (*lambda)(index[2]) / scale[2]);
+      }
+    }  // m
+  }  // n
+}
+
 }  // namespace
 
 vmecpp::VmecInternalResults vmecpp::GatherSpectralStateFromThreads(
@@ -1898,6 +1944,15 @@ vmecpp::VmecInternalResults vmecpp::GatherSpectralStateFromThreads(
       GatherStateVectorOfSurface(s, r, *decomposed_x[thread_id], jF, results);
     }  // jF
   }  // thread_id
+
+  if (radial_partitioning[0]->has_inner_boundary()) {
+    // thread 0 holds surfaces 0, 1 and 2
+    const RadialProfiles& p = *radial_profiles[0];
+    results.s_inner = p.sInner;
+    results.phip_integral_inner = p.phipIntegralInner;
+    ExtrapolateLambdaToInnerBoundary(s, {p.sqrtSF[0], p.sqrtSF[1], p.sqrtSF[2]},
+                                     results);
+  }
 
   return results;
 }
@@ -2114,6 +2169,15 @@ vmecpp::VmecInternalResults vmecpp::GatherDataFromThreads(
     }
   }  // thread_id
 
+  if (radial_partitioning[0]->has_inner_boundary()) {
+    // thread 0 holds surfaces 0, 1 and 2
+    const RadialProfiles& p = *radial_profiles[0];
+    results.s_inner = p.sInner;
+    results.phip_integral_inner = p.phipIntegralInner;
+    ExtrapolateLambdaToInnerBoundary(s, {p.sqrtSF[0], p.sqrtSF[1], p.sqrtSF[2]},
+                                     results);
+  }
+
   return results;
 }  // GatherDataFromThreads
 
@@ -2177,8 +2241,10 @@ void vmecpp::FixupPoloidalCurrent(
 void vmecpp::RecomputeToroidalFlux(
     const FlowControl& fc, VmecInternalResults& m_vmec_internal_results) {
   // radial quadrature over the half-grid dphi/ds between the two full-grid
-  // surfaces, which is exact for a linear dphi/ds
-  m_vmec_internal_results.phiF[0] = 0.0;
+  // surfaces, which is exact for a linear dphi/ds, from the flux enclosed by
+  // surface 0
+  m_vmec_internal_results.phiF[0] =
+      m_vmec_internal_results.phip_integral_inner / fc.deltaS;
   for (int jF = 1; jF < fc.ns; ++jF) {
     m_vmec_internal_results.phiF[jF] = m_vmec_internal_results.phiF[jF - 1] +
                                        m_vmec_internal_results.phipH[jF - 1];
@@ -3487,7 +3553,7 @@ vmecpp::ComputeIntermediateMercierQuantities(
           mercier_intermediate.phip_realF[jF];
     }  // kl
 
-    mercier_intermediate.s[jF] = jF * fc.deltaS;
+    mercier_intermediate.s[jF] = vmec_internal_results.s_inner + jF * fc.deltaS;
     const double sqrtSF = std::sqrt(mercier_intermediate.s[jF]);
 
     for (int kl = 0; kl < s.nZnT; ++kl) {
@@ -3719,7 +3785,7 @@ vmecpp::MercierFileContents vmecpp::ComputeMercierStability(
   }  // jF
 
   // fixup for comparison
-  mercier.s[0] = 0.0;
+  mercier.s[0] = vmec_internal_results.s_inner;
   mercier.s[fc.ns - 1] = 1.0;
 
   return mercier;
@@ -3823,8 +3889,10 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
       (1.5 * vmec_internal_results.phipH[fc.ns - 2] -
        0.5 * vmec_internal_results.phipH[fc.ns - 3]);
 
-  // integrate flux differentials to get flux profiles
-  threed1_first_table_intermediate.phi1[0] = 0.0;
+  // integrate flux differentials to get flux profiles; the toroidal flux from
+  // the flux enclosed by surface 0, the poloidal flux from 0 there
+  threed1_first_table_intermediate.phi1[0] =
+      vmec_internal_results.phip_integral_inner;
   threed1_first_table_intermediate.chi1[0] = 0.0;
   for (int jF = 1; jF < fc.ns; ++jF) {
     const int jHi = jF - 1;
@@ -3898,7 +3966,13 @@ vmecpp::ComputeIntermediateThreed1FirstTableQuantities(
   // NOTE:  jcuru, jcurv on FULL radial mesh coming out of calc_fbal
   //        They are local (surface-averaged) current densities (NOT integrated
   //        in s) jcurX = (dV/ds)/twopi**2 <JsupX>   for X=u,v
-  threed1_first_table_intermediate.bucof[0] = 0.0;
+  // No toroidal current is enclosed by the magnetic axis; the current enclosed
+  // by an inner boundary is extrapolated like the poloidal current.
+  threed1_first_table_intermediate.bucof[0] =
+      HasInnerBoundary(vmec_internal_results)
+          ? 1.5 * threed1_first_table_intermediate.bucoH[0] -
+                0.5 * threed1_first_table_intermediate.bucoH[1]
+          : 0.0;
   threed1_first_table_intermediate.bvcof[0] =
       1.5 * threed1_first_table_intermediate.bvcoH[0] -
       0.5 * threed1_first_table_intermediate.bvcoH[1];
@@ -3970,7 +4044,7 @@ vmecpp::Threed1FirstTable vmecpp::ComputeThreed1FirstTable(
 
   for (int jF = 0; jF < fc.ns; ++jF) {
     // normalized toroidal flux on full-grid
-    const double s = jF * fc.deltaS;
+    const double s = vmec_internal_results.s_inner + jF * fc.deltaS;
 
     const double vpphi = threed1_first_table_intermediate.vpphi[jF];
     const double phipf_loc = threed1_first_table_intermediate.phipf_loc[jF];
@@ -4347,6 +4421,23 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
   result.aminr1 = std::sqrt(2.0 * result.volume_p /
                             (4.0 * M_PI * M_PI * geometric_offset.r_00));
 
+  // The quantities above describe the shape of the boundary. A plasma with an
+  // inner boundary fills the volume it encloses less the volume enclosed by
+  // the inner boundary, which the volume averages below refer to.
+  if (HasInnerBoundary(vmec_internal_results)) {
+    const double sqrt_s_inner = vmec_internal_results.sqrtSF[0];
+    double inner_volume_sum = 0.0;
+    for (int kl = 0; kl < s.nZnT; ++kl) {
+      const int l = kl % s.nThetaEff;
+      const double r = vmec_internal_results.r_e(kl) +
+                       sqrt_s_inner * vmec_internal_results.r_o(kl);
+      const double zu = vmec_internal_results.zu_e(kl) +
+                        sqrt_s_inner * vmec_internal_results.zu_o(kl);
+      inner_volume_sum += r * r * zu * s.wInt[l];
+    }  // kl
+    result.volume_p -= 2.0 * M_PI * M_PI * std::abs(inner_volume_sum);
+  }
+
   result.pavg = intermediate.sump / result.volume_p;
   result.factor = result.pavg * 2;
 
@@ -4498,8 +4589,9 @@ vmecpp::ComputeThreed1GeometricMagneticQuantities(
       k = s.nZeta / 2;
     }
 
-    // omit magnetic axis at jF = 0
-    for (int jF = 1; jF < fc.ns; ++jF) {
+    // omit magnetic axis at jF = 0, but not an inner boundary
+    const int first_surface = HasInnerBoundary(vmec_internal_results) ? 0 : 1;
+    for (int jF = first_surface; jF < fc.ns; ++jF) {
       double minimum_z = DBL_MAX;
       double maximum_z = -DBL_MAX;
       double minimum_r = DBL_MAX;
@@ -5121,6 +5213,11 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
     }  // jF
   }
 
+  // Surface 0 is either the magnetic axis, which keeps only the n = 0
+  // coefficients of m > 0 and extrapolates its m = 0 lambda, or the inner
+  // boundary of a plasma without a magnetic axis, a surface like any other.
+  const bool has_inner_boundary = HasInnerBoundary(m_vmec_internal_results);
+
   // CONVERT TO rmnc, zmns, lmns, etc EXTERNAL representation (without internal
   // mscale, nscale) IF B^v ~ phip + lamu, MUST DIVIDE BY phipf(js) below to
   // maintain old-style format
@@ -5148,8 +5245,8 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       // since sin(m * theta) == 0 for m = 0
     }  // n
 
-    // extrapolate to axis if 3D
-    if (s.lthreed && jF == 0) {
+    // extrapolate to axis if 3D; an inner boundary carries its lambda already
+    if (s.lthreed && jF == 0 && !has_inner_boundary) {
       int mn = -1;
       for (int n = 0; n <= s.ntor; ++n) {
         mn++;
@@ -5172,7 +5269,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
           rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc);
           zmns1[mn] = t1 * m_vmec_internal_results.zmnsc(idx_fc);
           lmns1[mn] = t1 * m_vmec_internal_results.lmnsc(idx_fc);
-        } else if (jF > 0) {
+        } else if (jF > 0 || has_inner_boundary) {
           rmnc1[mn] = t1 * m_vmec_internal_results.rmncc(idx_fc) / 2.0;
           zmns1[mn] = t1 * m_vmec_internal_results.zmnsc(idx_fc) / 2.0;
           lmns1[mn] = t1 * m_vmec_internal_results.lmnsc(idx_fc) / 2.0;
@@ -5214,7 +5311,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       const double lmns_outside = wout.lmns_full(mn, jFo);
 
       double lmns_inside = wout.lmns_full(mn, jFi);
-      if (jFi == 0 && wout.xm[mn] <= 1) {
+      if (jFi == 0 && wout.xm[mn] <= 1 && !has_inner_boundary) {
         lmns_inside = lmns_outside;
       }
 
@@ -5742,7 +5839,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       }  // n
 
       // extrapolate to axis if 3D, as for lmns above
-      if (s.lthreed && jF == 0) {
+      if (s.lthreed && jF == 0 && !has_inner_boundary) {
         int mn = -1;
         for (int n = 0; n <= s.ntor; ++n) {
           mn++;
@@ -5765,7 +5862,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
             rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc);
             zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc);
             lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc);
-          } else if (jF > 0) {
+          } else if (jF > 0 || has_inner_boundary) {
             rmns1[mn] = t1 * m_vmec_internal_results.rmnsc(idx_fc) / 2.0;
             zmnc1[mn] = t1 * m_vmec_internal_results.zmncc(idx_fc) / 2.0;
             lmnc1[mn] = t1 * m_vmec_internal_results.lmncc(idx_fc) / 2.0;
@@ -5808,7 +5905,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
         const double lmnc_outside = wout.lmnc_full(mn, jFo);
 
         double lmnc_inside = wout.lmnc_full(mn, jFi);
-        if (jFi == 0 && wout.xm[mn] <= 1) {
+        if (jFi == 0 && wout.xm[mn] <= 1 && !has_inner_boundary) {
           lmnc_inside = lmnc_outside;
         }
 
@@ -5903,18 +6000,22 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
       }  // mn
     }  // j_f
 
-    // Axis (j_f=0): extrapolate for m <= 1, zero for m > 1
-    // Edge (j_f=ns-1): linear extrapolation
-    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currumnc);
-    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currvmnc);
+    // Axis (j_f=0): extrapolate for m <= 1, zero for m > 1; inner boundary
+    // (j_f=0) and edge (j_f=ns-1): linear extrapolation
+    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, has_inner_boundary,
+                            wout.currumnc);
+    ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, has_inner_boundary,
+                            wout.currvmnc);
 
     // Divide by mu_0 to convert to SI units (Amperes)
     wout.currumnc /= MU_0;
     wout.currvmnc /= MU_0;
 
     if (s.lasym) {
-      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currumns);
-      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, wout.currvmns);
+      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, has_inner_boundary,
+                              wout.currumns);
+      ExtrapolateFullGridEnds(fc.ns, wout.xm_nyq, has_inner_boundary,
+                              wout.currvmns);
 
       wout.currumns /= MU_0;
       wout.currvmns /= MU_0;

@@ -850,4 +850,54 @@ TEST_F(RadialProfilesTest, PressureIsZeroBeforeTheFirstUpdate) {
   EXPECT_TRUE((profiles_->presH.array() == 0.0).all());
 }
 
+// With an inner boundary at s_inner the surfaces divide [s_inner, 1] evenly,
+// every surface keeps its 1/sqrt(s) scaling of the odd-m coefficients, and the
+// flux enclosed by the inner boundary is the toroidal flux at s_inner.
+TEST(RadialProfilesInnerBoundaryTest, GridSpansTheShell) {
+  static constexpr int kNs = 9;
+  static constexpr double kSInner = 0.36;
+  for (const bool inner_boundary : {false, true}) {
+    VmecINDATA indata;
+    indata.inner_boundary_s = inner_boundary ? kSInner : 0.0;
+    const double s_inner = indata.inner_boundary_s;
+    Sizes sizes(indata);
+    FlowControl flow_control(/*lfreeb=*/false, /*delt=*/0.9, /*num_grids=*/1);
+    flow_control.ns = kNs;
+    flow_control.deltaS = (1.0 - s_inner) / (kNs - 1.0);
+    HandoverStorage handover(&sizes);
+    RadialPartitioning partitioning;
+    partitioning.adjustRadialPartitioning(
+        /*num_threads=*/1, /*thread_id=*/0, kNs, /*lfreeb=*/false,
+        /*printout=*/false, inner_boundary);
+    RadialProfiles profiles(&partitioning, &handover, &indata, &flow_control,
+                            /*signOfJacobian=*/-1, /*pDamp=*/0.05);
+    profiles.setupInputProfiles();
+    VmecConstants constants;
+    constants.reset();
+    profiles.evalRadialProfiles(/*haveToFlipTheta=*/false, constants);
+
+    for (int j = 0; j < kNs; ++j) {
+      const double s = s_inner + j * flow_control.deltaS;
+      EXPECT_NEAR(profiles.sqrtSF[j] * profiles.sqrtSF[j], s, 1e-14) << j;
+      if (j < kNs - 1) {
+        EXPECT_NEAR(profiles.sqrtSH[j] * profiles.sqrtSH[j],
+                    s + 0.5 * flow_control.deltaS, 1e-14)
+            << j;
+      }
+    }
+    if (inner_boundary) {
+      EXPECT_DOUBLE_EQ(profiles.scalxc[1], 1.0 / std::sqrt(kSInner));
+      EXPECT_DOUBLE_EQ(profiles.sp[0], profiles.sqrtSH[0] / profiles.sqrtSF[0]);
+      EXPECT_DOUBLE_EQ(profiles.sqrtSInner, std::sqrt(kSInner));
+      EXPECT_NEAR(profiles.phipIntegralInner,
+                  profiles.maxToroidalFlux * kSInner, 1e-15);
+    } else {
+      // the axis takes the scaling of the first surface
+      EXPECT_DOUBLE_EQ(profiles.scalxc[1], profiles.scalxc[3]);
+      EXPECT_DOUBLE_EQ(profiles.sp[0], profiles.sm[0]);
+      EXPECT_EQ(profiles.phipIntegralInner, 0.0);
+    }
+  }
+}
+
 }  // namespace vmecpp

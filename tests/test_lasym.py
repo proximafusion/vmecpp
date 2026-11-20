@@ -684,6 +684,10 @@ VACUUM_CURRENT_FIELDS = {
     *CURRENT_DENSITY_FIELDS,
 }
 
+# B_s of the vacuum case, which is iteration noise of up to 5e-7: it differs between
+# the unshifted and the shifted run by more as ftol falls from 1e-12 to 1e-16.
+VACUUM_RADIAL_FIELD_FIELDS = {"wout.bsubsmnc", "wout.bsubsmns", "jxbout.bsubs3"}
+
 FORCE_RESIDUALS = {"wout.fsqr", "wout.fsqz", "wout.fsql", "wout.fsqt"}
 
 
@@ -696,7 +700,10 @@ def basic_non_stellsym_input(tmp_path_factory):
 
 def _poloidal_case(name, basic_non_stellsym_input):
     if name == "basic_non_stellsym":
-        return basic_non_stellsym_input, VACUUM_CURRENT_FIELDS
+        return (
+            basic_non_stellsym_input,
+            VACUUM_CURRENT_FIELDS | VACUUM_RADIAL_FIELD_FIELDS,
+        )
     return _lasym_input(name), set()
 
 

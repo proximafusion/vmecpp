@@ -171,6 +171,9 @@ def wout_quantities(
         The fields listed in :data:`WOUT_QUANTITIES`, in the layout of
         :class:`vmecpp.VmecWOut`.
     """
+    if getattr(vmec_input, "inner_boundary_s", 0.0) > 0.0:
+        msg = "wout_quantities does not support an inner boundary"
+        raise NotImplementedError(msg)
     # A run that stops early at a coarser ns_array step returns that step's geometry.
     sizes = _sizes(vmec_input, ns=np.shape(geometry.toroidal_flux)[0])
     profiles = _profiles(vmec_input, sizes, mass_half)
@@ -1650,20 +1653,27 @@ def _to_combined(setup: _Setup, first, second, *, cosine: bool) -> jax.Array:
 
 
 def _lambda_to_half_grid(
-    lambda_full: jax.Array | np.ndarray, xm: np.ndarray
+    lambda_full: jax.Array | np.ndarray, xm: np.ndarray, s_inner: float = 0.0
 ) -> jax.Array:
-    """Radial interpolation of lambda onto the half grid (classic ``lmns``)."""
+    """Radial interpolation of lambda onto the half grid (classic ``lmns``).
+
+    With an inner boundary at ``s_inner`` > 0 the full grid spans ``[s_inner, 1]``
+    and surface 0 carries its own lambda.
+    """
     ns = lambda_full.shape[1]
-    sqrt_s_full = np.sqrt(np.arange(ns) / (ns - 1.0))
-    sqrt_s_half = np.sqrt((np.arange(ns - 1) + 0.5) / (ns - 1.0))
+    sqrt_s_full = np.sqrt(s_inner + np.arange(ns) * (1.0 - s_inner) / (ns - 1.0))
+    sqrt_s_half = np.sqrt(
+        s_inner + (np.arange(ns - 1) + 0.5) * (1.0 - s_inner) / (ns - 1.0)
+    )
     sm = sqrt_s_half / sqrt_s_full[1:]
     sp = np.empty_like(sm)
     sp[1:] = sqrt_s_half[1:] / sqrt_s_full[1:-1]
-    sp[0] = sm[0]
+    sp[0] = sm[0] if s_inner == 0.0 else sqrt_s_half[0] / sqrt_s_full[0]
     outside = lambda_full[:, 1:]
     inside = lambda_full[:, :-1]
-    low_m = (xm <= 1)[:, None] & (np.arange(ns - 1) == 0)[None, :]
-    inside = jnp.where(low_m, outside, inside)
+    if s_inner == 0.0:
+        low_m = (xm <= 1)[:, None] & (np.arange(ns - 1) == 0)[None, :]
+        inside = jnp.where(low_m, outside, inside)
     odd = (xm % 2 == 1)[:, None]
     half = jnp.where(
         odd,

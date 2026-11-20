@@ -17,9 +17,11 @@ class RadialPartitioning {
   RadialPartitioning();
 
   // perform a collective call of this to figure out which CPUs are needed for
-  // the current number of surfaces
+  // the current number of surfaces; inner_boundary makes surface 0 a fixed
+  // inner boundary of the plasma in place of the magnetic axis
   void adjustRadialPartitioning(int num_threads, int thread_id, int ns,
-                                bool lfreeb, bool printout = true);
+                                bool lfreeb, bool printout = true,
+                                bool inner_boundary = false);
 
   // get the number of threads currently involved in the plasma calculation
   int get_num_threads() const;
@@ -29,6 +31,10 @@ class RadialPartitioning {
 
   // returns true if this thread has the plasma boundary
   bool has_boundary() const;
+
+  // returns true if surface 0 is a fixed inner boundary of the plasma rather
+  // than the magnetic axis; unlike has_boundary(), the same in every thread
+  bool has_inner_boundary() const;
 
   // ---------------------------------
 
@@ -77,6 +83,8 @@ class RadialPartitioning {
   int thread_id_;
 
   int ns_;
+
+  bool inner_boundary_;
 };
 
 }  // namespace vmecpp

@@ -324,11 +324,13 @@ def solve_equilibrium(
             # bad initial Jacobian / huge initial forces: recompute the magnetic
             # axis once and restart the force iteration (vmec.cc lines 833-874).
             # Counters carry: the C++ does not reset iter1_/iter2_ here, so the
-            # reguessed retry continues the same iteration numbering.
+            # reguessed retry continues the same iteration numbering. A plasma
+            # with an inner boundary has no axis to guess again.
             if (
                 ijacob == 0
                 and (status_bad_jacobian or rr == RestartReason.HUGE_INITIAL_FORCES)
                 and model.ns >= 3
+                and not model.has_inner_boundary
             ):
                 # the axis is recomputed by reinitialize() at the next outer-loop
                 # entry (mirroring the C++ recompute + lreset re-init)
