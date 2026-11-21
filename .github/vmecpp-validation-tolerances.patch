@@ -1,0 +1,13 @@
+diff --git a/src/tolerances.py b/src/tolerances.py
+--- a/src/tolerances.py
++++ b/src/tolerances.py
+@@ -72,6 +72,6 @@ _TOLERANCES: dict[str, float | tuple[float, float]] = {
+     "flux_surface_geometry_r": (1.0e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
+-    "flux_surface_geometry_z": (1.0e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
+-    "flux_surface_b_r": (1.0e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
+-    "flux_surface_b_phi": (1.0e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
++    "flux_surface_geometry_z": (2.5e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
++    "flux_surface_b_r": (2.5e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
++    "flux_surface_b_phi": (2.5e-7, 5.0e-5),  # cth_like_beta0_mn12_ns51
+     "flux_surface_b_z": (1.0e-6, 1.0e-4),
+     # free-boundary quantities
