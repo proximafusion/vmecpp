@@ -25,8 +25,12 @@ using FftComplex = double[2];
 // ToroidalFftPlans
 // ---------------------------------------------------------------------------
 
-ToroidalFftPlans::ToroidalFftPlans(int n_in, int nfp_in, int mpol_in)
-    : n(n_in), nhalf(n_in / 2 + 1), nfp(nfp_in), mpol(mpol_in) {
+ToroidalFftPlans::ToroidalFftPlans(int n_in, double nfp_per_transit_in,
+                                   int mpol_in)
+    : n(n_in),
+      nhalf(n_in / 2 + 1),
+      nfp_per_transit(nfp_per_transit_in),
+      mpol(mpol_in) {
   const int full_count = kBatch * mpol;
   fftx::point_t<4> req;
   req[0] = n;
@@ -80,6 +84,8 @@ ToroidalFftPlans::~ToroidalFftPlans() {
 // And derivative of a DST quantity (e.g. rmkss_n = Sigma rmnss * cosnvn):
 //   rmkss_n = Sigma_n rmnss[n]*(n*nfp)*nscale[n]*cos(n*zeta_k)
 //     -> X[0]=0, X[n] = rmnss[n]*n*nfp*nscale[n]/2 (Re only)
+//
+// nfp stands for nfp_per_transit = nfp / toroidal_transits.
 
 namespace {
 
@@ -122,12 +128,13 @@ inline void FillDst(const double* spec, const Eigen::VectorXd& nscale, int ntor,
 //        = rmkcc_n (using sinnvn[k,n] = -n*nfp*sin*nscale)
 // X[n] has Im = +spec[n]*n*nfp*nscale[n]/2, Re = 0.
 inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
-                         int ntor, int nhalf, int nfp, FftComplex* X) {
+                         int ntor, int nhalf, double nfp_per_transit,
+                         FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
     X[n][0] = 0.0;
-    X[n][1] = spec[n] * (n * nfp) * nscale[n] * 0.5;
+    X[n][1] = spec[n] * (n * nfp_per_transit) * nscale[n] * 0.5;
   }
   for (int n = ntor + 1; n < nhalf; ++n) {
     X[n][0] = 0.0;
@@ -140,11 +147,12 @@ inline void FillDctDeriv(const double* spec, const Eigen::VectorXd& nscale,
 //        = rmkss_n (using cosnvn[k,n] = n*nfp*cos*nscale)
 // X[n] has Re = spec[n]*n*nfp*nscale[n]/2, Im = 0.
 inline void FillDstDeriv(const double* spec, const Eigen::VectorXd& nscale,
-                         int ntor, int nhalf, int nfp, FftComplex* X) {
+                         int ntor, int nhalf, double nfp_per_transit,
+                         FftComplex* X) {
   X[0][0] = 0.0;
   X[0][1] = 0.0;
   for (int n = 1; n <= ntor; ++n) {
-    X[n][0] = spec[n] * (n * nfp) * nscale[n] * 0.5;
+    X[n][0] = spec[n] * (n * nfp_per_transit) * nscale[n] * 0.5;
     X[n][1] = 0.0;
   }
   for (int n = ntor + 1; n < nhalf; ++n) {
@@ -191,7 +199,7 @@ void FourierToReal3DSymmFastPoloidalFft(
   const int nsMinF = r.nsMinF;
   const int ntor = s.ntor;
   const int nhalf = plans.nhalf;
-  const int nfp = plans.nfp;
+  const double nfp_per_transit = plans.nfp_per_transit;
   const int nZeta = s.nZeta;
   constexpr int kBatch = ToroidalFftPlans::kBatch;
 
@@ -261,16 +269,22 @@ void FourierToReal3DSymmFastPoloidalFft(
 
       FillDct(rmncc_ptr, fb.nscale, ntor, nhalf, X_slot(m, kRmkcc));
       FillDst(rmnss_ptr, fb.nscale, ntor, nhalf, X_slot(m, kRmkss));
-      FillDctDeriv(rmncc_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kRmkccN));
-      FillDstDeriv(rmnss_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kRmkssN));
+      FillDctDeriv(rmncc_ptr, fb.nscale, ntor, nhalf, nfp_per_transit,
+                   X_slot(m, kRmkccN));
+      FillDstDeriv(rmnss_ptr, fb.nscale, ntor, nhalf, nfp_per_transit,
+                   X_slot(m, kRmkssN));
       FillDct(zmnsc_ptr, fb.nscale, ntor, nhalf, X_slot(m, kZmksc));
       FillDst(zmncs_ptr, fb.nscale, ntor, nhalf, X_slot(m, kZmkcs));
-      FillDctDeriv(zmnsc_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kZmkscN));
-      FillDstDeriv(zmncs_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kZmkcsN));
+      FillDctDeriv(zmnsc_ptr, fb.nscale, ntor, nhalf, nfp_per_transit,
+                   X_slot(m, kZmkscN));
+      FillDstDeriv(zmncs_ptr, fb.nscale, ntor, nhalf, nfp_per_transit,
+                   X_slot(m, kZmkcsN));
       FillDct(lmnsc_ptr, fb.nscale, ntor, nhalf, X_slot(m, kLmksc));
       FillDst(lmncs_ptr, fb.nscale, ntor, nhalf, X_slot(m, kLmkcs));
-      FillDctDeriv(lmnsc_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kLmkscN));
-      FillDstDeriv(lmncs_ptr, fb.nscale, ntor, nhalf, nfp, X_slot(m, kLmkcsN));
+      FillDctDeriv(lmnsc_ptr, fb.nscale, ntor, nhalf, nfp_per_transit,
+                   X_slot(m, kLmkscN));
+      FillDstDeriv(lmncs_ptr, fb.nscale, ntor, nhalf, nfp_per_transit,
+                   X_slot(m, kLmkcsN));
     }
 
     // Single 12*mpol batched c2r for the entire surface via FFTX.
@@ -390,7 +404,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
   const int jMinL = 1;
   const int ntor = s.ntor;
   const int nhalf = plans.nhalf;
-  const int nfp = plans.nfp;
+  const double nfp_per_transit = plans.nfp_per_transit;
   const int nZeta = s.nZeta;
   constexpr int kBatch = ToroidalFftPlans::kBatch;
 
@@ -567,7 +581,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
       // (RCDiag(FList(...)) post-multiply baked into SPIRAL spec).  No
       // additional ns multiply here.
       for (int n = 0; n <= ntor; ++n) {
-        const double nfp_n = static_cast<double>(n) * nfp;
+        const double nfp_n = static_cast<double>(n) * nfp_per_transit;
 
         frcc_seg[n] += F_rmkcc[n][0] + nfp_n * F_rmkcc_n[n][1];
         frss_seg[n] += -F_rmkss[n][1] + nfp_n * F_rmkss_n[n][0];
@@ -582,7 +596,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
             m_physical_forces.flcs.data() + idx_mn_base, ntorp1);
 
         for (int n = 0; n <= ntor; ++n) {
-          const double nfp_n = static_cast<double>(n) * nfp;
+          const double nfp_n = static_cast<double>(n) * nfp_per_transit;
 
           flsc_seg[n] += F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1];
           flcs_seg[n] += -F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0];
@@ -658,7 +672,7 @@ void ForcesToFourier3DSymmFastPoloidalFft(
 
       // FFTX prdftbat folds nscale[n] into its kernel; no extra ns multiply.
       for (int n = 0; n <= ntor; ++n) {
-        const double nfp_n = static_cast<double>(n) * nfp;
+        const double nfp_n = static_cast<double>(n) * nfp_per_transit;
 
         flsc_seg[n] += F_lmksc[n][0] + nfp_n * F_lmksc_n[n][1];
         flcs_seg[n] += -F_lmkcs[n][1] + nfp_n * F_lmkcs_n[n][0];
