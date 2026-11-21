@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Solve a quasi-isodynamic stellarator of 42 identical circular coils with VMEC++ and
+"""Solve a quasi-isodynamic stellarator of 45 identical circular coils with VMEC++ and
 compare it with W7-X."""
 
 import argparse
@@ -16,34 +16,35 @@ from simsopt.geo import CurveXYZFourier
 import vmecpp
 
 NFP = 3
-RADIUS = 1.323802670  # coil radius in m
+RADIUS = 1.368844913  # coil radius in m
 CURRENT = 1.0e6  # coil current in A
-# Centres in m of the coils from \phi = 0 to the middle of a field period. The first and
-# the last coil are their own images under stellarator symmetry.
+# Centres in m of the coils from \phi = 0 to the middle of a field period. The first coil
+# is its own image under stellarator symmetry, and the middle of the period falls between
+# the last coil and its image.
 CENTRES = np.array(
     [
-        [6.877479220330, 0.0, 0.0],
-        [6.687865052101, 0.298413915542, 0.604072981363],
-        [6.227785917688, 0.547553085727, 1.019039654959],
-        [5.662759881014, 0.760350502866, 1.295258767753],
-        [5.128298097436, 0.973065908554, 1.427416060647],
-        [4.336553395826, 1.408217196285, 1.256597389743],
-        [3.113661054411, 2.215420692339, 0.568896702870],
-        [1.749542597927, 3.030296669615, 0.0],
+        [6.952517091918, 0.0, 0.0],
+        [6.697528577422, 0.305383662460, 0.637530957417],
+        [6.228629413013, 0.524600414061, 0.955872976665],
+        [5.775846925224, 0.693130660040, 1.151685571129],
+        [5.187428505274, 0.901547735783, 1.358845621597],
+        [4.632411111776, 1.133822792073, 1.399509413721],
+        [3.554357720064, 1.921282485220, 0.790572508174],
+        [2.358689283815, 2.688029964755, 0.320778340491],
     ]
 )
 # Unit normals of the same coils. A positive current drives the field at a centre along
 # the normal.
 NORMALS = np.array(
     [
-        [0.0, 0.502516630091, 0.864567543042],
-        [-0.406586202844, 0.506314586037, 0.760482215192],
-        [-0.732958911682, 0.431736605654, 0.525713550448],
-        [-0.911576901129, 0.367919271991, 0.183474692059],
-        [-0.871792908297, 0.427757237931, -0.238748550657],
-        [-0.765232486517, 0.523807113339, -0.374226334714],
-        [-0.827065569290, 0.481359320761, -0.290268407534],
-        [-0.825402496061, 0.476546353292, -0.302678530228],
+        [0.0, 0.539474916692, 0.842001671174],
+        [-0.407209876744, 0.518097899003, 0.752166659279],
+        [-0.727152729860, 0.435680119957, 0.530501404834],
+        [-0.872994844065, 0.378233605892, 0.307927494079],
+        [-0.905753659720, 0.422475968255, -0.033531539659],
+        [-0.725460868350, 0.559100191126, -0.401389467694],
+        [-0.821801676615, 0.476618585072, -0.312212633754],
+        [-0.830615205428, 0.477199242944, -0.286983036164],
     ]
 )
 PRESSURES = (8000.0, 16000.0, 24000.0)  # p_0 in Pa of the profile p_0 (1 - s)
@@ -69,7 +70,7 @@ class Interior:
 
 
 DESIGN = Interior(
-    nfp=NFP, axis=(6.49, 6.61), steps=2, planes=96, offset=0.3, mpol=12, ntor=24
+    nfp=NFP, axis=(6.40, 6.52), steps=2, planes=96, offset=0.3, mpol=12, ntor=24
 )
 # W7-X in the standard configuration. Its boundary lies inside the 5/5 islands.
 W7X = Interior(
@@ -91,11 +92,11 @@ def circle(centre, normal):
 
 
 def coils():
-    """The 42 coils of the design."""
+    """The 45 coils of the design."""
     # Stellarator symmetry maps (x, y, z) to (x, -y, -z) and n to (-n_x, n_y, n_z).
     flip = np.array([1.0, -1.0, -1.0])
-    centres = np.concatenate([CENTRES, flip * CENTRES[1:-1]])
-    normals = np.concatenate([NORMALS, -flip * NORMALS[1:-1]])
+    centres = np.concatenate([CENTRES, flip * CENTRES[1:]])
+    normals = np.concatenate([NORMALS, -flip * NORMALS[1:]])
     out = []
     for k in range(NFP):
         cos, sin = np.cos(2.0 * np.pi * k / NFP), np.sin(2.0 * np.pi * k / NFP)
@@ -490,7 +491,7 @@ def main():
     field = BiotSavart(coils())
     k = interior(field, DESIGN)
     print(
-        f"42 coils of radius {RADIUS:.3f} m: magnetic axis through R = "
+        f"45 coils of radius {RADIUS:.3f} m: magnetic axis through R = "
         f"{k['r_axis']:.5f} m on the midplane of phi = 0 with iota "
         f"{abs(k['iota_axis']):.4f} next to it, boundary traced from 30 cm outboard "
         f"of it with iota {abs(k['iota_surface']):.4f}, fitted within "
