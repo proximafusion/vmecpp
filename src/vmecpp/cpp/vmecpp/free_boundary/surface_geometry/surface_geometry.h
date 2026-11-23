@@ -17,6 +17,18 @@ namespace vmecpp {
 
 class SurfaceGeometry {
  public:
+  // degree of the Taylor expansion of R and Z about each grid point, and its
+  // number of coefficients
+  static constexpr int kTaylorDegree = 4;
+  static constexpr int kTaylorTerms =
+      (kTaylorDegree + 1) * (kTaylorDegree + 2) / 2;
+
+  // row of rtay and ztay that holds the coefficient of
+  // dtheta^i dzeta^j
+  static constexpr int TaylorIndex(int i, int j) {
+    return (i + j) * (i + j + 1) / 2 + j;
+  }
+
   SurfaceGeometry(const Sizes* s, const FourierBasisFastToroidal* fb,
                   const TangentialPartitioning* tp);
 
@@ -149,6 +161,13 @@ class SurfaceGeometry {
   // full surface
   Eigen::VectorXd rsinuv;
 
+  // Taylor coefficients of R and Z about each point, in the steps of theta
+  // and of the zeta of one field period, d^{i+j}/(dtheta^i dzeta^j) / (i! j!)
+  // in row TaylorIndex(i, j); computed on full updates
+  // [kTaylorTerms x thread-local effective poloidal range (tp->numZT)]
+  Eigen::MatrixXd rtay;
+  Eigen::MatrixXd ztay;
+
   // Non-stellarator-symmetric (lasym) antisymmetric contributions, computed on
   // the reduced poloidal range and combined with the symmetric parts above to
   // fill the full poloidal range (see inverseDFT). r1b/z1b are full-surface;
@@ -185,6 +204,12 @@ class SurfaceGeometry {
                   const std::span<const double> zSS, bool fullUpdate);
 
   void derivedSurfaceQuantities(int signOfJacobian, bool fullUpdate);
+
+  void ComputeTaylorCoefficients(
+      const std::span<const double> rCC, const std::span<const double> rSS,
+      const std::span<const double> rSC, const std::span<const double> rCS,
+      const std::span<const double> zSC, const std::span<const double> zCS,
+      const std::span<const double> zCC, const std::span<const double> zSS);
 };
 
 }  // namespace vmecpp

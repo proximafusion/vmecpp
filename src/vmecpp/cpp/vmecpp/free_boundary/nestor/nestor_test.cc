@@ -211,6 +211,8 @@ struct TwoRingGrid {
   int nfp;
   int ntor;
   int nzeta;
+  int ntheta;
+  double tolerance;
 };
 
 }  // namespace
@@ -226,8 +228,7 @@ class TwoRingTest : public ::testing::TestWithParam<TwoRingGrid> {};
 TEST_P(TwoRingTest, VacuumFieldVanishesOnTorus) {
   const TwoRingGrid grid = GetParam();
   const int mpol = 8;
-  const int ntheta = 22;
-  Sizes s(grid.lasym, grid.nfp, mpol, grid.ntor, ntheta, grid.nzeta);
+  Sizes s(grid.lasym, grid.nfp, mpol, grid.ntor, grid.ntheta, grid.nzeta);
   FourierBasisFastToroidal fb(&s);
 
   const double R0 = 1.0;
@@ -303,16 +304,23 @@ TEST_P(TwoRingTest, VacuumFieldVanishesOnTorus) {
                vacuum_b_z[kl] * vacuum_b_z[kl];
   }
   const double error = std::sqrt(err_sum / ref_sum);
-  EXPECT_LT(error, 5.0e-4) << "rms of the vacuum field over that of the rings";
+  EXPECT_LT(error, grid.tolerance)
+      << "rms of the vacuum field over that of the rings";
 }
 
 // the axisymmetric grid, whose toroidal integral is a sum over images, three-
 // dimensional grids with even and odd nzeta, and the full poloidal grid of
-// lasym
-INSTANTIATE_TEST_SUITE_P(TestNestor, TwoRingTest,
-                         ::testing::Values(TwoRingGrid{false, 1, 0, 1},
-                                           TwoRingGrid{false, 2, 4, 32},
-                                           TwoRingGrid{false, 2, 4, 31},
-                                           TwoRingGrid{true, 2, 4, 31}));
+// lasym; then the same on finer grids, where the error that remains is the
+// third-order defect of the sums at the source point
+INSTANTIATE_TEST_SUITE_P(
+    TestNestor, TwoRingTest,
+    ::testing::Values(TwoRingGrid{false, 1, 0, 1, 22, 5.0e-4},
+                      TwoRingGrid{false, 2, 4, 32, 22, 5.0e-4},
+                      TwoRingGrid{false, 2, 4, 31, 22, 5.0e-4},
+                      TwoRingGrid{true, 2, 4, 31, 22, 5.0e-4},
+                      TwoRingGrid{false, 1, 0, 1, 32, 6.0e-5},
+                      TwoRingGrid{false, 2, 4, 32, 44, 3.0e-5},
+                      TwoRingGrid{false, 2, 4, 31, 44, 3.0e-5},
+                      TwoRingGrid{true, 2, 4, 32, 44, 3.0e-5}));
 
 }  // namespace vmecpp
