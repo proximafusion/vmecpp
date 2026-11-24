@@ -19,4 +19,4 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`self_consistent_bootstrap_current.py`](../examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
 - [`w7x_lbsubs_current_density.py`](../examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
 - [`force_balance_spectrum.py`](../examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
-- [`identical_coil_stellarator.py`](../examples/identical_coil_stellarator.py): solve a quasi-isodynamic stellarator of 64 identical coils and compare its effective ripple and the poloidal closure of its contours of B with those of W7-X.
+- [`identical_coil_stellarator.py`](../examples/identical_coil_stellarator.py): solve a quasi-isodynamic stellarator of 80 identical coils and compare its effective ripple and the poloidal closure of its contours of B with those of W7-X.

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Solve a quasi-isodynamic stellarator of 64 identical coils with VMEC++ and compare it
+"""Solve a quasi-isodynamic stellarator of 80 identical coils with VMEC++ and compare it
 with W7-X."""
 
 import dataclasses
@@ -13,68 +13,68 @@ from simsopt.geo import CurveXYZFourier
 
 import vmecpp
 
-NFP = 4
-RADIUS = 1.292442761  # coil radius in m
+NFP = 5
+RADIUS = 1.372835450  # coil radius in m
 # Every coil is one shape: a circle of radius RADIUS lifted along its normal by
 # WAVE \sin(3 t - phase) at the angle t from its first axis. A phase turns the
 # shape about the normal by a third of it.
-WAVE = 0.351330513  # depth of the wave in m
+WAVE = 0.461500738  # depth of the wave in m
 CURRENT = 1.0e6  # coil current in A
 # Centres in m of the coils from \phi = 0 to the middle of a field period. The first and
 # the last coil are their own images under stellarator symmetry.
 CENTRES = np.array(
     [
-        [8.452051691947, 0.0, 0.0],
-        [8.406683264020, 0.533025436294, 0.151890123486],
-        [8.167089728477, 1.091910043970, 0.424390311721],
-        [7.810743322734, 1.269754424877, 0.655486166555],
-        [7.354206929618, 1.378802702580, 0.863251910720],
-        [6.702120952288, 1.586125340623, 1.065412015904],
-        [5.933987846487, 2.140079970839, 0.863980667799],
-        [5.145489604445, 3.136690495147, 0.481413028991],
-        [4.170294033340, 4.170294033340, 0.0],
+        [10.045640553092, 0.0, 0.0],
+        [9.982198910317, 0.617337419242, 0.064038204647],
+        [9.799339028323, 1.001089517756, 0.235402774567],
+        [9.446929978235, 1.206716818925, 0.483418657874],
+        [8.976535135923, 1.339372477461, 0.708685626304],
+        [8.358888495586, 1.672378696316, 0.921633517025],
+        [7.761242012231, 2.476724573269, 0.733758452002],
+        [7.157959849666, 3.388217536496, 0.486969037413],
+        [6.367517334004, 4.626272140965, 0.0],
     ]
 )
 # Unit normals of the same coils. A positive current drives the field at a centre along
 # the normal.
 NORMALS = np.array(
     [
-        [0.0, 0.687579549033, 0.726109057753],
-        [-0.252148517324, 0.668778051230, 0.699397628967],
-        [-0.611346067862, 0.553558161367, 0.565534567727],
-        [-0.712750651180, 0.594044843832, 0.372957414136],
-        [-0.677823423166, 0.721666381175, 0.140545513230],
-        [-0.543510487546, 0.816970991888, -0.192755670065],
-        [-0.654612200589, 0.728777518264, -0.200913403518],
-        [-0.688198182642, 0.680359248445, -0.251981258162],
-        [-0.675979679864, 0.675979679868, -0.293433032935],
+        [0.0, 0.774361840642, 0.632743028218],
+        [-0.172478640313, 0.784960511865, 0.595053034148],
+        [-0.361828111818, 0.780022003146, 0.510535103697],
+        [-0.530000358393, 0.712530451796, 0.459782530515],
+        [-0.681140207913, 0.697184291476, 0.223566725798],
+        [-0.380170668171, 0.904850481735, -0.191613853275],
+        [-0.541073987613, 0.824093283178, -0.167657986835],
+        [-0.587837157056, 0.776616626968, -0.226526138670],
+        [-0.568042378750, 0.781843260169, -0.256999946444],
     ]
 )
 # Unit vectors in the planes of the same coils along which t = 0.
 AXES = np.array(
     [
         [1.000000000000, 0.0, 0.0],
-        [0.967649439054, 0.180752826633, 0.176019824916],
-        [0.785689355283, 0.339146892855, 0.517369908346],
-        [0.569977928360, 0.180634281903, 0.801558742316],
-        [0.367912138244, 0.167428741632, 0.914662929722],
-        [-0.129134757494, 0.145520810706, 0.980891384435],
-        [-0.544026316400, -0.269610373869, 0.794572597921],
-        [-0.703103816691, -0.539745467974, 0.462946922180],
-        [-0.707106781188, -0.707106781185, -0.000000000002],
+        [0.983166731200, 0.174163916857, 0.055227789436],
+        [0.918963293280, 0.206321105502, 0.336062593915],
+        [0.700669051610, 0.062550813484, 0.710739246031],
+        [0.387362957967, 0.084044418171, 0.918088489509],
+        [-0.213895884557, 0.115542132990, 0.969999260862],
+        [-0.590422756497, -0.230278930965, 0.773545462506],
+        [-0.752839753712, -0.422667012910, 0.504564070687],
+        [-0.809016994374, -0.587785252294, 0.000000000001],
     ]
 )
 # Phases of the wave on the same coils in rad.
 PHASES = np.array(
     [
         3.141592653590,
-        2.881018248233,
-        -2.962476061726,
-        -2.100980625978,
-        -2.022070541417,
-        -2.235977097203,
-        -2.444875550615,
-        -1.685375458529,
+        2.730298969081,
+        -2.866689897770,
+        -2.209743506250,
+        -2.518766340579,
+        -2.134449652307,
+        -1.946208605953,
+        -1.808438546206,
         0.0,
     ]
 )
@@ -101,7 +101,7 @@ class Interior:
 
 
 DESIGN = Interior(
-    nfp=NFP, axis=(7.83, 7.95), steps=2, planes=96, offset=0.3, mpol=12, ntor=24
+    nfp=NFP, axis=(9.32, 9.44), steps=2, planes=96, offset=0.3, mpol=12, ntor=24
 )
 # W7-X in the standard configuration. Its boundary lies inside the 5/5 islands.
 W7X = Interior(
@@ -138,7 +138,7 @@ def coil(centre, normal, axis, phase):
 
 
 def coils():
-    """The 64 coils of the design."""
+    """The 80 coils of the design."""
     # Stellarator symmetry maps (x, y, z) to (x, -y, -z) and n to (-n_x, n_y, n_z).
     flip = np.array([1.0, -1.0, -1.0])
     centres = np.concatenate([CENTRES, flip * CENTRES[1:-1]])
@@ -534,7 +534,7 @@ def main():
     field = BiotSavart(coils())
     k = interior(field, DESIGN)
     print(
-        f"64 coils of radius {RADIUS:.3f} m: magnetic axis through R = "
+        f"80 coils of radius {RADIUS:.3f} m: magnetic axis through R = "
         f"{k['r_axis']:.5f} m on the midplane of phi = 0 with iota "
         f"{abs(k['iota_axis']):.4f} next to it, boundary traced from 30 cm outboard "
         f"of it with iota {abs(k['iota_surface']):.4f}, fitted within "
