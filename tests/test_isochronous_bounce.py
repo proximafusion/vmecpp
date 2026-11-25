@@ -86,11 +86,11 @@ def test_guiding_centers_keep_their_energy(wout):
 
 def test_ticks_without_drift_follow_the_bounce_integral(wout):
     times, _ = ib.clock(wout, 0.2, ions=8, ticks=3, gyroradius=0.0)
-    b, l, _, _, _ = ib.first_well(wout, 0.2)
+    b, arc, _, _, _ = ib.first_well(wout, 0.2)
     bottom, top = b.min(), min(b[0], b[-1])
     fields = bottom + (top - bottom) * np.linspace(0.25, 0.75, 8)
-    integrals = np.array([ib.bounce_integral(b, l, f) for f in fields])
-    middle = ib.bounce_integral(b, l, 0.5 * (bottom + top))
+    integrals = np.array([ib.bounce_integral(b, arc, f) for f in fields])
+    middle = ib.bounce_integral(b, arc, 0.5 * (bottom + top))
     np.testing.assert_allclose(
         np.diff(times, axis=1).mean(1), integrals / middle, rtol=1e-4
     )

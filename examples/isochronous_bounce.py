@@ -118,8 +118,7 @@ def profile_spread(strength, levels=21):
 def axis_field(wout, count=8192):
     """|B| on the magnetic axis of a wout at SHARE.
 
-    The m = 0 modes are extrapolated to s = 0 from the two innermost half-grid
-    surfaces.
+    The m = 0 modes are extrapolated to s = 0 from the two innermost half-grid surfaces.
     """
     phi = 2.0 * np.pi / int(wout.nfp) * np.arange(count) / count
     xm, xn = np.asarray(wout.xm), np.asarray(wout.xn, dtype=float)
@@ -160,7 +159,7 @@ def field_lines(wout, s, alphas, periods, steps):
     )
 
     def slope(theta, phi):
-        """d\\theta / d\\phi, dl / d\\phi and |B| of each line."""
+        """The slopes d\\theta / d\\phi and dl / d\\phi and |B| of each line."""
         wave = np.exp(1j * np.outer(theta, poloidal))[:, m] * np.exp(-1j * n * phi)
         strength, up, along = (wave.real @ coefficients).T
         return up / along, strength / np.abs(along), strength
@@ -263,20 +262,20 @@ def guiding_centers(wout, s, tolerance=1e-5):
 
 
 def first_well(wout, s):
-    """|B| and the arc length along the first whole well of the field line from
-    \\theta = \\phi = 0 on the half-grid surface nearest ``s``.
+    """|B| and the arc length along the first whole well of a field line.
 
-    \\theta and \\phi at the bottom of the well and the s of the surface are returned
-    last.
+    The field line starts at \\theta = \\phi = 0 on the half-grid surface nearest
+    ``s``. \\theta and \\phi at the bottom of the well and the s of the surface are
+    returned last.
     """
     steps = 2000
     strength, length, theta, s_found = field_lines(wout, s, [0.0], 3, steps)
-    b, l = strength[0], length[0]
+    b, arc = strength[0], length[0]
     peaks, _ = scipy.signal.find_peaks(b, prominence=0.5 * np.ptp(b))
     i, j = peaks[:2]
     low = i + int(np.argmin(b[i : j + 1]))
     phi = 2.0 * np.pi / int(wout.nfp) * low / steps
-    return b[i : j + 1], l[i : j + 1], theta[0, low], phi, s_found
+    return b[i : j + 1], arc[i : j + 1], theta[0, low], phi, s_found
 
 
 def clock(wout, s, ions=8, ticks=30, steps=100, gyroradius=1 / 250):
@@ -290,9 +289,9 @@ def clock(wout, s, ions=8, ticks=30, steps=100, gyroradius=1 / 250):
     ``gyroradius`` times the minor radius. The times form an [ion, tick] array in
     bounce periods of the middle of the depth. The s of the surface is returned last.
     """
-    b, l, theta, phi, s_found = first_well(wout, s)
+    b, arc, theta, phi, s_found = first_well(wout, s)
     bottom, top = b.min(), min(b[0], b[-1])
-    period = 2.0 * np.sqrt(bottom) * bounce_integral(b, l, 0.5 * (bottom + top))
+    period = 2.0 * np.sqrt(bottom) * bounce_integral(b, arc, 0.5 * (bottom + top))
     fields = bottom + (top - bottom) * np.linspace(0.25, 0.75, ions)
     state = np.array(
         [
@@ -320,8 +319,8 @@ def clock(wout, s, ions=8, ticks=30, steps=100, gyroradius=1 / 250):
 
 
 def describe(wout, label, surfaces=(0.05, 0.2)):
-    """Text with the spread of the bounce period on the axis of a wout and the clocks
-    on the surfaces nearest ``surfaces``."""
+    """Text with the spread of the bounce period on the axis of a wout and the clocks on
+    the surfaces nearest ``surfaces``."""
     spread = profile_spread(axis_field(wout))
     lines = [f"{label}: bounce periods on the axis within {spread:.1e}"]
     for s in surfaces:
@@ -367,7 +366,7 @@ def construct(corrections=3):
     from qic import Qic  # noqa: PLC0415
 
     cosine = Qic.from_paper("QI NFP1 r2").B0_vals
-    near_axis(cosine).save(COSINE)
+    COSINE.write_text(near_axis(cosine).to_json() + "\n")
     low, high = cosine[0] - abs(cosine[1]), cosine[0] + abs(cosine[1])
     target = huygens_shape(SHARE)
     strength = low + (high - low) * target
@@ -377,7 +376,7 @@ def construct(corrections=3):
         strength += (high - low) * (
             target - (actual - actual.min()) / (actual.max() - actual.min())
         )
-    near_axis(boozer_series(strength)).save(HUYGENS)
+    HUYGENS.write_text(near_axis(boozer_series(strength)).to_json() + "\n")
 
 
 def main():
