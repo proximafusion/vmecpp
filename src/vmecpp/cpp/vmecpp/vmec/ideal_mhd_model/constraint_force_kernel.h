@@ -15,6 +15,17 @@ namespace vmecpp {
 // indexed (jF-nsMinF)*nZnT except sqrtSF, which is indexed (jF-nsMinF1).
 // Allocation-free, shared between the solver and the Enzyme autodiff path.
 
+// Normalized toroidal flux at which VmecINDATA::tcon_axis_factor has tapered to
+// 1.
+inline constexpr double kConstraintAxisTaperEnd = 0.2;
+
+// Factor on the constraint multiplier tcon of the surface at normalized
+// toroidal flux s. It falls linearly from tcon_axis_factor on the axis to 1.
+inline double ConstraintAxisFactor(double tcon_axis_factor, double s) {
+  return 1.0 + (tcon_axis_factor - 1.0) *
+                   std::max(0.0, 1.0 - s / kConstraintAxisTaperEnd);
+}
+
 // Effective constraint force gConEff = (rCon - rCon0) ru + (zCon - zCon0) zu.
 // No constraint on the axis (it has no poloidal angle), so the axis surface is
 // skipped, matching deAliasConstraintForce.

@@ -224,6 +224,10 @@ class VmecINDATA {
   // constraint force scaling factor for ns --> 0
   double tcon0;
 
+  // Factor on the constraint force multiplier on the axis. It tapers linearly
+  // to 1 at s = 0.2. 1 is the profile of VMEC 8.52.
+  double tcon_axis_factor;
+
   // hack: directly compute innermost flux surface geometry from radial force
   // balance
   bool lforbal;
