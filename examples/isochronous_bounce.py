@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 import scipy.interpolate
+import scipy.optimize
 import scipy.signal
 
 import vmecpp
@@ -29,6 +30,14 @@ COSINE = DATA / "isochronous_bounce_cosine.json"
 KNEE = 0.4
 # Sample points of the arc length from the minimum in lengths of a field period.
 SHARE = np.linspace(-0.5, 0.5, 8192, endpoint=False) + 0.5 / 8192
+# Bounce fields in fractions of the depth of a well above its minimum: where the
+# periods are compared, and where the designed well holds them equal.
+BAND = np.linspace(0.25, 0.75, 41)
+DESIGN_BAND = np.linspace(0.02, 0.75, 60)
+# The nodes of the Gauss-Chebyshev quadrature of the bounce integrals.
+NODES = np.cos((2.0 * np.arange(1, 129) - 1.0) * np.pi / 256)
+# Samples of the Boozer toroidal angle over a field period.
+BOOZER = 2.0 * np.pi * np.arange(8192) / 8192
 
 
 def huygens_shape(share):
@@ -62,9 +71,116 @@ def boozer_series(strength, harmonics=24):
     resampled = np.interp(
         grid, np.mod(angle, 2.0 * np.pi), strength, period=2.0 * np.pi
     )
-    coefficients = np.fft.rfft(resampled).real / count
+    return cosine_coefficients(resampled, harmonics)
+
+
+def cosine_coefficients(samples, harmonics):
+    """The coefficients of \\cos(k \\varphi) of ``samples`` at evenly spaced \\varphi from
+    0."""
+    coefficients = np.fft.rfft(samples).real / len(samples)
     coefficients[1:] *= 2.0
     return coefficients[: harmonics + 1]
+
+
+def cosine_series(coefficients, modes=None):
+    """B, dB / d\\phi and d^2 B / d\\phi^2 of \\sum_k c_k \\cos(n_k \\phi) as a function
+    of \\phi.
+
+    ``modes`` holds the n_k, 0, 1, 2 and so on by default.
+    """
+    c = np.asarray(coefficients, dtype=float)
+    n = np.arange(len(c), dtype=float) if modes is None else np.asarray(modes, float)
+
+    def strength(phi):
+        angle = np.multiply.outer(phi, n)
+        return (
+            np.cos(angle) @ c,
+            -np.sin(angle) @ (n * c),
+            -np.cos(angle) @ (n * n * c),
+        )
+
+    return strength
+
+
+def extremum(strength, phi):
+    """The \\phi of the extremum of B nearest ``phi``, by Newton's method."""
+    for _ in range(8):
+        _, slope, curvature = strength(phi)
+        phi = phi - slope / curvature
+    return phi
+
+
+def crossings(strength, levels, lo, hi):
+    """The \\phi in [``lo``, ``hi``] at which B equals each of ``levels``.
+
+    B - level changes sign once in the interval. Bisection brackets each crossing and
+    Newton's method ends it.
+    """
+    f_lo = strength(lo)[0] - levels
+    for _ in range(50):
+        mid = 0.5 * (lo + hi)
+        f_mid = strength(mid)[0] - levels
+        same = np.sign(f_mid) == np.sign(f_lo)
+        lo, f_lo = np.where(same, mid, lo), np.where(same, f_mid, f_lo)
+        hi = np.where(same, hi, mid)
+    phi = 0.5 * (lo + hi)
+    for _ in range(3):
+        value, slope, _ = strength(phi)
+        phi = phi - (value - levels) / slope
+    return phi
+
+
+def bounce_periods(strength, speed, top, bottom, fractions, period=2.0 * np.pi):
+    """The integrals of dl / \\sqrt{level - B} between the bounce points of a well.
+
+    The well lies between the maxima of B at ``top`` and ``top`` + ``period``, with its
+    minimum at ``bottom``. dl is ``speed`` d\\phi. The levels lie at ``fractions`` of the
+    depth above the minimum. level - B vanishes linearly at both bounce points, and
+    Gauss-Chebyshev quadrature takes its root into the weight.
+    """
+    low, high = strength(bottom)[0], strength(top)[0]
+    levels = low + (high - low) * np.asarray(fractions)
+    ones = np.ones_like(levels)
+    left = crossings(strength, levels, top * ones, bottom * ones)
+    right = crossings(strength, levels, bottom * ones, (top + period) * ones)
+    centre, half = 0.5 * (left + right), 0.5 * (right - left)
+    phi = centre[:, None] + half[:, None] * NODES
+    q = (levels[:, None] - strength(phi)[0]) / (1.0 - NODES**2)
+    return np.pi / len(NODES) * np.sum(half[:, None] * speed(phi) / np.sqrt(q), 1)
+
+
+def boozer_periods(coefficients, fractions):
+    """The bounce periods over their mean of the axis field \\sum_k c_k \\cos(k
+    \\varphi), and its depth.
+
+    \\varphi is the Boozer toroidal angle from the maximum, along which dl goes as
+    d\\varphi / B.
+    """
+    strength = cosine_series(coefficients)
+    grid = BOOZER[:: len(BOOZER) // 1024]
+    bottom = extremum(strength, grid[np.argmin(strength(grid)[0])])
+    periods = bounce_periods(
+        strength, lambda phi: 1.0 / strength(phi)[0], 0.0, bottom, fractions
+    )
+    return periods / periods.mean(), strength(0.0)[0] - strength(bottom)[0]
+
+
+def design_well(low, high, harmonics=40):
+    """The coefficients of \\cos(k \\varphi) of an axis field from ``low`` to ``high``
+    whose bounce periods agree from 0.02 to 0.75 of its depth.
+
+    Least squares adjusts the series of :func:`huygens_shape` and leaves the field above
+    three quarters of the depth free.
+    """
+
+    def residual(coefficients):
+        periods, depth = boozer_periods(coefficients, DESIGN_BAND)
+        return np.concatenate([periods - 1.0, [depth / (high - low) - 1.0]])
+
+    start = boozer_series(low + (high - low) * huygens_shape(SHARE), harmonics)
+    return scipy.optimize.least_squares(
+        residual, start, x_scale=1e-3, xtol=1e-15, ftol=1e-15, gtol=1e-15
+    ).x
 
 
 def bounce_integral(strength, length, level):
@@ -95,51 +211,67 @@ def bounce_integral(strength, length, level):
     return total
 
 
-def profile_periods(strength, levels=21):
-    """The bounce periods of the well ``strength`` at SHARE over their mean.
+def axis_series(wout):
+    """B and dl / d\\phi on the magnetic axis of a wout as functions of \\phi.
 
-    The ``levels`` bounce fields span the middle half of the depth of the well.
+    The m = 0 coefficients of |B| are extrapolated to s = 0 from the three innermost
+    half-grid surfaces by a quadratic in s.
     """
-    bottom, top = strength.min(), min(strength[0], strength[-1])
-    periods = np.array(
-        [
-            bounce_integral(strength, SHARE, bottom + (top - bottom) * f)
-            for f in np.linspace(0.25, 0.75, levels)
-        ]
-    )
-    return periods / periods.mean()
-
-
-def profile_spread(strength, levels=21):
-    """The relative spread of the bounce period of the well ``strength`` at SHARE over
-    the middle half of its depth."""
-    return np.ptp(profile_periods(strength, levels))
-
-
-def axis_field(wout, count=8192):
-    """|B| on the magnetic axis of a wout at SHARE.
-
-    The m = 0 modes are extrapolated to s = 0 from the two innermost half-grid surfaces.
-    """
-    phi = 2.0 * np.pi / int(wout.nfp) * np.arange(count) / count
+    ns = int(wout.ns)
     xm, xn = np.asarray(wout.xm), np.asarray(wout.xn, dtype=float)
     r_n, z_n, n = (
         np.asarray(wout.rmnc)[xm == 0, 0],
         np.asarray(wout.zmns)[xm == 0, 0],
         xn[xm == 0],
     )
-    speed = np.sqrt(
-        (np.cos(np.outer(phi, n)) @ r_n) ** 2
-        + (np.sin(np.outer(phi, n)) @ (n * r_n)) ** 2
-        + (np.cos(np.outer(phi, n)) @ (n * z_n)) ** 2
-    )
     q = np.asarray(wout.xm_nyq) == 0
-    b_n = 1.5 * np.asarray(wout.bmnc)[q, 1] - 0.5 * np.asarray(wout.bmnc)[q, 2]
-    strength = np.cos(np.outer(phi, np.asarray(wout.xn_nyq, dtype=float)[q])) @ b_n
-    length = np.concatenate([[0.0], np.cumsum(speed[:-1])]) / np.sum(speed)
-    share = np.mod(length - length[np.argmin(strength)] + 0.5, 1.0) - 0.5
-    order = np.argsort(share)
-    return np.interp(SHARE, share[order], strength[order], period=1.0)
+    s = (np.arange(1, 4) - 0.5) / (ns - 1)
+    weights = np.linalg.solve(np.vander(s, 3, increasing=True).T, [1.0, 0.0, 0.0])
+    strength = cosine_series(
+        np.asarray(wout.bmnc)[q, 1:4] @ weights, np.asarray(wout.xn_nyq)[q]
+    )
+
+    def speed(phi):
+        angle = np.multiply.outer(phi, n)
+        c, sn = np.cos(angle), np.sin(angle)
+        return np.sqrt((c @ r_n) ** 2 + (sn @ (n * r_n)) ** 2 + (c @ (n * z_n)) ** 2)
+
+    return strength, speed
+
+
+def axis_periods(wout, fractions=BAND):
+    """The bounce periods on the magnetic axis of a wout over their mean."""
+    strength, speed = axis_series(wout)
+    period = 2.0 * np.pi / int(wout.nfp)
+    grid = np.linspace(0.0, period, 4096, endpoint=False)
+    b = strength(grid)[0]
+    top = extremum(strength, grid[np.argmax(b)])
+    bottom = extremum(strength, grid[np.argmin(b)])
+    bottom += period if bottom < top else 0.0
+    periods = bounce_periods(strength, speed, top, bottom, fractions, period)
+    return periods / periods.mean()
+
+
+def axis_boozer(wout):
+    """|B| on the magnetic axis of a wout at BOOZER, from its maximum.
+
+    Along the axis d\\varphi goes as B dl.
+    """
+    strength, speed = axis_series(wout)
+    phi = 2.0 * np.pi * np.arange(4 * len(BOOZER)) / (4 * len(BOOZER))
+    b = strength(phi)[0]
+    weight = b * speed(phi)
+    angle = np.concatenate([[0.0], np.cumsum(0.5 * (weight[1:] + weight[:-1]))])
+    angle *= 2.0 * np.pi / (angle[-1] + 0.5 * (weight[-1] + weight[0]))
+    top = extremum(strength, phi[np.argmax(b)])
+    angle = np.mod(angle - np.interp(top, phi, angle), 2.0 * np.pi)
+    order = np.argsort(angle)
+    spline = scipy.interpolate.CubicSpline(
+        np.append(angle[order], angle[order][0] + 2.0 * np.pi),
+        np.append(b[order], b[order][0]),
+        bc_type="periodic",
+    )
+    return spline(BOOZER)
 
 
 def field_lines(wout, s, alphas, periods, steps):
@@ -359,7 +491,7 @@ def clock(wout, surfaces, lines=4, ions=4, ticks=20, steps=100, gyroradius=1 / 2
 def describe(wout, label, surfaces=(0.1, 0.2, 0.5)):
     """Text with the spread of the bounce period on the axis of a wout and the worst of
     the clocks of the field lines on each of the surfaces nearest ``surfaces``."""
-    spread = profile_spread(axis_field(wout))
+    spread = np.ptp(axis_periods(wout))
     lines = [f"{label}: bounce periods on the axis within {spread:.1e}"]
     times, found = clock(wout, surfaces)
     for clocks, s_found in zip(times, found, strict=True):
@@ -375,49 +507,62 @@ def describe(wout, label, surfaces=(0.1, 0.2, 0.5)):
     return "\n".join(lines)
 
 
-def near_axis(b0_vals, r=0.04, ntor=28):
+def near_axis(b0_vals, ftol=1e-13, axis=None, r=0.02, ntor=40, buffer=8):
     """The VMEC++ input of the surface at ``r`` of pyQIC's QI NFP1 r2 at second order.
 
-    ``b0_vals`` are the cosine coefficients of the axis field. The boundary has
-    ``ntor`` toroidal harmonics.
+    ``b0_vals`` are the cosine coefficients of the axis field. The field-line label of
+    pyQIC departs from first-order omnigenity as the power 2 ``buffer`` + 1 of the
+    toroidal distance from the bottom of the well. The boundary has ``ntor`` toroidal
+    harmonics, and the finest radial grid converges to ``ftol``. ``axis`` holds the
+    cosine coefficients of R and the sine coefficients of Z of the initial magnetic
+    axis.
     """
     from qic import Qic  # noqa: PLC0415
 
-    stel = Qic.from_paper("QI NFP1 r2", B0_vals=list(b0_vals), order="r2")
+    stel = Qic.from_paper(
+        "QI NFP1 r2", B0_vals=list(b0_vals), order="r2", k_buffer=buffer
+    )
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "input.near_axis"
         stel.to_vmec(str(path), r=r, ntorMax=ntor)
         vmec_input = vmecpp.VmecInput.from_file(path)
-    return vmec_input.model_copy(
-        update={
-            "ns_array": np.array([13, 25, 49]),
-            "ftol_array": np.array([1e-8, 1e-10, 1e-10]),
-            "niter_array": np.array([5000, 10000, 20000]),
-        }
-    )
+    update = {
+        "ns_array": np.array([13, 25, 49]),
+        "ftol_array": np.array([1e-10, 1e-10, ftol]),
+        "niter_array": np.array([20000, 20000, 40000]),
+    }
+    if axis is not None:
+        update["raxis_c"], update["zaxis_s"] = axis
+    return vmec_input.model_copy(update=update)
 
 
-def construct(corrections=3):
+def construct(corrections=6):
     """Write HUYGENS and COSINE from pyQIC's QI NFP1 r2 at second order.
 
-    COSINE keeps pyQIC's own axis field. HUYGENS has the Huygens well of the same
-    depth. Each of the ``corrections`` adds to the axis field given to pyQIC the shape
-    that the axis of the VMEC++ equilibrium lacks.
+    COSINE keeps pyQIC's own axis field. HUYGENS has the axis field of
+    :func:`design_well` at the same depth. Each of the ``corrections`` adds to the axis
+    field given to pyQIC, in the Boozer angle, the difference between the design and
+    the axis of the VMEC++ equilibrium. HUYGENS starts its magnetic axis where the
+    equilibrium solved to ftol 1e-15 has it.
     """
     from qic import Qic  # noqa: PLC0415
 
     cosine = Qic.from_paper("QI NFP1 r2").B0_vals
-    COSINE.write_text(near_axis(cosine).to_json() + "\n")
+    COSINE.write_text(near_axis(cosine, ftol=1e-10).to_json() + "\n")
     low, high = cosine[0] - abs(cosine[1]), cosine[0] + abs(cosine[1])
-    target = huygens_shape(SHARE)
-    strength = low + (high - low) * target
+    design = design_well(low, high)
+    target = cosine_series(design)(BOOZER)[0]
+    given = target.copy()
     for _ in range(corrections):
-        wout = vmecpp.run(near_axis(boozer_series(strength)), verbose=False).wout
-        actual = axis_field(wout)
-        strength += (high - low) * (
-            target - (actual - actual.min()) / (actual.max() - actual.min())
+        b0_vals = cosine_coefficients(given, len(design) - 1)
+        given += target - axis_boozer(
+            vmecpp.run(near_axis(b0_vals), verbose=False).wout
         )
-    HUYGENS.write_text(near_axis(boozer_series(strength)).to_json() + "\n")
+    b0_vals = cosine_coefficients(given, len(design) - 1)
+    wout = vmecpp.run(near_axis(b0_vals, ftol=1e-15), verbose=False).wout
+    m0 = np.asarray(wout.xm) == 0
+    axis = (np.asarray(wout.rmnc)[m0, 0], np.asarray(wout.zmns)[m0, 0])
+    HUYGENS.write_text(near_axis(b0_vals, axis=axis).to_json() + "\n")
 
 
 def main():

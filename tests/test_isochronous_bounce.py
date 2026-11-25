@@ -102,26 +102,31 @@ def test_bounce_integral_of_a_pendulum():
         )
 
 
-def test_huygens_well_keeps_time_and_a_cosine_well_does_not():
-    huygens = 0.85 + 0.3 * ib.huygens_shape(ib.SHARE)
-    cosine = 1.0 - 0.15 * np.cos(2.0 * np.pi * ib.SHARE)
-    assert ib.profile_spread(huygens) < 1e-5
-    assert ib.profile_spread(cosine) > 0.1
+def test_bounce_periods_of_a_pendulum():
+    # B = 1 - depth \cos \phi with dl = d\phi has its maxima at \pm \pi.
+    depth = 0.2
+    strength = ib.cosine_series([1.0, -depth])
+    periods = ib.bounce_periods(
+        strength, np.ones_like, -np.pi, 0.0, np.linspace(0.05, 0.95, 19)
+    )
+    exact = 4.0 * scipy.special.ellipk(np.linspace(0.05, 0.95, 19))
+    np.testing.assert_allclose(periods, exact / np.sqrt(2.0 * depth), rtol=1e-12)
 
 
-def test_huygens_well_through_the_boozer_angle():
-    # The series maps back to arc length through dl = d\varphi / B_0.
-    coefficients = ib.boozer_series(0.85 + 0.3 * ib.huygens_shape(ib.SHARE))
-    angle = 2.0 * np.pi * np.arange(20001) / 20000
-    strength = np.cos(np.outer(angle, np.arange(len(coefficients)))) @ coefficients
-    steps = 0.5 * (1.0 / strength[1:] + 1.0 / strength[:-1]) * angle[1]
-    length = np.concatenate([[0.0], np.cumsum(steps)])
-    bottom, top = strength.min(), strength.max()
-    periods = [
-        ib.bounce_integral(strength, length, bottom + (top - bottom) * f)
-        for f in np.linspace(0.25, 0.75, 21)
-    ]
-    assert (max(periods) - min(periods)) / np.mean(periods) < 1e-3
+def test_huygens_series_keeps_time_and_a_cosine_well_does_not():
+    # The truncated Boozer series of the Huygens well against the cosine well of the
+    # same depth.
+    huygens = ib.boozer_series(0.85 + 0.3 * ib.huygens_shape(ib.SHARE))
+    assert np.ptp(ib.boozer_periods(huygens, ib.BAND)[0]) < 1e-3
+    assert np.ptp(ib.boozer_periods([1.0, 0.15], ib.BAND)[0]) > 0.1
+
+
+@pytest.mark.slow
+def test_designed_well_keeps_time_from_its_bottom():
+    coefficients = ib.design_well(0.85, 1.15)
+    periods, depth = ib.boozer_periods(coefficients, ib.DESIGN_BAND)
+    assert np.ptp(periods) < 3e-8
+    np.testing.assert_allclose(depth, 0.3, rtol=1e-10)
 
 
 def test_rates_against_the_flux_surfaces(wout):
@@ -172,7 +177,9 @@ def test_guiding_centers_keep_their_energy(wout):
 
 def test_ticks_without_drift_follow_the_bounce_integral(wout):
     # The periods over their mean against the bounce integrals of a finer trace.
-    times, _ = ib.clock(wout, [0.2], lines=1, ions=8, ticks=3, gyroradius=0.0)
+    times, _ = ib.clock(
+        wout, [0.2], lines=1, ions=8, ticks=3, steps=200, gyroradius=0.0
+    )
     periods = np.diff(times[0, 0], axis=1).mean(1)
     (b, arc, _, _), *_ = ib.first_wells(wout, 0.2, [0.0], steps=2000)[0]
     bottom, top = b.min(), min(b[0], b[-1])
@@ -187,7 +194,7 @@ def test_ticks_without_drift_follow_the_bounce_integral(wout):
 def test_axis_of_the_equilibria():
     def spread(path):
         wout = vmecpp.run(vmecpp.VmecInput.from_file(path), verbose=False).wout
-        return ib.profile_spread(ib.axis_field(wout))
+        return np.ptp(ib.axis_periods(wout))
 
-    assert spread(ib.HUYGENS) < 2e-3
+    assert spread(ib.HUYGENS) < 1e-3
     assert spread(ib.COSINE) > 5e-2
