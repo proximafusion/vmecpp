@@ -372,9 +372,10 @@ def axis_curve(wout, phi):
 
 def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
     """The effective ripple of a field line from B, |\\nabla \\psi|, the radial drift
-    and ds / B at its samples."""
+    and ds / B at its samples, the strongest B of the line its reference field."""
     # Nemov et al., Phys. Plasmas 6, 4622 (1999). B_0 in b = B / B_0 is the mean of B
-    # weighted by ds / B.
+    # weighted by ds / B, and the ripple to the power 3/2 goes with the square of the
+    # reference field.
     eta = strength * np.sum(weight) / np.sum(weight * strength)
     step_weight = 0.5 * (weight[:-1] + weight[1:])
     step_size = 0.5 * (weight[:-1] * size[:-1] + weight[1:] * size[1:])
@@ -413,7 +414,7 @@ def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
         a, b = starts[:count], stops[:count]
         well_h, well_i = h[b] - h[a], (i[b] - i[a]) / np.sqrt(level)
         total += width * np.sum(well_h**2 / (level**2 * well_i))
-    return float((scale * total) ** (2.0 / 3.0))
+    return float((scale * total * eta.max() ** 2) ** (2.0 / 3.0))
 
 
 def wout_ripple(wout, js, periods=120, steps=96):
@@ -466,14 +467,9 @@ def wout_ripple(wout, js, periods=120, steps=96):
         - (r_theta * r_phi + z_theta * z_phi) ** 2
     ) / np.abs(jacobian)
     weight = h / np.abs(b_phi_up @ cos)
-    # R_0 is the length of the magnetic axis over 2 \pi.
-    turn = 2.0 * np.pi * np.arange(4097) / 4096
-    axis = axis_curve(wout, turn)
-    axis = np.stack(
-        [axis[:, 0] * np.cos(turn), axis[:, 0] * np.sin(turn), axis[:, 1]], -1
-    )
-    major = np.linalg.norm(np.diff(axis, axis=0), axis=1).sum() / (2.0 * np.pi)
-    return effective_ripple(strength, size, drift, weight, major)
+    # R_0 is the major radius of the plasma, its volume over 2 \pi times the mean area of
+    # its cross-sections.
+    return effective_ripple(strength, size, drift, weight, float(wout.Rmajor_p))
 
 
 def closure(strength):
