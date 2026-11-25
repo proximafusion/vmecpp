@@ -12,6 +12,7 @@ guiding centers tick at every bounce. :func:`construct` writes the two inputs fr
 pyQIC's near-axis expansion.
 """
 
+import itertools
 import tempfile
 from pathlib import Path
 
@@ -167,7 +168,7 @@ def field_lines(wout, s, alphas, periods, steps):
     h = 2.0 * np.pi / int(wout.nfp) / steps
     theta, length = np.array(alphas, dtype=float), np.zeros(len(alphas))
     strengths, lengths, thetas = [], [], []
-    for k in range(periods * steps + 1):
+    for k in range(round(periods * steps) + 1):
         phi = k * h
         k1, l1, strength = slope(theta, phi)
         strengths.append(strength)
@@ -182,16 +183,16 @@ def field_lines(wout, s, alphas, periods, steps):
     return np.array(strengths).T, np.array(lengths).T, np.array(thetas).T, s_found
 
 
-def guiding_centers(wout, s, tolerance=1e-5):
-    """The guiding-center equations in the vacuum field of a wout near a surface.
+def guiding_centers(wout, tolerance=1e-5):
+    """The guiding-center equations in the vacuum field of a wout.
 
     The returned function gives the rate of change of the states (s, \\theta, \\zeta,
     v_\\parallel) of ions as a [quantity, ion] array, and |B| at each ion. ``moment``
     is the magnetic moment over the mass and ``inertia`` the mass over the charge. The
-    Fourier coefficients are cubic splines in \\sqrt{s}, expanded to second order about
-    the half-grid surface nearest ``s``. A mode enters when its largest coefficient
-    over the largest of its quantity, times 1 + m + |n|, exceeds ``tolerance`` times
-    the largest such value.
+    Fourier coefficients are cubic splines in \\sqrt{s}, evaluated on the piece that
+    holds each ion. A mode enters when the product of 1 + m + |n| and its largest
+    coefficient over the largest of its quantity exceeds ``tolerance`` times the
+    largest such product.
     """
     arrays = [
         np.asarray(a)
@@ -213,40 +214,64 @@ def guiding_centers(wout, s, tolerance=1e-5):
     m, n = m[keep], n[keep]
     *cosines, radial = (a[keep] for a in arrays)
     ns = int(wout.ns)
-    js = int(np.clip(np.round(s * (ns - 1) + 0.5), 1, ns - 1))
-    centre = np.sqrt((js - 0.5) / (ns - 1))
+    half = np.sqrt((np.arange(1, ns) - 0.5) / (ns - 1))
+    full = np.sqrt(np.arange(ns) / (ns - 1))
     cosine_mn = scipy.interpolate.CubicSpline(
-        np.sqrt((np.arange(1, ns) - 0.5) / (ns - 1)),
-        np.stack([a[:, 1:].T for a in cosines], axis=1),
+        half, np.stack([a[:, 1:].T for a in cosines], axis=1)
     )
+    # B_s, which the wout holds on the full grid, moves to the half grid.
     radial_mn = scipy.interpolate.CubicSpline(
-        np.sqrt(np.arange(ns) / (ns - 1)), radial.T
+        half, scipy.interpolate.CubicSpline(full, radial.T)(half)
     )
-    cosine_taylor = [cosine_mn(centre, k) for k in range(3)]
-    radial_taylor = [radial_mn(centre, k) for k in range(3)]
+
+    # The coefficients of t^3, t^2, t and 1 of each piece, [piece, mode, column]. The
+    # cosine series give the six cosine quantities, the sine series d|B| / d\theta,
+    # d|B| / d\zeta and B_s.
+    cosine_pieces = np.transpose(cosine_mn.c, (1, 3, 0, 2))
+    strength_pieces = cosine_pieces[..., 0]
+    cosine_pieces = cosine_pieces.reshape(*cosine_pieces.shape[:2], -1)
+    sine_pieces = np.concatenate(
+        [
+            -m[:, None] * strength_pieces,
+            n[:, None] * strength_pieces,
+            np.transpose(radial_mn.c, (1, 2, 0)),
+        ],
+        axis=-1,
+    )
+    powers = np.arange(3, -1, -1)
 
     def rates(state, moment, inertia):
         s, theta, zeta, v = state
         rho = np.sqrt(s)
-        x = (rho - centre)[:, None]
         wave = (
             np.exp(1j * np.outer(theta, np.arange(m.max() + 1)))[:, m]
             * np.exp(-1j * np.outer(zeta, np.arange(n.min(), n.max() + 1)))[
                 :, n - n.min()
             ]
         )
-        c, sn = wave.real, wave.imag
-        value, slope, curve = cosine_taylor
-        cos_mn = value + x[:, :, None] * (slope + 0.5 * x[:, :, None] * curve)
-        strength, b_theta, b_zeta, up, along, jacobian = np.einsum(
-            "im,ijm->ji", c, cos_mn
+        piece = np.clip(np.searchsorted(half, rho) - 1, 0, len(half) - 2)
+        order = np.argsort(piece, kind="stable")
+        ordered = piece[order]
+        cuts = [0, *(np.flatnonzero(np.diff(ordered)) + 1).tolist(), len(rho)]
+        c, sn = wave.real[order], wave.imag[order]
+        cosine_terms = np.empty((len(rho), cosine_pieces.shape[-1]))
+        sine_terms = np.empty((len(rho), sine_pieces.shape[-1]))
+        for first, last in itertools.pairwise(cuts):
+            k = ordered[first]
+            cosine_terms[first:last] = c[first:last] @ cosine_pieces[k]
+            sine_terms[first:last] = sn[first:last] @ sine_pieces[k]
+        back = np.argsort(order)
+        t = (rho - half[piece])[:, None]
+        scaled = t**powers
+        terms = cosine_terms[back].reshape(len(rho), 4, 6)
+        strength, b_theta, b_zeta, up, along, jacobian = (
+            (scaled[:, :, None] * terms).sum(1).T
         )
-        b_mn = cos_mn[:, 0]
-        d_s = np.sum(c * (slope[0] + x * curve[0]), 1) / (2.0 * rho)
-        d_theta = -np.sum(sn * b_mn * m, 1)
-        d_zeta = np.sum(sn * b_mn * n, 1)
-        value, slope, curve = radial_taylor
-        b_s = np.sum(sn * (value + x * (slope + 0.5 * x * curve)), 1)
+        slopes = powers * t ** np.maximum(powers - 1, 0)
+        d_s = np.sum(slopes * terms[:, :, 0], 1) / (2.0 * rho)
+        d_theta, d_zeta, b_s = (
+            (scaled[:, None, :] * sine_terms[back].reshape(len(rho), 3, 4)).sum(2).T
+        )
         drift = inertia * (v**2 / strength + moment) / (strength**2 * jacobian)
         change = np.array(
             [
@@ -261,52 +286,61 @@ def guiding_centers(wout, s, tolerance=1e-5):
     return rates
 
 
-def first_well(wout, s):
-    """|B| and the arc length along the first whole well of a field line.
+def first_wells(wout, s, alphas, steps=500):
+    """|B|, the arc length, \\theta and \\phi along the first whole well of field lines.
 
-    The field line starts at \\theta = \\phi = 0 on the half-grid surface nearest
-    ``s``. \\theta and \\phi at the bottom of the well and the s of the surface are
+    The field lines start at \\theta = ``alphas`` and \\phi = 0 on the half-grid
+    surface nearest ``s``. RK4 follows them in ``steps`` steps a field period.
+    \\theta and \\phi are those of the bottom of each well. The s of the surface is
     returned last.
     """
-    steps = 2000
-    strength, length, theta, s_found = field_lines(wout, s, [0.0], 3, steps)
-    b, arc = strength[0], length[0]
-    peaks, _ = scipy.signal.find_peaks(b, prominence=0.5 * np.ptp(b))
-    i, j = peaks[:2]
-    low = i + int(np.argmin(b[i : j + 1]))
-    phi = 2.0 * np.pi / int(wout.nfp) * low / steps
-    return b[i : j + 1], arc[i : j + 1], theta[0, low], phi, s_found
+    strength, length, theta, s_found = field_lines(wout, s, alphas, 2.5, steps)
+    wells = []
+    for b, arc, angle in zip(strength, length, theta, strict=True):
+        peaks, _ = scipy.signal.find_peaks(b, prominence=0.5 * np.ptp(b))
+        i, j = peaks[:2]
+        low = i + int(np.argmin(b[i : j + 1]))
+        phi = 2.0 * np.pi / int(wout.nfp) * low / steps
+        wells.append((b[i : j + 1], arc[i : j + 1], angle[low], phi))
+    return wells, s_found
 
 
-def clock(wout, s, ions=8, ticks=30, steps=100, gyroradius=1 / 250):
-    """The tick times of ions released together from the bottom of a well.
+def clock(wout, surfaces, lines=4, ions=4, ticks=20, steps=100, gyroradius=1 / 250):
+    """The tick times of ions released together from the bottoms of wells.
 
-    The well is the first on the field line from \\theta = \\phi = 0 of the half-grid
-    surface nearest ``s``. The ions share one magnetic moment. Their energies set their
-    bounce fields across the middle half of the depth of the well. RK4 follows their
-    guiding centers at ``steps`` steps a bounce period. A tick is a turn of
-    v_\\parallel from negative to positive. The gyroradius of the ions at the start is
-    ``gyroradius`` times the minor radius. The times form an [ion, tick] array in
-    bounce periods of the middle of the depth. The s of the surface is returned last.
+    On each of the half-grid surfaces nearest ``surfaces``, the wells are the first on
+    ``lines`` field lines that start at \\phi = 0 and at evenly spaced \\theta. The
+    ``ions`` of a well share one magnetic moment. Their energies set their bounce fields across the
+    middle half of the depth of the well. RK4 follows their guiding centers at
+    ``steps`` steps of the shortest bounce period. A tick is a turn of v_\\parallel
+    from negative to positive. The gyroradius of the ions at the start is
+    ``gyroradius`` times the minor radius. The times form a [surface, line, ion, tick]
+    array in bounce periods of the middle of the depth of each well. The s of the
+    surfaces are returned last.
     """
-    b, arc, theta, phi, s_found = first_well(wout, s)
-    bottom, top = b.min(), min(b[0], b[-1])
-    period = 2.0 * np.sqrt(bottom) * bounce_integral(b, arc, 0.5 * (bottom + top))
-    fields = bottom + (top - bottom) * np.linspace(0.25, 0.75, ions)
-    state = np.array(
-        [
-            np.full(ions, s_found),
-            np.full(ions, theta),
-            np.full(ions, phi),
-            np.sqrt(fields / bottom - 1.0),
-        ]
-    )
-    rates = guiding_centers(wout, s)
-    moment, inertia = 0.5 / bottom, gyroradius * float(wout.Aminor_p) * bottom
-    dt = period / steps
-    times = [[] for _ in range(ions)]
+    alphas = 2.0 * np.pi * np.arange(lines) / lines
+    columns, scale, found = [], [], []
+    for s in surfaces:
+        wells, s_found = first_wells(wout, s, alphas)
+        found.append(s_found)
+        for b, arc, theta, phi in wells:
+            bottom, top = b.min(), min(b[0], b[-1])
+            middle = bounce_integral(b, arc, 0.5 * (bottom + top))
+            fields = bottom + (top - bottom) * np.linspace(0.25, 0.75, ions)
+            for field in fields:
+                speed = np.sqrt(field / bottom - 1.0)
+                columns.append([s_found, theta, phi, speed, bottom])
+                scale.append(2.0 * np.sqrt(bottom) * middle)
+    state, bottoms = np.array(columns).T[:4], np.array(columns).T[4]
+    period = np.array(scale)
+    rates = guiding_centers(wout)
+    moment, inertia = 0.5 / bottoms, gyroradius * float(wout.Aminor_p) * bottoms
+    dt = period.min() / steps
+    times = [[] for _ in period]
     t = 0.0
-    while min(len(x) for x in times) < ticks:
+    for _ in range(2 * ticks * steps):
+        if min(len(x) for x in times) >= ticks:
+            break
         k1, _ = rates(state, moment, inertia)
         k2, _ = rates(state + 0.5 * dt * k1, moment, inertia)
         k3, _ = rates(state + 0.5 * dt * k2, moment, inertia)
@@ -315,26 +349,33 @@ def clock(wout, s, ions=8, ticks=30, steps=100, gyroradius=1 / 250):
         for ion in np.flatnonzero((state[3] < 0.0) & (after[3] >= 0.0)):
             times[ion].append(t + dt * state[3, ion] / (state[3, ion] - after[3, ion]))
         state, t = after, t + dt
-    return np.array([x[:ticks] for x in times]) / period, s_found
+    if min(len(x) for x in times) < ticks:
+        message = f"an ion ticked {min(len(x) for x in times)} times in {t:.3g}"
+        raise RuntimeError(message)
+    times = np.array([x[:ticks] for x in times]) / period[:, None]
+    return times.reshape(len(surfaces), lines, ions, ticks), found
 
 
-def describe(wout, label, surfaces=(0.05, 0.2)):
-    """Text with the spread of the bounce period on the axis of a wout and the clocks on
-    the surfaces nearest ``surfaces``."""
+def describe(wout, label, surfaces=(0.1, 0.2, 0.5)):
+    """Text with the spread of the bounce period on the axis of a wout and the worst of
+    the clocks of the field lines on each of the surfaces nearest ``surfaces``."""
     spread = profile_spread(axis_field(wout))
     lines = [f"{label}: bounce periods on the axis within {spread:.1e}"]
-    for s in surfaces:
-        times, s_found = clock(wout, s)
-        periods = (times[:, -1] - times[:, 0]) / (times.shape[1] - 1)
+    times, found = clock(wout, surfaces)
+    for clocks, s_found in zip(times, found, strict=True):
+        periods = (clocks[..., -1] - clocks[..., 0]) / (clocks.shape[-1] - 1)
+        spreads = np.ptp(periods, 1) / periods.mean(1)
+        worst = int(np.argmax(spreads))
         lines.append(
-            f"   s = {s_found:.2f}: periods of the ions within "
-            f"{np.ptp(periods) / np.mean(periods):.1e}, tick {times.shape[1]} "
-            f"spread over {np.ptp(times[:, -1]) / np.mean(periods):.2f} periods"
+            f"   s = {s_found:.2f}: periods of the ions within {spreads[worst]:.1e},"
+            f" tick {clocks.shape[-1]} spread over"
+            f" {np.ptp(clocks[worst, :, -1]) / periods[worst].mean():.2f} periods,"
+            f" on the worst of {len(clocks)} field lines"
         )
     return "\n".join(lines)
 
 
-def near_axis(b0_vals, r=0.08, ntor=28):
+def near_axis(b0_vals, r=0.04, ntor=28):
     """The VMEC++ input of the surface at ``r`` of pyQIC's QI NFP1 r2 at second order.
 
     ``b0_vals`` are the cosine coefficients of the axis field. The boundary has
@@ -349,9 +390,9 @@ def near_axis(b0_vals, r=0.08, ntor=28):
         vmec_input = vmecpp.VmecInput.from_file(path)
     return vmec_input.model_copy(
         update={
-            "ns_array": np.array([13, 25]),
-            "ftol_array": np.array([1e-8, 1e-10]),
-            "niter_array": np.array([5000, 10000]),
+            "ns_array": np.array([13, 25, 49]),
+            "ftol_array": np.array([1e-8, 1e-10, 1e-10]),
+            "niter_array": np.array([5000, 10000, 20000]),
         }
     )
 
