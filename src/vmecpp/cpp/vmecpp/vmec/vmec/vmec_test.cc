@@ -960,23 +960,25 @@ TEST(TestVmec, LasymFreeBoundaryMatchesEducationalVmec) {
   ASSERT_TRUE(w.lasym);
 
   // educational_VMEC (VMEC 8.52) golden scalars for the identical perturbed
-  // mgrid, with the sign of the metric and curvature cross terms in NESTOR's
-  // analytic add-back (analyt.f90 adp/adm, azp1u/azm1u) corrected the same
-  // way as in SingularIntegrals::update.
+  // mgrid, interpolated cubically as in the mgrid provider, with the sign of
+  // the metric and curvature cross terms in NESTOR's analytic add-back
+  // (analyt.f90 adp/adm, azp1u/azm1u) corrected the same way as in
+  // SingularIntegrals::update, and with the kink values and the source-point
+  // defects of RegularizedIntegrals::update in greenf.f90.
   const double tol = 1.0e-4;
-  EXPECT_TRUE(IsCloseRelAbs(5.4333536171, w.aspect, tol))
+  EXPECT_TRUE(IsCloseRelAbs(5.4331872885, w.aspect, tol))
       << "aspect=" << w.aspect;
-  EXPECT_TRUE(IsCloseRelAbs(0.3070706936, w.volume, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.3071394657, w.volume, tol))
       << "volume=" << w.volume;
-  EXPECT_TRUE(IsCloseRelAbs(0.7715217794, w.Rmajor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.7715636255, w.Rmajor_p, tol))
       << "Rmajor=" << w.Rmajor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.1419973434, w.Aminor_p, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.1420093924, w.Aminor_p, tol))
       << "Aminor=" << w.Aminor_p;
-  EXPECT_TRUE(IsCloseRelAbs(0.0018721371, w.betatotal, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.0018728599, w.betatotal, tol))
       << "beta=" << w.betatotal;
-  EXPECT_TRUE(IsCloseRelAbs(-0.4512433486, w.rbtor, tol))
+  EXPECT_TRUE(IsCloseRelAbs(-0.4512431298, w.rbtor, tol))
       << "rbtor=" << w.rbtor;
-  EXPECT_TRUE(IsCloseRelAbs(0.5745086207, w.volavgB, tol))
+  EXPECT_TRUE(IsCloseRelAbs(0.5744445982, w.volavgB, tol))
       << "volavgB=" << w.volavgB;
 
   // Genuine asymmetry: the antisymmetric Fourier content is clearly non-zero.
@@ -1015,6 +1017,33 @@ TEST(TestVmec, MultiGridFreeBoundary) {
   ASSERT_EQ(output->wout.lcfs_force.size(), output->wout.fsqt.size());
   EXPECT_GT(output->wout.lcfs_force.maxCoeff(), 0.0);
 }  // MultiGridFreeBoundary
+
+// The force residual on the LCFS is a sum of squares of forces, so once the
+// first iteration records it, none records it as exactly zero, on any number of
+// threads.
+TEST(TestVmec, LcfsForceIsRecordedInEveryIteration) {
+  const absl::StatusOr<std::string> indata_json =
+      ReadFile("vmecpp/test_data/cth_like_free_bdy_multigrid.json");
+  ASSERT_TRUE(indata_json.ok());
+  const absl::StatusOr<VmecINDATA> indata = VmecINDATA::FromJson(*indata_json);
+  ASSERT_TRUE(indata.ok());
+
+  for (const int threads : {1, 4}) {
+    const auto output = vmecpp::run(*indata, std::nullopt, threads);
+    ASSERT_TRUE(output.ok());
+    const Eigen::VectorXd& lcfs_force = output->wout.lcfs_force;
+    Eigen::Index first = 0;
+    while (first < lcfs_force.size() && lcfs_force[first] == 0.0) {
+      ++first;
+    }
+    ASSERT_LT(first, lcfs_force.size());
+    const Eigen::Index zeros =
+        (lcfs_force.tail(lcfs_force.size() - first).array() == 0.0).count();
+    EXPECT_EQ(zeros, 0) << threads << " threads, " << first
+                        << " leading zeros, " << lcfs_force.size()
+                        << " iterations";
+  }
+}  // LcfsForceIsRecordedInEveryIteration
 
 // The free-boundary threed1 section covers the poloidal range the run is solved
 // on, which is the full one for an asymmetric equilibrium, so the boundary it

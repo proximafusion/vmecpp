@@ -272,6 +272,12 @@ int VacuumMpol(const vmecpp::VmecINDATA& indata) {
 int VacuumNtor(const vmecpp::VmecINDATA& indata) {
   return std::max(indata.vacuum_ntor, indata.ntor);
 }
+// Field periods of the vacuum problem. On the axisymmetric grid the toroidal
+// integral is a sum over images around the whole torus, so the vacuum problem
+// has one field period.
+int VacuumNfp(const vmecpp::VmecINDATA& indata, const vmecpp::Sizes& s) {
+  return (s.nZeta == 1) ? 1 : indata.nfp;
+}
 
 // The coupled block of axis_block_preconditioner: the sum of the invariant
 // residuals below which it takes the step, the iterations between probes,
@@ -291,7 +297,7 @@ Vmec::Vmec(const VmecINDATA& indata, std::optional<int> max_threads,
            IterationCallback iteration_callback)
     : indata_(indata),
       s_(indata_),
-      vacuum_s_(indata_.lasym, indata_.nfp, VacuumMpol(indata_),
+      vacuum_s_(indata_.lasym, VacuumNfp(indata_, s_), VacuumMpol(indata_),
                 VacuumNtor(indata_), s_.ntheta, s_.nZeta, VacuumMpol(indata_),
                 VacuumNtor(indata_)),
       t_(&s_),

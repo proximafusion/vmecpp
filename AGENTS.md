@@ -163,6 +163,7 @@ VMEC++ is a modern C++ reimplementation of the VMEC magnetohydrodynamic equilibr
 **Prose**:
 - Comments and pull request descriptions do not pre-empt objections; they state what is and stop
 - Comments carry the change or the measurement, without praise, deference, or defensive justification
+- Comments and docstrings end each sentence at its fact: no trailing clause, appositive or aside
 - Pull request descriptions and review replies open with the content, with no pleasantries, acknowledgements or other social filler
 - They are concise: each point is made once, in the fewest words that carry it
 
