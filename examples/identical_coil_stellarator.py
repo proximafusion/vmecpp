@@ -14,68 +14,70 @@ from simsopt.geo import CurveXYZFourier
 import vmecpp
 
 NFP = 5
-RADIUS = 1.365019178  # coil radius in m
-# Every coil is one shape: a circle of radius RADIUS lifted along its normal by
-# WAVE \sin(3 t - phase) at the angle t from its first axis. A phase turns the
-# shape about the normal by a third of it.
-WAVE = 0.474125584  # depth of the wave in m
+# Every coil is one shape: at the angle t from its first axis, the conductor lies at
+# s(t) (SEMI_AXES[0] cos t, SEMI_AXES[1] sin t) in m from the centre in its plane, with
+# s(t) = 1 + \sum_k LOBES[k] \cos((k + 2) t), and
+# \sum_k WAVES[k] \sin((k + 2) t - PHASES[coil, k]) in m along its normal.
+SEMI_AXES = (1.362490389, 1.362490389)
+LOBES = (0.000000000, -0.001703893)
+WAVES = (0.000000000, -0.493852042, 0.000000000, 0.000000000, 0.048171299)
 CURRENT = 1.0e6  # coil current in A
 # Centres in m of the coils from \phi = 0 to the middle of a field period. The first and
 # the last coil are their own images under stellarator symmetry.
 CENTRES = np.array(
     [
-        [10.025423802308, 0.0, 0.0],
-        [9.967050938817, 0.632355474112, 0.061002467913],
-        [9.781506802072, 1.038617139468, 0.242939448528],
-        [9.421680460874, 1.243082796264, 0.500331741323],
-        [8.941365774778, 1.393991198891, 0.729510435736],
-        [8.339086204274, 1.744889070358, 0.938959968241],
-        [7.769807474481, 2.494058089322, 0.746645894500],
-        [7.155678544335, 3.421536459558, 0.492746856239],
-        [6.379225951934, 4.634778949836, 0.0],
+        [9.969490419182, 0.0, 0.0],
+        [9.915416775838, 0.581316050307, 0.046217141410],
+        [9.740531675057, 0.959031115395, 0.238408303205],
+        [9.414054389679, 1.120327760174, 0.500268837725],
+        [8.978137071841, 1.228832435063, 0.722307852358],
+        [8.382271145209, 1.544055235216, 0.932145115441],
+        [7.864155714000, 2.256738794088, 0.755266449855],
+        [7.237881420295, 3.321946255265, 0.519529198396],
+        [6.362907070729, 4.622922588631, 0.0],
     ]
 )
 # Unit normals of the same coils. A positive current drives the field at a centre along
 # the normal.
 NORMALS = np.array(
     [
-        [0.0, 0.761624174217, 0.648018994512],
-        [-0.186162767354, 0.772667733992, 0.606900318750],
-        [-0.384192691164, 0.771188668870, 0.507606159401],
-        [-0.521110329180, 0.721452519404, 0.456015665376],
-        [-0.647354724423, 0.725099495963, 0.234867157604],
-        [-0.391939372862, 0.904856202706, -0.166188990086],
-        [-0.563793892812, 0.808902071331, -0.166774954428],
-        [-0.569739993040, 0.787804700362, -0.234008748593],
-        [-0.567169364455, 0.780641659080, -0.262521450804],
+        [0.0, 0.791861442157, 0.610700791243],
+        [-0.178488111654, 0.803272474458, 0.568238792918],
+        [-0.349409496778, 0.795924172858, 0.494386199870],
+        [-0.521823905232, 0.702067877434, 0.484562181152],
+        [-0.667823921989, 0.698155987686, 0.258049270641],
+        [-0.441618960567, 0.890407446491, -0.110214667357],
+        [-0.539293485915, 0.830178029540, -0.141304548116],
+        [-0.581903481496, 0.787533914286, -0.202925286922],
+        [-0.571728604239, 0.786916914289, -0.232138262896],
     ]
 )
 # Unit vectors in the planes of the same coils along which t = 0.
 AXES = np.array(
     [
         [1.000000000000, 0.0, 0.0],
-        [0.980755216788, 0.183133026437, 0.067686773971],
-        [0.908530790007, 0.218003926535, 0.356435255866],
-        [0.697944101465, 0.052691456118, 0.714211202434],
-        [0.396189690358, 0.056877376887, 0.916405310576],
-        [-0.207536421936, 0.089024422057, 0.974167996727],
-        [-0.570542305953, -0.235443075083, 0.786796057128],
-        [-0.762250430862, -0.400127117144, 0.508795214970],
-        [-0.809016994375, -0.587785252293, 0.0],
+        [0.981731241766, 0.106694727193, 0.157543657854],
+        [0.930400620507, 0.232357440565, 0.283486693117],
+        [0.807579186177, 0.223585432593, 0.545733829248],
+        [0.523163862566, 0.193678534207, 0.829932646841],
+        [0.132102849341, 0.186034560636, 0.973622092726],
+        [-0.312744045069, -0.041645944051, 0.948924010455],
+        [-0.530334192481, -0.178294610570, 0.828828496209],
+        [-0.522675452937, -0.131249764655, 0.842368013504],
     ]
 )
-# Phases of the wave on the same coils in rad.
+# Phases of the waves of the same coils in rad.
 PHASES = np.array(
     [
-        3.141592653590,
-        2.804259846743,
-        -2.770371037991,
-        -2.159228950571,
-        -2.502847633722,
-        -2.148578847732,
-        -2.037545628560,
-        -1.850494665242,
-        0.0,
+        [0.0, 0.0, 0.0, 0.0, 0.0],
+        [-0.048077444461, 0.0, 0.0, 0.0, 0.0],
+        [-0.096682742374, 0.0, 0.0, 0.0, 0.0],
+        [-0.145655890905, 0.0, 0.0, 0.0, 0.0],
+        [-0.192674889675, 0.0, 0.0, 0.0, 0.0],
+        [-0.257553292120, 0.0, 0.0, 0.0, 0.0],
+        [-0.333019317291, 0.0, 0.0, 0.0, 0.0],
+        [-0.412037991824, 0.0, 0.0, 0.0, 0.0],
+        [-0.523598775598, 0.0, 0.0, 0.0, 0.0],
     ]
 )
 PRESSURES = (8000.0, 16000.0, 24000.0)  # p_0 in Pa of the profile p_0 (1 - s)
@@ -101,7 +103,7 @@ class Interior:
 
 
 DESIGN = Interior(
-    nfp=NFP, axis=(9.29, 9.41), steps=2, planes=96, offset=0.3, mpol=12, ntor=24
+    nfp=NFP, axis=(9.24, 9.36), steps=2, planes=96, offset=0.26, mpol=12, ntor=24
 )
 # W7-X in the standard configuration. Its boundary lies inside the 5/5 islands.
 W7X = Interior(
@@ -109,26 +111,33 @@ W7X = Interior(
 )
 
 
-def coil(centre, normal, axis, phase):
-    """The coil at centre about normal: a circle of radius RADIUS from its first axis
-    along axis, lifted along normal by its wave at phase; a positive current turns about
-    normal."""
+def coil(centre, normal, axis, phases):
+    """The coil at centre about normal: one planar shape from its first axis along axis,
+    waved along normal at phases; a positive current turns about normal."""
     second = np.cross(normal, axis)
     t = 2.0 * np.pi * np.arange(64) / 64
+    scale = np.ones_like(t) + sum(v * np.cos((k + 2) * t) for k, v in enumerate(LOBES))
+    orders = np.arange(2, 2 + len(WAVES))
+    lift = np.sin(np.outer(t, orders) - phases) @ np.array(WAVES)
     points = (
         centre
-        + RADIUS * (np.cos(t)[:, None] * axis + np.sin(t)[:, None] * second)
-        + WAVE * np.sin(3 * t - phase)[:, None] * normal
+        + scale[:, None]
+        * (
+            SEMI_AXES[0] * np.cos(t)[:, None] * axis
+            + SEMI_AXES[1] * np.sin(t)[:, None] * second
+        )
+        + lift[:, None] * normal
     )
+    order = max(len(LOBES) + 2 if LOBES else 1, len(WAVES) + 1)
     harmonics = np.fft.rfft(points, axis=0) / len(t)
-    curve = CurveXYZFourier(64, 3)
+    curve = CurveXYZFourier(64, order)
     # c_0 and then s_j, c_j of \sin(2 \pi j t) and \cos(2 \pi j t) in each coordinate
     curve.x = np.concatenate(
         [
             [harmonics[0, k].real]
             + [
                 v
-                for j in range(1, 4)
+                for j in range(1, order + 1)
                 for v in (-2.0 * harmonics[j, k].imag, 2.0 * harmonics[j, k].real)
             ]
             for k in range(3)
@@ -144,7 +153,7 @@ def coils():
     centres = np.concatenate([CENTRES, flip * CENTRES[1:-1]])
     normals = np.concatenate([NORMALS, -flip * NORMALS[1:-1]])
     axes = np.concatenate([AXES, flip * AXES[1:-1]])
-    # The image of a coil carries its wave at the opposite phase.
+    # The image of a coil carries its waves at the opposite phases.
     phases = np.concatenate([PHASES, -PHASES[1:-1]])
     out = []
     for k in range(NFP):
@@ -527,12 +536,14 @@ def describe(s, ripple, closed):
 
 
 def main():
-    field = BiotSavart(coils())
+    every = coils()
+    field = BiotSavart(every)
     k = interior(field, DESIGN)
     print(
-        f"80 coils of radius {RADIUS:.3f} m: magnetic axis through R = "
+        f"{len(every)} coils of semi-axes {SEMI_AXES[0]:.3f} m and {SEMI_AXES[1]:.3f} m: "
+        "magnetic axis through R = "
         f"{k['r_axis']:.5f} m on the midplane of phi = 0 with iota "
-        f"{abs(k['iota_axis']):.4f} next to it, boundary traced from 30 cm outboard "
+        f"{abs(k['iota_axis']):.4f} next to it, boundary traced from 26 cm outboard "
         f"of it with iota {abs(k['iota_surface']):.4f}, fitted within "
         f"{k['misfit']:.1e} m"
     )
