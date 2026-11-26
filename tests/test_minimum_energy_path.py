@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "examples"))
@@ -15,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT / "examples"))
 import minimum_energy_path as example  # type: ignore # noqa: E402
 
 
+@pytest.mark.slow
 def test_the_path_climbs_to_the_axisymmetric_equilibrium() -> None:
     """The climbing image of the path between the mirror images is the axisymmetric
     equilibrium; the energy rises to it from both ends, and the two halves of the path

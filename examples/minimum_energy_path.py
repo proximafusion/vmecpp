@@ -9,13 +9,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 NS = 25
 MPOL = 6
-NTOR = 1
+NTOR = 4
 FTOL = 1.0e-13
 
 
@@ -29,18 +28,18 @@ def helical_core_input(helical_seed: float = 0.0) -> vmecpp.VmecInput:
         ntor=NTOR,
         ns_array=np.array([NS]),
         ftol_array=np.array([FTOL]),
-        niter_array=np.array([30000]),
+        niter_array=np.array([60000]),
         phiedge=5.0,
         ncurr=0,
         # iota = 1 - (2/3) s^4: q = 1 on the axis and 3 at the boundary
         ai=np.array([1.0, 0.0, 0.0, 0.0, -2.0 / 3.0]),
         pmass_type="power_series",
         am=np.array([1.0, -4.0, 6.0, -4.0, 1.0]),  # p = p0 (1 - s)^4
-        pres_scale=1.2e5,
+        pres_scale=3.0e4,
         gamma=0.0,
         always_fix_m1_gauge=True,
-        raxis_c=np.array([1.5, helical_seed]),
-        zaxis_s=np.array([0.0, -helical_seed]),
+        raxis_c=np.concatenate([[1.5, helical_seed], np.zeros(NTOR - 1)]),
+        zaxis_s=np.concatenate([[0.0, -helical_seed], np.zeros(NTOR - 1)]),
     )
     vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
         np.array([[1.5], [1.0]]), MPOL, NTOR
