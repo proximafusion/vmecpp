@@ -26,9 +26,9 @@ def _non_module_deps_impl(_module_ctx):
     # https://github.com/jonathanschilling/abscab-cpp
     http_archive(
         name = "abscab_cpp",
-        urls = ["https://github.com/jonathanschilling/abscab-cpp/archive/refs/tags/v1.0.3.tar.gz"],
-        strip_prefix = "abscab-cpp-1.0.3",
-        sha256 = "d7d4d8060117ac047ca7a3c5824f79cc7d8f42c538e542946650b188c7d2e145",
+        urls = ["https://github.com/jonathanschilling/abscab-cpp/archive/0027dd97325621dd6d7d7245b148be9347e03870.tar.gz"],
+        strip_prefix = "abscab-cpp-0027dd97325621dd6d7d7245b148be9347e03870",
+        sha256 = "dd3356a18f5a999c7f77faf6937f5bdb7219c9c28689318ea04b0d297daba3e6",
     )
 
     # HDF5. Switch to a Bazel module when one is available:

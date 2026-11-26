@@ -73,8 +73,10 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
 
   absl::StatusOr<VmecINDATA> vmec_indata = VmecINDATA::FromJson(*indata_json);
   ASSERT_TRUE(vmec_indata.ok());
-  // The reference restarts from the advanced state.
+  // The reference restarts from the advanced state and preconditions lambda
+  // with the diagonal.
   vmec_indata->backup_evaluated_state = false;
+  vmec_indata->lambda_precondition_checkerboard_terms = -1.0;
 
   auto maybe_vmec = Vmec::FromIndata(*vmec_indata);
   ASSERT_TRUE(maybe_vmec.ok());
@@ -484,8 +486,64 @@ TEST_P(WOutFileContentsTest, CheckWOutFileContents) {
           IsCloseRelAbs(reference_zaxis_cc[n], wout.zaxis_cc[n], tolerance));
     }  // n
 
-    // TODO(jons): implement tests when first non-stellarator-symmetric test
-    // case is ready
+    std::vector<std::vector<double>> reference_rmns =
+        NetcdfReadArray2D(ncid, "rmns").value();
+    std::vector<std::vector<double>> reference_zmnc =
+        NetcdfReadArray2D(ncid, "zmnc").value();
+    std::vector<std::vector<double>> reference_lmnc =
+        NetcdfReadArray2D(ncid, "lmnc").value();
+    for (int jF = 0; jF < fc.ns; ++jF) {
+      for (int mn = 0; mn < s.mnmax; ++mn) {
+        EXPECT_TRUE(IsCloseRelAbs(reference_rmns[jF][mn], wout.rmns(mn, jF),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_zmnc[jF][mn], wout.zmnc(mn, jF),
+                                  tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_lmnc[jF][mn], wout.lmnc(mn, jF),
+                                  tolerance));
+      }  // mn
+    }  // jF
+
+    std::vector<std::vector<double>> reference_gmns =
+        NetcdfReadArray2D(ncid, "gmns").value();
+    std::vector<std::vector<double>> reference_bmns =
+        NetcdfReadArray2D(ncid, "bmns").value();
+    std::vector<std::vector<double>> reference_bsubumns =
+        NetcdfReadArray2D(ncid, "bsubumns").value();
+    std::vector<std::vector<double>> reference_bsubvmns =
+        NetcdfReadArray2D(ncid, "bsubvmns").value();
+    std::vector<std::vector<double>> reference_bsubsmnc =
+        NetcdfReadArray2D(ncid, "bsubsmnc").value();
+    std::vector<std::vector<double>> reference_bsupumns =
+        NetcdfReadArray2D(ncid, "bsupumns").value();
+    std::vector<std::vector<double>> reference_bsupvmns =
+        NetcdfReadArray2D(ncid, "bsupvmns").value();
+    for (int jF = 0; jF < fc.ns; ++jF) {
+      for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
+        EXPECT_TRUE(IsCloseRelAbs(reference_gmns[jF][mn_nyq],
+                                  wout.gmns(mn_nyq, jF), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_bmns[jF][mn_nyq],
+                                  wout.bmns(mn_nyq, jF), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_bsubumns[jF][mn_nyq],
+                                  wout.bsubumns(mn_nyq, jF), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_bsubvmns[jF][mn_nyq],
+                                  wout.bsubvmns(mn_nyq, jF), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_bsupumns[jF][mn_nyq],
+                                  wout.bsupumns(mn_nyq, jF), tolerance));
+        EXPECT_TRUE(IsCloseRelAbs(reference_bsupvmns[jF][mn_nyq],
+                                  wout.bsupvmns(mn_nyq, jF), tolerance));
+      }  // mn_nyq
+    }  // jF
+
+    // Deviation from VMEC 8.52: bsubsmnc is on the full grid, as bsubsmns.
+    for (int jF = 1; jF < fc.ns - 1; ++jF) {
+      for (int mn_nyq = 0; mn_nyq < s.mnmax_nyq; ++mn_nyq) {
+        const double reference_full =
+            0.5 * (reference_bsubsmnc[jF][mn_nyq] +
+                   reference_bsubsmnc[jF + 1][mn_nyq]);
+        EXPECT_TRUE(IsCloseRelAbs(reference_full, wout.bsubsmnc(mn_nyq, jF),
+                                  tolerance));
+      }  // mn_nyq
+    }  // jF
   }  // lasym
 
   ASSERT_EQ(nc_close(ncid), NC_NOERR);
@@ -503,6 +561,18 @@ INSTANTIATE_TEST_SUITE_P(
            DataSource{.identifier = "cma", .tolerance = 5.0e-06},
            DataSource{.identifier = "cth_like_free_bdy",
                       .tolerance = 5.0e-06}));
+
+// Further cells of vmecpp_large_cpp_tests/test_data/README.md.
+INSTANTIATE_TEST_SUITE_P(
+    TestOutputQuantitiesFlagMatrix, WOutFileContentsTest,
+    Values(
+        DataSource{.identifier = "cth_like_free_bdy_iota", .tolerance = 1.0e-8},
+        DataSource{.identifier = "up_down_asym", .tolerance = 4.0e-7},
+        DataSource{.identifier = "up_down_asym_current", .tolerance = 3.0e-7},
+        DataSource{.identifier = "cth_like_fixed_bdy_asym",
+                   .tolerance = 5.0e-8},
+        DataSource{.identifier = "cth_like_fixed_bdy_asym_iota",
+                   .tolerance = 3.0e-9}));
 
 // End-to-end exercise of the spline profile path through a full equilibrium.
 // cth_like_fixed_bdy_spline_pressure.json is the cth_like_fixed_bdy case with
