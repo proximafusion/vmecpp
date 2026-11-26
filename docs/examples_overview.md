@@ -6,7 +6,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`normal_run_and_hot_restart.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/normal_run_and_hot_restart.py): perform a standard run and then hot restart.
 - [`freeboundary_run_and_hot_restart.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/freeboundary_run_and_hot_restart.py): demonstrate free-boundary runs with hot restart.
 - [`hot_restart_scaling.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/hot_restart_scaling.py): illustrate how boundary perturbations affect hot-restart iteration counts.
-- [`kink_parametron_rule110.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/kink_parametron_rule110.py): certify a majority gate made of the two helical cores of a kinked spherical tokamak and run the universal cellular automaton Rule 110 on it.
+- [`kink_parametron_rule110.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/kink_parametron_rule110.py): build an adder and the universal cellular automaton Rule 110 from kink parametrons, VMEC++ equilibria of a spherical tokamak that each hold one of two helical cores.
 - [`compare_vmecpp_to_parvmec.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/compare_vmecpp_to_parvmec.py): compare VMEC++ results to a PARVMEC reference solution.
 - [`plot_plasma_boundary.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
 - [`visualize_magnetic_field.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
