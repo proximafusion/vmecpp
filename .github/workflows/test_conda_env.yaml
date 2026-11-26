@@ -28,9 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # This container does not have git-lfs installed
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
       - name: Create conda env
         run: |
           conda env create --yes --quiet --file environment.yml

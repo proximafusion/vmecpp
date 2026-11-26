@@ -732,6 +732,7 @@ UNKNOWN_DIAGNOSTICS: dict[str, Any] = {
     "force_residual_z": np.zeros(0),
     "force_residual_lambda": np.zeros(0),
     "delbsq": np.zeros(0),
+    "lcfs_force": np.zeros(0),
     "restart_reason_timetrace": np.zeros(0, dtype=np.int64),
     "wdot": np.zeros(0),
 }

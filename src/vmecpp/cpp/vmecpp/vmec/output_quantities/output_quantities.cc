@@ -4955,6 +4955,7 @@ vmecpp::WOutFileContents vmecpp::ComputeWOutFileContents(
   wout.fsqt = wout.force_residual_r + wout.force_residual_z +
               wout.force_residual_lambda;
   wout.delbsq = ToEigenVector(fc.delbsq);
+  wout.lcfs_force = ToEigenVector(fc.lcfs_force_timetrace);
   // Convert status codes to integer values
   wout.restart_reason_timetrace =
       Eigen::VectorXi::Zero(fc.restart_reasons.size());

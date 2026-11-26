@@ -1224,6 +1224,7 @@ struct WOutFileContents {
   Eigen::VectorXd force_residual_z;
   Eigen::VectorXd force_residual_lambda;
   Eigen::VectorXd delbsq;
+  Eigen::VectorXd lcfs_force;
   Eigen::VectorXi restart_reason_timetrace;
 
   // Gradient of the energy at each iteration
