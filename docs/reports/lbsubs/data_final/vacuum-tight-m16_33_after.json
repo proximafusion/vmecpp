@@ -1,0 +1,19 @@
+{
+  "case": "vacuum-tight-m16",
+  "ns": 33,
+  "stage": "after",
+  "lbsubs_requested": true,
+  "seconds": 10.384930592990713,
+  "fsq": 9.589200930475827e-21,
+  "beta": 0.0,
+  "max_error_A_m2": 247.5117108264002,
+  "rms_error_A_m2": 29.340284697304064,
+  "first_surface_max_error_A_m2": 247.5117108264002,
+  "bulk_max_error_A_m2": 19.48695930439734,
+  "reference_max_A_m2": 0.0,
+  "DMerc_first": 0.00029512109261764876,
+  "wout_jxbout_max_difference": 7.807627255829175e-08,
+  "reference_kind": "zero_current",
+  "initialization": "hot_restart_from_saved_equilibrium",
+  "bsubs_reconstruction": "radial_force_balance"
+}

@@ -1,0 +1,19 @@
+{
+  "case": "vacuum-asym",
+  "ns": 33,
+  "stage": "after",
+  "lbsubs_requested": true,
+  "seconds": 15.529015612002695,
+  "fsq": 9.856472265948265e-17,
+  "beta": 0.0,
+  "max_error_A_m2": 311.300454537518,
+  "rms_error_A_m2": 51.80596606233215,
+  "first_surface_max_error_A_m2": 311.300454537518,
+  "bulk_max_error_A_m2": 254.01453054085297,
+  "reference_max_A_m2": 0.0,
+  "DMerc_first": 0.00036582623020903443,
+  "wout_jxbout_max_difference": 3.1430168689894344e-08,
+  "reference_kind": "zero_current",
+  "initialization": "hot_restart_from_saved_equilibrium",
+  "bsubs_reconstruction": "radial_force_balance"
+}

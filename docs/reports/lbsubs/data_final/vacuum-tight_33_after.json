@@ -1,0 +1,19 @@
+{
+  "case": "vacuum-tight",
+  "ns": 33,
+  "stage": "after",
+  "lbsubs_requested": true,
+  "seconds": 1.6277665429806802,
+  "fsq": 9.902056874501264e-21,
+  "beta": 0.0,
+  "max_error_A_m2": 238.86596305384643,
+  "rms_error_A_m2": 28.078995511199544,
+  "first_surface_max_error_A_m2": 238.86596305384643,
+  "bulk_max_error_A_m2": 23.50663749146775,
+  "reference_max_A_m2": 0.0,
+  "DMerc_first": 0.0003662287760060553,
+  "wout_jxbout_max_difference": 3.0077057289190634e-08,
+  "reference_kind": "zero_current",
+  "initialization": "hot_restart_from_saved_equilibrium",
+  "bsubs_reconstruction": "radial_force_balance"
+}
