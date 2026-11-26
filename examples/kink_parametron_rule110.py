@@ -4,14 +4,15 @@
 """A computer of kink parametrons that runs Rule 110.
 
 Above a critical pressure the axisymmetric equilibrium of a spherical tokamak with q = 1
-on its axis is unstable to the m = 1, n = 1 internal kink. Its stable equilibria are two
-helical cores, mirror images of each other. A helical ripple of the boundary above a
-threshold leaves only the core whose magnetic axis shifts with the sign of the ripple,
-and below it the plasma keeps the core it has. Such a bistable element is a parametron,
-and the sum of the ripples of its inputs sets it. It computes the majority of three
-inputs, and a reversed coupling negates an input. This example certifies the majority
-with VMEC++ equilibria started toward either core and evolves Rule 110 from it. M. Cook,
-Complex Systems 15, 1 (2004), proved this elementary cellular automaton universal.
+on its axis is unstable to the m = 1, n = 1 internal kink. Under stellarator symmetry
+its stable equilibria are two helical cores half a toroidal turn apart. A helical ripple
+of the boundary above a threshold leaves only the core whose magnetic axis shifts with
+the sign of the ripple, and below it the plasma keeps the core it has. Such a bistable
+element is a parametron, whose two states also lie half a period apart, and the sum of
+the ripples of its inputs sets it. It computes the majority of three inputs, and a
+reversed coupling negates an input. This example certifies the majority with VMEC++
+equilibria started toward either core and evolves Rule 110 from it. M. Cook, Complex
+Systems 15, 1 (2004), proved this elementary cellular automaton universal.
 """
 
 import numpy as np

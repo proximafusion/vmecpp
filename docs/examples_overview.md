@@ -6,6 +6,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`normal_run_and_hot_restart.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/normal_run_and_hot_restart.py): perform a standard run and then hot restart.
 - [`freeboundary_run_and_hot_restart.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/freeboundary_run_and_hot_restart.py): demonstrate free-boundary runs with hot restart.
 - [`hot_restart_scaling.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/hot_restart_scaling.py): illustrate how boundary perturbations affect hot-restart iteration counts.
+- [`kink_parametron_rule110.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/kink_parametron_rule110.py): certify a majority gate made of the two helical cores of a kinked spherical tokamak and run the universal cellular automaton Rule 110 on it.
 - [`compare_vmecpp_to_parvmec.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/compare_vmecpp_to_parvmec.py): compare VMEC++ results to a PARVMEC reference solution.
 - [`plot_plasma_boundary.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
 - [`visualize_magnetic_field.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
@@ -19,4 +20,3 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`self_consistent_bootstrap_current.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/self_consistent_bootstrap_current.py): make the enclosed current equal to SIMSOPT's Redl bootstrap current during the solve, by changing `state.curr_h` in the iteration callback of `vmecpp.run`.
 - [`w7x_lbsubs_current_density.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/w7x_lbsubs_current_density.py): compare the toroidal current density of W7-X with `lbsubs` off and on.
 - [`force_balance_spectrum.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_balance_spectrum.py): visualize force-residual Fourier coefficients and their real-space contributions.
-- [`kink_parametron_rule110.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/kink_parametron_rule110.py): certify a majority gate made of the two helical cores of a kinked spherical tokamak and run on it Rule 110, a cellular automaton that is universal.
