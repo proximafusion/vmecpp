@@ -228,6 +228,17 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // Permit an additive spectral force source (VmecModel.set_force_source). A
+  // run that carries one solves a modified problem rather than ideal MHD, so
+  // installing one is refused unless the input asks for it.
+  bool enable_force_source;
+
+  // Return the boundary quantities of a free-boundary run (freeb_data in
+  // Fortran VMEC): the boundary geometry, the plasma-side and vacuum-side
+  // pressures, and the cylindrical field components NESTOR computes on the
+  // vacuum side, on the solver's (zeta, theta) grid.
+  bool return_vacuum_field;
+
   // Scale of the lambda preconditioner, which multiplies the inverse of the
   // diagonal lambda stiffness. 1.0 applies the undamped inverse, values below
   // 1.0 damp the lambda step and values above 1.0 accelerate it; the default
