@@ -7,19 +7,24 @@ critical eigenvalue of equilibria computed away from the end."""
 from __future__ import annotations
 
 import numpy as np
-from scipy.optimize import curve_fit
+from scipy.sparse.linalg import LinearOperator, eigs
 
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 NS = 25
 MPOL = 6
-NTOR = 1
+NTOR = 4
 FTOL = 1.0e-17
 RIPPLE = 3.0e-3
-PITCHFORK_PATH = [3.3e4, 3.0e4, 2.8e4, 2.7e4]
-FOLD_PATH = [6.0e4, 5.2e4, 4.5e4, 4.1e4, 3.9e4, 3.85e4, 3.8e4, 3.775e4]
-FOLD_MEASURED = FOLD_PATH[-4:]
+PITCHFORK_MEASURED = [2.6e4, 2.58e4, 2.56e4, 2.55e4, 2.545e4, 2.54e4]
+PITCHFORK_PATH = [2.7e4, 2.66e4, 2.62e4, *PITCHFORK_MEASURED]
+FOLD_MEASURED = [2.79e4, 2.78e4, 2.775e4, 2.77e4, 2.767e4, 2.765e4]
+FOLD_PATH = [3.0e4, 2.95e4, 2.9e4, 2.85e4, 2.82e4, 2.8e4, *FOLD_MEASURED]
+# the exponents 1 / b that the fit of a branch end tries
+EXPONENTS = np.linspace(0.5, 3.0, 2501)
+# VmecModel.status of a converged solve
+SUCCESSFUL_TERMINATION = 11
 
 
 def case_input(
@@ -34,7 +39,7 @@ def case_input(
         ntor=NTOR,
         ns_array=np.array([NS]),
         ftol_array=np.array([FTOL]),
-        niter_array=np.array([30000]),
+        niter_array=np.array([80000]),
         phiedge=5.0,
         ncurr=0,
         # iota = 1 - (2/3) s^4: q = 1 on the axis and 3 at the boundary
@@ -44,8 +49,8 @@ def case_input(
         pres_scale=pres_scale,
         gamma=0.0,
         always_fix_m1_gauge=True,
-        raxis_c=np.array([1.5, helical_seed]),
-        zaxis_s=np.array([0.0, -helical_seed]),
+        raxis_c=np.concatenate([[1.5, helical_seed], np.zeros(NTOR - 1)]),
+        zaxis_s=np.concatenate([[0.0, -helical_seed], np.zeros(NTOR - 1)]),
     )
     vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
         np.array([[1.5], [1.0]]), MPOL, NTOR
@@ -70,8 +75,16 @@ def solve(vmec_input: vmecpp.VmecInput, x_start: np.ndarray | None = None):
         model.set_state(x_start)
         model.save_backup()
     model.solve()
+    if model.status != SUCCESSFUL_TERMINATION:
+        msg = f"the solve at pres_scale {vmec_input.pres_scale} did not converge"
+        raise RuntimeError(msg)
     model.evaluate(2, 2, False)
     return model, np.asarray(model.get_state()).copy()
+
+
+def guess(vmec_input: vmecpp.VmecInput) -> np.ndarray:
+    """The initial state of the input."""
+    return np.asarray(create_model(vmec_input).get_state())
 
 
 def free_coefficients(model) -> np.ndarray:
@@ -107,20 +120,38 @@ def smallest_eigenvalue(model, x: np.ndarray, free: np.ndarray, coordinates=None
     model.set_state(x)
     model.evaluate(2, 2, False)
     coordinates = np.arange(free.size) if coordinates is None else coordinates
-    jacobian = np.empty((coordinates.size, coordinates.size))
-    for column, k in enumerate(coordinates):
+    columns = factor[:, coordinates]
+
+    def product(y):
         v = np.zeros_like(x)
-        v[free] = factor[:, k]
-        hv = np.asarray(model.hessian_vector_product(v))[free]
-        jacobian[:, column] = (factor.T @ hv)[coordinates]
-    return np.linalg.eigvals(jacobian).real.min()
+        v[free] = columns @ y
+        return columns.T @ np.asarray(model.hessian_vector_product(v))[free]
+
+    jacobian = LinearOperator((coordinates.size,) * 2, matvec=product, dtype=float)
+    smallest = eigs(
+        jacobian,
+        k=1,
+        which="SR",
+        ncv=60,
+        tol=1.0e-8,
+        v0=np.ones(coordinates.size),
+        return_eigenvectors=False,
+    )
+    return smallest.real[0]
 
 
 def follow_branch(pres_scales, ripple, helical_seed, measured):
     """The critical eigenvalue at each pres_scale in ``measured``, along the branch of
-    ``helical_seed`` followed down through pres_scales."""
+    ``helical_seed`` followed down through pres_scales from its core without the
+    ripple."""
     free = free_coefficients(create_model(case_input(pres_scales[0], ripple, 0.3)))
-    x = None
+    _, x = solve(case_input(pres_scales[0], 0.0, helical_seed))
+    # the ripple enters the state through the initial guesses of the two inputs
+    x = (
+        x
+        + guess(case_input(pres_scales[0], ripple))
+        - guess(case_input(pres_scales[0]))
+    )
     eigenvalues = []
     for pres_scale in pres_scales:
         model, x = solve(case_input(pres_scale, ripple, helical_seed), x)
@@ -130,27 +161,23 @@ def follow_branch(pres_scales, ripple, helical_seed, measured):
 
 
 def fit_branch_end(pres_scales, eigenvalues):
-    """The fit lambda = c (mu - mu_end)^b, as mu_end and b."""
+    """The fit mu = mu_end + alpha lambda^(1/b) (1 + beta lambda) of the pres_scale mu
+    to the critical eigenvalue lambda, as mu_end and b."""
     mu = np.asarray(pres_scales)
-    span = mu.max() - mu.min()
-    s = (mu - mu.min()) / span
+    x = np.asarray(eigenvalues) / np.max(eigenvalues)
 
-    def law(s, log_c, s_end, b):
-        return log_c + b * np.log(s - s_end)
+    def least_squares(q):
+        basis = np.column_stack([np.ones_like(x), x**q, x ** (q + 1)])
+        coefficients, *_ = np.linalg.lstsq(basis, mu, rcond=None)
+        return coefficients, np.sum((basis @ coefficients - mu) ** 2)
 
-    (_, s_end, b), _ = curve_fit(
-        law,
-        s,
-        np.log(eigenvalues),
-        p0=(np.log(eigenvalues.max()), -0.5, 0.75),
-        bounds=((-np.inf, -10.0, 0.1), (np.inf, -1.0e-6, 3.0)),
-    )
-    return mu.min() + s_end * span, b
+    q = min(EXPONENTS, key=lambda q: least_squares(q)[1])
+    return least_squares(q)[0][0], 1.0 / q
 
 
 def axisymmetric_stability_limit(pres_scales):
     """The pres_scale at which the critical eigenvalue of the axisymmetric equilibrium
-    reaches zero, extrapolated linearly from two pres_scales above it."""
+    reaches zero, interpolated linearly between two pres_scales."""
     probe = create_model(case_input(pres_scales[0], 0.0, 0.3))
     free = free_coefficients(probe)
     odd = np.flatnonzero(odd_n(probe)[free])
@@ -164,7 +191,9 @@ def axisymmetric_stability_limit(pres_scales):
 
 def pitchfork_case():
     """The critical eigenvalues along the helical-core branch without ripple."""
-    return PITCHFORK_PATH, follow_branch(PITCHFORK_PATH, 0.0, 0.3, PITCHFORK_PATH)
+    return PITCHFORK_MEASURED, follow_branch(
+        PITCHFORK_PATH, 0.0, 0.3, PITCHFORK_MEASURED
+    )
 
 
 def fold_case():
@@ -187,7 +216,7 @@ def main():
         print(
             f"  the branch ends at pres_scale {mu_end:.4e} with b = {b:.2f}: a {kind}"
         )
-    limit = axisymmetric_stability_limit([2.8e4, 2.7e4])
+    limit = axisymmetric_stability_limit([2.6e4, 2.5e4])
     print(f"the axisymmetric equilibrium loses its stability at pres_scale {limit:.4e}")
 
 
