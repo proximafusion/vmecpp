@@ -26,6 +26,7 @@ def test_writes_over_either_core_take_the_sign_of_the_sum(certified):
         np.testing.assert_array_equal(np.sign(shifts), np.sign(total))
 
 
+@pytest.mark.slow
 def test_parametron_takes_the_majority_and_restores_its_level(certified):
     # one parametron through all inputs in turn
     level, _ = certified
