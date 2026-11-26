@@ -114,8 +114,6 @@ def test_bounce_periods_of_a_pendulum():
 
 
 def test_huygens_series_keeps_time_and_a_cosine_well_does_not():
-    # The truncated Boozer series of the Huygens well against the cosine well of the
-    # same depth.
     huygens = ib.boozer_series(0.85 + 0.3 * ib.huygens_shape(ib.SHARE))
     assert np.ptp(ib.boozer_periods(huygens, ib.BAND)[0]) < 1e-3
     assert np.ptp(ib.boozer_periods([1.0, 0.15], ib.BAND)[0]) > 0.1
@@ -130,9 +128,7 @@ def test_designed_well_keeps_time_from_its_bottom():
 
 
 def test_rates_against_the_flux_surfaces(wout):
-    # The rates from the covariant components and the Jacobian of the wout against
-    # those from the flux surfaces in cylindrical coordinates, on a half-grid surface
-    # and on either side of it.
+    # The points lie on a half-grid surface and on either side of it.
     ns = int(wout.ns)
     s = (np.round(0.2 * (ns - 1) + 0.5) - 0.5) / (ns - 1)
     rates = ib.guiding_centers(wout, tolerance=0.0)
@@ -176,7 +172,6 @@ def test_guiding_centers_keep_their_energy(wout):
 
 
 def test_ticks_without_drift_follow_the_bounce_integral(wout):
-    # The periods over their mean against the bounce integrals of a finer trace.
     times, _ = ib.clock(
         wout, [0.2], lines=1, ions=8, ticks=3, steps=200, gyroradius=0.0
     )
