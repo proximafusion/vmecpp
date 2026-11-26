@@ -13,9 +13,8 @@ B_u is on the half grid and the wout bsubsmns is the full-grid B_s:
 - lbsubs = True: the B_s that solves the radial force balance.
 The cross sections show isocontours of J_phi = R J^v.
 
-Note that for computations involving currents or quantities derived from them,
-e.g. DMerc, should use lbsubs=True to improve accuracy for those cases.
-We only keep it at false for backwards compatibility.
+Use lbsubs=True for currents and quantities derived from them. The exported
+currents use the same radial derivative as the B_s force-balance solve.
 """
 
 from pathlib import Path
@@ -26,13 +25,12 @@ from matplotlib import colors, tri
 
 import vmecpp
 
-MU_0 = 4.0e-7 * np.pi
 N_THETA_PLOT = 256
 N_LEVELS = 20
 
 TITLES = {
-    False: "lbsubs = False: B_s from the metric gives unphysical currents",
-    True: "lbsubs = True: B_s from the radial force balance gives accurate currents",
+    False: "lbsubs = False: B_s from the metric",
+    True: "lbsubs = True: B_s from radial force balance",
 }
 
 
@@ -49,15 +47,10 @@ def run(lbsubs):
 def toroidal_current_density(wout, zeta):
     """R, Z and J_phi in kA/m^2 on the interior full-grid surfaces at angle zeta.
 
-    B_s is truncated to m < mpol, |n| <= ntor, the resolution of B_u in the wout.
+    The exported coefficients are sqrt(g) J^v and include the factor 1/mu_0.
     """
-    ds = 1.0 / (wout.ns - 1)
-    xm, xn = wout.xm_nyq[:, None], wout.xn_nyq[:, None]
-    resolved = (xm < wout.mpol) & (np.abs(xn) <= wout.ntor * wout.nfp)
-    bsubsmns = np.where(resolved, wout.bsubsmns, 0.0)
     radial = np.arange(1, wout.ns - 1)
-    # mu_0 sqrt(g) J^v on the interior full grid
-    currvmnc = -xm * bsubsmns[:, radial] + np.diff(wout.bsubumnc[:, 1:], axis=1) / ds
+    currvmnc = wout.currvmnc[:, radial]
 
     theta = np.linspace(0, 2 * np.pi, N_THETA_PLOT, endpoint=False)
     cos = np.cos(wout.xm[:, None] * theta - wout.xn[:, None] * zeta)
@@ -66,7 +59,7 @@ def toroidal_current_density(wout, zeta):
     r = wout.rmnc[:, radial].T @ cos
     z = wout.zmns[:, radial].T @ sin
     sqrtg = (0.5 * (wout.gmnc[:, radial] + wout.gmnc[:, radial + 1])).T @ cos_nyq
-    return r, z, r * (currvmnc.T @ cos_nyq) / sqrtg / MU_0 / 1e3
+    return r, z, r * (currvmnc.T @ cos_nyq) / sqrtg / 1e3
 
 
 def triangulation(r, z):

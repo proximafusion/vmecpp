@@ -377,6 +377,9 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     sqgb2 = gsqrt[1:] * bsq[1:] + gsqrt[:-1] * bsq[:-1]
     bsubus = (bsubu_out[1:] - bsubu_out[:-1]) / delta_s
     bsubvs = (bsubv_out[1:] - bsubv_out[:-1]) / delta_s
+    if setup.lbsubs is not None:
+        bsubus = _covariant_b_radial_derivative(setup, bsubu_out)
+        bsubvs = _covariant_b_radial_derivative(setup, bsubv_out)
     itheta = (bsubsv[1:-1] - bsubvs) / MU_0
     izeta = (-bsubsu[1:-1] + bsubus) / MU_0
     bsubu1 = interior_full(bsubu_out)
@@ -502,6 +505,23 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     bsupumnc, bsupumns = _nyquist_half(setup, bsupu, cosine=True)
     bsupvmnc, bsupvmns = _nyquist_half(setup, bsupv, cosine=True)
     bsubsmns, bsubsmnc = _nyquist_half(setup, bsubs_full, cosine=False, half=False)
+    if setup.lbsubs is not None:
+        du_cos, _ = _nyquist_half(setup, bsubsu, cosine=True, half=False)
+        dv_cos, _ = _nyquist_half(setup, bsubsv, cosine=True, half=False)
+        m = setup.xm_nyq[:, None]
+        n = setup.xn_nyq[:, None]
+        n_endpoint = n == 0
+        if setup.nzeta > 1 and setup.nzeta % 2 == 0:
+            n_endpoint = n_endpoint | (jnp.abs(n) == setup.nzeta // 2 * setup.nfp)
+        poloidal_ghost = (m == setup.ntheta_even // 2) & n_endpoint
+        toroidal_ghost = (m == 0) & (n != 0) & n_endpoint
+        recovered = jnp.where(
+            poloidal_ghost,
+            du_cos / jnp.maximum(m, 1),
+            -dv_cos / jnp.where(n == 0, 1, n),
+        )
+        recovered = _extrapolate_both(recovered[:, 1:-1].T).T
+        bsubsmns = jnp.where(poloidal_ghost | toroidal_ghost, recovered, bsubsmns)
     currumnc, currvmnc = _currents(setup, bsubsmns, bsubumnc, bsubvmnc, sign=1.0)
 
     # Combined-basis coefficients of R, Z and lambda on the full grid.
@@ -712,6 +732,7 @@ UNKNOWN_DIAGNOSTICS: dict[str, Any] = {
     "force_residual_z": np.zeros(0),
     "force_residual_lambda": np.zeros(0),
     "delbsq": np.zeros(0),
+    "lcfs_force": np.zeros(0),
     "restart_reason_timetrace": np.zeros(0, dtype=np.int64),
     "wdot": np.zeros(0),
 }
@@ -1214,63 +1235,87 @@ def _filter_sine_type(setup: _Setup, field):
     )
 
 
-def _lbsubs_basis(sizes: _Sizes) -> tuple[np.ndarray, ...] | None:
-    """Collocation basis of the lbsubs solve for B_s (getbsubs.f90).
-
-    Columns are sin(m theta) cos(n zeta) and cos(m theta) sin(n zeta) for m <= mnyq, n
-    <= nnyq in the layout of RecomputeBSubSFromRadialForceBalance, plus a pedestal
-    column for the surface average. Rows are the reduced-grid points without the
-    reflected duplicates at theta = 0, pi. Returns None where the C++ solve keeps the
-    metric B_s: lasym or a grid that does not match the Nyquist sizes.
-    """
-    mmax, nmax = sizes.mnyq, sizes.nnyq
-    if sizes.lasym or mmax + 1 != sizes.ntheta_reduced or nmax != sizes.nzeta // 2:
-        return None
+def _lbsubs_basis(sizes: _Sizes) -> tuple[np.ndarray, ...]:
+    """Product-basis collocation, with both stellarator parities for lasym."""
+    mmax, nmax = sizes.ntheta_even // 2, sizes.nzeta // 2
+    nyquist = sizes.nzeta > 1 and sizes.nzeta % 2 == 0
     theta, zeta = _grids(sizes)
-    columns = []
+    columns = [("pedestal", 0, 0)]
     for m in range(mmax + 1):
         for n in range(nmax + 1):
-            if n in (0, nmax):
-                kind = "sc" if m > 0 else "pedestal" if n == 0 else "cs"
-                columns.append((kind, m, n))
-            elif m in (0, mmax):
+            n_endpoint = n == 0 or (nyquist and n == nmax)
+            if m > 0 and (m < mmax or n_endpoint):
+                columns.append(("sc", m, n))
+            if n > 0 and (not n_endpoint or m == 0):
                 columns.append(("cs", m, n))
-            else:
-                columns += [("sc", m, n), ("cs", m, n)]
-    zeta_grid, theta_grid = np.meshgrid(zeta, theta, indexing="ij")
+    if sizes.lasym:
+        for m in range(mmax + 1):
+            for n in range(nmax + 1):
+                m_endpoint = m in (0, mmax)
+                n_endpoint = n == 0 or (nyquist and n == nmax)
+                if not (m_endpoint and n_endpoint):
+                    columns.append(("cc", m, n))
+                if not m_endpoint and not n_endpoint:
+                    columns.append(("ss", m, n))
+    zeta_grid, theta_grid = np.meshgrid(zeta, theta[: sizes.ntheta_eff], indexing="ij")
     theta_grid, zeta_grid = theta_grid.ravel(), zeta_grid.ravel()
     value, dtheta, dzeta = (np.zeros((theta_grid.size, len(columns))) for _ in "abc")
     pedestal = np.zeros(len(columns))
-    for c, (kind, m, n) in enumerate(columns):
-        sin_m, cos_m = np.sin(m * theta_grid), np.cos(m * theta_grid)
-        sin_n, cos_n = np.sin(n * zeta_grid), np.cos(n * zeta_grid)
-        dn = n * sizes.nfp
-        if kind == "sc":
-            value[:, c], dtheta[:, c], dzeta[:, c] = (
-                sin_m * cos_n,
-                m * cos_m * cos_n,
-                -dn * sin_m * sin_n,
-            )
-        elif kind == "cs":
-            value[:, c], dtheta[:, c], dzeta[:, c] = (
-                cos_m * sin_n,
-                -m * sin_m * sin_n,
-                dn * cos_m * cos_n,
-            )
-        else:
-            pedestal[c] = 1.0
-    l_index = np.tile(np.arange(sizes.ntheta_reduced), sizes.nzeta)
-    k_index = np.repeat(np.arange(sizes.nzeta), sizes.ntheta_reduced)
-    duplicate = ((l_index == 0) | (l_index == sizes.ntheta_reduced - 1)) & (
-        k_index > sizes.nzeta // 2
+    pedestal[0] = 1.0
+    for c, (kind, m, n) in enumerate(columns[1:], start=1):
+        cos_m = np.cos(m * theta_grid)
+        sin_m = np.zeros_like(theta_grid) if m == mmax else np.sin(m * theta_grid)
+        cos_n = np.cos(n * zeta_grid)
+        sin_n = (
+            np.zeros_like(zeta_grid) if nyquist and n == nmax else np.sin(n * zeta_grid)
+        )
+        poloidal = sin_m if kind[0] == "s" else cos_m
+        toroidal = sin_n if kind[1] == "s" else cos_n
+        value[:, c] = poloidal * toroidal
+        dtheta[:, c] = m * (cos_m if kind[0] == "s" else -sin_m) * toroidal
+        dzeta[:, c] = n * sizes.nfp * poloidal * (cos_n if kind[1] == "s" else -sin_n)
+    rows = [
+        k * sizes.ntheta_eff + theta_index
+        for theta_index in range(sizes.ntheta_eff)
+        for k in range(sizes.nzeta)
+        if sizes.lasym or not (theta_index in (0, mmax) and k > nmax)
+    ]
+    assert len(rows) == len(columns)
+    return np.asarray(rows), value, dtheta, dzeta, pedestal
+
+
+def _covariant_b_radial_derivative(setup: _Setup, field):
+    """Half-to-full derivative with sqrt(s) factored out of odd m."""
+    theta_index = (
+        np.arange(setup.ntheta_eff) + setup.ntheta_even // 2
+    ) % setup.ntheta_even
+    zeta_index = np.arange(setup.nzeta)[:, None]
+    if not setup.lasym:
+        reflected = theta_index >= setup.ntheta_reduced
+        zeta_index = np.where(reflected, (-zeta_index) % setup.nzeta, zeta_index)
+        theta_index = np.where(reflected, setup.ntheta_even - theta_index, theta_index)
+    shifted = field[:, zeta_index, theta_index]
+    odd = 0.5 * (field - shifted)
+    even = field - odd
+    remainder = odd / jnp.asarray(setup.sqrt_s_half)[:, None, None]
+    sqrt_full = jnp.asarray(setup.sqrt_s_full[1:-1])[:, None, None]
+    return (
+        (setup.ns - 1) * (even[1:] - even[:-1])
+        + (setup.ns - 1) * sqrt_full * (remainder[1:] - remainder[:-1])
+        + 0.25 * (remainder[1:] + remainder[:-1]) / sqrt_full
     )
-    rows = np.nonzero(~duplicate)[0]
-    assert rows.size == len(columns)
-    return rows, value, dtheta, dzeta, pedestal
 
 
 def _bsubs_from_force_balance(
-    setup: _Setup, metric, bsupu_g, bsupv_g, gsqrt, bsubu, bsubv, pres_h, dvds_h
+    setup: _Setup,
+    metric,
+    bsupu_g,
+    bsupv_g,
+    gsqrt,
+    bsubu,
+    bsubv,
+    pres_h,
+    dvds_h,
 ):
     """Full-grid B_s and its derivatives from the radial force balance (lbsubs).
 
@@ -1289,11 +1334,13 @@ def _bsubs_from_force_balance(
         return (0.5 * (values_h[1:] + values_h[:-1])).reshape(shape)
 
     sqrtg_f, bsupu_f, bsupv_f = full(gsqrt), full(bsupu_g), full(bsupv_g)
-    dbsubu = (bsubu[1:] - bsubu[:-1]).reshape(shape)
-    dbsubv = (bsubv[1:] - bsubv[:-1]).reshape(shape)
-    brho = (bsupu_f * dbsubu + bsupv_f * dbsubv) / delta_s + (
-        jnp.diff(pres_h) / delta_s
-    )[:, None] * sqrtg_f
+    dbsubu = _covariant_b_radial_derivative(setup, bsubu).reshape(shape)
+    dbsubv = _covariant_b_radial_derivative(setup, bsubv).reshape(shape)
+    brho = (
+        bsupu_f * dbsubu
+        + bsupv_f * dbsubv
+        + (jnp.diff(pres_h) / delta_s)[:, None] * sqrtg_f
+    )
     w_int = jnp.tile(jnp.asarray(setup.w_int), setup.nzeta)
     brho00 = brho @ w_int
     vp_f = 0.5 * (dvds_h[1:] + dvds_h[:-1])
@@ -1303,6 +1350,7 @@ def _bsubs_from_force_balance(
         dzeta[rows] + pedestal
     )
     rhs = brho[:, rows]
+
     # one LAPACK solve per surface; the batched CPU LU is two orders slower
     solution = jax.lax.map(lambda system: jnp.linalg.solve(*system), (matrix, rhs))
     residual = jnp.max(jnp.abs(jnp.einsum("jrc,jc->jr", matrix, solution) - rhs), 1)

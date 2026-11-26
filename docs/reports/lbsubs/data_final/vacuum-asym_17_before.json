@@ -1,0 +1,16 @@
+{
+  "case": "vacuum-asym",
+  "ns": 17,
+  "stage": "before",
+  "seconds": 35.13354965799954,
+  "fsq": 9.982834987762345e-17,
+  "beta": 0.0,
+  "max_error_A_m2": 949370.3259541232,
+  "rms_error_A_m2": 115796.78688903194,
+  "first_surface_max_error_A_m2": 949370.3259541232,
+  "bulk_max_error_A_m2": 208189.9042035522,
+  "reference_max_A_m2": 0.0,
+  "DMerc_first": -12.506978729504066,
+  "wout_jxbout_max_difference": 33817.608374807896,
+  "reference_kind": "zero_current"
+}

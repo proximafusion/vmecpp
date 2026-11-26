@@ -1,0 +1,15 @@
+{
+  "case": "vacuum",
+  "ns": 17,
+  "stage": "before",
+  "seconds": 7.262683692999417,
+  "fsq": 9.84471494836542e-17,
+  "beta": 0.0,
+  "max_error_A_m2": 295465.335122305,
+  "rms_error_A_m2": 36408.2701628504,
+  "first_surface_max_error_A_m2": 295465.335122305,
+  "bulk_max_error_A_m2": 48977.87636833991,
+  "reference_max_A_m2": 0.0,
+  "DMerc_first": 0.0005979555677054082,
+  "reference_kind": "zero_current"
+}

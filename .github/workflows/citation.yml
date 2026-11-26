@@ -1,0 +1,43 @@
+name: Validate citation metadata
+
+on:
+  pull_request:
+    paths:
+      - CITATION.cff
+      - .github/workflows/citation.yml
+  push:
+    branches:
+      - main
+    paths:
+      - CITATION.cff
+      - .github/workflows/citation.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation tools
+        run: pip install cffconvert pyyaml
+
+      - name: Validate CFF schema
+        run: cffconvert --validate
+
+      - name: Validate Zenodo compatibility
+        run: |
+          python - <<'PY'
+          import yaml
+
+          with open("CITATION.cff", encoding="utf-8") as f:
+              metadata = yaml.safe_load(f)
+
+          assert isinstance(metadata.get("license"), str), (
+              "Zenodo requires a single license string."
+          )
+          PY
