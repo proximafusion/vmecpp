@@ -246,6 +246,12 @@ class Vmec {
   // across multigrid steps.
   void SetupVacuumSolvers();
 
+  // Select the three-surface mesh that run() restarts from when the Jacobian
+  // of a multi-grid step stays bad after the axis reguess: nsval, its force
+  // tolerance and a vacuum that is off. niterv stays that of the step that
+  // failed. InitializeRadial sets the mesh up from the boundary and the axis.
+  void SelectThreeSurfaceMesh();
+
   // is_checkpoint_step says whether the multi-grid step being initialized is
   // the one the caller asked to checkpoint in.
   absl::StatusOr<bool> InitializeRadial(
@@ -272,6 +278,8 @@ class Vmec {
   // without advancing the state.
   absl::Status EvaluateFinalState();
   void PerformTimeStep(double fac, double b1, double time_step, int thread_id);
+  // The mean of the history of 1/tau, as Evolve sums it.
+  static double MeanInverseTau(const Eigen::VectorXd& inv_tau);
   void InterpolateToNextMultigridStep(
       int ns_new, int ns_old,
       const std::vector<std::unique_ptr<RadialProfiles>>& p,

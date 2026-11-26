@@ -443,20 +443,7 @@ absl::StatusOr<bool> Vmec::run(const VmecCheckpoint& checkpoint,
       // iteration
       if (igrid < 0) {
         // igrid .lt. 1 can only happen when jacob_off == 1 (then igrid==0)
-
-        // TRY TO GET NON-SINGULAR JACOBIAN ON A 3 PT RADIAL MESH
-        // COMPUTE INITIAL SOLUTION ON COARSE GRID
-        // IF PREVIOUS SEQUENCE DID NOT CONVERGE WELL
-        fc_.nsval = 3;
-        fc_.ftolv = 1.0e-4;
-        // fc_.niterv keeps the niter_array entry of the stage that failed
-
-        // Fully restart the vacuum. The assignment to kInitialized above
-        // applies to a hot restart, where the vacuum solution carried in with
-        // the initial state can be reused. This branch is the jacob_off
-        // recovery pass, which drops back to a three-surface mesh, so that
-        // solution no longer corresponds to the geometry being solved.
-        vacuum_pressure_state_ = VacuumPressureState::kOff;
+        SelectThreeSurfaceMesh();
       } else {
         // proceed regularly with ns values from ns_array
         fc_.nsval = indata_.ns_array[igrid];
@@ -704,6 +691,21 @@ void Vmec::SetupVacuumSolvers() {
     }  // indata_.free_boundary_method
   }  // vac_thread_id
 }  // SetupVacuumSolvers
+
+void Vmec::SelectThreeSurfaceMesh() {
+  // TRY TO GET NON-SINGULAR JACOBIAN ON A 3 PT RADIAL MESH
+  // COMPUTE INITIAL SOLUTION ON COARSE GRID
+  // IF PREVIOUS SEQUENCE DID NOT CONVERGE WELL
+  fc_.nsval = 3;
+  fc_.ftolv = 1.0e-4;
+  // fc_.niterv keeps the niter_array entry of the stage that failed
+
+  // Fully restart the vacuum. A hot restart sets it to kInitialized, where the
+  // vacuum solution carried in with the initial state can be reused. This is
+  // the jacob_off recovery pass, which drops back to a three-surface mesh, so
+  // that solution no longer corresponds to the geometry being solved.
+  vacuum_pressure_state_ = VacuumPressureState::kOff;
+}  // SelectThreeSurfaceMesh
 
 // initialize_radial quantities, return true if a checkpoint was reached
 absl::StatusOr<bool> Vmec::InitializeRadial(
@@ -1700,7 +1702,7 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   }
 
   // averaging over ndamp entries : 1/ndamp*sum(invTau)
-  const double otav = invTau_.sum() / kNDamp;
+  const double otav = MeanInverseTau(invTau_);
 
   const double dtau = time_step * otav / 2.0;
   const double b1 = 1.0 - dtau;
@@ -1712,6 +1714,10 @@ absl::StatusOr<bool> Vmec::Evolve(VmecCheckpoint checkpoint,
   PerformTimeStep(fac, b1, time_step, thread_id);
 
   return false;
+}
+
+double Vmec::MeanInverseTau(const Eigen::VectorXd& inv_tau) {
+  return inv_tau.sum() / kNDamp;
 }
 
 void Vmec::NotifyIterationCallback(int iter2, RestartReason restart_reason,
