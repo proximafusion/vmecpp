@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
