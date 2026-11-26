@@ -7,9 +7,10 @@ equilibrium and four force evaluations per parameter."""
 from __future__ import annotations
 
 import numpy as np
+from vmecpp_adjoint import mhd_energy, objective_state_gradient
+
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
-from vmecpp_adjoint import mhd_energy, objective_state_gradient
 
 NS = 25
 MPOL = 6
