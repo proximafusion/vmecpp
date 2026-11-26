@@ -27,7 +27,7 @@ def solved():
 
 def test_field_of_the_coils_is_stellarator_symmetric():
     # B_R is odd and B_\phi and B_Z are even under (\phi, Z) \to (-\phi, -Z).
-    # The field repeats after a field period. The points lie near the coil centres.
+    # The field repeats after a field period.
     field = BiotSavart(ck.coils())
     rng = np.random.default_rng(1)
     points = ck.CENTRES + rng.uniform(-0.2, 0.2, ck.CENTRES.shape)
@@ -85,8 +85,7 @@ def test_effective_ripple_against_quadrature():
     expected = (np.pi / (8.0 * np.sqrt(2.0)) / (2.0 * np.pi * periods) * wells) ** (
         2.0 / 3.0
     )
-    # The quadrature takes the mean B as its reference field, effective_ripple the
-    # strongest.
+    # from the mean B as the reference field to the strongest
     expected *= (strength.max() / mean) ** (4.0 / 3.0)
     found = ck.effective_ripple(strength, size, 0.3 + np.sin(zeta), weight, 1.0)
     np.testing.assert_allclose(found, expected, rtol=1e-4)

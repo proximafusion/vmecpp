@@ -22,8 +22,7 @@ SEMI_AXES = (1.362490389, 1.362490389)
 LOBES = (0.000000000, -0.001703893)
 WAVES = (0.000000000, -0.493852042, 0.000000000, 0.000000000, 0.048171299)
 CURRENT = 1.0e6  # coil current in A
-# Centres in m of the coils from \phi = 0 to the middle of a field period. The first and
-# the last coil are their own images under stellarator symmetry.
+# Centres in m of the coils from \phi = 0 to the middle of a field period.
 CENTRES = np.array(
     [
         [9.969490419182, 0.0, 0.0],
@@ -112,8 +111,8 @@ W7X = Interior(
 
 
 def coil(centre, normal, axis, phases):
-    """The coil at centre about normal: one planar shape from its first axis along axis,
-    waved along normal at phases; a positive current turns about normal."""
+    """The coil of the common shape placed by ``centre``, ``normal``, ``axis`` and
+    ``phases``."""
     second = np.cross(normal, axis)
     t = 2.0 * np.pi * np.arange(64) / 64
     scale = np.ones_like(t) + sum(v * np.cos((k + 2) * t) for k, v in enumerate(LOBES))
@@ -148,7 +147,8 @@ def coil(centre, normal, axis, phases):
 
 def coils():
     """The 80 coils of the design."""
-    # Stellarator symmetry maps (x, y, z) to (x, -y, -z) and n to (-n_x, n_y, n_z).
+    # Stellarator symmetry maps (x, y, z) to (x, -y, -z) and n to (-n_x, n_y, n_z). The
+    # first and the last coil are their own images.
     flip = np.array([1.0, -1.0, -1.0])
     centres = np.concatenate([CENTRES, flip * CENTRES[1:-1]])
     normals = np.concatenate([NORMALS, -flip * NORMALS[1:-1]])
@@ -381,10 +381,9 @@ def axis_curve(wout, phi):
 
 def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
     """The effective ripple of a field line from B, |\\nabla \\psi|, the radial drift
-    and ds / B at its samples, the strongest B of the line its reference field."""
-    # Nemov et al., Phys. Plasmas 6, 4622 (1999). B_0 in b = B / B_0 is the mean of B
-    # weighted by ds / B, and the ripple to the power 3/2 goes with the square of the
-    # reference field.
+    and ds / B at its samples."""
+    # Nemov et al., Phys. Plasmas 6, 4622 (1999)
+    # b = B / B_0 with B_0 the mean of B weighted by ds / B
     eta = strength * np.sum(weight) / np.sum(weight * strength)
     step_weight = 0.5 * (weight[:-1] + weight[1:])
     step_size = 0.5 * (weight[:-1] * size[:-1] + weight[1:] * size[1:])
@@ -423,6 +422,7 @@ def effective_ripple(strength, size, drift, weight, major_radius, levels=4000):
         a, b = starts[:count], stops[:count]
         well_h, well_i = h[b] - h[a], (i[b] - i[a]) / np.sqrt(level)
         total += width * np.sum(well_h**2 / (level**2 * well_i))
+    # the strongest B of the line as the reference field
     return float((scale * total * eta.max() ** 2) ** (2.0 / 3.0))
 
 
@@ -476,21 +476,19 @@ def wout_ripple(wout, js, periods=120, steps=96):
         - (r_theta * r_phi + z_theta * z_phi) ** 2
     ) / np.abs(jacobian)
     weight = h / np.abs(b_phi_up @ cos)
-    # R_0 is the major radius of the plasma, its volume over 2 \pi times the mean area of
-    # its cross-sections.
+    # R_0 = V / (2 \pi A) with A the mean area of the cross-sections
     return effective_ripple(strength, size, drift, weight, float(wout.Rmajor_p))
 
 
 def closure(strength):
     """Share of the range of B[\\theta, \\phi] whose contours close poloidally."""
-    # Helical contours carry the minimum of B in \phi once through the period as \theta
-    # goes around. Otherwise the contours close poloidally from the largest minimum of B
-    # in \phi to the smallest maximum.
     count = strength.shape[1]
     lowest = strength.argmin(axis=1)
     step = np.diff(np.append(lowest, lowest[0]))
+    # helical contours: the minimum of B in \phi winds once through the period
     if abs(np.sum((step + count // 2) % count - count // 2)) >= count // 2:
         return 0.0
+    # poloidal contours from the largest minimum of B in \phi to the smallest maximum
     lowest_ridge = strength.max(axis=1).min()
     highest_valley = strength.min(axis=1).max()
     return float((lowest_ridge - highest_valley) / (strength.max() - strength.min()))
