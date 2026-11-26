@@ -7,20 +7,19 @@ equilibrium and four force evaluations per parameter."""
 from __future__ import annotations
 
 import numpy as np
-from vmecpp_adjoint import mhd_energy, objective_state_gradient
-
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
+from vmecpp_adjoint import mhd_energy, objective_state_gradient
 
 NS = 25
 MPOL = 6
-NTOR = 1
-FTOL = 1.0e-14
-BASE_PARAMETERS = {"pres_scale": 1.2e5, "elongation": 1.6}
+NTOR = 4
+FTOL = 1.0e-18
+BASE_PARAMETERS = {"pres_scale": 3.0e4, "elongation": 1.6}
 
 
 def helical_core_input(
-    pres_scale: float = 1.2e5, elongation: float = 1.6, helical_seed: float = 0.0
+    pres_scale: float = 3.0e4, elongation: float = 1.6, helical_seed: float = 0.0
 ) -> vmecpp.VmecInput:
     """The spherical tokamak, with the magnetic axis guess displaced helically by
     ``helical_seed``."""
@@ -31,7 +30,7 @@ def helical_core_input(
         ntor=NTOR,
         ns_array=np.array([NS]),
         ftol_array=np.array([FTOL]),
-        niter_array=np.array([30000]),
+        niter_array=np.array([60000]),
         phiedge=5.0,
         ncurr=0,
         # iota = 1 - (2/3) s^4: q = 1 on the axis and 3 at the boundary
@@ -41,8 +40,8 @@ def helical_core_input(
         pres_scale=pres_scale,
         gamma=0.0,
         always_fix_m1_gauge=True,
-        raxis_c=np.array([1.5, helical_seed]),
-        zaxis_s=np.array([0.0, -helical_seed]),
+        raxis_c=np.concatenate([[1.5, helical_seed], np.zeros(NTOR - 1)]),
+        zaxis_s=np.concatenate([[0.0, -helical_seed], np.zeros(NTOR - 1)]),
     )
     vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
         np.array([[1.5], [1.0]]), MPOL, NTOR
@@ -154,7 +153,7 @@ def main():
         f"{'parameter':>10s} {'envelope term':>14s} {'gradient':>14s} "
         f"{'re-solved':>14s}"
     )
-    for name, step in (("pres_scale", 1.0e3), ("elongation", 2.0e-3)):
+    for name, step in (("pres_scale", 1.0e2), ("elongation", 2.5e-4)):
         gradient, envelope = gradients[name]
         re_solved = re_solved_barrier_gradient(parameters, name, step)
         print(f"{name:>10s} {envelope:14.6e} {gradient:14.6e} {re_solved:14.6e}")
