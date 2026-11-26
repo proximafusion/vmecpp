@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""The example examples/minimum_energy_path.py: the string method between the two mirror
-images of a helical-core equilibrium."""
+"""Tests of the example examples/minimum_energy_path.py."""
 
 import sys
 from pathlib import Path
@@ -18,10 +17,9 @@ import minimum_energy_path as example  # type: ignore # noqa: E402
 
 @pytest.mark.slow
 def test_the_path_climbs_to_the_axisymmetric_equilibrium() -> None:
-    """The climbing image of the path between the mirror images is the axisymmetric
-    equilibrium; the energy rises to it from both ends, and the two halves of the path
-    carry the same energies."""
-    path = example.path_between_mirror_images()
+    """The climbing image is the axisymmetric equilibrium, and the energy rises to it
+    alike from both cores."""
+    path = example.path_between_helical_cores()
     axisymmetric = example.solve(example.helical_core_input())
     energies = path.energies
     top = path.top

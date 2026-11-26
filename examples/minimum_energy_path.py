@@ -197,8 +197,9 @@ class MinimumEnergyPath:
     odd: np.ndarray
 
 
-def path_between_mirror_images() -> MinimumEnergyPath:
-    """The string method between a helical-core equilibrium and its mirror image."""
+def path_between_helical_cores() -> MinimumEnergyPath:
+    """The string method between a helical core and the one half a toroidal turn
+    away."""
     minimum = solve(helical_core_input(helical_seed=0.3))
     odd = odd_n(minimum)
     x_start = np.asarray(minimum.get_state()).copy()
@@ -213,7 +214,7 @@ def path_between_mirror_images() -> MinimumEnergyPath:
 
 
 def main():
-    path = path_between_mirror_images()
+    path = path_between_helical_cores()
     energies = path.energies
     barrier = energies[path.top] - energies[0]
     axisymmetric = solve(helical_core_input())
