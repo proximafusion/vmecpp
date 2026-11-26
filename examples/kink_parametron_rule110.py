@@ -1,21 +1,10 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""A computer of kink parametrons that runs Rule 110.
+"""Add numbers and run Rule 110 on kink parametrons.
 
-Above a critical pressure the axisymmetric equilibrium of a spherical tokamak with q = 1
-on its axis is unstable to the m = 1, n = 1 internal kink. Under stellarator symmetry
-its stable equilibria are two helical cores half a toroidal turn apart. A helical ripple
-of the boundary above a threshold leaves only the core whose magnetic axis shifts with
-the sign of the ripple. Once the ripple is gone the plasma holds that core at an axis
-shift independent of the ripple. Such a bistable element is a parametron, whose two
-states also lie half a period apart. Here each parametron is a VMEC++ equilibrium. A
-ripple proportional to the sum of the axis shifts of its three inputs writes it, and a
-hot restart without the ripple holds it. Every parametron thus restores the level of its
-output. It computes the majority of its inputs, and a reversed coupling negates an
-input. This example certifies the majority on writes over either held core, adds two
-numbers and runs Rule 110 on parametrons alone. M. Cook, Complex Systems 15, 1 (2004),
-proved this elementary cellular automaton universal.
+A kink parametron is a VMEC++ equilibrium of a spherical tokamak that holds one of its
+two helical cores.
 """
 
 import numpy as np
@@ -23,22 +12,16 @@ import numpy as np
 import vmecpp
 
 NS, MPOL, NTOR = 49, 6, 1
-# pres_scale above the kink threshold. The threshold is 2.53e4 on 25 surfaces and falls
-# with the number of surfaces.
+# pres_scale above the kink threshold of 2.53e4 on 25 surfaces
 PRESSURE = 2.8e4
-# The m = 1, n = 1 ripple of the boundary that one input writes. The core that opposes a
-# ripple vanishes above 0.0007, 0.0070 and 0.0095 on 25, 49 and 97 surfaces.
+# the m = 1, n = 1 boundary ripple of one input
 UNIT = 2.0e-2
-# A ring of eight cells that holds each neighbourhood of three cells once.
+# a ring of eight cells with each neighbourhood of three cells once
 DE_BRUIJN = (0, 0, 0, 1, 0, 1, 1, 1)
 
 
 def spherical_tokamak(ripple):
-    """The VMEC++ input of the spherical tokamak with the boundary ripple ``ripple``.
-
-    The boundary has major radius 1.5, minor radius 1 and elongation 1.6. The profiles
-    are \\iota = 1 - 2/3 s^4 and p = p_0 (1 - s)^4.
-    """
+    """The VMEC++ input of the spherical tokamak with the boundary ripple ``ripple``."""
     vmec_input = vmecpp.VmecInput(
         lasym=False,
         nfp=1,
@@ -77,7 +60,7 @@ def axis_shift(output):
 
 def equilibrium(ripple, restart_from=None):
     """The VMEC++ equilibrium of the spherical tokamak with the boundary ripple
-    ``ripple``, from an unshifted magnetic axis or the state ``restart_from``."""
+    ``ripple``."""
     return vmecpp.run(
         spherical_tokamak(ripple), verbose=False, restart_from=restart_from
     )
@@ -90,22 +73,15 @@ class Parametron:
         self.state = None
 
     def write(self, ripple):
-        """Write the core that ``ripple`` selects and hold it without the ripple.
-
-        The write is a hot restart from the held core, and the first write starts from
-        an unshifted magnetic axis. Returns the axis shift of the held core.
-        """
+        """Write the core that ``ripple`` selects, hold it and return its axis shift."""
         written = equilibrium(ripple, restart_from=self.state)
         self.state = equilibrium(0.0, restart_from=written)
         return axis_shift(self.state)
 
 
 def certify():
-    """The held level of the axis shift and the axis shifts that each sum of three
-    inputs writes over the held cores of both signs.
-
-    A sum whose writes over the two cores differ in sign raises.
-    """
+    """The held level and the axis shifts that each sum of three inputs writes over both
+    held cores."""
     held = {}
     for bit in (1, -1):
         held[bit] = Parametron()
@@ -123,25 +99,19 @@ def certify():
 
 
 def majority(gate, level, a, b, c):
-    """The held axis shift of the parametron ``gate`` written by the inputs ``a``, ``b``
-    and ``c``.
-
-    The ripple of an input is UNIT times its axis shift over the held ``level``.
-    """
+    """The axis shift that the inputs ``a``, ``b`` and ``c`` write in ``gate``."""
     return gate.write(UNIT / level * (a + b + c))
 
 
 def full_adder(gates, level, a, b, carry):
-    """The held axis shifts of the sum and the carry of three inputs, from the three
-    parametrons ``gates``."""
+    """The axis shifts of the sum and the carry of three inputs on ``gates``."""
     out = majority(gates[0], level, a, b, carry)
     inner = majority(gates[1], level, a, b, -carry)
     return majority(gates[2], level, -out, carry, inner), out
 
 
 def add(level, x, y, bits):
-    """The sum of the unsigned integers ``x`` and ``y`` on ``bits`` bits of three
-    parametrons each, with the carry as the next bit."""
+    """The sum of ``x`` and ``y`` on ``bits`` full adders."""
     carry, total = -level, 0
     for k in range(bits):
         a, b = (level * (2 * (number >> k & 1) - 1) for number in (x, y))
@@ -151,12 +121,7 @@ def add(level, x, y, bits):
 
 
 def rule_110(cells, level, shifts):
-    """The held axis shifts of the next generation of a ring of cells of Rule 110.
-
-    ``cells`` holds four parametrons a cell, the last of which holds the cell. The rule
-    is (centre or right) and not (left and centre and right). A constant input of the
-    held level makes a majority an or, and one of minus the held level an and.
-    """
+    """The axis shifts of the next generation of Rule 110 on four parametrons a cell."""
     new = np.empty(len(shifts))
     for k, (either, both, all_three, cell) in enumerate(cells):
         left, centre, right = shifts[k - 1], shifts[k], shifts[(k + 1) % len(shifts)]
@@ -174,8 +139,7 @@ def by_number(bits):
 
 
 def evolve(level, bits, generations):
-    """The held axis shifts of a ring of cells of Rule 110 from the cells ``bits`` of 0
-    and 1, as [generation, cell]."""
+    """The [generation, cell] axis shifts of a ring of Rule 110 from ``bits``."""
     cells = [[Parametron() for _ in range(4)] for _ in bits]
     shifts = np.array(
         [

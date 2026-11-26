@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Tests of the kink parametron example: its certificate, its gate, adders of its gates
-and Rule 110."""
+"""Tests of the kink parametron example."""
 
 import itertools
 import sys
@@ -28,7 +27,7 @@ def test_writes_over_either_core_take_the_sign_of_the_sum(certified):
 
 
 def test_parametron_takes_the_majority_and_restores_its_level(certified):
-    # One parametron through all inputs, each written over the core the last one held.
+    # one parametron through all inputs in turn
     level, _ = certified
     gate = kp.Parametron()
     for a, b, c in itertools.product((-1, 1), repeat=3):
