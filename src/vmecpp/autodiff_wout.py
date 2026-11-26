@@ -453,7 +453,8 @@ def _wout_quantities(sizes, profiles, kernels, geometry, iota_half, current_half
     buco_h = buco_solver
     bvco_h = bvco_solver
     chi = (
-        2.0
+        signgs
+        * 2.0
         * np.pi
         * delta_s
         * jnp.concatenate([jnp.zeros(1), jnp.cumsum(phip_h * iota_h)])
