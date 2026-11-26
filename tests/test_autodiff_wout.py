@@ -24,7 +24,7 @@ requires_enzyme = pytest.mark.skipif(
 
 # The error of a field is measured against the largest entry of the field, or of
 # a related field of the same physical scale where the field itself vanishes
-# (no net current, no shear, stellarator symmetry up to roundoff).
+# (no net current, no shear, no radial current, stellarator symmetry up to roundoff).
 _SCALE_OF = {
     "buco": "bvco",
     "jcurv": "jcuru",
@@ -48,6 +48,7 @@ _SCALE_OF = {
     "raxis_cs": "raxis_cc",
     "zaxis_cc": "raxis_cc",
     "zaxis_cs": "raxis_cc",
+    "jsups3": "jsupu3",
 }
 
 # Relative tolerances above roundoff. The currents, J.B and the radial force
@@ -70,6 +71,18 @@ _TOLERANCE = {
     "DGeod": 1.0e-8,
     # evaluated on the state before the final time step by the C++ solver
     "specw": 1.0e-6,
+    # the jxbout currents and what is built from them
+    "itheta": 1.0e-6,
+    "izeta": 1.0e-6,
+    "bdotk": 1.0e-6,
+    "jsupu3": 1.0e-6,
+    "jsupv3": 1.0e-6,
+    "jsups3": 1.0e-6,
+    "jcrossb": 1.0e-6,
+    "jxb_gradp": 1.0e-6,
+    "jdotb_sqrtg": 1.0e-6,
+    "avforce": 1.0e-6,
+    "jpar2": 1.0e-6,
 }
 _DEFAULT_TOLERANCE = 1.0e-10
 
@@ -91,6 +104,17 @@ _LBSUBS_FIELDS = {
     "DMerc",
     "DCurr",
     "DGeod",
+    "itheta",
+    "izeta",
+    "bdotk",
+    "jsupu3",
+    "jsupv3",
+    "jcrossb",
+    "jxb_gradp",
+    "jdotb_sqrtg",
+    "avforce",
+    "jpar2",
+    "bsubs3",
 }
 _LBSUBS_TOLERANCE_FACTOR = 100.0
 
@@ -230,6 +254,47 @@ def test_wout_matches_the_cpp_output_stage(solved_case) -> None:
         )
 
 
+def test_jxbout_matches_the_cpp_output_stage(solved_case) -> None:
+    """Every JxBOut table of the JAX output stage against the C++ one."""
+    indata, output = solved_case
+    assert set(autodiff_wout.JXBOUT_QUANTITIES) == set(own_model_fields(vmecpp.JxBOut))
+    _assert_jxbout_close(
+        vmecpp._output_stage(indata, output)[1],
+        vmecpp.JxBOut._from_cpp_jxbout(output.jxbout),
+        lbsubs=indata.lbsubs,
+    )
+
+
+def _assert_jxbout_close(actual, expected, *, lbsubs: bool) -> None:
+    for name in autodiff_wout.JXBOUT_QUANTITIES:
+        if name == "jdotb":
+            _assert_jdotb_close(actual.jdotb, expected.jdotb, expected, lbsubs)
+        elif name in ("amaxfor", "aminfor"):
+            _assert_relative_force_close(
+                name, getattr(actual, name), getattr(expected, name), expected
+            )
+        else:
+            _assert_field_close(
+                name,
+                getattr(actual, name),
+                getattr(expected, name),
+                expected,
+                lbsubs=lbsubs,
+            )
+
+
+def _assert_relative_force_close(name, actual, expected, jxbout) -> None:
+    """Amaxfor and aminfor divide the force residual by dp/dV, so their roundoff is that
+    of J x B relative to dp/dV, per surface; both saturate at 999.9."""
+    jcrossb = np.asarray(jxbout.jcrossb)
+    pressure_gradient = np.abs(jcrossb[:, 0] - np.asarray(jxbout.jxb_gradp)[:, 0])
+    bound = (
+        100.0 * np.abs(jcrossb).max(axis=1) / (pressure_gradient + np.finfo(float).eps)
+    )
+    error = np.abs(np.asarray(actual) - np.asarray(expected))
+    assert np.all(error <= 1.0e-6 * bound + 1.0e-12), (name, (error / bound).max())
+
+
 def _assert_jdotb_close(actual, expected, jxbout, lbsubs):
     bound = np.sqrt(np.abs(np.asarray(jxbout.jpar2) * np.asarray(jxbout.bdotb)))
     # the end values are extrapolated from their two neighbours
@@ -257,24 +322,30 @@ def test_static_fields_match_the_cpp_output_stage(solved_case) -> None:
 
 
 def test_run_returns_the_cpp_output_stage_wout(monkeypatch) -> None:
-    """A concrete run takes its wout from the C++ output stage; the JAX stage is for
-    traced runs only."""
+    """A concrete run takes its wout and jxbout from the C++ output stage; the JAX stage
+    is for traced runs only."""
 
-    def fail(*_):
+    def fail(*_, **__):
         message = "run() evaluated the JAX output stage"
         raise AssertionError(message)
 
+    monkeypatch.setattr(vmecpp, "_output_stage", fail)
     monkeypatch.setattr(vmecpp, "_wout_from_output_stage", fail)
+    monkeypatch.setattr(autodiff_wout, "output_quantities", fail)
     monkeypatch.setattr(autodiff_wout, "wout_quantities", fail)
     indata = _load_input("solovev", 1.0e-12)
-    wout = vmecpp.run(indata, max_threads=1, verbose=False).wout
+    result = vmecpp.run(indata, max_threads=1, verbose=False)
     output = _vmecpp.run(
         indata._to_cpp_vmecindata(), verbose=_vmecpp.OutputMode.SILENT, max_threads=1
     )
     reference = vmecpp.VmecWOut._from_cpp_wout(output.wout)
     for name in autodiff_wout.WOUT_QUANTITIES:
         np.testing.assert_array_equal(
-            getattr(wout, name), getattr(reference, name), err_msg=name
+            getattr(result.wout, name), getattr(reference, name), err_msg=name
+        )
+    for name in autodiff_wout.JXBOUT_QUANTITIES:
+        np.testing.assert_array_equal(
+            getattr(result.jxbout, name), getattr(output.jxbout, name), err_msg=name
         )
 
 
@@ -417,17 +488,17 @@ def _with_boundary(indata: vmecpp.VmecInput, boundary) -> vmecpp.VmecInput:
 
 def test_run_under_jit_matches_the_concrete_run() -> None:
     """A traced boundary solves through the differentiable path; under jax.jit the
-    forward solve is not observable, so only the wout physics fields are set."""
+    forward solve is not observable, so of its outputs only the wout physics fields and
+    jxbout are set."""
     indata = _cth_like_input()
     cpp_indata = indata._to_cpp_vmecindata()
     cpp_indata.always_fix_m1_gauge = True
-    reference = vmecpp.VmecWOut._from_cpp_wout(
-        _vmecpp.run(
-            cpp_indata,
-            max_threads=1,
-            verbose=_vmecpp.OutputMode.SILENT,
-        ).wout
+    cpp_output = _vmecpp.run(
+        cpp_indata,
+        max_threads=1,
+        verbose=_vmecpp.OutputMode.SILENT,
     )
+    reference = vmecpp.VmecWOut._from_cpp_wout(cpp_output.wout)
 
     @jax.jit
     def solve(boundary):
@@ -437,7 +508,12 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
 
     output = solve(_boundary(indata))
     assert isinstance(output, vmecpp.VmecOutput)
-    assert output.jxbout is None
+    assert output.mercier is None
+    _assert_jxbout_close(
+        output.jxbout,
+        vmecpp.JxBOut._from_cpp_jxbout(cpp_output.jxbout),
+        lbsubs=indata.lbsubs,
+    )
     assert output.wout.ier_flag == autodiff_wout.UNKNOWN_DIAGNOSTICS["ier_flag"]
     for name in autodiff_wout.WOUT_QUANTITIES:
         _assert_field_close(
@@ -453,7 +529,6 @@ def test_run_under_jit_matches_the_concrete_run() -> None:
 @pytest.mark.parametrize(
     ("update", "match"),
     [
-        ({"lasym": True}, "lasym"),
         ({"lfreeb": True}, "free-boundary"),
         ({"signgs": 1}, "signgs"),
         ({"gamma": 5.0 / 3.0}, "gamma"),
@@ -559,6 +634,76 @@ def test_run_with_a_traced_boundary_fills_the_cpp_outputs() -> None:
     assert output.wout.ier_flag == 0
     assert output.wout.niter == reference.wout.niter
     np.testing.assert_array_equal(output.wout.fsqt, reference.wout.fsqt)
+
+
+@requires_enzyme
+@pytest.mark.parametrize("lasym", [False, True])
+def test_jxbout_vjp_is_the_transpose_of_the_forward_sensitivity(
+    lasym: bool, forward_sensitivity
+) -> None:
+    """The VJP of each jxbout table of a traced run against the forward sensitivity."""
+    name = "cth_like_fixed_bdy_asym_iota" if lasym else "cth_like_fixed_bdy_iota"
+    indata = vmecpp.VmecInput.from_file(TEST_DATA_DIR / f"{name}.json").model_copy(
+        update={
+            "ns_array": np.asarray([15]),
+            "ftol_array": np.asarray([1.0e-16]),
+            "niter_array": np.asarray([20000]),
+        }
+    )
+    rows = ("rbc", "zbs", "rbs", "zbc") if lasym else ("rbc", "zbs")
+    boundary = np.stack([np.asarray(getattr(indata, row)) for row in rows])
+
+    def run_tables(value):
+        perturbed = indata.model_copy(update=dict(zip(rows, value, strict=True)))
+        jxbout = vmecpp.run(perturbed, max_threads=1, verbose=False).jxbout
+        return {
+            table: getattr(jxbout, table) for table in autodiff_wout.JXBOUT_QUANTITIES
+        }
+
+    tables, pullback = jax.vjp(run_tables, jnp.asarray(boundary))
+    generator = np.random.default_rng(0)
+    weights = {
+        table: generator.standard_normal(np.shape(value))
+        for table, value in tables.items()
+    }
+    # one cotangent per table: its weights on that table and zeros elsewhere
+    cotangents = {
+        table: np.stack([weights[table] * (other == table) for other in weights])
+        for table in weights
+    }
+    direction = generator.standard_normal(boundary.shape)
+    adjoint = np.tensordot(
+        np.asarray(jax.vmap(pullback)(cotangents)[0]), direction, axes=boundary.ndim
+    )
+
+    solver = autodiff._RunSolver(indata, max_threads=1)
+    flat = solver._forward_callback(boundary)
+    mass_half, iota_half, _ = np.split(flat[solver.geometry_size : -1], 3)
+
+    def geometry_tables(value):
+        return autodiff_wout.output_quantities(
+            autodiff._geometry_from_flat(value, indata)[0],
+            indata,
+            iota_half=iota_half,
+            mass_half=mass_half,
+        )[1]
+
+    geometry_flat = jnp.asarray(flat[: solver.geometry_size])
+    geometry_tangent = forward_sensitivity(indata, boundary, direction)
+    _, table_tangents = jax.jvp(
+        geometry_tables, (geometry_flat,), (jnp.asarray(geometry_tangent),)
+    )
+    _, geometry_pullback = jax.vjp(geometry_tables, geometry_flat)
+    sensitivity = np.asarray(jax.vmap(geometry_pullback)(cotangents)[0])
+    # a relative error e of dg changes w \cdot J dg by at most e |J^T w| |dg|
+    bound = (
+        1.0e-9 * np.linalg.norm(sensitivity, axis=1) * np.linalg.norm(geometry_tangent)
+    )
+    for k, table in enumerate(weights):
+        tangent = np.sum(weights[table] * np.asarray(table_tangents[table]))
+        np.testing.assert_allclose(
+            adjoint[k], tangent, rtol=0.0, atol=bound[k], err_msg=table
+        )
 
 
 def _quasisymmetry_proxy(wout: vmecpp.VmecWOut) -> jax.Array:

@@ -295,6 +295,19 @@ class IdealMhdModel {
   void dft_FourierToRealTranspose_2d_symm(FourierGeometry& m_coeff_bar_out);
   void dft_ForcesToFourierTranspose_3d_symm(const FourierForces& m_coeff_bar);
   void dft_FourierToRealTranspose_3d_symm(FourierGeometry& m_coeff_bar_out);
+  // lasym counterparts: the antisymmetric transforms act on the *_asym arrays
+  // over the reduced poloidal interval; symrzlTranspose and symforceTranspose
+  // map between those halves and the full-interval members.
+  void dft_ForcesToFourierTranspose_2d_asymm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_2d_asymm(FourierGeometry& m_coeff_bar_out);
+  void dft_ForcesToFourierTranspose_3d_asymm(const FourierForces& m_coeff_bar);
+  void dft_FourierToRealTranspose_3d_asymm(FourierGeometry& m_coeff_bar_out);
+  void symrzlTranspose();
+  void symforceTranspose();
+  // (forcesToFourier)^T and (geometryFromFourier)^T for every case, the
+  // full-interval real-space members on the real-space side.
+  void forcesToFourierTranspose(const FourierForces& m_coeff_bar);
+  void geometryFromFourierTranspose(FourierGeometry& m_coeff_bar_out);
 
   // Computes the forward-DFT of forces for the 3D (Stellarator) case.
   // Dispatching dft_ForcesToFourier_3d_symm
