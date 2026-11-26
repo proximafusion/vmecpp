@@ -21,6 +21,8 @@ RestartReason RestartReasonFromInt(int restart_reason) {
       return RestartReason::BAD_PROGRESS;
     case 4:
       return RestartReason::HUGE_INITIAL_FORCES;
+    case 5:
+      return RestartReason::SHORTENED_STEP;
     default:
       __builtin_unreachable();
   }

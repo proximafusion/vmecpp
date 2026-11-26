@@ -228,6 +228,11 @@ class VmecINDATA {
   // balance
   bool lforbal;
 
+  // shorten every time step that would take the Jacobian below
+  // kJacobianRetainedFraction of its value at some grid point, so that flux
+  // surfaces cannot cross during the iteration
+  bool jacobian_safe_step;
+
   // Scale of the lambda preconditioner, which multiplies the inverse of the
   // diagonal lambda stiffness. 1.0 applies the undamped inverse, values below
   // 1.0 damp the lambda step and values above 1.0 accelerate it; the default
