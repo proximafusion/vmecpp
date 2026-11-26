@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""The example examples/transition_state_dimer.py: a dimer climbs from a helical-core
-equilibrium to the transition state between it and its mirror image."""
+"""Tests of the example examples/transition_state_dimer.py."""
 
 import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "examples"))
@@ -15,10 +15,10 @@ sys.path.insert(0, str(REPO_ROOT / "examples"))
 import transition_state_dimer as example  # type: ignore # noqa: E402
 
 
+@pytest.mark.slow
 def test_the_dimer_reaches_the_axisymmetric_equilibrium() -> None:
-    """The saddle between the two mirror-image helical-core equilibria is the
-    axisymmetric equilibrium: the dimer reaches its energy, with the odd-n
-    coefficients gone and one direction of negative curvature."""
+    """The dimer reaches the energy of the axisymmetric equilibrium, without odd n and
+    with one direction of negative curvature."""
     saddle = example.climb_from_helical_minimum()
     axisymmetric = example.solve(example.helical_core_input())
     x_saddle = saddle.landscape.state(saddle.y)
