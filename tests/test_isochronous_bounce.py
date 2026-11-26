@@ -150,7 +150,7 @@ def test_rates_against_the_flux_surfaces(wout):
             expected = geometry_rates(wout, state[:, 0], moment, inertia)
             expected -= geometry_rates(wout, state[:, 0], moment, 0.0)
             np.testing.assert_allclose(drift[0], expected[0], rtol=1e-3)
-            # The angular drift carries B_s, which the wout holds on the full grid.
+            # The angular drift takes B_s from the full grid of the wout.
             np.testing.assert_allclose(
                 drift[1:], expected[1:], atol=1e-2 * np.abs(expected).max()
             )

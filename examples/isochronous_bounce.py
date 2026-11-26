@@ -75,8 +75,7 @@ def boozer_series(strength, harmonics=24):
 
 
 def cosine_coefficients(samples, harmonics):
-    """The coefficients of \\cos(k \\varphi) of ``samples`` at evenly spaced \\varphi from
-    0."""
+    """The cosine coefficients of ``samples`` at evenly spaced \\varphi from 0."""
     coefficients = np.fft.rfft(samples).real / len(samples)
     coefficients[1:] *= 2.0
     return coefficients[: harmonics + 1]
@@ -134,8 +133,8 @@ def bounce_periods(strength, speed, top, bottom, fractions, period=2.0 * np.pi):
     """The integrals of dl / \\sqrt{level - B} between the bounce points of a well.
 
     The well lies between the maxima of B at ``top`` and ``top`` + ``period``, with its
-    minimum at ``bottom``. dl is ``speed`` d\\phi. The levels lie at ``fractions`` of the
-    depth above the minimum. level - B vanishes linearly at both bounce points, and
+    minimum at ``bottom``. dl is ``speed`` d\\phi. The levels lie at ``fractions`` of
+    the depth above the minimum. level - B vanishes linearly at both bounce points, and
     Gauss-Chebyshev quadrature takes its root into the weight.
     """
     low, high = strength(bottom)[0], strength(top)[0]
@@ -442,10 +441,10 @@ def clock(wout, surfaces, lines=4, ions=4, ticks=20, steps=100, gyroradius=1 / 2
 
     On each of the half-grid surfaces nearest ``surfaces``, the wells are the first on
     ``lines`` field lines that start at \\phi = 0 and at evenly spaced \\theta. The
-    ``ions`` of a well share one magnetic moment. Their energies set their bounce fields across the
-    middle half of the depth of the well. RK4 follows their guiding centers at
-    ``steps`` steps of the shortest bounce period. A tick is a turn of v_\\parallel
-    from negative to positive. The gyroradius of the ions at the start is
+    ``ions`` of a well share one magnetic moment. Their energies set their bounce
+    fields across the middle half of the depth of the well. RK4 follows their guiding
+    centers at ``steps`` steps of the shortest bounce period. A tick is a turn of
+    v_\\parallel from negative to positive. The gyroradius of the ions at the start is
     ``gyroradius`` times the minor radius. The times form a [surface, line, ion, tick]
     array in bounce periods of the middle of the depth of each well. The s of the
     surfaces are returned last.
