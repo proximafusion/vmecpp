@@ -77,9 +77,10 @@ class Parametron:
     def write(self, ripple):
         """Write the core that ``ripple`` selects, hold it and return its axis shift."""
         written = equilibrium(ripple, restart_from=self.state)
-        # the ripple of more than one input comes off in two steps
-        if abs(ripple) > 2 * UNIT:
-            written = equilibrium(ripple / 3, restart_from=written)
+        # the last step of the ripple to zero that keeps the core falls with the surfaces
+        last = 1.5 / NS
+        if abs(ripple) > last:
+            written = equilibrium(np.sign(ripple) * last, restart_from=written)
         self.state = equilibrium(0.0, restart_from=written)
         return axis_shift(self.state)
 

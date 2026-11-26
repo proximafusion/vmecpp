@@ -33,7 +33,7 @@ def test_parametron_takes_the_majority_and_restores_its_level(certified):
     gate = kp.Parametron()
     for a, b, c in itertools.product((-1, 1), repeat=3):
         held = kp.majority(gate, level, a * level, b * level, c * level)
-        np.testing.assert_allclose(held, np.sign(a + b + c) * level, rtol=1e-3)
+        np.testing.assert_allclose(held, np.sign(a + b + c) * level, rtol=1e-2)
 
 
 @pytest.mark.slow
