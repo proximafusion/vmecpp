@@ -29,6 +29,12 @@ from external_optimizers import (  # type: ignore
     solve_vmecpp,
 )
 
+import vmecpp
+
+pytestmark = pytest.mark.skipif(
+    vmecpp.has_cuda(), reason="the iteration API drives the host iteration"
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 SOLOVEV = ROOT / "examples" / "data" / "solovev.json"
 CTH_LIKE = ROOT / "examples" / "data" / "cth_like_fixed_bdy.json"
