@@ -7,6 +7,7 @@ minima, followed under an error field to the fold of the saddle."""
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
@@ -24,51 +25,38 @@ FIRST_EPS = 1.0e-5  # the first rung of a ladder
 class Case(NamedTuple):
     """A tokamak of one field period and the parameters of the search on it."""
 
-    boundary: tuple  # R by m, Z by m and R of the axis guess
+    base: vmecpp.VmecInput  # the input, with an axisymmetric boundary
     resolution: tuple  # mpol, ntor and ns
     seed: float  # helical displacement of the axis guess that reaches a helical core
     heavy_ball: tuple  # step and momentum
-    inputs: dict  # the other fields of the input
 
     def make(self, pressure, eps=0.0, seed=0.0) -> vmecpp.VmecInput:
         """The input under a helical shift eps of the boundary, with the axis guess
         displaced helically by seed."""
-        (r_mn, z_mn, r_axis), (mpol, ntor, ns) = self.boundary, self.resolution
+        mpol, ntor, ns = self.resolution
+        m = min(mpol, self.base.mpol_max)
         rbc, zbs = np.zeros((2, mpol, 2 * ntor + 1))
-        rbc[: len(r_mn), ntor], zbs[: len(z_mn), ntor] = r_mn, z_mn
+        rbc[:m, ntor] = self.base.rbc[:m, self.base.ntor_max]
+        zbs[:m, ntor] = self.base.zbs[:m, self.base.ntor_max]
         rbc[0, ntor + 1], zbs[0, ntor + 1] = eps, -eps
         raxis_c, zaxis_s = np.zeros((2, ntor + 1))
-        raxis_c[:2], zaxis_s[1] = (r_axis, seed), -seed
-        return vmecpp.VmecInput(
-            nfp=1,
-            mpol=mpol,
-            ntor=ntor,
-            ns_array=np.array([ns]),
-            ncurr=0,
-            pmass_type="power_series",
-            pres_scale=pressure,
-            gamma=0.0,
-            always_fix_m1_gauge=True,
-            rbc=rbc,
-            zbs=zbs,
-            raxis_c=raxis_c,
-            zaxis_s=zaxis_s,
-            **self.inputs,
-        )
+        raxis_c[:2], zaxis_s[1] = (self.base.raxis_c[0], seed), -seed
+        update = {"mpol": mpol, "ntor": ntor, "ns_array": np.array([ns])}
+        update |= {"pres_scale": pressure, "rbc": rbc, "zbs": zbs}
+        update |= {"raxis_c": raxis_c, "zaxis_s": zaxis_s}
+        return self.base.model_copy(update=update, deep=True)
 
 
+# the spherical tokamak with q = 1 on the axis
 SPHERICAL_TOKAMAK = Case(
-    ((1.5, 1.0), (0.0, 1.6), 1.5),
+    vmecpp.VmecInput.from_file(
+        Path(__file__).parent / "data" / "spherical_tokamak.json"
+    ).model_copy(
+        update={"ftol_array": np.array([1.0e-20]), "niter_array": np.array([200000])}
+    ),
     (6, 4, 25),
     0.3,
     (0.8, 0.97),
-    {
-        "ftol_array": np.array([1.0e-20]),
-        "niter_array": np.array([200000]),
-        "phiedge": 5.0,
-        "ai": np.array([1.0, 0.0, 0.0, 0.0, -2.0 / 3.0]),  # q = 1 on the axis
-        "am": np.array([1.0, -4.0, 6.0, -4.0, 1.0]),  # (1 - s)^4
-    },
 )
 
 _S = np.linspace(0.0, 1.0, 41)
@@ -77,20 +65,29 @@ _Q_OUTER = 1.04 + 2.96 * ((_S - 0.575) / 0.425) ** 2
 
 # R = 6.2, a = 2 at 5.3 T, with the pressure on the axis over the magnetic pressure
 REACTOR = Case(
-    ((6.2, 2.0, -0.33), (0.0, 3.4), 6.23),
+    vmecpp.VmecInput(
+        nfp=1,
+        mpol=8,
+        ntor=4,
+        ncurr=0,
+        ftol_array=np.array([1.0e-18]),
+        niter_array=np.array([150000]),
+        delt=0.25,
+        phiedge=np.pi * 2.0 * 3.4 * 5.3,
+        piota_type="cubic_spline",
+        ai_aux_s=_S,
+        ai_aux_f=1.0 / np.where(_S < 0.575, _Q_INNER, _Q_OUTER),
+        pmass_type="power_series",
+        am=np.array([1.0, -2.0, 1.0]) * 5.3**2 / (8.0e-7 * np.pi),  # (1 - s)^2
+        gamma=0.0,
+        always_fix_m1_gauge=True,
+        rbc=vmecpp.VmecInput.resize_2d_coeff(np.array([[6.2], [2.0], [-0.33]]), 8, 4),
+        zbs=vmecpp.VmecInput.resize_2d_coeff(np.array([[0.0], [3.4]]), 8, 4),
+        raxis_c=np.array([6.23]),
+    ),
     (8, 4, 33),
     0.2,
     (0.5, 0.99),
-    {
-        "ftol_array": np.array([1.0e-18]),
-        "niter_array": np.array([150000]),
-        "delt": 0.25,
-        "phiedge": np.pi * 2.0 * 3.4 * 5.3,
-        "piota_type": "cubic_spline",
-        "ai_aux_s": _S,
-        "ai_aux_f": 1.0 / np.where(_S < 0.575, _Q_INNER, _Q_OUTER),
-        "am": np.array([1.0, -2.0, 1.0]) * 5.3**2 / (8.0e-7 * np.pi),  # (1 - s)^2
-    },
 )
 
 
