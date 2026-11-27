@@ -1496,7 +1496,7 @@ absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::ReadFrom(
 absl::Status vmecpp::OutputQuantities::Save(
     const std::filesystem::path& path) const {
   try {
-    H5::H5File file(path, H5F_ACC_TRUNC);
+    H5::H5File file(path.string(), H5F_ACC_TRUNC);
     return WriteTo(file);
   } catch (const H5::Exception& exception) {
     return absl::InternalError(
@@ -1508,7 +1508,7 @@ absl::Status vmecpp::OutputQuantities::Save(
 absl::StatusOr<vmecpp::OutputQuantities> vmecpp::OutputQuantities::Load(
     const std::filesystem::path& path) {
   try {
-    H5::H5File file(path, H5F_ACC_RDONLY);
+    H5::H5File file(path.string(), H5F_ACC_RDONLY);
     return ReadFrom(file);
   } catch (const H5::Exception& exception) {
     return absl::InternalError(
