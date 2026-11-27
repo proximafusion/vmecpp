@@ -11,6 +11,7 @@ Reference <api/vmecpp>
 Tutorials <tutorials/index>
 Examples <examples_overview>
 Benchmarks <benchmarks>
+Convergence on the exact equilibria <exact_equilibria_convergence>
 ```
 
 ![MIT license](https://img.shields.io/badge/license-MIT-blue)
