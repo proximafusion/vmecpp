@@ -11,13 +11,18 @@ and their fields.
 
 import itertools
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
 
 import vmecpp
 
-NS, MPOL, NTOR = 25, 6, 4
+# the spherical tokamak with q = 1 on the axis
+SPHERICAL_TOKAMAK = vmecpp.VmecInput.from_file(
+    Path(__file__).parent / "data" / "spherical_tokamak.json"
+)
+NTOR = SPHERICAL_TOKAMAK.ntor_max
 # pres_scale above the kink threshold of 2.74e4 under the pinning ripple
 PRESSURE = 3.0e4
 # pres_scale below and above the kink threshold of 2.54e4 without the pinning ripple
@@ -48,8 +53,7 @@ PROBLEMS = [
 
 def boundary_coefficients(boundary):
     """The coefficients rbc, rbs, zbc and zbs of the boundary with its ripples."""
-    rbc = vmecpp.VmecInput.resize_2d_coeff(np.array([[1.5], [1.0]]), MPOL, NTOR)
-    zbs = vmecpp.VmecInput.resize_2d_coeff(np.array([[0.0], [1.6]]), MPOL, NTOR)
+    rbc, zbs = SPHERICAL_TOKAMAK.rbc.copy(), SPHERICAL_TOKAMAK.zbs.copy()
     rbs, zbc = np.zeros_like(rbc), np.zeros_like(zbs)
     rbc[0, NTOR + 4] = boundary.pin
     rbs[0, NTOR + 2] = boundary.coupling
@@ -73,35 +77,18 @@ def spherical_tokamak(pres_scale, coefficients, orientation=0.0, core=0.0, lasym
     initial axis shifted by ``core`` towards ``orientation`` in degrees."""
     phi = np.radians(orientation)
     rbc, rbs, zbc, zbs = coefficients
-    vmec_input = vmecpp.VmecInput(
-        lasym=lasym,
-        nfp=1,
-        mpol=MPOL,
-        ntor=NTOR,
-        ns_array=np.array([NS]),
-        ftol_array=np.array([1e-13]),
-        niter_array=np.array([200000]),
-        phiedge=5.0,
-        ncurr=0,
-        ai=np.array([1.0, 0.0, 0.0, 0.0, -2.0 / 3.0]),
-        pmass_type="power_series",
-        am=np.array([1.0, -4.0, 6.0, -4.0, 1.0]),
-        pres_scale=pres_scale,
-        gamma=0.0,
-        always_fix_m1_gauge=True,
-        rbc=rbc,
-        zbs=zbs,
-        raxis_c=np.concatenate([[1.5, core * np.cos(phi)], np.zeros(NTOR - 1)]),
-        zaxis_s=np.concatenate([[0.0, -core * np.cos(phi)], np.zeros(NTOR - 1)]),
-    )
+    vmec_input = SPHERICAL_TOKAMAK.model_copy(deep=True)
+    vmec_input.niter_array = np.array([200000])
+    vmec_input.pres_scale = pres_scale
+    vmec_input.rbc, vmec_input.zbs = rbc, zbs
+    vmec_input.raxis_c[1] = core * np.cos(phi)
+    vmec_input.zaxis_s[1] = -core * np.cos(phi)
     if lasym:
+        sine = np.zeros(NTOR + 1)
+        sine[1] = -core * np.sin(phi)
+        vmec_input.lasym = True
         vmec_input.rbs, vmec_input.zbc = rbs, zbc
-        vmec_input.raxis_s = np.concatenate(
-            [[0.0, -core * np.sin(phi)], np.zeros(NTOR - 1)]
-        )
-        vmec_input.zaxis_c = np.concatenate(
-            [[0.0, -core * np.sin(phi)], np.zeros(NTOR - 1)]
-        )
+        vmec_input.raxis_s, vmec_input.zaxis_c = sine, sine.copy()
     return vmec_input
 
 
