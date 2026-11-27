@@ -13,6 +13,8 @@ A few cases are available for testing VMEC++ and experimenting with it:
     1. `input.solovev` - Fortran namelist input file for use with Fortran VMEC
     1. `solovev.json` - JSON input file for VMEC++, derived from `input.solovev` using [`indata2json`](https://github.com/jonathanschilling/indata2json)
 
+1. `spherical_tokamak.json` - spherical tokamak of aspect ratio 1.5 and elongation 1.6 with q = 1 on the axis and p = p_0 (1 - s)^4, above the threshold of its ideal internal kink
+
 1. `w7x` - Wendelstein 7-X ([W7-X](https://www.ipp.mpg.de/w7x)) Stellarator
     1. `input.w7x` - Fortran namelist input file for use with Fortran VMEC
     1. `w7x.json` - JSON input file for VMEC++, derived from `input.w7x` using [`indata2json`](https://github.com/jonathanschilling/indata2json)
