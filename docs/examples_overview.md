@@ -13,6 +13,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`simsopt_integration.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_integration.py): minimal integration with SIMSOPT.
 - [`simsopt_qh_fixed_resolution.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_qh_fixed_resolution.py): reproduce SIMSOPT's QH fixed resolution example.
 - [`sample_hot_restarts_with_random_perturbations.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/sample_hot_restarts_with_random_perturbations.py): explore restart sensitivity to small boundary perturbations.
+- [`transition_state_dimer.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/transition_state_dimer.py): find the transition state between two helical-core equilibria of a spherical tokamak with the dimer method, starting from one of them and using forces alone.
 - [`force_residual_convergence.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/force_residual_convergence.py): plot convergence of force residuals during VMEC++ runs.
 - [`fourier_resolution_increase.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/fourier_resolution_increase.py): reach a high Fourier resolution by continuation, in fewer iterations than a fixed-resolution solve.
 - [`watch_solve.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/watch_solve.py): draw the flux surfaces and the force residuals while VMEC++ converges, through the iteration callback of `vmecpp.run`.
