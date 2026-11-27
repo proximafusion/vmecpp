@@ -10,6 +10,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`plot_plasma_boundary.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
 - [`visualize_magnetic_field.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
 - [`mpi_finite_difference.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/mpi_finite_difference.py): compute finite-difference derivatives in parallel using MPI.
+- [`barrier_gradient.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/barrier_gradient.py): differentiate the energy barrier between two equilibria with respect to input parameters, from one adjoint solve per equilibrium.
 - [`simsopt_integration.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_integration.py): minimal integration with SIMSOPT.
 - [`simsopt_qh_fixed_resolution.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_qh_fixed_resolution.py): reproduce SIMSOPT's QH fixed resolution example.
 - [`sample_hot_restarts_with_random_perturbations.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/sample_hot_restarts_with_random_perturbations.py): explore restart sensitivity to small boundary perturbations.
