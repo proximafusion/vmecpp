@@ -315,12 +315,18 @@ def currents(wout, ns_step, ntheta, nzeta):
 
 def biot_savart(points, elements, x):
     """Field at the points x of the current elements J dV at points."""
+    # the sum of J dV x (x - p) W over the elements, W = |x - p|^-3, as (W J dV) x x
+    # - W (J dV x p), with |x - p|^2 the product of (-2 x, |x|^2, 1) and (p, 1, |p|^2)
+    moments = np.concatenate([elements, np.cross(elements, points)], axis=1)
+    targets = np.column_stack([-2.0 * x, np.sum(x**2, axis=1), np.ones(len(x))])
+    sources = np.column_stack([points, np.ones(len(points)), np.sum(points**2, axis=1)])
     out = np.empty_like(x)
     for k in range(0, len(x), 128):
-        d = x[k : k + 128, None] - points[None]
-        out[k : k + 128] = np.einsum(
-            "tsk,ts->tk", np.cross(elements[None], d), np.linalg.norm(d, axis=-1) ** -3
-        )
+        weight = targets[k : k + 128] @ sources.T
+        weight *= np.sqrt(weight)
+        np.reciprocal(weight, out=weight)
+        sums = weight @ moments
+        out[k : k + 128] = np.cross(sums[:, :3], x[k : k + 128]) - sums[:, 3:]
     return MU0 / (4.0 * np.pi) * out
 
 
@@ -431,7 +437,8 @@ def residual(rope, x0, start, y):
 
 def match(rope, workers, report=print):
     """Levenberg-Marquardt on the shape and the vertical field until every jump mode
-    vanishes, returning the shape, the vertical field and the fixed-boundary run."""
+    vanishes, on a finite-difference Jacobian that Broyden's formula updates after each
+    step, returning the shape, the vertical field and the fixed-boundary run."""
     x0 = initial_shape(rope)
     free = [i for i, mode in enumerate(rope.modes) if mode != (1, 0)]
     # the vertical field of a ring carrying the current of every strand, its minor
@@ -445,7 +452,7 @@ def match(rope, workers, report=print):
     )
     y = np.concatenate([x0[free], [vertical]])
     f, start = evaluate(rope, x0, None, y)
-    damping = 1e-3
+    damping, jacobian = 1e-3, None
     with multiprocessing.get_context("spawn").Pool(workers) as pool:
         for step in range(60):
             report(step, f, y[-1])
@@ -454,12 +461,14 @@ def match(rope, workers, report=print):
             # the solves of the step start from the strand at y while the jump is large,
             # and from VMEC's initial guess near the root
             hot = start if np.abs(f).max() > 1e-4 else None
-            f = residual(rope, x0, hot, y)
-            columns = pool.map(
-                functools.partial(residual, rope, x0, hot),
-                [y + STEP * e for e in np.eye(y.size)],
-            )
-            jacobian = np.column_stack([(c - f) / STEP for c in columns])
+            fresh = jacobian is None
+            if fresh:
+                f, *columns = pool.map(
+                    functools.partial(residual, rope, x0, hot),
+                    [y] + [y + STEP * e for e in np.eye(y.size)],
+                    chunksize=1,
+                )
+                jacobian = np.column_stack([(c - f) / STEP for c in columns])
             gradient, normal = jacobian.T @ f, jacobian.T @ jacobian
             for _ in range(12):
                 move = -np.linalg.solve(
@@ -468,12 +477,17 @@ def match(rope, workers, report=print):
                 move *= min(1.0, MAX_STEP / np.abs(move).max())
                 trial, state = evaluate(rope, x0, hot, y + move)
                 if state is not None and np.sum(trial**2) < np.sum(f**2):
+                    change = trial - f - jacobian @ move
+                    jacobian += np.outer(change, move) / (move @ move)
                     y, f, start = y + move, trial, state
                     damping = max(damping / 3.0, 1e-9)
                     break
                 damping *= 4.0
             else:
-                break
+                if fresh:
+                    break
+                # an updated Jacobian that gives no descent is computed afresh
+                damping, jacobian = 1e-3, None
     x, vertical = unknowns_to_shape(rope, x0, y)
     return x, vertical, start
 
