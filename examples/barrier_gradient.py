@@ -6,55 +6,45 @@ equilibrium and four force evaluations per parameter."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 from vmecpp_adjoint import mhd_energy, objective_state_gradient
 
 import vmecpp
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
-NS = 25
-MPOL = 6
-NTOR = 4
+# the spherical tokamak with q = 1 on the axis, above the threshold of its kink
+SPHERICAL_TOKAMAK = vmecpp.VmecInput.from_file(
+    Path(__file__).parent / "data" / "spherical_tokamak.json"
+)
+NTOR = SPHERICAL_TOKAMAK.ntor_max
 FTOL = 1.0e-18
-BASE_PARAMETERS = {"pres_scale": 3.0e4, "elongation": 1.6}
+BASE_PARAMETERS = {
+    "pres_scale": SPHERICAL_TOKAMAK.pres_scale,
+    "elongation": float(SPHERICAL_TOKAMAK.zbs[1, NTOR]),
+}
 
 
 def helical_core_input(
-    pres_scale: float = 3.0e4, elongation: float = 1.6, helical_seed: float = 0.0
+    pres_scale: float = BASE_PARAMETERS["pres_scale"],
+    elongation: float = BASE_PARAMETERS["elongation"],
+    helical_seed: float = 0.0,
 ) -> vmecpp.VmecInput:
     """The spherical tokamak, with the magnetic axis guess displaced helically by
     ``helical_seed``."""
-    vmec_input = vmecpp.VmecInput(
-        lasym=False,
-        nfp=1,
-        mpol=MPOL,
-        ntor=NTOR,
-        ns_array=np.array([NS]),
-        ftol_array=np.array([FTOL]),
-        niter_array=np.array([60000]),
-        phiedge=5.0,
-        ncurr=0,
-        # iota = 1 - (2/3) s^4: q = 1 on the axis and 3 at the boundary
-        ai=np.array([1.0, 0.0, 0.0, 0.0, -2.0 / 3.0]),
-        pmass_type="power_series",
-        am=np.array([1.0, -4.0, 6.0, -4.0, 1.0]),  # p = p0 (1 - s)^4
-        pres_scale=pres_scale,
-        gamma=0.0,
-        always_fix_m1_gauge=True,
-        raxis_c=np.concatenate([[1.5, helical_seed], np.zeros(NTOR - 1)]),
-        zaxis_s=np.concatenate([[0.0, -helical_seed], np.zeros(NTOR - 1)]),
-    )
-    vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
-        np.array([[1.5], [1.0]]), MPOL, NTOR
-    )
-    vmec_input.zbs = vmecpp.VmecInput.resize_2d_coeff(
-        np.array([[0.0], [elongation]]), MPOL, NTOR
-    )
+    vmec_input = SPHERICAL_TOKAMAK.model_copy(deep=True)
+    vmec_input.ftol_array = np.array([FTOL])
+    vmec_input.pres_scale = pres_scale
+    vmec_input.zbs[1, NTOR] = elongation
+    vmec_input.raxis_c[1] = helical_seed
+    vmec_input.zaxis_s[1] = -helical_seed
     return vmec_input
 
 
 def create_model(vmec_input: vmecpp.VmecInput):
-    return _vmecpp.VmecModel.create(vmec_input._to_cpp_vmecindata(), NS, None)
+    ns = int(vmec_input.ns_array[-1])
+    return _vmecpp.VmecModel.create(vmec_input._to_cpp_vmecindata(), ns, None)
 
 
 def solve(vmec_input: vmecpp.VmecInput):
