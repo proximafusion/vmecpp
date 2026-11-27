@@ -1,0 +1,209 @@
+# SPDX-FileCopyrightText: 2024-present Proxima Fusion GmbH <info@proximafusion.com>
+#
+# SPDX-License-Identifier: MIT
+"""Where a branch of equilibria ends, and whether at a pitchfork or a fold, from the
+critical eigenvalue of equilibria computed away from the end."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+from scipy.sparse.linalg import LinearOperator, eigs
+
+import vmecpp
+from vmecpp.cpp import _vmecpp  # type: ignore[import]
+
+# the spherical tokamak with q = 1 on the axis
+SPHERICAL_TOKAMAK = vmecpp.VmecInput.from_file(
+    Path(__file__).parent / "data" / "spherical_tokamak.json"
+)
+NTOR = SPHERICAL_TOKAMAK.ntor_max
+FTOL = 1.0e-17
+RIPPLE = 3.0e-3
+PITCHFORK_MEASURED = [2.6e4, 2.58e4, 2.56e4, 2.55e4, 2.545e4, 2.54e4]
+PITCHFORK_PATH = [2.7e4, 2.66e4, 2.62e4, *PITCHFORK_MEASURED]
+FOLD_MEASURED = [2.79e4, 2.78e4, 2.775e4, 2.77e4, 2.767e4, 2.765e4]
+FOLD_PATH = [3.0e4, 2.95e4, 2.9e4, 2.85e4, 2.82e4, 2.8e4, *FOLD_MEASURED]
+# the exponents 1 / b that the fit of a branch end tries
+EXPONENTS = np.linspace(0.5, 3.0, 2501)
+# VmecModel.status of a converged solve
+SUCCESSFUL_TERMINATION = 11
+
+
+def case_input(
+    pres_scale: float, ripple: float = 0.0, helical_seed: float = 0.0
+) -> vmecpp.VmecInput:
+    """The spherical tokamak at pres_scale, with an m = 1, n = 1 boundary ripple and the
+    magnetic axis guess displaced helically by ``helical_seed``."""
+    vmec_input = SPHERICAL_TOKAMAK.model_copy(deep=True)
+    vmec_input.ftol_array = np.array([FTOL])
+    vmec_input.niter_array = np.array([80000])
+    vmec_input.pres_scale = pres_scale
+    vmec_input.raxis_c[1] = helical_seed
+    vmec_input.zaxis_s[1] = -helical_seed
+    vmec_input.rbc[1, NTOR + 1] = ripple
+    vmec_input.zbs[1, NTOR + 1] = ripple
+    return vmec_input
+
+
+def create_model(vmec_input: vmecpp.VmecInput):
+    ns = int(vmec_input.ns_array[-1])
+    return _vmecpp.VmecModel.create(vmec_input._to_cpp_vmecindata(), ns, None)
+
+
+def solve(vmec_input: vmecpp.VmecInput, x_start: np.ndarray | None = None):
+    """The equilibrium the native solver converges to, from the initial guess of the
+    input or from the state x_start, as a VmecModel and its state."""
+    model = create_model(vmec_input)
+    if x_start is not None:
+        model.set_state(x_start)
+        model.save_backup()
+    model.solve()
+    if model.status != SUCCESSFUL_TERMINATION:
+        msg = f"the solve at pres_scale {vmec_input.pres_scale} did not converge"
+        raise RuntimeError(msg)
+    model.evaluate(2, 2, False)
+    return model, np.asarray(model.get_state()).copy()
+
+
+def guess(vmec_input: vmecpp.VmecInput) -> np.ndarray:
+    """The initial state of the input."""
+    return np.asarray(create_model(vmec_input).get_state())
+
+
+def free_coefficients(model) -> np.ndarray:
+    """The coefficients the solver evolves, from a state without symmetry."""
+    model.evaluate(2, 2, True)
+    return np.flatnonzero(np.asarray(model.get_forces()) != 0.0)
+
+
+def odd_n(model) -> np.ndarray:
+    """Mask of the state coefficients with odd toroidal mode number n."""
+    n = np.indices((6, model.ns, model.mpol, model.ntor + 1))[3].ravel()
+    return n % 2 == 1
+
+
+def preconditioner_factor(model, x: np.ndarray, free: np.ndarray) -> np.ndarray:
+    """The Cholesky factor of the preconditioner at x on the free coefficients."""
+    model.set_state(x)
+    model.evaluate(2, 2, True)
+    columns = []
+    for i in free:
+        unit = np.zeros_like(x)
+        unit[i] = 1.0
+        # apply_preconditioner returns -M^-1 v
+        columns.append(-np.asarray(model.apply_preconditioner(unit))[free])
+    inverse_metric = np.array(columns).T
+    return np.linalg.cholesky(0.5 * (inverse_metric + inverse_metric.T))
+
+
+def smallest_eigenvalue(model, x: np.ndarray, free: np.ndarray, coordinates=None):
+    """The smallest eigenvalue of the force Jacobian at x, in the coordinates in which
+    the preconditioner at x is the identity."""
+    factor = preconditioner_factor(model, x, free)
+    model.set_state(x)
+    model.evaluate(2, 2, False)
+    coordinates = np.arange(free.size) if coordinates is None else coordinates
+    columns = factor[:, coordinates]
+
+    def product(y):
+        v = np.zeros_like(x)
+        v[free] = columns @ y
+        return columns.T @ np.asarray(model.hessian_vector_product(v))[free]
+
+    jacobian = LinearOperator((coordinates.size,) * 2, matvec=product, dtype=float)
+    smallest = eigs(
+        jacobian,
+        k=1,
+        which="SR",
+        ncv=60,
+        tol=1.0e-8,
+        v0=np.ones(coordinates.size),
+        return_eigenvectors=False,
+    )
+    return smallest.real[0]
+
+
+def follow_branch(pres_scales, ripple, helical_seed, measured):
+    """The critical eigenvalue at each pres_scale in ``measured``, along the branch of
+    ``helical_seed`` followed down through pres_scales from its core without the
+    ripple."""
+    free = free_coefficients(create_model(case_input(pres_scales[0], ripple, 0.3)))
+    _, x = solve(case_input(pres_scales[0], 0.0, helical_seed))
+    # the ripple enters the state through the initial guesses of the two inputs
+    x = (
+        x
+        + guess(case_input(pres_scales[0], ripple))
+        - guess(case_input(pres_scales[0]))
+    )
+    eigenvalues = []
+    for pres_scale in pres_scales:
+        model, x = solve(case_input(pres_scale, ripple, helical_seed), x)
+        if pres_scale in measured:
+            eigenvalues.append(smallest_eigenvalue(model, x, free))
+    return np.array(eigenvalues)
+
+
+def fit_branch_end(pres_scales, eigenvalues):
+    """The fit mu = mu_end + alpha lambda^(1/b) (1 + beta lambda) of the pres_scale mu
+    to the critical eigenvalue lambda, as mu_end and b."""
+    mu = np.asarray(pres_scales)
+    x = np.asarray(eigenvalues) / np.max(eigenvalues)
+
+    def least_squares(q):
+        basis = np.column_stack([np.ones_like(x), x**q, x ** (q + 1)])
+        coefficients, *_ = np.linalg.lstsq(basis, mu, rcond=None)
+        return coefficients, np.sum((basis @ coefficients - mu) ** 2)
+
+    q = min(EXPONENTS, key=lambda q: least_squares(q)[1])
+    return least_squares(q)[0][0], 1.0 / q
+
+
+def axisymmetric_stability_limit(pres_scales):
+    """The pres_scale at which the critical eigenvalue of the axisymmetric equilibrium
+    reaches zero, interpolated linearly between two pres_scales."""
+    probe = create_model(case_input(pres_scales[0], 0.0, 0.3))
+    free = free_coefficients(probe)
+    odd = np.flatnonzero(odd_n(probe)[free])
+    eigenvalues = []
+    for pres_scale in pres_scales:
+        model, x = solve(case_input(pres_scale))
+        eigenvalues.append(smallest_eigenvalue(model, x, free, odd))
+    (mu1, mu2), (l1, l2) = pres_scales, eigenvalues
+    return mu2 - l2 * (mu2 - mu1) / (l2 - l1)
+
+
+def pitchfork_case():
+    """The critical eigenvalues along the helical-core branch without ripple."""
+    return PITCHFORK_MEASURED, follow_branch(
+        PITCHFORK_PATH, 0.0, 0.3, PITCHFORK_MEASURED
+    )
+
+
+def fold_case():
+    """The critical eigenvalues along the helical-core branch the ripple opposes."""
+    return FOLD_MEASURED, follow_branch(FOLD_PATH, RIPPLE, -0.3, FOLD_MEASURED)
+
+
+def main():
+    for name, (pres_scales, eigenvalues) in (
+        ("without ripple", pitchfork_case()),
+        ("with ripple", fold_case()),
+    ):
+        mu_end, b = fit_branch_end(pres_scales, eigenvalues)
+        kind = "pitchfork" if b > 0.75 else "fold"
+        print(f"{name}:")
+        for pres_scale, eigenvalue in zip(pres_scales, eigenvalues, strict=True):
+            print(
+                f"  pres_scale {pres_scale:.4e}: critical eigenvalue {eigenvalue:.4e}"
+            )
+        print(
+            f"  the branch ends at pres_scale {mu_end:.4e} with b = {b:.2f}: a {kind}"
+        )
+    limit = axisymmetric_stability_limit([2.6e4, 2.5e4])
+    print(f"the axisymmetric equilibrium loses its stability at pres_scale {limit:.4e}")
+
+
+if __name__ == "__main__":
+    main()
