@@ -6,6 +6,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`normal_run_and_hot_restart.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/normal_run_and_hot_restart.py): perform a standard run and then hot restart.
 - [`freeboundary_run_and_hot_restart.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/freeboundary_run_and_hot_restart.py): demonstrate free-boundary runs with hot restart.
 - [`hot_restart_scaling.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/hot_restart_scaling.py): illustrate how boundary perturbations affect hot-restart iteration counts.
+- [`vacuum_coupled_parametrons.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/vacuum_coupled_parametrons.py): invert, latch and NAND kink parametrons of free-boundary spherical tokamaks that act on each other only through the vacuum field.
 - [`compare_vmecpp_to_parvmec.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/compare_vmecpp_to_parvmec.py): compare VMEC++ results to a PARVMEC reference solution.
 - [`plot_plasma_boundary.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
 - [`visualize_magnetic_field.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
