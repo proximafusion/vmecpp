@@ -180,8 +180,7 @@ def anneal(boundary):
         (ABOVE, free, 1e-14),
         (PRESSURE, boundary_coefficients(boundary), 1e-13),
     ):
-        amplitude, orientation = (0.0, 0.0) if state is None else core_of(state)
-        vmec_input = spherical_tokamak(pres_scale, coefficients, orientation, amplitude)
+        vmec_input = spherical_tokamak(pres_scale, coefficients)
         vmec_input.ftol_array = np.array([ftol])
         state = solve(vmec_input, restart_from=state)
     return core_of(state)[1]
