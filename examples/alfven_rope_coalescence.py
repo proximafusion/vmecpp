@@ -69,18 +69,38 @@ def surface(wout, ntheta=96, nzeta=288):
     return points.reshape(-1, 3), area.reshape(-1, 3)
 
 
+def lift(points):
+    """(-2 r, |r|^2, 1) and (r, 1, |r|^2) of the points r, the factors whose product over
+    two sets of points is |r - r'|^2."""
+    square = np.sum(points**2, axis=1)[:, None]
+    one = np.ones_like(square)
+    return np.hstack([-2.0 * points, square, one]), np.hstack([points, one, square]).T
+
+
+def inverse_distance(targets, sources):
+    """1 / |r - r'| between the lifted targets r and sources r', 0 where they lie within
+    1e-6 m of each other."""
+    square = targets @ sources
+    apart = square > 1e-12
+    inverse = np.sqrt(square, out=square, where=apart)
+    np.divide(1.0, inverse, out=inverse, where=apart)
+    inverse *= apart
+    return inverse
+
+
 def potential(targets, boundary):
     """The integral of 1 / |r - r'| over the strand's volume at the points r, as half
     the boundary integral of the unit vector from r times n dS."""
     points, area = boundary
+    lifted, sources = lift(targets)[0], lift(points)[1]
+    # (r' - r) . n dS / |r' - r| as (r' . n dS - r . n dS) / |r' - r|
+    flux = np.sum(points * area, axis=1)
     out = np.empty(len(targets))
     for k in range(0, len(targets), 64):
-        d = points[None] - targets[k : k + 64, None]
-        norm = np.linalg.norm(d, axis=-1)
-        unit = np.divide(
-            d, norm[..., None], out=np.zeros_like(d), where=norm[..., None] > 0
+        inverse = inverse_distance(lifted[k : k + 64], sources)
+        out[k : k + 64] = 0.5 * (
+            inverse @ flux - np.sum(targets[k : k + 64] * (inverse @ area), axis=1)
         )
-        out[k : k + 64] = 0.5 * np.sum(unit * area[None], axis=(1, 2))
     return out
 
 
@@ -98,19 +118,18 @@ def energy(strand, boundary, turns, nfp, chunk=128):
     targets = points[:, :, period].reshape(-1, 3)
     target_j = density[:, :, period].reshape(-1, 3)
     target_v = volume[:, :, period].ravel()
-    images = [(flat_p @ t.T, flat_jdv @ t.T) for t in turns[1:]]
+    lifted, sources = lift(targets)[0], lift(flat_p)[1]
+    images = [(lift(flat_p @ t.T)[1], flat_jdv @ t.T) for t in turns[1:]]
+    wells = potential(targets, boundary)
     total = 0.0
     for k in range(0, len(targets), chunk):
-        t, j = targets[k : k + chunk], target_j[k : k + chunk]
-        distance = np.linalg.norm(t[:, None] - flat_p[None], axis=-1)
-        inverse = np.divide(
-            1.0, distance, out=np.zeros_like(distance), where=distance > 0
+        j = target_j[k : k + chunk]
+        inverse = inverse_distance(lifted[k : k + chunk], sources)
+        own = (
+            inverse @ flat_jdv - j * (inverse @ flat_v - wells[k : k + chunk])[:, None]
         )
-        regular = inverse @ flat_jdv - j * (inverse @ flat_v)[:, None]
-        own = regular + j * potential(t, boundary)[:, None]
-        for image_p, image_jdv in images:
-            far = 1.0 / np.linalg.norm(t[:, None] - image_p[None], axis=-1)
-            own += far @ image_jdv
+        for image_sources, image_jdv in images:
+            own += inverse_distance(lifted[k : k + chunk], image_sources) @ image_jdv
         total += np.sum(np.sum(j * own, axis=1) * target_v[k : k + chunk])
     return MU0 / (8.0 * np.pi) * nfp * len(turns) * total
 
