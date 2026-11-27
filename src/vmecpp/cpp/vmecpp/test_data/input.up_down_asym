@@ -1,0 +1,25 @@
+&INDATA
+  MGRID_FILE = 'NONE'
+  DELT =  0.9
+  TCON0 =  1.
+  NFP =  1
+  MPOL =  5
+  NTOR =  0
+  LASYM = T
+  NS_ARRAY    =     5     11     17
+  FTOL_ARRAY  =  1e-11  1e-11  1e-11
+  NITER_ARRAY =  2000   2000   4000
+  NSTEP =  250
+  GAMMA =   0.00000000E+00
+  PHIEDGE =   6.0
+  SPRES_PED =   1.0000E+00
+  NCURR =  0
+  AM =  0.0
+  AI =  0.9 -0.65
+  RAXIS_CC =   6.0
+  ZAXIS_CS =   0.0
+  RBC(0,0) =  6.0     ZBS(0,0) =   0.0
+  RBC(0,1) =  0.6     ZBS(0,1) =   0.6
+  RBS(0,1) = 0.6
+  RBS(0,2) = 0.12
+/
