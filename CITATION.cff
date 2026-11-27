@@ -1,9 +1,9 @@
-abstract: <p>From-scratch C++ and Python reimplementation of the Variational Moments
-  Equilibrium Code (VMEC).</p>
+abstract: From-scratch C++ and Python reimplementation of the Variational Moments
+  Equilibrium Code (VMEC).
 authors:
 - name: Proxima Fusion GmbH, Munich, Germany
 - affiliation: Proxima Fusion GmbH, Munich, Germany
-  family-names: Jura\v{s}i\'c
+  family-names: Jurašić
   given-names: Philipp
 - affiliation: Proxima Fusion GmbH, Munich, Germany
   family-names: Schilling
@@ -14,11 +14,10 @@ authors:
 - affiliation: Proxima Fusion GmbH, Munich, Germany
   family-names: Siska
   given-names: Veronika
+message: "If you use VMEC++ in your research, please cite it using these metadata."
 cff-version: 1.2.0
-date-released: '2025-02-04'
 doi: 10.5281/zenodo.14800158
-license:
-- mit
+license: MIT
 title: VMEC++
 type: software
-version: 0.1.0
+repository-code: https://github.com/proximafusion/vmecpp
