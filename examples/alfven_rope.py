@@ -439,7 +439,7 @@ def match(rope, workers, report=print):
     )
     y = np.concatenate([x0[free], [vertical]])
     f, start = evaluate(rope, x0, None, y)
-    damping, jacobian = 1e-3, None
+    damping, jacobian, slow = 1e-3, None, 0
     with multiprocessing.get_context("spawn").Pool(workers) as pool:
         for step in range(60):
             report(step, f, y[-1])
@@ -461,9 +461,12 @@ def match(rope, workers, report=print):
                 move = -np.linalg.solve(
                     normal + damping * np.diag(np.diag(normal)), gradient
                 )
-                move *= min(1.0, MAX_STEP / np.abs(move).max())
+                scale = min(1.0, MAX_STEP / np.abs(move).max())
+                move *= scale
                 trial, state = evaluate(rope, x0, hot, y + move)
                 if state is not None and np.sum(trial**2) < np.sum(f**2):
+                    halved = np.sum(trial**2) < 0.25 * np.sum(f**2)
+                    slow = slow + 1 if scale == 1.0 and not halved else 0
                     change = trial - f - jacobian @ move
                     jacobian += np.outer(change, move) / (move @ move)
                     y, f, start = y + move, trial, state
@@ -473,8 +476,11 @@ def match(rope, workers, report=print):
             else:
                 if fresh:
                     break
-                # an updated Jacobian that gives no descent is computed afresh
-                damping, jacobian = 1e-3, None
+                slow = 2
+            # a Jacobian that gives no descent, or whose unshortened steps twice in a row do
+            # not halve the jump, is computed afresh
+            if slow == 2:
+                damping, jacobian, slow = 1e-3, None, 0
     x, vertical = unknowns_to_shape(rope, x0, y)
     return x, vertical, start
 
