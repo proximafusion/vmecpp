@@ -7,11 +7,18 @@ A kink parametron is a VMEC++ equilibrium of a spherical tokamak that holds one 
 two helical cores.
 """
 
+from pathlib import Path
+
 import numpy as np
 
 import vmecpp
 
-NS, MPOL, NTOR = 49, 6, 4
+# the spherical tokamak with q = 1 on the axis
+SPHERICAL_TOKAMAK = vmecpp.VmecInput.from_file(
+    Path(__file__).parent / "data" / "spherical_tokamak.json"
+)
+NTOR = SPHERICAL_TOKAMAK.ntor_max
+NS = 49
 # pres_scale above the kink threshold
 PRESSURE = 1.1e4
 # the m = 1, n = 1 boundary ripple of one input
@@ -23,31 +30,12 @@ DE_BRUIJN = (0, 0, 0, 1, 0, 1, 1, 1)
 def spherical_tokamak(ripple, axis):
     """The VMEC++ input of the spherical tokamak with the boundary ripple ``ripple`` and
     the initial axis shift ``axis``."""
-    vmec_input = vmecpp.VmecInput(
-        lasym=False,
-        nfp=1,
-        mpol=MPOL,
-        ntor=NTOR,
-        ns_array=np.array([NS]),
-        ftol_array=np.array([1e-12]),
-        niter_array=np.array([60000]),
-        phiedge=5.0,
-        ncurr=0,
-        ai=np.array([1.0, 0.0, 0.0, 0.0, -2.0 / 3.0]),
-        pmass_type="power_series",
-        am=np.array([1.0, -4.0, 6.0, -4.0, 1.0]),
-        pres_scale=PRESSURE,
-        gamma=0.0,
-        always_fix_m1_gauge=True,
-        raxis_c=np.concatenate([[1.5, axis], np.zeros(NTOR - 1)]),
-        zaxis_s=np.concatenate([[0.0, -axis], np.zeros(NTOR - 1)]),
-    )
-    vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
-        np.array([[1.5], [1.0]]), MPOL, NTOR
-    )
-    vmec_input.zbs = vmecpp.VmecInput.resize_2d_coeff(
-        np.array([[0.0], [1.6]]), MPOL, NTOR
-    )
+    vmec_input = SPHERICAL_TOKAMAK.model_copy(deep=True)
+    vmec_input.ns_array = np.array([NS])
+    vmec_input.ftol_array = np.array([1e-12])
+    vmec_input.pres_scale = PRESSURE
+    vmec_input.raxis_c[1] = axis
+    vmec_input.zaxis_s[1] = -axis
     vmec_input.rbc[1, NTOR + 1] = ripple
     vmec_input.zbs[1, NTOR + 1] = ripple
     return vmec_input
