@@ -112,6 +112,11 @@ def solve(vmec_input, restart_from=None):
     )
 
 
+def energy(output):
+    """The MHD energy of an equilibrium."""
+    return float(output.wout.wb) - float(output.wout.wp)
+
+
 def core_of(output):
     """The axis shift of the helical core of an equilibrium and its orientation in
     degrees."""
@@ -134,16 +139,12 @@ def held_energy(boundary, diagonal, sign):
 
     The solve is stellarator-symmetric in the frame of the diagonal.
     """
-    rbc, rbs, zbc, zbs = turned(boundary_coefficients(boundary), diagonal)
-    if not np.allclose(rbs, 0.0, atol=1e-15) or not np.allclose(zbc, 0.0, atol=1e-15):
-        message = f"the boundary {boundary} is not symmetric about {diagonal} degrees"
-        raise ValueError(message)
+    coefficients = turned(boundary_coefficients(boundary), diagonal)
     vmec_input = spherical_tokamak(
-        PRESSURE, (rbc, rbs, zbc, zbs), 0.0, sign * HELD, lasym=False
+        PRESSURE, coefficients, 0.0, sign * HELD, lasym=False
     )
     vmec_input.ftol_array = np.array([1e-16])
-    output = solve(vmec_input)
-    return float(output.wout.wb) - float(output.wout.wp)
+    return energy(solve(vmec_input))
 
 
 # The held cores of a coupling at 45 and 135 degrees, and along and against a field

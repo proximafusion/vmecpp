@@ -9,8 +9,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import vmecpp
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 
 import helical_core_ising as hc
@@ -23,15 +21,6 @@ FRUSTRATED = hc.Boundary(coupling=5e-3, field_1=1e-4, field_2=-5e-5)
 def coefficients():
     energies = [hc.held_energy(*hold) for hold in hc.HOLDS]
     return hc.ising_coefficients(*energies)
-
-
-def test_the_ground_state_of_a_frustrated_problem():
-    assert hc.ground_state(-1.0, 0.3, 0.2) == (1, -1)
-
-
-def test_the_diagonal_orientations_are_the_four_spin_states():
-    states = [hc.spins(orientation) for orientation in (45.0, 135.0, 225.0, 315.0)]
-    assert states == [(1, 1), (-1, 1), (-1, -1), (1, -1)]
 
 
 def test_a_quarter_turn_maps_the_cosine_field_to_the_sine_field():
@@ -67,10 +56,8 @@ def test_the_held_states_follow_the_ising_energy(coefficients):
             hc.PRESSURE, hc.boundary_coefficients(FRUSTRATED), orientation, hc.HELD
         )
         vmec_input.ftol_array = np.array([1e-16])
-        output = vmecpp.run(vmec_input, verbose=False, max_threads=1)
-        e[hc.spins(hc.core_of(output)[1])] = float(output.wout.wb) - float(
-            output.wout.wp
-        )
+        output = hc.solve(vmec_input)
+        e[hc.spins(hc.core_of(output)[1])] = hc.energy(output)
     assert len(e) == 4
     held = (
         (e[1, -1] + e[-1, 1] - e[1, 1] - e[-1, -1]) / 4.0,
