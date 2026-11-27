@@ -152,17 +152,16 @@ def design_well(low, high, harmonics=40):
 
 def bounce_integral(strength, length, level):
     """The integral of dl / \\sqrt{level - B} across the well about the least sampled
-    B."""
+    B.
+
+    B rises above ``level`` on both sides of the well.
+    """
     u = level - strength
-    k0 = int(np.argmin(strength))
-    left = k0
-    while left > 0 and u[left - 1] > 0.0:
+    left = right = int(np.argmin(strength))
+    while u[left - 1] > 0.0:
         left -= 1
-    right = k0
-    while right < len(u) - 1 and u[right + 1] > 0.0:
+    while u[right + 1] > 0.0:
         right += 1
-    if left == 0 or right == len(u) - 1:
-        return np.nan
     h = np.diff(length)
     a, b = np.sqrt(u[left:right]), np.sqrt(u[left + 1 : right + 1])
     total = np.sum(2.0 * h[left:right] / (a + b))
@@ -234,6 +233,19 @@ def axis_boozer(wout):
     return spline(BOOZER)
 
 
+def rk4(rates, state, t, dt):
+    """The state after a classical Runge-Kutta step from ``t`` to ``t + dt``, and |B| at
+    its start.
+
+    ``rates(state, t)`` returns d state / dt and |B|.
+    """
+    k1, strength = rates(state, t)
+    k2 = rates(state + 0.5 * dt * k1, t + 0.5 * dt)[0]
+    k3 = rates(state + 0.5 * dt * k2, t + 0.5 * dt)[0]
+    k4 = rates(state + dt * k3, t + dt)[0]
+    return state + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4), strength
+
+
 def field_lines(wout, s, alphas, periods, steps):
     """|B|, the arc length and \\theta along field lines from \\theta = ``alphas`` on
     the half-grid surface nearest ``s``, and its s."""
@@ -247,28 +259,23 @@ def field_lines(wout, s, alphas, periods, steps):
         axis=1,
     )
 
-    def slope(theta, phi):
-        """The slopes d\\theta / d\\phi and dl / d\\phi and |B| of each line."""
-        wave = np.exp(1j * np.outer(theta, poloidal))[:, m] * np.exp(-1j * n * phi)
+    def slope(state, phi):
+        """The rates d / d\\phi of \\theta and the arc length of each line, and its
+        |B|."""
+        wave = np.exp(1j * np.outer(state[0], poloidal))[:, m] * np.exp(-1j * n * phi)
         strength, up, along = (wave.real @ coefficients).T
-        return up / along, strength / np.abs(along), strength
+        return np.array([up / along, strength / np.abs(along)]), strength
 
     h = 2.0 * np.pi / int(wout.nfp) / steps
-    theta, length = np.array(alphas, dtype=float), np.zeros(len(alphas))
-    strengths, lengths, thetas = [], [], []
+    state = np.array([alphas, np.zeros(len(alphas))], dtype=float)
+    strengths, states = [], []
     for k in range(round(periods * steps) + 1):
-        phi = k * h
-        k1, l1, strength = slope(theta, phi)
+        states.append(state)
+        state, strength = rk4(slope, state, k * h, h)
         strengths.append(strength)
-        lengths.append(length.copy())
-        thetas.append(theta.copy())
-        k2, l2, _ = slope(theta + 0.5 * h * k1, phi + 0.5 * h)
-        k3, l3, _ = slope(theta + 0.5 * h * k2, phi + 0.5 * h)
-        k4, l4, _ = slope(theta + h * k3, phi + h)
-        theta = theta + h / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-        length = length + h / 6.0 * (l1 + 2.0 * l2 + 2.0 * l3 + l4)
+    theta, length = np.stack(states, axis=-1)
     s_found = (js - 0.5) / (ns - 1)
-    return np.array(strengths).T, np.array(lengths).T, np.array(thetas).T, s_found
+    return np.array(strengths).T, length, theta, s_found
 
 
 def guiding_centers(wout, tolerance=1e-5):
@@ -402,17 +409,17 @@ def clock(wout, surfaces, lines=4, ions=4, ticks=20, steps=100, gyroradius=1 / 2
     period = np.array(scale)
     rates = guiding_centers(wout)
     moment, inertia = 0.5 / bottoms, gyroradius * float(wout.Aminor_p) * bottoms
+
+    def motion(state, _t):
+        return rates(state, moment, inertia)
+
     dt = period.min() / steps
     times = [[] for _ in period]
     t = 0.0
     for _ in range(2 * ticks * steps):
         if min(len(x) for x in times) >= ticks:
             break
-        k1, _ = rates(state, moment, inertia)
-        k2, _ = rates(state + 0.5 * dt * k1, moment, inertia)
-        k3, _ = rates(state + 0.5 * dt * k2, moment, inertia)
-        k4, _ = rates(state + dt * k3, moment, inertia)
-        after = state + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        after, _ = rk4(motion, state, t, dt)
         for ion in np.flatnonzero((state[3] < 0.0) & (after[3] >= 0.0)):
             times[ion].append(t + dt * state[3, ion] / (state[3, ion] - after[3, ion]))
         state, t = after, t + dt

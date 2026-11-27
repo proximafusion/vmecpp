@@ -158,13 +158,12 @@ def test_guiding_centers_keep_their_energy(wout):
     moment, inertia = 0.6, 0.01 * float(wout.Aminor_p)
     _, strength = rates(state, moment, inertia)
     energy = 0.5 * state[3] ** 2 + moment * strength
-    dt = 0.05
+
+    def motion(state, _t):
+        return rates(state, moment, inertia)
+
     for _ in range(400):
-        k1, _ = rates(state, moment, inertia)
-        k2, _ = rates(state + 0.5 * dt * k1, moment, inertia)
-        k3, _ = rates(state + 0.5 * dt * k2, moment, inertia)
-        k4, _ = rates(state + dt * k3, moment, inertia)
-        state = state + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        state, _ = ib.rk4(motion, state, 0.0, 0.05)
     _, strength = rates(state, moment, inertia)
     np.testing.assert_allclose(
         0.5 * state[3] ** 2 + moment * strength, energy, rtol=1e-8
