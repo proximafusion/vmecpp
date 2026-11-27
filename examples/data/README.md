@@ -9,6 +9,10 @@ A few cases are available for testing VMEC++ and experimenting with it:
 
 1. `input.nfp4_QH_warm_start` - quasi-helical example for use with SIMSOPT
 
+1. `isochronous_bounce` - quasi-isodynamic fields of one field period that `construct` in `examples/isochronous_bounce.py` writes from the near-axis expansion of [pyQIC](https://github.com/rogeriojorge/pyQIC)
+    1. `isochronous_bounce_cosine.json` - with the cosine axis field of pyQIC's `QI NFP1 r2`
+    1. `isochronous_bounce_huygens.json` - with an axis field that rises as the square of the arc length from its minimum
+
 1. `solovev` - axisymmetric Tokamak case, similar to the Solov'ev equilibrium used in the [1983 Hirshman & Whitson article](https://doi.org/10.1063/1.864116)
     1. `input.solovev` - Fortran namelist input file for use with Fortran VMEC
     1. `solovev.json` - JSON input file for VMEC++, derived from `input.solovev` using [`indata2json`](https://github.com/jonathanschilling/indata2json)

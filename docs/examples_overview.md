@@ -9,6 +9,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`compare_vmecpp_to_parvmec.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/compare_vmecpp_to_parvmec.py): compare VMEC++ results to a PARVMEC reference solution.
 - [`plot_plasma_boundary.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
 - [`visualize_magnetic_field.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
+- [`isochronous_bounce.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/isochronous_bounce.py): count the bounces of trapped ions released together in a quasi-isodynamic well that rises as the square of the arc length and in a cosine well.
 - [`mpi_finite_difference.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/mpi_finite_difference.py): compute finite-difference derivatives in parallel using MPI.
 - [`simsopt_integration.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_integration.py): minimal integration with SIMSOPT.
 - [`simsopt_qh_fixed_resolution.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_qh_fixed_resolution.py): reproduce SIMSOPT's QH fixed resolution example.
