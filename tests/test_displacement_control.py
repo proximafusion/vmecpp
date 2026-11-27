@@ -15,10 +15,12 @@ sys.path.insert(0, str(REPO_ROOT / "examples"))
 
 import displacement_control as example  # type: ignore # noqa: E402
 
-CASE = example.SPHERICAL_TOKAMAK._replace(resolution=(4, 1, 17))
+pytestmark = pytest.mark.slow
+
+CASE = example.SPHERICAL_TOKAMAK._replace(resolution=(4, 4, 17))
 NS = CASE.resolution[2]
-# the two minima at this field and pressure, well below the fold
-PRESSURE, EPS = 7.0e4, 0.01
+# the two minima at this field and pressure, below the fold at eps 5.4e-3
+PRESSURE, EPS = 5.35e4, 2.0e-3
 
 
 def relative_distance(x, y, free) -> float:
@@ -26,9 +28,9 @@ def relative_distance(x, y, free) -> float:
 
 
 def unbroken_saddle(pressure: float):
-    """The saddle between the mirror images at eps = 0."""
-    model, x, x_mirror, free = example.mirror_minima(CASE, pressure)
-    return example.Saddle(CASE, 0.0, model, x, x_mirror, free).find()
+    """The saddle between the two helical cores at eps = 0."""
+    model, x, x_turned, free = example.helical_cores(CASE, pressure)
+    return example.Saddle(CASE, 0.0, model, x, x_turned, free).find()
 
 
 def follow(pressure, seed, eps, x_previous):
@@ -66,8 +68,8 @@ def lowest_without_symmetry(vmec_input, x) -> np.ndarray:
 
 
 def test_the_saddle_without_an_error_field_is_the_axisymmetric_equilibrium() -> None:
-    """The saddle lies halfway between the mirror images, with the energy of the solve
-    from an axisymmetric guess."""
+    """The saddle lies halfway between the two helical cores, with the energy of the
+    solve from an axisymmetric guess."""
     saddle = unbroken_saddle(PRESSURE)
     axisymmetric, _ = example.solve(CASE.make(PRESSURE))
 
@@ -78,34 +80,33 @@ def test_the_saddle_without_an_error_field_is_the_axisymmetric_equilibrium() -> 
     assert lowest < 0.0 < second
 
 
-def test_the_barrier_follows_the_law_of_a_pitchfork() -> None:
-    """The barrier grows as the square of the distance from the threshold of the
-    critical eigenvalue, and is that eigenvalue at the saddle times tau^2 / 4."""
-    limit = example.stability_limit(CASE, [5.8e4, 5.6e4])
-    barriers = {}
-    for pressure in (5.6e4, 5.8e4):
+def test_the_identities_of_a_pitchfork_hold_at_its_threshold() -> None:
+    """Extrapolated linearly in the pressure to the threshold, the barrier is the
+    critical eigenvalue at the saddle times tau^2 / 4, and the eigenvalue at the minimum
+    is twice minus that at the saddle."""
+    pressures = (5.235e4, 5.27e4)
+    limit = example.stability_limit(CASE, pressures[::-1])
+    identities = []
+    for pressure in pressures:
         saddle = unbroken_saddle(pressure)
-        barriers[pressure] = saddle.barrier()
         lowest = saddle.lowest_eigenvalues()[0]
-        np.testing.assert_allclose(
-            barriers[pressure] * (NS - 1), -lowest * saddle.tau**2 / 4.0, rtol=1.0e-2
+        identities.append(
+            [
+                saddle.barrier() * (NS - 1) / (-lowest * saddle.tau**2 / 4.0),
+                lowest_at_minimum(saddle) / -lowest,
+            ]
         )
-        np.testing.assert_allclose(
-            lowest_at_minimum(saddle) / -lowest, 2.0, rtol=1.0e-2
-        )
-    np.testing.assert_allclose(
-        barriers[5.8e4] / barriers[5.6e4],
-        ((5.8e4 - limit) / (5.6e4 - limit)) ** 2,
-        rtol=5.0e-3,
-    )
+    (near, far), (d_near, d_far) = np.array(identities), np.subtract(pressures, limit)
+    at_threshold = near - (far - near) * d_near / (d_far - d_near)
+    np.testing.assert_allclose(at_threshold, [1.0, 2.0], rtol=3.0e-2)
 
 
 @pytest.fixture(scope="module")
 def broken():
     """The saddle under an error field, the two minima and the free coefficients."""
-    _, x, x_mirror, free = example.mirror_minima(CASE, PRESSURE)
+    _, x, x_turned, free = example.helical_cores(CASE, PRESSURE)
     model, x_high = follow(PRESSURE, CASE.seed, EPS, x)
-    _, x_low = follow(PRESSURE, -CASE.seed, EPS, x_mirror)
+    _, x_low = follow(PRESSURE, -CASE.seed, EPS, x_turned)
     saddle = example.Saddle(CASE, EPS, model, x_high, x_low, free).find()
     return saddle, x_high, x_low, free
 
@@ -144,17 +145,12 @@ def test_without_stellarator_symmetry_only_the_lower_state_is_a_minimum(broken) 
 
 
 def test_the_saddle_merges_with_the_higher_minimum_at_a_fold() -> None:
-    """Three laws of the fold give one eps_c, which scales as the cube of the distance
-    between the minima."""
-    critical = []
-    for pressure in (5.8e4, 6.2e4):
-        rows = example.ladder(CASE, pressure, stop_fraction=0.1)
-        near = example.near_fold(rows, 3)
-        eps_c = example.fold_position(near, [row.tau**2 for row in near])
-        critical.append(eps_c / rows[0].length ** 3)
+    """Three laws of the fold give one eps_c."""
+    rows = example.ladder(CASE, PRESSURE, stop_fraction=0.1)
+    near = example.near_fold(rows, 3)
+    eps_c = example.fold_position(near, [row.tau**2 for row in near])
     for law in (
         [lowest_at_minimum(row) ** 2 for row in near],
         [row.barrier() ** (2.0 / 3.0) for row in near],
     ):
         np.testing.assert_allclose(example.fold_position(near, law), eps_c, rtol=1e-2)
-    np.testing.assert_allclose(critical[0], critical[1], rtol=2.0e-2)

@@ -18,7 +18,7 @@ from vmecpp._iteration import RestartReason
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 MAX_STEPS = 60000  # of one relaxation
-FIRST_EPS = 1.0e-5  # first rung of a ladder, which measures how fast the saddle moves
+FIRST_EPS = 1.0e-5  # the first rung of a ladder
 
 
 class Case(NamedTuple):
@@ -59,7 +59,7 @@ class Case(NamedTuple):
 
 SPHERICAL_TOKAMAK = Case(
     ((1.5, 1.0), (0.0, 1.6), 1.5),
-    (6, 1, 25),
+    (6, 4, 25),
     0.3,
     (0.8, 0.97),
     {
@@ -78,7 +78,7 @@ _Q_OUTER = 1.04 + 2.96 * ((_S - 0.575) / 0.425) ** 2
 # R = 6.2, a = 2 at 5.3 T, with the pressure on the axis over the magnetic pressure
 REACTOR = Case(
     ((6.2, 2.0, -0.33), (0.0, 3.4), 6.23),
-    (8, 2, 33),
+    (8, 4, 33),
     0.2,
     (0.5, 0.99),
     {
@@ -275,13 +275,13 @@ class Saddle:
         return spectrum(self.model, self.free, self.state(self.x))[:2]
 
 
-def mirror_minima(case, pressure):
-    """The helical cores at eps = 0, as the model at the first, the two states and the
-    free coefficients."""
+def helical_cores(case, pressure):
+    """The two helical cores at eps = 0, half a toroidal turn apart, as the model at the
+    first, the two states and the free coefficients."""
     model, x = solve(case.make(pressure, 0.0, case.seed))
-    _, x_mirror = solve(case.make(pressure, 0.0, -case.seed))
+    _, x_turned = solve(case.make(pressure, 0.0, -case.seed))
     free = free_coefficients(create_model(case.make(pressure, 0.0, case.seed)))
-    return model, x, x_mirror, free
+    return model, x, x_turned, free
 
 
 def ladder(case, pressure, stop_fraction=0.05):
@@ -290,7 +290,7 @@ def ladder(case, pressure, stop_fraction=0.05):
     def guess(eps, seed):
         return np.asarray(create_model(case.make(pressure, eps, seed)).get_state())
 
-    _, x_plus, x_minus, free = mirror_minima(case, pressure)
+    _, x_plus, x_minus, free = helical_cores(case, pressure)
     states = {case.seed: x_plus, -case.seed: x_minus}
     near = case.seed
     rows, eps, step = [], 0.0, FIRST_EPS
@@ -371,7 +371,7 @@ def main():
     if args.resolution:
         case = case._replace(resolution=tuple(args.resolution))
     pressures = args.pressures or (
-        (0.054, 0.056, 0.06) if args.reactor else (2.65e4, 2.7e4, 2.8e4)
+        (0.0522, 0.0525, 0.0529) if args.reactor else (2.555e4, 2.565e4, 2.58e4)
     )
 
     p_c = stability_limit(case, sorted(pressures)[:2])
