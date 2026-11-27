@@ -8,6 +8,7 @@ The `examples/` directory contains short scripts demonstrating typical tasks:
 - [`hot_restart_scaling.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/hot_restart_scaling.py): illustrate how boundary perturbations affect hot-restart iteration counts.
 - [`compare_vmecpp_to_parvmec.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/compare_vmecpp_to_parvmec.py): compare VMEC++ results to a PARVMEC reference solution.
 - [`plot_plasma_boundary.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/plot_plasma_boundary.py): plot the outer plasma boundary with `matplotlib`.
+- [`quasi_helical_core.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/quasi_helical_core.py): grow a (1, 8) helical core inside an axisymmetric boundary and measure and lower its quasi-helical symmetry breaking.
 - [`visualize_magnetic_field.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/visualize_magnetic_field.py): calculate the magnetic field and current density, and visualize with `pyvista`.
 - [`mpi_finite_difference.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/mpi_finite_difference.py): compute finite-difference derivatives in parallel using MPI.
 - [`simsopt_integration.py`](https://github.com/proximafusion/vmecpp/blob/main/examples/simsopt_integration.py): minimal integration with SIMSOPT.
