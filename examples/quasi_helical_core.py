@@ -5,19 +5,21 @@
 
 A tokamak of eight field periods with a rotational transform above 8 on its axis holds a
 (1, 8) helical core whose axis winds eight times around the torus. The boundary has no
-harmonic of n other than 0, and shaping it and the rotational transform lowers the (1,
-1) quasisymmetry residuals inside the core.
+harmonic of n other than 0, and shaping it, the rotational transform and the pressure on
+the exact gradients of VMEC++ lowers the (1, 1) quasisymmetry residuals inside the core.
 """
 
 import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
+import jax
+import jax.numpy as jnp
 import numpy as np
-from scipy.optimize import least_squares
+from scipy.optimize import minimize
 
 import vmecpp
-from vmecpp import geometry, qs
+from vmecpp import autodiff, geometry, qs
 from vmecpp.cpp import _vmecpp  # type: ignore[import]
 
 NFP, MPOL, NTOR, NS = 8, 6, 4, 25
@@ -27,21 +29,33 @@ R0, A, PHIEDGE = 6.0, 0.5, 1.0
 CRITICAL = R0 / (NFP**2 + 1)
 # the surfaces inside the core on which the residuals are taken
 INSIDE = (0.02, 0.05, 0.1)
-# elongation, the m = 2 and m = 3 terms of R and the m = 2 term of Z over the minor
-# radius, and iota = iota_0 + iota_1 s
-START = np.array([1.3, 0.0, 0.0, 0.0, 8.55, -1.5])
+# the shape: the n = 0 coefficients of R for m = 2 to 5 and of Z for m = 1 to 5 in
+# metres, iota_0 to iota_3 of iota = sum_k iota_k s^k, and pres_scale over 1e4
+START = np.array([0, 0, 0, 0, 1.3 * A, 0, 0, 0, 0, 8.55, -1.5, 0, 0, 0.0])
 # the shape optimize reaches from START
-SHAPED = np.array([1.2821, 0.0, 0.0, 0.0, 8.5219, -1.4903])
-LOWER = np.array([1.0, -0.15, -0.15, -0.15, 8.0, -3.0])
-UPPER = np.array([2.0, 0.15, 0.15, 0.15, 9.0, -0.6])
+SHAPED = np.concatenate(
+    [
+        [0.0047, 0.0044, -0.0011, 0.0042],
+        [0.6397, -0.0048, 0.0, -0.0006, 0.004],
+        [8.5125, -1.5244, -0.0116, -0.0063],
+        [0.0],
+    ]
+)
+BOUNDS = (
+    [(-0.075, 0.075)] * 4
+    + [(0.5, 1.0)]
+    + [(-0.075, 0.075)] * 4
+    + [(8.0, 9.0)]
+    + [(-4.0, 4.0)] * 3
+    + [(0.0, 2.0)]
+)
 # the axis shift of the initial guess of a core
 SEED = 0.05
 
 
 def core_input(shape, seed=SEED):
-    """The fixed-boundary input of the axisymmetric boundary ``shape`` at zero pressure,
-    with its axis guess shifted helically by ``seed``."""
-    kappa, r2, r3, z2, iota_0, iota_1 = shape
+    """The fixed-boundary input of the axisymmetric boundary ``shape``, with its axis
+    guess shifted helically by ``seed``."""
     vmec_input = vmecpp.VmecInput(
         nfp=NFP,
         mpol=MPOL,
@@ -51,20 +65,20 @@ def core_input(shape, seed=SEED):
         niter_array=np.array([60000]),
         phiedge=PHIEDGE,
         ncurr=0,
-        ai=np.array([iota_0, iota_1]),
+        ai=np.asarray(shape[9:13], dtype=float),
         pmass_type="power_series",
-        am=np.array([0.0]),
-        pres_scale=0.0,
+        am=np.array([1.0, -2.0, 1.0]),
+        pres_scale=float(shape[13]) * 1e4,
         gamma=0.0,
         always_fix_m1_gauge=True,
         raxis_c=np.array([R0, seed, 0.0, 0.0, 0.0]),
         zaxis_s=np.array([0.0, -seed, 0.0, 0.0, 0.0]),
     )
     vmec_input.rbc = vmecpp.VmecInput.resize_2d_coeff(
-        np.array([[R0], [A], [r2 * A], [r3 * A]]), MPOL, NTOR
+        np.concatenate([[R0, A], shape[0:4]])[:, None], MPOL, NTOR
     )
     vmec_input.zbs = vmecpp.VmecInput.resize_2d_coeff(
-        np.array([[0.0], [kappa * A], [z2 * A]]), MPOL, NTOR
+        np.concatenate([[0.0], shape[4:9]])[:, None], MPOL, NTOR
     )
     return vmec_input
 
@@ -107,27 +121,39 @@ def residuals(output, helicity_n=1):
     )
 
 
-def optimize(start=START, evaluations=150):
-    """The shape that lowers the (1, 1) residuals inside the core, with the core held
-    above 1.2 CRITICAL."""
-    last = [solve(start)]
-    size = []
+def optimize(start=START, evaluations=90):
+    """The shape that lowers the (1, 1) residuals inside the core by L-BFGS-B on the
+    exact gradients of VMEC++, with the core held above 1.2 CRITICAL.
+
+    The gradients need a build with VMECPP_ENABLE_ENZYME.
+    """
+    template = core_input(start)
+    solver = autodiff.make_solver(template)
+    boundary = jnp.asarray(np.stack([template.rbc, template.zbs]))
 
     def objective(shape):
-        try:
-            output = solve(shape, restart=last[0])
-        except RuntimeError:
-            return np.ones(size[0])
-        shift = abs(axis_shift(output[0]))
-        if shift > 1.2 * CRITICAL:
-            last[0] = output
-        r = np.append(residuals(output[0]), 10.0 * max(0.0, 1.2 - shift / CRITICAL))
-        size[:] = [r.size]
-        return r
+        rows = boundary.at[0, 2:, NTOR].set(shape[0:4]).at[1, 1:, NTOR].set(shape[4:9])
+        core = solver(rows, {"ai": shape[9:13], "pres_scale": shape[13] * 1e4})
+        helical = qs.quasisymmetry_total(
+            core, INSIDE, helicity_m=1, helicity_n=1, ntheta=15, nphi=16
+        )
+        # the n = 1 cosine coefficient of R on the axis in the product basis
+        r = core.r_cc
+        shift = jnp.abs(r[0, 1, 0] if r.shape[1] == NTOR + 1 else r[0, 0, 1])
+        return helical + 10.0 * jnp.maximum(0.0, 1.2 - shift / CRITICAL) ** 2
 
-    objective(start)
-    return least_squares(
-        objective, start, bounds=(LOWER, UPPER), diff_step=1e-3, max_nfev=evaluations
+    value_and_grad = jax.value_and_grad(objective)
+
+    def fun(shape):
+        try:
+            value, gradient = value_and_grad(jnp.asarray(shape))
+        except (RuntimeError, jax.errors.JaxRuntimeError):
+            return 1.0e3, np.zeros_like(shape)
+        return float(value), np.asarray(gradient, dtype=float)
+
+    options = {"maxfun": evaluations}
+    return minimize(
+        fun, start, jac=True, method="L-BFGS-B", bounds=BOUNDS, options=options
     ).x
 
 
