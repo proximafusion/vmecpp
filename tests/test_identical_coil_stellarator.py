@@ -115,8 +115,8 @@ def test_interior_against_tracing(solved):
     np.testing.assert_allclose(
         ck.axis_curve(wout, solved["planes"]), solved["axis"], rtol=0.0, atol=3e-3
     )
-    # At this resolution VMEC++ puts the rotational transform 0.006 above the traced one
-    # on the axis and 0.0001 above it on the boundary.
+    # At this resolution VMEC++ puts the rotational transform 0.0013 below the traced
+    # one on the axis and 0.0001 above it on the boundary.
     np.testing.assert_allclose(
         abs(iota[0]), abs(solved["iota_axis"]), rtol=0.0, atol=7e-3
     )

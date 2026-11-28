@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026-present Proxima Fusion GmbH <info@proximafusion.com>
 #
 # SPDX-License-Identifier: MIT
-"""Solve a quasi-isodynamic stellarator of 80 identical coils with VMEC++ and compare it
+"""Solve a quasi-isodynamic stellarator of 50 identical coils with VMEC++ and compare it
 with W7-X."""
 
 import dataclasses
@@ -14,69 +14,87 @@ from simsopt.geo import CurveXYZFourier
 import vmecpp
 
 NFP = 5
-# Every coil is one shape: at the angle t from its first axis, the conductor lies at
-# s(t) (SEMI_AXES[0] cos t, SEMI_AXES[1] sin t) in m from the centre in its plane, with
-# s(t) = 1 + \sum_k LOBES[k] \cos((k + 2) t), and
-# \sum_k WAVES[k] \sin((k + 2) t - PHASES[coil, k]) in m along its normal.
-SEMI_AXES = (1.361835360, 1.361835360)
-LOBES = (0.000000000, -0.001916699)
-WAVES = (0.000000000, -0.493937461, 0.000000000, 0.000000000, 0.048398687)
-CURRENT = 1.0e6  # coil current in A
-# Centres in m of the coils from \phi = 0 to the middle of a field period.
+# Every coil is one 3D shape placed by rigid rotations and translations: at the angle t
+# around the loop, the conductor lies at u(t) axis + v(t) (normal x axis) + w(t) normal
+# in m from the centre, with Fourier coefficients U_COS, U_SIN, V_COS, V_SIN, W_COS,
+# W_SIN for m = 1..6.
+U_COS = (
+    1.202136654,
+    -0.041864268,
+    0.029180006,
+    -0.040242747,
+    -0.024642407,
+    -0.001061615,
+)
+U_SIN = (
+    0.260231319,
+    -0.071748680,
+    0.079364237,
+    0.029102220,
+    0.033257913,
+    -0.042465491,
+)
+V_COS = (
+    0.004762313,
+    0.190246166,
+    -0.098843801,
+    -0.051272167,
+    0.006500505,
+    0.008455956,
+)
+V_SIN = (
+    1.078585540,
+    0.177422666,
+    0.037778199,
+    -0.106602181,
+    -0.021095647,
+    0.006649826,
+)
+W_COS = (
+    -0.013079373,
+    -0.077737370,
+    -0.114787891,
+    0.080510233,
+    -0.067035774,
+    -0.027053472,
+)
+W_SIN = (
+    -0.022317475,
+    0.065512828,
+    -0.069191181,
+    -0.047063250,
+    0.048316482,
+    0.014272521,
+)
+CURRENT = 1.0e6  # coil current magnitude in A
+# Centres in m of the 5 coils in the first half of a field period.
 CENTRES = np.array(
     [
-        [9.971577899235, 0.0, 0.0],
-        [9.917686275230, 0.577570405475, 0.045566256510],
-        [9.743194746834, 0.952177333323, 0.237093367531],
-        [9.415865677376, 1.113004916187, 0.500587685086],
-        [8.977503563263, 1.225097293525, 0.724435462215],
-        [8.378254332324, 1.547352240161, 0.933239608721],
-        [7.857616206149, 2.268350761547, 0.753283676339],
-        [7.231728087874, 3.335248048912, 0.519352547823],
-        [6.363012567870, 4.622999236790, 0.0],
+        [5.562399196168, 0.325275109451, -0.133873990556],
+        [5.734748186238, 0.634784019040, 0.485108133957],
+        [5.626083079389, 1.466512836823, 0.375488610382],
+        [4.980522284795, 1.998617649453, 0.170164306079],
+        [4.542287971878, 2.741943762784, -0.059433386818],
     ]
 )
-# Unit normals of the same coils. A positive current drives the field at a centre along
-# the normal.
+# Unit normals of the same coils.
 NORMALS = np.array(
     [
-        [0.0, 0.792453300197, 0.609932592183],
-        [-0.183706363190, 0.800113064326, 0.571026318499],
-        [-0.357462009093, 0.786614313911, 0.503446951729],
-        [-0.521837944830, 0.701106812563, 0.485936618001],
-        [-0.663322416918, 0.703952729905, 0.253877776248],
-        [-0.437124305295, 0.891521117135, -0.118795788738],
-        [-0.545595988105, 0.825737810853, -0.143115636783],
-        [-0.586950447433, 0.784696724948, -0.199349497402],
-        [-0.570925719779, 0.785811838636, -0.237788933204],
+        [-0.108925959126, 0.959522003054, 0.259716501371],
+        [-0.393163247625, 0.882992738684, 0.256410772294],
+        [-0.517044292001, 0.855698284828, -0.021110316216],
+        [-0.599563167031, 0.777687304838, -0.189014456152],
+        [-0.565706273545, 0.787710584237, -0.243902536993],
     ]
 )
 # Unit vectors in the planes of the same coils along which t = 0.
 AXES = np.array(
     [
-        [1.000000000000, 0.0, 0.0],
-        [0.981043833578, 0.112782321548, 0.157585356377],
-        [0.928731354342, 0.242616342982, 0.280348678579],
-        [0.810858574826, 0.230758761139, 0.537827821695],
-        [0.526566349412, 0.198009165071, 0.826752835020],
-        [0.135481547916, 0.195845509758, 0.971230810097],
-        [-0.305948330654, -0.037270493701, 0.951318311224],
-        [-0.523868544411, -0.180361914856, 0.832485031605],
-        [-0.525551852976, -0.127290739646, 0.841185067291],
-    ]
-)
-# Phases of the waves of the same coils in rad.
-PHASES = np.array(
-    [
-        [0.0, 0.0, 0.0, 0.0, 0.0],
-        [-0.047904658336, 0.0, 0.0, 0.0, 0.0],
-        [-0.096483846848, 0.0, 0.0, 0.0, 0.0],
-        [-0.145616811845, 0.0, 0.0, 0.0, 0.0],
-        [-0.192827731490, 0.0, 0.0, 0.0, 0.0],
-        [-0.257899944032, 0.0, 0.0, 0.0, 0.0],
-        [-0.333297495506, 0.0, 0.0, 0.0, 0.0],
-        [-0.412014121616, 0.0, 0.0, 0.0, 0.0],
-        [-0.523598775598, 0.0, 0.0, 0.0, 0.0],
+        [0.909767489318, 0.201512214734, -0.362926910951],
+        [0.719382840786, 0.469080131513, -0.512300847748],
+        [0.697264046804, 0.406751274208, -0.590234063711],
+        [0.781972767688, 0.619530500390, 0.068560554839],
+        [0.630794502043, 0.603886352917, 0.487257189739],
     ]
 )
 PRESSURES = (8000.0, 16000.0, 24000.0)  # p_0 in Pa of the profile p_0 (1 - s)
@@ -102,7 +120,7 @@ class Interior:
 
 
 DESIGN = Interior(
-    nfp=NFP, axis=(9.25, 9.37), steps=2, planes=96, offset=0.26, mpol=12, ntor=24
+    nfp=NFP, axis=(5.85, 5.98), steps=2, planes=96, offset=0.185, mpol=12, ntor=24
 )
 # W7-X in the standard configuration. Its boundary lies inside the 5/5 islands.
 W7X = Interior(
@@ -110,24 +128,18 @@ W7X = Interior(
 )
 
 
-def coil(centre, normal, axis, phases):
-    """The coil of the common shape placed by ``centre``, ``normal``, ``axis`` and
-    ``phases``."""
+def coil(centre, normal, axis, current=CURRENT):
+    """The coil of the common 3D shape placed by ``centre``, ``normal`` and ``axis``."""
     second = np.cross(normal, axis)
     t = 2.0 * np.pi * np.arange(64) / 64
-    scale = np.ones_like(t) + sum(v * np.cos((k + 2) * t) for k, v in enumerate(LOBES))
-    orders = np.arange(2, 2 + len(WAVES))
-    lift = np.sin(np.outer(t, orders) - phases) @ np.array(WAVES)
-    points = (
-        centre
-        + scale[:, None]
-        * (
-            SEMI_AXES[0] * np.cos(t)[:, None] * axis
-            + SEMI_AXES[1] * np.sin(t)[:, None] * second
-        )
-        + lift[:, None] * normal
-    )
-    order = max(len(LOBES) + 2 if LOBES else 1, len(WAVES) + 1)
+    orders = np.arange(1, len(U_COS) + 1)
+    cos_mt = np.cos(np.outer(t, orders))
+    sin_mt = np.sin(np.outer(t, orders))
+    u = cos_mt @ np.array(U_COS) + sin_mt @ np.array(U_SIN)
+    v = cos_mt @ np.array(V_COS) + sin_mt @ np.array(V_SIN)
+    w = cos_mt @ np.array(W_COS) + sin_mt @ np.array(W_SIN)
+    points = centre + u[:, None] * axis + v[:, None] * second + w[:, None] * normal
+    order = len(U_COS)
     harmonics = np.fft.rfft(points, axis=0) / len(t)
     curve = CurveXYZFourier(64, order)
     # c_0 and then s_j, c_j of \sin(2 \pi j t) and \cos(2 \pi j t) in each coordinate
@@ -135,33 +147,35 @@ def coil(centre, normal, axis, phases):
         [
             [harmonics[0, k].real]
             + [
-                v
+                val
                 for j in range(1, order + 1)
-                for v in (-2.0 * harmonics[j, k].imag, 2.0 * harmonics[j, k].real)
+                for val in (-2.0 * harmonics[j, k].imag, 2.0 * harmonics[j, k].real)
             ]
             for k in range(3)
         ]
     )
-    return Coil(curve, Current(CURRENT))
+    return Coil(curve, Current(current))
 
 
 def coils():
-    """The 80 coils of the design."""
-    # Stellarator symmetry maps (x, y, z) to (x, -y, -z) and n to (-n_x, n_y, n_z). The
-    # first and the last coil are their own images.
+    """The 50 identical coils of the design."""
+    # Stellarator symmetry S = diag(1, -1, -1) is a 180-degree rigid rotation about the
+    # x-axis (det S = +1), carrying each coil of the first half-period into a rigidly
+    # congruent coil in the second half-period with reversed current.
     flip = np.array([1.0, -1.0, -1.0])
-    centres = np.concatenate([CENTRES, flip * CENTRES[1:-1]])
-    normals = np.concatenate([NORMALS, -flip * NORMALS[1:-1]])
-    axes = np.concatenate([AXES, flip * AXES[1:-1]])
-    # The image of a coil carries its waves at the opposite phases.
-    phases = np.concatenate([PHASES, -PHASES[1:-1]])
+    centres = np.concatenate([CENTRES, flip * CENTRES])
+    normals = np.concatenate([NORMALS, flip * NORMALS])
+    axes = np.concatenate([AXES, flip * AXES])
+    currents = np.concatenate(
+        [np.full(len(CENTRES), CURRENT), np.full(len(CENTRES), -CURRENT)]
+    )
     out = []
     for k in range(NFP):
         cos, sin = np.cos(2.0 * np.pi * k / NFP), np.sin(2.0 * np.pi * k / NFP)
         turn = np.array([[cos, -sin, 0.0], [sin, cos, 0.0], [0.0, 0.0, 1.0]])
         out += [
-            coil(turn @ c, turn @ n, turn @ a, p)
-            for c, n, a, p in zip(centres, normals, axes, phases, strict=True)
+            coil(turn @ c, turn @ n, turn @ a, curr)
+            for c, n, a, curr in zip(centres, normals, axes, currents, strict=True)
         ]
     return out
 
@@ -538,10 +552,10 @@ def main():
     field = BiotSavart(every)
     k = interior(field, DESIGN)
     print(
-        f"{len(every)} coils of semi-axes {SEMI_AXES[0]:.3f} m and {SEMI_AXES[1]:.3f} m: "
+        f"{len(every)} coils of semi-axes {U_COS[0]:.3f} m and {V_SIN[0]:.3f} m: "
         "magnetic axis through R = "
         f"{k['r_axis']:.5f} m on the midplane of phi = 0 with iota "
-        f"{abs(k['iota_axis']):.4f} next to it, boundary traced from 26 cm outboard "
+        f"{abs(k['iota_axis']):.4f} next to it, boundary traced from 18.5 cm outboard "
         f"of it with iota {abs(k['iota_surface']):.4f}, fitted within "
         f"{k['misfit']:.1e} m"
     )
